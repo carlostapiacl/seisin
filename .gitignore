@@ -1,0 +1,4 @@
+node_modules/
+.keyward/
+*.log
+.DS_Store
