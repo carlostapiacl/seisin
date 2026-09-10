@@ -69,6 +69,42 @@ keys   = ["database-url.txt", "sentry-dsn.txt"]
 
 `seisin init` will propose this from whatever your repo already says: `.claude/agents/`, then `CODEOWNERS`, then a blank start. It **proposes** — a generated policy you did not read is not a policy.
 
+## Where the first policy comes from
+
+Every permission tool dodges this question. Written by hand, the first policy is a guess, and
+the first unjustified denial is when the tool gets uninstalled. So don't write it — watch, then
+write:
+
+```bash
+seisin run frontend --observe -- claude -p "…"   # records, denies nothing
+seisin init --from-observations                  # writes seisin.toml.observed
+```
+
+It lands as `.observed`, not as your config. A policy generated behind your back is not a
+policy: diff it, then move it.
+
+## Seeing what happened
+
+```bash
+seisin log --verdict denied      # what the agents tried and could not do
+seisin watch                     # follow it live
+```
+
+```
+04:13:26  allowed  frontend write src/web/app.ts
+04:13:26  denied   frontend write src/api/server.ts  → backend
+04:13:27  denied   frontend read .secrets/database.txt  → backend
+```
+
+One append-only JSONL under `.seisin/`, and that is the whole storage design — no daemon, no
+socket, no database. `watch` is a tail. The file is the shared state, so anything that can read
+it can watch it.
+
+That log is also what makes the sandbox legible at all. When the kernel refuses a write, the
+only thing that surfaces is `Operation not permitted` on the child's stderr: no path, no
+reason, nothing to read afterwards. Correct for an enforcer, useless as an instrument. The
+hook runs one layer up and sees the attempt before it happens.
+
 ## How it holds
 
 | layer | what it does | can it be talked around? |
