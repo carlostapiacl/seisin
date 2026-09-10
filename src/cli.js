@@ -261,27 +261,51 @@ function ui() {
 
 function scanCmd() {
   const cfg = config();
-  const hits = scan(cfg.root, cfg.keyDirs);
+  const { hits, skipped, truncated } = scan(cfg.root, cfg.keyDirs, cfg.scanIgnore);
 
-  if (hits.length === 0) {
-    const where = cfg.keyDirs.length ? cfg.keyDirs.join(", ") : "nowhere — [keys] dir is unset";
-    process.stdout.write(`\n  ${C.green}no credential-shaped content outside ${where}${C.off}\n\n`);
+  const certain = hits.filter((h) => h.level === "certain");
+  const review = hits.filter((h) => h.level === "review");
+  const where = cfg.keyDirs.length ? cfg.keyDirs.join(", ") : `${C.yellow}nowhere — [keys] dir is unset${C.off}`;
+
+  process.stdout.write(`\n  ${C.dim}protected: ${where}${C.off}\n\n`);
+
+  if (certain.length === 0 && review.length === 0) {
+    process.stdout.write(`  ${C.green}nothing credential-shaped outside the declared directories${C.off}\n\n`);
     return;
   }
 
-  const byFile = new Map();
-  for (const h of hits) (byFile.get(h.file) ?? byFile.set(h.file, []).get(h.file)).push(h);
-
-  process.stdout.write(`\n  ${C.yellow}${hits.length} finding(s) in ${byFile.size} file(s), outside every declared key directory${C.off}\n`);
-  process.stdout.write(`  ${C.dim}Reads outside the denied paths are open, so every role can read these.${C.off}\n\n`);
-
-  for (const [file, list] of byFile) {
-    process.stdout.write(`  ${C.b}${file}${C.off}\n`);
-    for (const h of list.slice(0, 4)) process.stdout.write(`    ${C.dim}:${h.line}${C.off}  ${h.shape}\n`);
-    if (list.length > 4) process.stdout.write(`    ${C.dim}… and ${list.length - 4} more${C.off}\n`);
+  // Two lists, never one. A provider-issued string and a line that merely
+  // mentions a password are different claims, and merging them is how a
+  // scanner earns the reputation of crying wolf.
+  if (certain.length) {
+    process.stdout.write(`  ${C.red}${certain.length} credential(s)${C.off} — these shapes are issued, not written by accident\n\n`);
+    for (const h of certain) process.stdout.write(`    ${C.b}${h.file}${C.off}${C.dim}:${h.line}${C.off}  ${h.shape}\n`);
+    process.stdout.write("\n");
   }
-  process.stdout.write(`\n  ${C.dim}seisin does not move these. Where a credential lives is your call.${C.off}\n\n`);
-  process.exit(1);
+
+  if (review.length) {
+    const byFile = new Map();
+    for (const h of review) byFile.set(h.file, (byFile.get(h.file) ?? 0) + 1);
+    process.stdout.write(`  ${C.yellow}${review.length} line(s) to look at${C.off} in ${byFile.size} file(s) — a secret-shaped name with a literal value\n\n`);
+    for (const [file, n] of [...byFile].slice(0, 15))
+      process.stdout.write(`    ${file}${C.dim}${n > 1 ? `  ×${n}` : ""}${C.off}\n`);
+    if (byFile.size > 15) process.stdout.write(`    ${C.dim}… and ${byFile.size - 15} more file(s)${C.off}\n`);
+    process.stdout.write("\n");
+  }
+
+  // What was thrown away matters as much as what was kept: it is the only way
+  // to tell a quiet scan from a broken one.
+  const q = [];
+  if (skipped.reference) q.push(`${skipped.reference} value(s) read from the environment`);
+  if (skipped.placeholder) q.push(`${skipped.placeholder} placeholder(s)`);
+  if (skipped.ignored) q.push(`${skipped.ignored} ignored path(s)`);
+  if (skipped.protectedDirs) q.push(`${skipped.protectedDirs} inside declared key dir(s)`);
+  if (q.length) process.stdout.write(`  ${C.dim}not reported: ${q.join(" · ")}${C.off}\n`);
+  if (truncated) process.stdout.write(`  ${C.yellow}stopped at the limit — there are more${C.off}\n`);
+  process.stdout.write(`  ${C.dim}seisin does not move these. Where a credential lives is your call.${C.off}\n\n`);
+
+  // Only a certain finding fails. Otherwise this cannot go in a build.
+  if (certain.length) process.exit(1);
 }
 
 /* ── dispatch ─────────────────────────────────────────────────────────── */

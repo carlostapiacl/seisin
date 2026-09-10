@@ -117,6 +117,7 @@ export function loadConfig(path) {
     allowedDomains: parsed.network?.allow ?? [],
     runtimeWrites: runtimeWrites === undefined ? undefined : asArray(runtimeWrites, "runtime.writes"),
     redact: parsed.runtime?.redact,
+    scanIgnore: asArray(parsed.scan?.ignore, "scan.ignore"),
     roles: {},
   };
 
