@@ -61,10 +61,13 @@ export function settingsFor(config, roleName) {
   const denyRead = [];
   const allowRead = [];
 
-  if (config.keyDir) {
-    denyRead.push(abs(config.keyDir));
-    for (const key of role.keys) allowRead.push(abs(join(config.keyDir, key)));
-  }
+  // Every declared directory is denied, then each key the role names is
+  // re-allowed. A key written without a directory resolves against the first
+  // one, which keeps the ordinary single-directory config short.
+  const dirs = config.keyDirs ?? [];
+  for (const dir of dirs) denyRead.push(abs(dir));
+  for (const key of role.keys)
+    allowRead.push(key.includes("/") ? abs(key) : abs(join(dirs[0] ?? ".", key)));
 
   return {
     network: {

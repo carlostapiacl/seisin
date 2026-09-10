@@ -92,6 +92,34 @@ Verified by the test suite, which runs real commands in a real sandbox:
 ✔ an absolute path does not walk around the rule
 ```
 
+## How it protects secrets
+
+Four ways out of a process, and seisin closes three of them. The fourth is named below,
+because a security tool that lists only its wins is not one.
+
+| way out | closed by | how |
+|---|---|---|
+| reading another role's key file | the kernel | the key directory is denied, each declared key re-allowed. Survives a grandchild process and an absolute path |
+| a key riding in the environment | the launcher | the child's environment is **built, not inherited**. Measured before this existed: 93 variables crossed into every turn, a planted token among them |
+| spilling a key the role does hold | the launcher | the value is masked on stdout and stderr, including when it lands split across two buffers |
+| sending it somewhere | the kernel | egress is allow-only. `curl` to a domain you did not list gets nothing |
+| **a key stored outside the declared directories** | **nothing** | `seisin scan` finds them so you know what is not covered |
+
+```toml
+[keys]
+dir = [".secrets", "config/credentials"]   # one directory or several
+
+[roles.frontend]
+keys = ["netlify-token.txt"]   # everything else in those directories is denied
+env  = ["BUILD_ID"]            # everything else in the environment is dropped
+```
+
+**Two things this deliberately does not claim.** Redaction masks a literal value on the way
+through the launcher — a key written straight to a file never passes through it, and neither
+does one the agent base64'd first. It narrows a careless print; it is not a containment
+boundary. And to mask a value seisin must read it, so a role's own keys pass through this
+process in memory. `[runtime] redact = false` turns that off.
+
 ## Scratch space, and what it costs
 
 Territory alone is correct and unusable. An agent writes session state under its own config
