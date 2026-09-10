@@ -85,6 +85,30 @@ test("an absolute path does not walk around the rule", { skip }, () => {
   assert.ok(!as("frontend", `cat ${JSON.stringify(join(repo, ".secrets", "database.txt"))}`));
 });
 
+test("the child's exit code comes back out", { skip }, () => {
+  // Regression, and the ugliest kind. Redaction pipes the child's output, and
+  // the drain logic subscribed to `finish` AFTER calling end() — which misses
+  // the event when it fires synchronously. Nothing ever called exit, the
+  // process drifted out of the event loop, and every run reported 0. A battery
+  // of seven sandbox checks came back green while the sandbox was doing its
+  // job perfectly: the harness could not see the failures.
+  const r = (line) => spawnSync(process.execPath, [CLI, "run", "frontend", "--", "sh", "-c", line],
+    { cwd: repo, encoding: "utf8" });
+  assert.equal(r("exit 0").status, 0);
+  assert.equal(r("exit 42").status, 42);
+  assert.notEqual(r("cat .secrets/database.txt").status, 0);
+});
+
+test("output still arrives in full when it is redacted", { skip }, () => {
+  // The other half: exiting the moment the child does discards whatever is
+  // still in the stream, so the command looks like it printed nothing.
+  const r = spawnSync(process.execPath,
+    [CLI, "run", "frontend", "--", "sh", "-c", 'echo "before $(cat .secrets/netlify.txt) after"'],
+    { cwd: repo, encoding: "utf8" });
+  assert.match(r.stdout, /before .* after/);
+  assert.doesNotMatch(r.stdout, /FAKE-NETLIFY/);
+});
+
 test("check exits clean on a valid config", { skip: false }, () => {
   execFileSync(process.execPath, [CLI, "check"], { cwd: repo, encoding: "utf8" });
 });

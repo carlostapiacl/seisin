@@ -158,7 +158,7 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
 
   <nav class="side">
     <div class="brand">
-      <div><b>seisin</b><small>folders and keys, per agent</small></div>
+      <div><b>seisin</b><small id="source">folders and keys, per agent</small></div>
       <div class="theme" role="group" aria-label="Theme">
         <button type="button" id="t-light">light</button>
         <button type="button" id="t-dark">dark</button>
@@ -232,9 +232,9 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
 (function(){
   "use strict";
 
-  var KEYS = ["netlify-token","database-url","sentry-dsn","registry-token","hetzner-ro"];
+  let KEYS = ["netlify-token","database-url","sentry-dsn","registry-token","hetzner-ro"];
 
-  var ROLES = [
+  let ROLES = [
     {name:"frontend", writes:["src/web/**","public/**"], keys:["netlify-token"], sandbox:true,  blocks:3},
     {name:"backend",  writes:["src/api/**","migrations/**"], keys:["database-url","sentry-dsn"], sandbox:true, blocks:2},
     {name:"docs",     writes:["docs/**","README.md"], keys:[], sandbox:true, blocks:0},
@@ -242,10 +242,10 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
     {name:"scratch",  writes:["tmp/**"], keys:[], sandbox:false, blocks:0}
   ];
 
-  var KEYDIR = ".secrets";
+  let KEYDIR = ".secrets";
   var sel = "frontend";
 
-  var LOG = [
+  let LOG = [
     {t:"21:04:12", kind:"deny",  role:"frontend", act:"read",  target:".secrets/database-url.txt", owners:["backend"]},
     {t:"21:02:58", kind:"deny",  role:"docs",     act:"write", target:"src/api/orders.ts",         owners:["backend"]},
     {t:"20:58:31", kind:"allow", role:"backend",  act:"write", target:"migrations/014_stock.sql",  owners:[]},
@@ -439,7 +439,78 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
   };
 
   function draw(){drawRows();drawCfg();drawToml();drawLog();}
-  draw();
+
+  /**
+   * The page works two ways on purpose.
+   *
+   * Served by `seisin ui`, it reads the real config and the real log. Opened as
+   * a plain file — from the repo, from a docs site — the fetch fails and it
+   * falls back to the example policy below, so the console is still something
+   * you can look at before installing anything. What it must never do is show
+   * example data while looking live, so the label says which one you are in.
+   */
+  async function boot(){
+    let s = null;
+    try {
+      const r = await fetch("/api/state", { cache: "no-store" });
+      if (r.ok) s = await r.json();
+    } catch (_) { /* opened as a file: stay in demo */ }
+
+    const label = document.getElementById("source");
+    if (!s || s.error) {
+      label.textContent = "example policy — not your repo";
+      label.style.color = "var(--amber)";
+      draw();
+      return;
+    }
+
+    KEYDIR = (s.keyDirs && s.keyDirs[0]) || ".secrets";
+    KEYS = [...new Set(s.roles.flatMap(r => r.keys))].map(k => k.replace(/\.[^.]+$/, ""));
+    ROLES = s.roles.map(r => ({
+      name: r.name,
+      writes: r.writes.slice(),
+      keys: r.keys.map(k => k.replace(/\.[^.]+$/, "")),
+      sandbox: true,
+      blocks: r.blocks
+    }));
+    LOG = fromServer(s.log);
+    label.textContent = s.config.replace(/^.*\//, "") + " · live";
+    label.style.color = "var(--green)";
+    draw();
+    setInterval(refreshLog, 2000);
+  }
+
+  /** The server's entries, in the shape the renderer already speaks. */
+  function fromServer(entries){
+    return (entries || []).map(e => ({
+      t: (e.at || "").slice(11, 19),
+      kind: e.verdict === "denied" ? "deny" : e.verdict === "observed" ? "admin" : "allow",
+      role: e.role,
+      act: e.action,
+      target: e.target,
+      owners: e.owners || []
+    }));
+  }
+
+  async function refreshLog(){
+    try {
+      const r = await fetch("/api/state", { cache: "no-store" });
+      if (!r.ok) return;
+      const s = await r.json();
+      if (s.error) return;
+      LOG = fromServer(s.log);
+      // Only the counters that come from the log are refreshed. Whatever the
+      // reader has been editing on screen stays put — a page that resets your
+      // work every two seconds is worse than one that does not update.
+      ROLES.forEach(r2 => {
+        const fresh = s.roles.find(x => x.name === r2.name);
+        if (fresh) r2.blocks = fresh.blocks;
+      });
+      drawLog(); drawRows();
+    } catch (_) { /* server went away: keep what is on screen */ }
+  }
+
+  boot();
 })();
 </script>
 </body>

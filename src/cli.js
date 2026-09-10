@@ -26,6 +26,7 @@ import { scan } from "./scan.js";
 import { decide } from "./hook.js";
 import { append, read, logPath, size, observed, generalise } from "./log.js";
 import { createReadStream, watch as watchFile } from "node:fs";
+import { serve } from "./serve.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const [, , command, ...rest] = process.argv;
@@ -108,7 +109,29 @@ function run(argv) {
     env,
   });
   if (out) { child.stdout.pipe(out); child.stderr.pipe(err); }
-  child.on("exit", (code, signal) => process.exit(signal ? 1 : code ?? 0));
+  // The exit code is the child's, and the output has to be all the way out
+  // before we leave. Both halves were wrong once and neither was loud:
+  //
+  //   - Calling exit() the moment the child exits discards whatever is still in
+  //     the redaction stream, so the command looks like it produced nothing.
+  //   - Waiting for `finish` but subscribing AFTER end() misses the event when
+  //     it fires synchronously, so nothing ever calls exit and the process
+  //     drifts out of the event loop with status 0 — every failure reported as
+  //     a success. A battery of seven sandbox tests came back green on that.
+  //
+  // Subscribe first, end second, and keep a real timer (not unref'd, or it
+  // cannot save anything) as the floor.
+  child.on("exit", (code, signal) => {
+    const status = signal ? 1 : code ?? 0;
+    if (!out) return process.exit(status);
+    let left = 2;
+    const guard = setTimeout(() => process.exit(status), 2000);
+    const tick = () => { if (--left > 0) return; clearTimeout(guard); process.exit(status); };
+    out.once("finish", tick);
+    err.once("finish", tick);
+    out.end();
+    err.end();
+  });
   child.on("error", (e) => die(`could not start the sandbox: ${e.message}`));
 }
 
@@ -303,12 +326,29 @@ function initFromLog() {
 
 /* ── ui ───────────────────────────────────────────────────────────────── */
 
-function ui() {
-  const file = join(HERE, "..", "ui", "index.html");
-  if (!existsSync(file)) die("the console is missing from this install");
+async function ui(argv = []) {
+  const i = argv.indexOf("--port");
+  const port = i === -1 ? 4178 : Number(argv[i + 1]);
+  const cfg = config();
+
+  let server;
+  try {
+    server = await serve(cfg.path, port);
+  } catch (e) {
+    die(e.message);
+  }
+
+  const url = `http://127.0.0.1:${port}`;
+  process.stdout.write(
+    `\n  ${C.b}${url}${C.off}\n` +
+    `  ${C.dim}reading ${relative(process.cwd(), cfg.path)} and the log, live. ctrl-c to stop.${C.off}\n\n`
+  );
   const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-  spawnSync(opener, [file], { stdio: "ignore", shell: process.platform === "win32" });
-  process.stdout.write(`\n  opened ${file}\n\n`);
+  spawnSync(opener, [url], { stdio: "ignore", shell: process.platform === "win32" });
+
+  // A foreground command, not a service. Closing the terminal closes the window
+  // and takes nothing else with it.
+  process.on("SIGINT", () => { server.close(); process.exit(0); });
 }
 
 /* ── scan ─────────────────────────────────────────────────────────────── */
@@ -469,7 +509,7 @@ ${C.b}seisin${C.off} — give each agent its own folders and its own keys
   seisin init [--from-observations]     propose a ${CONFIG_NAME} for this repo
   seisin log [--role r] [--verdict denied]   what the agents tried
   seisin watch                          follow it live
-  seisin ui                             open the console
+  seisin ui [--port n]                  open the console, live
 
 Enforcement comes from @anthropic-ai/sandbox-runtime, which asks the OS.
 seisin decides what to ask for, and says whose file it was when the answer is no.
@@ -484,7 +524,7 @@ switch (command) {
   case "watch": watchCmd(); break;
   case "scan": scanCmd(); break;
   case "init": init(rest); break;
-  case "ui": ui(); break;
+  case "ui": await ui(rest); break;
   case "-v": case "--version":
     process.stdout.write(JSON.parse(readFileSync(join(HERE, "..", "package.json"), "utf8")).version + "\n"); break;
   default: process.stdout.write(USAGE); process.exit(command ? 2 : 0);
