@@ -2,7 +2,7 @@
  * The end-to-end test: a real command, in a real sandbox, on a real temp repo.
  *
  * These are slower than the unit tests and they are the only ones that can tell
- * you the thing actually holds. Everything above this file checks that keyward
+ * you the thing actually holds. Everything above this file checks that seisin
  * *asks* for the right policy; this checks that the policy *lands*.
  *
  * It skips instead of failing where the runtime is missing, so a contributor on
@@ -22,20 +22,20 @@ const skip = haveSrt ? false : "sandbox runtime not installed (npm i -g @anthrop
 
 let repo;
 before(() => {
-  repo = mkdtempSync(join(tmpdir(), "keyward-"));
+  repo = mkdtempSync(join(tmpdir(), "seisin-"));
   mkdirSync(join(repo, "src", "web"), { recursive: true });
   mkdirSync(join(repo, "src", "api"), { recursive: true });
   mkdirSync(join(repo, ".secrets"), { recursive: true });
   writeFileSync(join(repo, "src", "api", "server.ts"), "api\n");
   writeFileSync(join(repo, ".secrets", "netlify.txt"), "FAKE-NETLIFY\n");
   writeFileSync(join(repo, ".secrets", "database.txt"), "FAKE-DATABASE\n");
-  writeFileSync(join(repo, "keyward.toml"),
+  writeFileSync(join(repo, "seisin.toml"),
     '[keys]\ndir = ".secrets"\n\n[network]\nallow = []\n\n' +
     '[roles.frontend]\nwrites = ["src/web/**"]\nkeys = ["netlify.txt"]\n\n' +
     '[roles.backend]\nwrites = ["src/api/**"]\nkeys = ["database.txt"]\n');
 });
 
-/** Runs a shell line through keyward and reports only whether it succeeded. */
+/** Runs a shell line through seisin and reports only whether it succeeded. */
 function as(role, line) {
   const r = spawnSync(process.execPath, [CLI, "run", role, "--", "sh", "-c", line],
     { cwd: repo, encoding: "utf8" });

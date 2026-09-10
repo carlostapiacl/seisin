@@ -1,5 +1,5 @@
 {
-  "name": "keyward",
+  "name": "seisin",
   "version": "0.1.0",
   "description": "Give each AI agent its own folders and its own keys. Enforced by the kernel, and when it blocks it tells you whose file it is.",
   "keywords": [
@@ -15,7 +15,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "keyward": "./src/cli.js"
+    "seisin": "./src/cli.js"
   },
   "files": [
     "src",

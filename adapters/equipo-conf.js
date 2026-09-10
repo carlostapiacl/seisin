@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Turns a cell config into a keyward.toml.
+ * Turns a cell config into a seisin.toml.
  *
  *   node adapters/equipo-conf.js <path/to/cell.conf> [--root <repo root>]
  *
- * This adapter exists because of a rule worth stating: keyward does not grow a
+ * This adapter exists because of a rule worth stating: seisin does not grow a
  * second config format to accommodate one user. If you already declare who owns
  * what somewhere else, you translate it here, and the tool stays one file with
  * one shape for everybody.

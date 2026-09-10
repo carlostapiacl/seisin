@@ -1,9 +1,9 @@
 /**
- * Reads and validates keyward.toml.
+ * Reads and validates seisin.toml.
  *
  * The parser covers a deliberate subset of TOML: `[table.name]` headers, and
  * `key = ["a", "b"]` / `key = "a"` values. That is the whole config language,
- * and keeping it in-house is why installing keyward pulls in exactly one
+ * and keeping it in-house is why installing seisin pulls in exactly one
  * dependency (the sandbox runtime) instead of a parser too.
  *
  * If your config outgrows this subset, the config is doing too much.
@@ -11,9 +11,9 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 
-export const CONFIG_NAME = "keyward.toml";
+export const CONFIG_NAME = "seisin.toml";
 
-/** Walk up from `from` until a keyward.toml shows up. Returns its path or null. */
+/** Walk up from `from` until a seisin.toml shows up. Returns its path or null. */
 export function findConfig(from = process.cwd()) {
   let dir = resolve(from);
   for (;;) {
@@ -94,7 +94,7 @@ function readValue(value, lineNo) {
  * rejects anything ambiguous.
  *
  * Rejecting is the point. The sandbox runtime refuses to start on an invalid
- * settings file rather than falling back to a permissive default, and keyward
+ * settings file rather than falling back to a permissive default, and seisin
  * matches that: a permission tool that guesses is worse than no permission tool.
  */
 export function loadConfig(path) {
