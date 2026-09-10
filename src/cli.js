@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /**
- * keyward — give each agent its own folders and its own keys.
+ * seisin — give each agent its own folders and its own keys.
  *
- *   keyward run <role> -- <command...>   run a command as that role
- *   keyward check [role]                 print the map, run nothing
- *   keyward explain <role> <r|w> <path>  ask one question
- *   keyward init                         propose a keyward.toml for this repo
- *   keyward ui                           open the console
+ *   seisin run <role> -- <command...>   run a command as that role
+ *   seisin check [role]                 print the map, run nothing
+ *   seisin explain <role> <r|w> <path>  ask one question
+ *   seisin init                         propose a seisin.toml for this repo
+ *   seisin ui                           open the console
  *
  * Enforcement is not ours. @anthropic-ai/sandbox-runtime asks the operating
  * system — Seatbelt on macOS, bubblewrap on Linux — and the kernel does not
- * care how a command was spelled. What keyward adds is the part a kernel can
+ * care how a command was spelled. What seisin adds is the part a kernel can
  * never know: which role a path belongs to, and therefore who to ask next.
  */
 import { spawn, spawnSync } from "node:child_process";
@@ -29,13 +29,13 @@ const C = process.stdout.isTTY && !process.env.NO_COLOR
   : { dim: "", b: "", red: "", green: "", yellow: "", blue: "", off: "" };
 
 function die(message, code = 2) {
-  process.stderr.write(`${C.red}keyward:${C.off} ${message}\n`);
+  process.stderr.write(`${C.red}seisin:${C.off} ${message}\n`);
   process.exit(code);
 }
 
 function config() {
   const path = findConfig();
-  if (!path) die(`no ${CONFIG_NAME} found here or above. Run "keyward init" to write one.`);
+  if (!path) die(`no ${CONFIG_NAME} found here or above. Run "seisin init" to write one.`);
   try {
     return loadConfig(path);
   } catch (e) {
@@ -49,7 +49,7 @@ function run(argv) {
   const split = argv.indexOf("--");
   const role = argv[0];
   const cmd = split === -1 ? argv.slice(1) : argv.slice(split + 1);
-  if (!role || cmd.length === 0) die("usage: keyward run <role> -- <command...>");
+  if (!role || cmd.length === 0) die("usage: seisin run <role> -- <command...>");
 
   const cfg = config();
   let settings;
@@ -59,7 +59,7 @@ function run(argv) {
     die(e.message);
   }
 
-  const dir = join(cfg.root, ".keyward");
+  const dir = join(cfg.root, ".seisin");
   mkdirSync(dir, { recursive: true });
   const file = join(dir, `${role}.json`);
   writeFileSync(file, JSON.stringify(settings, null, 2) + "\n");
@@ -68,7 +68,7 @@ function run(argv) {
   if (!srt) die("sandbox runtime not found. Install it with: npm i -g @anthropic-ai/sandbox-runtime");
 
   process.stderr.write(
-    `${C.dim}keyward: ${role} · writes ${settings.filesystem.allowWrite.length} path(s) · ` +
+    `${C.dim}seisin: ${role} · writes ${settings.filesystem.allowWrite.length} path(s) · ` +
     `reads ${settings.filesystem.allowRead.length} key(s)${C.off}\n`
   );
 
@@ -108,7 +108,7 @@ function check(argv) {
   const shared = [...new Set(unowned)];
   if (shared.length) {
     process.stdout.write(`  ${C.yellow}${shared.length} path(s) claimed by more than one role:${C.off} ${shared.join(" ")}\n`);
-    process.stdout.write(`  ${C.dim}Overlap is allowed — keyward will name every owner. It is listed so it stays a decision.${C.off}\n\n`);
+    process.stdout.write(`  ${C.dim}Overlap is allowed — seisin will name every owner. It is listed so it stays a decision.${C.off}\n\n`);
   }
   if (!cfg.keyDir && Object.values(cfg.roles).some((r) => r.keys.length))
     process.stdout.write(`  ${C.yellow}keys are listed but [keys] dir is unset — nothing will be scoped${C.off}\n\n`);
@@ -118,7 +118,7 @@ function check(argv) {
 
 function explainCmd(argv) {
   const [role, action, target] = argv;
-  if (!role || !action || !target) die("usage: keyward explain <role> <read|write> <path-or-key>");
+  if (!role || !action || !target) die("usage: seisin explain <role> <read|write> <path-or-key>");
   const verb = action.startsWith("r") ? "read" : "write";
   const cfg = config();
   if (!cfg.roles[role]) die(`unknown role "${role}"`);
@@ -140,7 +140,7 @@ function init() {
   process.stdout.write(
     `\n  wrote ${C.b}${CONFIG_NAME}${C.off} with ${found.roles.length} role(s) from ${found.source}\n` +
     `  ${C.dim}These are a proposal, not a policy. Read them before you run anything.${C.off}\n\n` +
-    `  next:  keyward check\n\n`
+    `  next:  seisin check\n\n`
   );
 }
 
@@ -189,10 +189,10 @@ function discover(root) {
 
 function render(found) {
   const head = [
-    "# keyward — which folders each agent writes, and which keys it may read.",
+    "# seisin — which folders each agent writes, and which keys it may read.",
     "#",
     `# Proposed from: ${found.source}`,
-    "# Nothing here is enforced until you run the agent through `keyward run`.",
+    "# Nothing here is enforced until you run the agent through `seisin run`.",
     "# Anything not listed is denied. There is no permissive default.",
     "",
     "# [keys]",
@@ -224,16 +224,16 @@ function ui() {
 /* ── dispatch ─────────────────────────────────────────────────────────── */
 
 const USAGE = `
-${C.b}keyward${C.off} — give each agent its own folders and its own keys
+${C.b}seisin${C.off} — give each agent its own folders and its own keys
 
-  keyward run <role> -- <command...>    run a command as that role
-  keyward check [role]                  print the map, run nothing
-  keyward explain <role> read|write <path>
-  keyward init                          propose a ${CONFIG_NAME} for this repo
-  keyward ui                            open the console
+  seisin run <role> -- <command...>    run a command as that role
+  seisin check [role]                  print the map, run nothing
+  seisin explain <role> read|write <path>
+  seisin init                          propose a ${CONFIG_NAME} for this repo
+  seisin ui                            open the console
 
 Enforcement comes from @anthropic-ai/sandbox-runtime, which asks the OS.
-keyward decides what to ask for, and says whose file it was when the answer is no.
+seisin decides what to ask for, and says whose file it was when the answer is no.
 `;
 
 switch (command) {

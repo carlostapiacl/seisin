@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>keyward console</title>
+<title>seisin console</title>
 <style>
 /* Nothing moves on its own: fixed widths on the columns that change,
    min-heights on the cards, tabular numerals everywhere a digit updates.
@@ -158,7 +158,7 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
 
   <nav class="side">
     <div class="brand">
-      <div><b>keyward</b><small>folders and keys, per agent</small></div>
+      <div><b>seisin</b><small>folders and keys, per agent</small></div>
       <div class="theme" role="group" aria-label="Theme">
         <button type="button" id="t-light">light</button>
         <button type="button" id="t-dark">dark</button>
@@ -185,7 +185,7 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
     </div>
 
     <div class="cards">
-      <div class="card"><h2>roles</h2><div class="n" id="c-roles">0</div><div class="s">declared in keyward.toml</div></div>
+      <div class="card"><h2>roles</h2><div class="n" id="c-roles">0</div><div class="s">declared in seisin.toml</div></div>
       <div class="card g"><h2>sandboxed</h2><div class="n" id="c-on">0</div><div class="s">enforced by the OS</div></div>
       <div class="card a"><h2>unsandboxed</h2><div class="n" id="c-off">0</div><div class="s" id="c-off-s">nothing enforces these</div></div>
       <div class="card"><h2>no keys</h2><div class="n" id="c-nokeys">0</div><div class="s">declare none</div></div>
@@ -206,7 +206,7 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
 
     <div class="two">
       <div class="box">
-        <header><h2 id="cfg-title">.keyward/frontend.json</h2><span class="note">what keyward hands the runtime</span></header>
+        <header><h2 id="cfg-title">.seisin/frontend.json</h2><span class="note">what seisin hands the runtime</span></header>
         <pre id="cfg"></pre>
       </div>
       <div class="box">
@@ -216,13 +216,13 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
     </div>
 
     <div class="box">
-      <header><h2>keyward.toml</h2><span class="note">copy this back into your repo</span></header>
+      <header><h2>seisin.toml</h2><span class="note">copy this back into your repo</span></header>
       <pre id="toml"></pre>
     </div>
 
     <div class="foot">
       <b>Console preview.</b> This page edits a policy in memory and shows what would be generated — it does not read or write your repo.
-      Copy the <b>keyward.toml</b> above to keep a change.<br>
+      Copy the <b>seisin.toml</b> above to keep a change.<br>
       The JSON matches <b>@anthropic-ai/sandbox-runtime v1.0.0</b>, whose schema the test suite exercises against the real binary.
     </div>
   </main>
@@ -358,11 +358,11 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
 
   function drawCfg(){
     var r=ROLES.filter(function(x){return x.name===sel;})[0];
-    document.getElementById("cfg-title").textContent=".keyward/"+r.name+".json";
+    document.getElementById("cfg-title").textContent=".seisin/"+r.name+".json";
     var L=[];
-    L.push('<span class="c">// keyward run '+esc(r.name)+' -- claude -p "…"</span>');
+    L.push('<span class="c">// seisin run '+esc(r.name)+' -- claude -p "…"</span>');
     if(!r.sandbox){
-      L.push('<span class="d">// UNSANDBOXED. keyward still names the owner, but</span>');
+      L.push('<span class="d">// UNSANDBOXED. seisin still names the owner, but</span>');
       L.push('<span class="d">// nothing stops the write. Only the log will know.</span>');
     }
     L.push("{");

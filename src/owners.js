@@ -1,7 +1,7 @@
 /**
  * Who owns a path.
  *
- * This is the part no other agent-permission tool has, and it is why keyward
+ * This is the part no other agent-permission tool has, and it is why seisin
  * exists. Every hook and sandbox in this space answers yes or no. Answering
  * "no, and it belongs to `frontend`" turns a block into a handoff: the agent
  * knows who to ask, and so do you when you read the log.
