@@ -12,7 +12,6 @@ import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,7 +21,13 @@ const skip = haveSrt ? false : "sandbox runtime not installed (npm i -g @anthrop
 
 let repo;
 before(() => {
-  repo = mkdtempSync(join(tmpdir(), "seisin-"));
+  // NOT under the system temp dir, and that is the point. seisin grants scratch
+  // space to every role, so a repo living inside it is writable by all of them —
+  // which would let "a role cannot write outside it" pass by accident. It did,
+  // once, and this is the fix.
+  const box = join(dirname(fileURLToPath(import.meta.url)), ".sandbox-box");
+  mkdirSync(box, { recursive: true });
+  repo = mkdtempSync(join(box, "repo-"));
   mkdirSync(join(repo, "src", "web"), { recursive: true });
   mkdirSync(join(repo, "src", "api"), { recursive: true });
   mkdirSync(join(repo, ".secrets"), { recursive: true });

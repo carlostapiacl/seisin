@@ -92,6 +92,29 @@ Verified by the test suite, which runs real commands in a real sandbox:
 ✔ an absolute path does not walk around the rule
 ```
 
+## Scratch space, and what it costs
+
+Territory alone is correct and unusable. An agent writes session state under its own config
+directory and its tools write to the temp dir, so a policy of *your folders and nothing else*
+stops the agent before it starts. Every role therefore also gets:
+
+```toml
+[runtime]
+writes = ["~/.claude", "~/.codex", "~/.cache", "$TMPDIR", "/tmp"]   # the default
+```
+
+Two things follow, and both are the kind of thing you want to hear from the tool rather than
+discover:
+
+- **Scratch is shared.** Every role can write it, so two agents can reach each other's temp
+  files. If your repo lives inside the temp dir, territory does not hold at all — `seisin check`
+  says so out loud when it detects that.
+- **The home directory itself is never granted.** Only those named subdirectories. A grant that
+  reached `~` would hand over the shell profile, the ssh config, and every dotfile with a token
+  in it. There is a test that fails if that ever changes.
+
+Set `writes = []` to opt out and find out why it is there.
+
 ## What it is not
 
 - **Not a sandbox.** [`sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime) is the sandbox, and it is Anthropic's. seisin writes its settings and explains its refusals.
