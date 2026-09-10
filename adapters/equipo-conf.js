@@ -77,7 +77,17 @@ else out.push(
   `# default: grant them one at a time and you will notice which ones nobody needs.`,
   ``);
 
-out.push(`[network]`, `allow = ["github.com", "*.github.com"]`, ``);
+// The agent's own API first: without it the agent fails to authenticate and
+// never reaches the policy this file is about.
+out.push(
+  `[network]`,
+  `allow = [`,
+  `  "api.anthropic.com", "*.anthropic.com",`,
+  `  "github.com", "*.github.com",`,
+  `  "registry.npmjs.org", "pypi.org", "files.pythonhosted.org"`,
+  `]`,
+  ``,
+);
 
 for (const role of roles) {
   const writes = territory[role].map(strip);

@@ -111,7 +111,7 @@ test("every role also gets the scratch space an agent cannot run without", () =>
   // under its own config dir and its tools write to the temp dir. Measured
   // against a real config — with territory only, nothing started.
   const w = settingsFor(cfg, "frontend").filesystem.allowWrite;
-  assert.equal(w.length, 1 + RUNTIME_WRITES.length);
+  assert.equal(w.length, 1 + 1 + RUNTIME_WRITES.length); // territory + .seisin + scratch
   assert.ok(w.some((p) => p.endsWith("/.claude")));
   // The literal "/tmp" is deliberately NOT what lands: on macOS it is a symlink
   // and the sandbox enforces on the destination, so the grant is resolved first.
@@ -120,8 +120,11 @@ test("every role also gets the scratch space an agent cannot run without", () =>
 });
 
 test("the scratch grants can be turned off, but only on purpose", () => {
+  // The log directory survives the opt-out: turning off scratch is a choice
+  // about the agent's toolchain, not a request to blind the instrument.
   const strict = { ...cfg, runtimeWrites: [] };
-  assert.deepEqual(settingsFor(strict, "frontend").filesystem.allowWrite, ["/repo/src/web"]);
+  assert.deepEqual(settingsFor(strict, "frontend").filesystem.allowWrite,
+    ["/repo/src/web", "/repo/.seisin"]);
 });
 
 test("the scratch grants never include the home directory itself", () => {
@@ -273,4 +276,45 @@ test("a half-written log line is skipped, not fatal", () => {
   const entries = read(f);
   rmSync(box, { recursive: true, force: true });
   assert.equal(entries.length, 1);
+});
+
+test("seisin's own log directory is always writable", () => {
+  // The hook records into `.seisin/`, which belongs to no role. Without this
+  // the hook cannot write, and since it swallows its own errors by design the
+  // log comes back empty from a run that worked — an instrument failing in the
+  // one way you cannot notice.
+  const w = settingsFor(cfg, "frontend").filesystem.allowWrite;
+  assert.ok(w.some((p) => p.endsWith("/.seisin")));
+});
+
+test("reading an ordinary file is never denied", () => {
+  // Territory divides who may change something. An agent that cannot read the
+  // rest of the repo cannot work, and the hook denying a plain Read produced a
+  // log full of tidy `denied` lines that looked exactly like success.
+  const seen = [];
+  const out = decide({ ...cfg, root: "/repo" }, "frontend",
+    { tool_name: "Read", tool_input: { file_path: "src/api/server.ts" } },
+    { now: (_f, e) => seen.push(e) });
+  assert.equal(out.decision, null);
+  assert.deepEqual(seen, []);
+});
+
+test("reading a key still is a policy question", () => {
+  const seen = [];
+  const out = decide({ ...cfg, root: "/repo" }, "frontend",
+    { tool_name: "Read", tool_input: { file_path: ".secrets/database.txt" } },
+    { now: (_f, e) => seen.push(e) });
+  assert.equal(out.decision, "deny");
+  assert.equal(seen[0].verdict, "denied");
+});
+
+test("shell debris does not become a log entry", () => {
+  // Reading a command with regular expressions picks up things that are not
+  // paths. Each one is a line claiming a role was denied something it never
+  // asked for, and a log with invented entries in it stops being read.
+  const junk = targetsOf("Bash", { command: 'if [ -w x ] && test -f y; then echo a 2>&1 > /dev/null; fi' });
+  assert.deepEqual(junk.map((t) => t.path).filter((p) => ["test", "2>", "2>&1", "/dev/null"].includes(p)), []);
+  // and a real target still comes through
+  assert.deepEqual(targetsOf("Bash", { command: "echo x > src/api/real.ts" }),
+    [{ action: "write", path: "src/api/real.ts" }]);
 });

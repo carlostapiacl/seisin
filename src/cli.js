@@ -104,7 +104,12 @@ function run(argv) {
   const err = secrets.length ? redactor(secrets) : null;
   if (out) { out.pipe(process.stdout); err.pipe(process.stderr); }
 
-  const child = spawn(srt, ["--settings", file, ...cmd], {
+  // `--` before the user's command, and it is not cosmetic. Without it the
+  // sandbox's own argument parser reaches into what the agent was invoked with
+  // and eats anything that looks like one of its flags: `claude --settings`,
+  // `claude -c`, `claude --debug`. Found by passing --settings to claude and
+  // watching the sandbox reject it as its own malformed config.
+  const child = spawn(srt, ["--settings", file, "--", ...cmd], {
     stdio: out ? ["inherit", "pipe", "pipe"] : "inherit",
     env,
   });
@@ -268,7 +273,14 @@ function render(found) {
     '# dir = ".secrets"      # every key lives here; roles name the files they may read',
     "",
     "[network]",
-    'allow = ["github.com", "*.github.com"]',
+    "# The agent's own API comes first. Leave it out and the agent cannot even",
+    "# authenticate — it fails with a 403 from the egress proxy before it does",
+    "# any work, which reads as a broken install rather than a strict policy.",
+    'allow = [',
+    '  "api.anthropic.com", "*.anthropic.com",',
+    '  "github.com", "*.github.com",',
+    '  "registry.npmjs.org", "pypi.org", "files.pythonhosted.org"',
+    "]",
     "",
   ];
   for (const r of found.roles) {

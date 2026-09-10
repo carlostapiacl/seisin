@@ -48,6 +48,7 @@ export function targetsOf(tool, input = {}) {
   const add = (raw) => {
     const p = String(raw).replace(/^["']|["']$/g, "");
     if (!p || p.startsWith("-") || seen.has(p)) return;
+    if (!looksLikeAPath(p)) return;
     seen.add(p);
     out.push({ action: "write", path: p });
   };
@@ -57,6 +58,25 @@ export function targetsOf(tool, input = {}) {
     for (const arg of m[1].split(/\s+/)) if (!arg.startsWith("-")) add(arg);
   }
   return out;
+}
+
+/**
+ * Is this a filename, or shell debris?
+ *
+ * Reading a command with regular expressions picks up things that are not
+ * paths: a stray `2>`, the word `test` out of `[ -w x ] && test ...`, a device
+ * node. Each one becomes a line in the log that says a role was denied
+ * something it never asked for, and a log with fabricated entries in it stops
+ * being read. Better to explain less and be believed.
+ */
+const SHELL_NOISE = new Set(["test", "true", "false", "then", "else", "fi", "do", "done", "&&", "||", ";"]);
+
+function looksLikeAPath(p) {
+  if (SHELL_NOISE.has(p)) return false;
+  if (/^\d*[<>&|]/.test(p)) return false;              // 2>, >&1, |
+  if (p.startsWith("/dev/")) return false;              // /dev/null and friends
+  if (!/[/.]/.test(p) && !/^[.\w-]+$/.test(p)) return false;
+  return /[/.]/.test(p) || p.length > 2;
 }
 
 /** A path inside a declared key directory is a key, and reads of it are policy. */
@@ -79,7 +99,18 @@ export function decide(config, role, event, { observe = false, now = append } = 
   for (const t of targets) {
     const rel = t.path.startsWith(config.root + "/") ? t.path.slice(config.root.length + 1) : t.path;
     const kind = kindOf(config, rel);
-    const v = explain(config, role, kind === "key" ? "read" : t.action, rel);
+
+    // Reading an ordinary file is never a policy question. Territory divides
+    // who may CHANGE something; an agent that cannot read the rest of the repo
+    // cannot do the work at all. Only keys are scoped on read.
+    //
+    // This was wrong once and it was not subtle: the hook denied a plain Read
+    // of a markdown file, the agent burned its turns unable to look at what it
+    // had been asked to edit, and the log showed a tidy `denied` that looked
+    // like the system working.
+    if (t.action === "read" && kind !== "key") continue;
+
+    const v = explain(config, role, kind === "key" ? "read" : "write", rel);
 
     now(file, {
       role,
