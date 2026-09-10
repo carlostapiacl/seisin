@@ -7,7 +7,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseToml } from "../src/config.js";
 import { covers, ownersOf, keyHolders, explain } from "../src/owners.js";
-import { settingsFor } from "../src/srt.js";
+import { realpathSync } from "node:fs";
+import { settingsFor, RUNTIME_WRITES } from "../src/srt.js";
 
 const cfg = {
   root: "/repo",
@@ -95,7 +96,32 @@ test("the key directory is denied wholesale and re-allowed one file at a time", 
 test("a write glob becomes a directory, because the kernel grants subtrees", () => {
   // Passing `src/web/**` straight through would ask the OS for a directory
   // literally named `**`, which grants nothing and says nothing.
-  assert.deepEqual(settingsFor(cfg, "frontend").filesystem.allowWrite, ["/repo/src/web"]);
+  assert.equal(settingsFor(cfg, "frontend").filesystem.allowWrite[0], "/repo/src/web");
+});
+
+test("every role also gets the scratch space an agent cannot run without", () => {
+  // Territory alone is correct and unusable: an agent writes its session state
+  // under its own config dir and its tools write to the temp dir. Measured
+  // against a real config — with territory only, nothing started.
+  const w = settingsFor(cfg, "frontend").filesystem.allowWrite;
+  assert.equal(w.length, 1 + RUNTIME_WRITES.length);
+  assert.ok(w.some((p) => p.endsWith("/.claude")));
+  // The literal "/tmp" is deliberately NOT what lands: on macOS it is a symlink
+  // and the sandbox enforces on the destination, so the grant is resolved first.
+  assert.ok(w.some((p) => p.endsWith("/tmp")));
+  assert.ok(!w.includes("/tmp") || realpathSync("/tmp") === "/tmp");
+});
+
+test("the scratch grants can be turned off, but only on purpose", () => {
+  const strict = { ...cfg, runtimeWrites: [] };
+  assert.deepEqual(settingsFor(strict, "frontend").filesystem.allowWrite, ["/repo/src/web"]);
+});
+
+test("the scratch grants never include the home directory itself", () => {
+  // A grant that reaches ~ would hand over the shell profile, the ssh config
+  // and every dotfile with a token in it. Scratch space is not a back door.
+  const home = settingsFor(cfg, "frontend").filesystem.allowWrite.filter((p) => /\/Users\/[^/]+$|^\/home\/[^/]+$/.test(p));
+  assert.deepEqual(home, []);
 });
 
 test("an unknown role fails loudly", () => {

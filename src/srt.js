@@ -14,6 +14,43 @@
  *      error, which is most of what this file is for.
  */
 import { join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { realpathSync } from "node:fs";
+
+/**
+ * What every agent needs to write no matter which role it is.
+ *
+ * Found by running a real cell config through the sandbox: territory alone
+ * looks correct and is unusable. An agent writes its session state under its
+ * own config directory and its tools write scratch files to the temp dir, so a
+ * policy of "your folders and nothing else" stops the agent before it starts.
+ *
+ * These are grants, so they are listed rather than assumed: `seisin check`
+ * prints them, and `[runtime] writes = []` turns them off for anyone who wants
+ * to find out the hard way. Note what is NOT here — the home directory, the
+ * shell profile, anything under the repo. Scratch space is not a back door.
+ */
+export const RUNTIME_WRITES = ["~/.claude", "~/.codex", "~/.cache", "$TMPDIR", "/tmp"];
+
+/**
+ * `~` and `$TMPDIR` are the only expansions; everything else is a literal path.
+ *
+ * Symlinks are then resolved, and that is not a nicety. On macOS `/tmp` is a
+ * link to `/private/tmp`, and the sandbox enforces on the destination — so a
+ * grant written as `/tmp` grants exactly nothing, silently. Measured: with the
+ * literal path, writing to /tmp inside the sandbox failed while the policy
+ * looked correct on screen.
+ */
+export function expand(p) {
+  let out = p;
+  if (p === "$TMPDIR") out = tmpdir();
+  else if (p === "~" || p.startsWith("~/")) out = join(homedir(), p.slice(2));
+  try {
+    return realpathSync(out);
+  } catch {
+    return out; // not on disk yet; hand the literal through rather than drop it
+  }
+}
 
 /** Reads are denied wholesale under the key directory, then re-allowed one file at a time. */
 export function settingsFor(config, roleName) {
@@ -39,7 +76,10 @@ export function settingsFor(config, roleName) {
     filesystem: {
       denyRead,
       allowRead,
-      allowWrite: role.writes.map(toWritePath).map(abs),
+      allowWrite: [
+        ...role.writes.map(toWritePath).map(abs),
+        ...(config.runtimeWrites ?? RUNTIME_WRITES).map(expand),
+      ],
       denyWrite: [],
     },
   };

@@ -18,7 +18,7 @@ import { mkdirSync, writeFileSync, existsSync, readdirSync, readFileSync } from 
 import { join, dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { findConfig, loadConfig, CONFIG_NAME } from "./config.js";
-import { settingsFor } from "./srt.js";
+import { settingsFor, RUNTIME_WRITES, expand } from "./srt.js";
 import { explain, ownersOf } from "./owners.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -110,6 +110,16 @@ function check(argv) {
     process.stdout.write(`  ${C.yellow}${shared.length} path(s) claimed by more than one role:${C.off} ${shared.join(" ")}\n`);
     process.stdout.write(`  ${C.dim}Overlap is allowed — seisin will name every owner. It is listed so it stays a decision.${C.off}\n\n`);
   }
+  // Scratch space is granted to everybody, so a repo sitting inside it is
+  // writable by every role no matter what the territory says. Saying so is the
+  // difference between a limitation and a trap.
+  const scratch = (cfg.runtimeWrites ?? RUNTIME_WRITES).map(expand);
+  const inside = scratch.filter((s) => resolve(cfg.root).startsWith(s + "/"));
+  if (inside.length) {
+    process.stdout.write(`  ${C.yellow}this repo lives inside shared scratch space (${inside[0]})${C.off}\n`);
+    process.stdout.write(`  ${C.dim}Every role can write scratch, so territory does not hold here. Move the repo, or set [runtime] writes = [].${C.off}\n\n`);
+  }
+
   if (!cfg.keyDir && Object.values(cfg.roles).some((r) => r.keys.length))
     process.stdout.write(`  ${C.yellow}keys are listed but [keys] dir is unset — nothing will be scoped${C.off}\n\n`);
 }

@@ -104,7 +104,17 @@ export function loadConfig(path) {
   if (names.length === 0) throw new Error(`${path}: no [roles.<name>] sections found`);
 
   const keyDir = parsed.keys?.dir ?? null;
-  const out = { root: dirname(path), path, keyDir, allowedDomains: parsed.network?.allow ?? [], roles: {} };
+  // `undefined` means "use the defaults"; an explicit empty array means "none".
+  // The difference matters: one is a user who has not thought about it, the
+  // other is a user who has.
+  const runtimeWrites = parsed.runtime?.writes;
+
+  const out = {
+    root: dirname(path), path, keyDir,
+    allowedDomains: parsed.network?.allow ?? [],
+    runtimeWrites: runtimeWrites === undefined ? undefined : asArray(runtimeWrites, "runtime.writes"),
+    roles: {},
+  };
 
   for (const name of names) {
     const r = roles[name];
