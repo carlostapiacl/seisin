@@ -13,6 +13,8 @@ import { fileURLToPath } from "node:url";
 import { buildEnv } from "../src/env.js";
 import { redactor } from "../src/redact.js";
 import { scan } from "../src/scan.js";
+import { targetsOf, decide } from "../src/hook.js";
+import { read, generalise } from "../src/log.js";
 import { settingsFor, RUNTIME_WRITES } from "../src/srt.js";
 
 const cfg = {
@@ -221,4 +223,54 @@ test("caches and .bak copies are ignored by default", () => {
   const { hits } = scan(box, []);
   rmSync(box, { recursive: true, force: true });
   assert.deepEqual(hits, []);
+});
+
+test("the hook reads a file tool's target, and a shell redirect's", () => {
+  assert.deepEqual(targetsOf("Write", { file_path: "src/a.ts" }), [{ action: "write", path: "src/a.ts" }]);
+  assert.deepEqual(targetsOf("Bash", { command: "echo x > src/api/hack.ts" }),
+    [{ action: "write", path: "src/api/hack.ts" }]);
+  assert.deepEqual(targetsOf("Bash", { command: "cat a && tee out.txt" }),
+    [{ action: "write", path: "out.txt" }]);
+});
+
+test("a command whose target the hook cannot see goes unexplained, not unblocked", () => {
+  // The point of the split: this returns nothing, and the kernel still refuses
+  // the write. An enforcer with this hole would be broken; an explainer is not.
+  assert.deepEqual(targetsOf("Bash", { command: "python -c \"open('src/api/x','w')\"" }), []);
+});
+
+test("the hook denies with the owner's name, and says something different for a key", () => {
+  const cfg2 = { ...cfg, root: "/repo" };
+  const noop = () => true;
+  const w = decide(cfg2, "frontend", { tool_name: "Write", tool_input: { file_path: "src/api/s.ts" } }, { now: noop });
+  assert.match(w.hookSpecificOutput.permissionDecisionReason, /belongs to backend/);
+  const r = decide(cfg2, "frontend", { tool_name: "Read", tool_input: { file_path: ".secrets/database.txt" } }, { now: noop });
+  assert.match(r.hookSpecificOutput.permissionDecisionReason, /declared for backend/);
+  assert.doesNotMatch(r.hookSpecificOutput.permissionDecisionReason, /to change/);
+});
+
+test("observe records the same decisions and returns none of them", () => {
+  const seen = [];
+  const out = decide({ ...cfg, root: "/repo" }, "frontend",
+    { tool_name: "Write", tool_input: { file_path: "src/api/s.ts" } },
+    { observe: true, now: (_f, e) => seen.push(e) });
+  assert.equal(out.decision, null);
+  assert.equal(out.hookSpecificOutput, undefined);
+  assert.equal(seen[0].verdict, "observed");
+});
+
+test("observed paths collapse to directories, not to the whole tree", () => {
+  // Two files under src/api must not generalise to src/**: that hands over the
+  // repo on the strength of two writes.
+  assert.deepEqual(generalise(["src/api/a.ts", "src/api/b.ts", "src/api/deep/c.ts"]), ["src/api/**"]);
+  assert.deepEqual(generalise(["src/api/a.ts", "docs/x.md"]).sort(), ["docs/**", "src/api/**"]);
+});
+
+test("a half-written log line is skipped, not fatal", () => {
+  const box = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), "log-"));
+  const f = join(box, "log.jsonl");
+  writeFileSync(f, '{"role":"a","target":"x","action":"write","verdict":"denied"}\n{"role":"b",\n');
+  const entries = read(f);
+  rmSync(box, { recursive: true, force: true });
+  assert.equal(entries.length, 1);
 });

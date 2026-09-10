@@ -23,6 +23,9 @@ import { explain, ownersOf } from "./owners.js";
 import { buildEnv } from "./env.js";
 import { secretsOf, redactor } from "./redact.js";
 import { scan } from "./scan.js";
+import { decide } from "./hook.js";
+import { append, read, logPath, size, observed, generalise } from "./log.js";
+import { createReadStream, watch as watchFile } from "node:fs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const [, , command, ...rest] = process.argv;
@@ -70,14 +73,20 @@ function run(argv) {
   const srt = resolveSrt();
   if (!srt) die("sandbox runtime not found. Install it with: npm i -g @anthropic-ai/sandbox-runtime");
 
+  // The hook runs inside the child and has to know which role it is. These are
+  // the only variables seisin injects, and they carry no secret.
+  const observe = argv.includes("--observe");
   const { env, dropped } = buildEnv(process.env, cfg.roles[role]);
+  env.SEISIN_ROLE = role;
+  env.SEISIN_CONFIG = cfg.path;
+  if (observe) env.SEISIN_OBSERVE = "1";
   if (argv.includes("--debug-env"))
     process.stderr.write(`${C.dim}seisin: dropped ${dropped.join(" ")}${C.off}\n`);
 
   process.stderr.write(
     `${C.dim}seisin: ${role} · writes ${settings.filesystem.allowWrite.length} path(s) · ` +
     `reads ${settings.filesystem.allowRead.length} key(s) · ` +
-    `env ${Object.keys(env).length} kept, ${dropped.length} dropped${C.off}\n`
+    `env ${Object.keys(env).length} kept, ${dropped.length} dropped${observe ? " · OBSERVING, nothing denied" : ""}${C.off}\n`
   );
 
   // Redaction needs the output to pass through this process, and piping breaks
@@ -167,7 +176,8 @@ function explainCmd(argv) {
 
 /* ── init ─────────────────────────────────────────────────────────────── */
 
-function init() {
+function init(argv = []) {
+  if (argv.includes("--from-observations")) return initFromLog();
   const target = join(process.cwd(), CONFIG_NAME);
   if (existsSync(target)) die(`${CONFIG_NAME} already exists here. Delete it first if you meant to start over.`);
 
@@ -247,6 +257,50 @@ function render(found) {
   return head.join("\n");
 }
 
+/**
+ * Writes the policy from what actually happened.
+ *
+ * This is the answer to the question every permission tool dodges: where does
+ * the first policy come from? Written by hand it is a guess, and the first
+ * unjustified denial is when the tool gets uninstalled. Observed first, written
+ * second — the same order you would use on a colleague's code.
+ */
+function initFromLog() {
+  const cfg = config();
+  const entries = read(logPath(cfg.root), { verdict: "observed" });
+  if (entries.length === 0)
+    die(`nothing observed yet. Run: seisin run <role> --observe -- <command>`);
+
+  const roles = observed(entries);
+  const out = [
+    `# ${CONFIG_NAME} — written from ${entries.length} observed action(s).`,
+    `#`,
+    `# This is what your agents actually did, generalised to directories. Read it`,
+    `# before you trust it: an agent that touched a file once by mistake asked for`,
+    `# that directory here, and observation cannot tell intent from accident.`,
+    ``,
+  ];
+  if (cfg.keyDirs.length) out.push(`[keys]`, `dir = [${cfg.keyDirs.map((d) => `"${d}"`).join(", ")}]`, ``);
+  out.push(`[network]`, `allow = [${cfg.allowedDomains.map((d) => `"${d}"`).join(", ")}]`, ``);
+
+  for (const [name, seen] of roles) {
+    const writes = generalise([...seen.writes]);
+    const keys = [...seen.keys].map((k) => k.replace(/^.*\//, ""));
+    out.push(`[roles.${name}]`);
+    out.push(`writes = [${writes.map((w) => `"${w}"`).join(", ")}]`);
+    out.push(`keys   = [${[...new Set(keys)].map((k) => `"${k}"`).join(", ")}]`);
+    out.push(`# observed: ${seen.writes.size} path(s) written, ${seen.keys.size} key(s) read`);
+    out.push(``);
+  }
+
+  const file = join(cfg.root, CONFIG_NAME + ".observed");
+  writeFileSync(file, out.join("\n"));
+  process.stdout.write(
+    `\n  wrote ${C.b}${relative(process.cwd(), file)}${C.off} from ${entries.length} observation(s), ${roles.size} role(s)\n` +
+    `  ${C.dim}Not ${CONFIG_NAME} — a policy generated behind your back is not a policy. Diff it, then move it.${C.off}\n\n`
+  );
+}
+
 /* ── ui ───────────────────────────────────────────────────────────────── */
 
 function ui() {
@@ -308,6 +362,101 @@ function scanCmd() {
   if (certain.length) process.exit(1);
 }
 
+/* ── hook ─────────────────────────────────────────────────────────────── */
+
+/**
+ * Reads a PreToolUse event on stdin, records it, and answers.
+ *
+ * Claude Code runs this per tool call, so it opens no files it does not need
+ * and exits without ceremony. A hook that is slow is a hook that gets removed.
+ */
+async function hookCmd() {
+  const role = process.env.SEISIN_ROLE;
+  if (!role) process.exit(0); // not launched by seisin: say nothing, block nothing
+
+  let raw = "";
+  for await (const chunk of process.stdin) raw += chunk;
+
+  let event;
+  try {
+    event = JSON.parse(raw || "{}");
+  } catch {
+    process.exit(0); // an unreadable event is not grounds to block work
+  }
+
+  let cfg;
+  try {
+    cfg = loadConfig(process.env.SEISIN_CONFIG ?? findConfig());
+  } catch {
+    process.exit(0);
+  }
+  if (!cfg.roles[role]) process.exit(0);
+
+  const out = decide(cfg, role, event, { observe: process.env.SEISIN_OBSERVE === "1" });
+  if (out.hookSpecificOutput) process.stdout.write(JSON.stringify(out) + "\n");
+  process.exit(0);
+}
+
+/* ── log ──────────────────────────────────────────────────────────────── */
+
+function logCmd(argv) {
+  const cfg = config();
+  const pick = (flag) => { const i = argv.indexOf(flag); return i === -1 ? undefined : argv[i + 1]; };
+  const entries = read(logPath(cfg.root), {
+    role: pick("--role"),
+    verdict: pick("--verdict"),
+    limit: Number(pick("--limit") ?? 40),
+  });
+
+  if (entries.length === 0) {
+    process.stdout.write(`\n  ${C.dim}nothing recorded yet — run an agent through "seisin run"${C.off}\n\n`);
+    return;
+  }
+  process.stdout.write("\n");
+  for (const e of entries) process.stdout.write(line(e));
+  const denied = entries.filter((e) => e.verdict === "denied").length;
+  process.stdout.write(`\n  ${C.dim}${entries.length} entries · ${denied} denied${C.off}\n\n`);
+}
+
+function line(e) {
+  const mark = e.verdict === "denied" ? `${C.yellow}denied ${C.off}`
+    : e.verdict === "observed" ? `${C.dim}seen   ${C.off}`
+    : `${C.green}allowed${C.off}`;
+  const who = e.owners?.length && e.verdict === "denied"
+    ? `  ${C.dim}→ ${e.owners.join(", ")}${C.off}` : "";
+  return `  ${C.dim}${(e.at ?? "").slice(11, 19)}${C.off}  ${mark}  ${C.b}${e.role}${C.off} ${e.action} ${e.target}${who}\n`;
+}
+
+/* ── watch ────────────────────────────────────────────────────────────── */
+
+/**
+ * Follows the log. This is the whole "live" feature: no daemon, no socket —
+ * the file already is the shared state, so anything that can read it can watch.
+ */
+function watchCmd() {
+  const cfg = config();
+  const file = logPath(cfg.root);
+  let at = size(file);
+  process.stdout.write(`\n  ${C.dim}watching ${relative(process.cwd(), file)} — ctrl-c to stop${C.off}\n\n`);
+
+  const drain = () => {
+    const end = size(file);
+    if (end <= at) { at = end; return; } // truncated or unchanged
+    const s = createReadStream(file, { start: at, end: end - 1, encoding: "utf8" });
+    at = end;
+    let buf = "";
+    s.on("data", (d) => (buf += d));
+    s.on("end", () => {
+      for (const l of buf.split("\n")) {
+        if (!l.trim()) continue;
+        try { process.stdout.write(line(JSON.parse(l))); } catch { /* half-written */ }
+      }
+    });
+  };
+  try { watchFile(dirname(file), () => drain()); } catch { /* fall back to polling */ }
+  setInterval(drain, 500);
+}
+
 /* ── dispatch ─────────────────────────────────────────────────────────── */
 
 const USAGE = `
@@ -316,8 +465,11 @@ ${C.b}seisin${C.off} — give each agent its own folders and its own keys
   seisin run <role> -- <command...>    run a command as that role
   seisin check [role]                  print the map, run nothing
   seisin explain <role> read|write <path>
-  seisin scan                           find secrets outside the declared key dirs\n  seisin init                           propose a ${CONFIG_NAME} for this repo
-  seisin ui                            open the console
+  seisin scan                           find secrets outside the declared key dirs\n  seisin run <role> --observe -- <cmd>  record, deny nothing
+  seisin init [--from-observations]     propose a ${CONFIG_NAME} for this repo
+  seisin log [--role r] [--verdict denied]   what the agents tried
+  seisin watch                          follow it live
+  seisin ui                             open the console
 
 Enforcement comes from @anthropic-ai/sandbox-runtime, which asks the OS.
 seisin decides what to ask for, and says whose file it was when the answer is no.
@@ -327,8 +479,11 @@ switch (command) {
   case "run": run(rest); break;
   case "check": check(rest); break;
   case "explain": explainCmd(rest); break;
+  case "hook": await hookCmd(); break;
+  case "log": logCmd(rest); break;
+  case "watch": watchCmd(); break;
   case "scan": scanCmd(); break;
-  case "init": init(); break;
+  case "init": init(rest); break;
   case "ui": ui(); break;
   case "-v": case "--version":
     process.stdout.write(JSON.parse(readFileSync(join(HERE, "..", "package.json"), "utf8")).version + "\n"); break;
