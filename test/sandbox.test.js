@@ -117,3 +117,15 @@ test("explain exits 1 when it denies, so it composes in a script", { skip: false
   const r = spawnSync(process.execPath, [CLI, "explain", "frontend", "write", "src/api/server.ts"], { cwd: repo });
   assert.equal(r.status, 1);
 });
+
+test("the agent's own flags are not eaten by the sandbox", { skip }, () => {
+  // seisin sits between you and the sandbox, and the sandbox has flags of its
+  // own: --settings, --debug, -c, -s. Without a `--` separator it parses the
+  // command you asked for and fails on your agent's arguments as if they were
+  // its own. `claude -c` would have broken silently.
+  const r = spawnSync(process.execPath,
+    [CLI, "run", "frontend", "--", "sh", "-c", 'echo "--settings --debug -c survived"'],
+    { cwd: repo, encoding: "utf8" });
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /--settings --debug -c survived/);
+});
