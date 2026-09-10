@@ -7,12 +7,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseToml } from "../src/config.js";
 import { covers, ownersOf, keyHolders, explain } from "../src/owners.js";
-import { realpathSync } from "node:fs";
+import { realpathSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { buildEnv } from "../src/env.js";
+import { redactor } from "../src/redact.js";
+import { scan } from "../src/scan.js";
 import { settingsFor, RUNTIME_WRITES } from "../src/srt.js";
 
 const cfg = {
   root: "/repo",
-  keyDir: ".secrets",
+  keyDirs: [".secrets"],
   allowedDomains: ["github.com"],
   roles: {
     frontend: { name: "frontend", writes: ["src/web/**"], keys: ["netlify.txt"], network: null },
@@ -126,4 +131,56 @@ test("the scratch grants never include the home directory itself", () => {
 
 test("an unknown role fails loudly", () => {
   assert.throws(() => settingsFor(cfg, "nope"), /unknown role/);
+});
+
+test("the built environment drops what the policy did not name", () => {
+  // Measured before this existed: 93 variables crossed into every turn, a
+  // planted secret among them. denyRead guards files; an environment variable
+  // is not a file.
+  const parent = { PATH: "/bin", HOME: "/h", MY_API_TOKEN: "tok", RANDOM_THING: "x" };
+  const { env, dropped } = buildEnv(parent, cfg.roles.frontend);
+  assert.deepEqual(Object.keys(env).sort(), ["HOME", "PATH"]);
+  assert.ok(dropped.includes("MY_API_TOKEN"));
+});
+
+test("a role can name the one variable it needs, and only that one", () => {
+  const parent = { PATH: "/bin", BUILD_ID: "42", OTHER: "no" };
+  const role = { ...cfg.roles.frontend, env: ["BUILD_ID"] };
+  assert.deepEqual(Object.keys(buildEnv(parent, role).env).sort(), ["BUILD_ID", "PATH"]);
+});
+
+test("naming a credential explicitly works; sweeping one up does not", () => {
+  // The block is on accident, not on intent. A role that says DEPLOY_TOKEN gets
+  // it; what cannot happen is a credential riding along because nobody looked.
+  const parent = { PATH: "/bin", DEPLOY_TOKEN: "t" };
+  assert.ok(!("DEPLOY_TOKEN" in buildEnv(parent, cfg.roles.frontend).env));
+  const named = { ...cfg.roles.frontend, env: ["DEPLOY_TOKEN"] };
+  assert.equal(buildEnv(parent, named).env.DEPLOY_TOKEN, "t");
+});
+
+test("a secret split across two chunks is still masked", () => {
+  // The first implementation masked only the part about to be emitted, so a
+  // value straddling the cut left in two innocent halves. Caught on first run.
+  const r = redactor(["tok-super-secreto-1234"]);
+  let out = "";
+  r.on("data", (d) => (out += d));
+  r.write("the token is tok-super-");
+  r.write("secreto-1234 and on\n");
+  r.end();
+  return new Promise((done) => r.on("end", () => {
+    assert.ok(!out.includes("tok-super-secreto-1234"));
+    assert.match(out, /‹redacted›/);
+    done();
+  }));
+});
+
+test("scan reports loose credentials and skips the protected directory", () => {
+  const box = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), "scan-"));
+  mkdirSync(join(box, ".secrets"), { recursive: true });
+  writeFileSync(join(box, ".secrets", "ok.txt"), "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
+  writeFileSync(join(box, "loose.env"), "API_TOKEN=abcdefghijklmnop\n");
+  writeFileSync(join(box, "fine.env"), "API_TOKEN=changeme\n");
+  const hits = scan(box, [".secrets"]);
+  rmSync(box, { recursive: true, force: true });
+  assert.deepEqual(hits.map((h) => h.file), ["loose.env"]);
 });

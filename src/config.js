@@ -103,16 +103,20 @@ export function loadConfig(path) {
   const names = Object.keys(roles);
   if (names.length === 0) throw new Error(`${path}: no [roles.<name>] sections found`);
 
-  const keyDir = parsed.keys?.dir ?? null;
+  // One directory or several. Several is the common case once a repo has more
+  // than one kind of secret, and making people flatten them to satisfy the tool
+  // is how a tool gets kept out.
+  const keyDirs = parsed.keys?.dir === undefined ? [] : asArray(parsed.keys.dir, "keys.dir");
   // `undefined` means "use the defaults"; an explicit empty array means "none".
   // The difference matters: one is a user who has not thought about it, the
   // other is a user who has.
   const runtimeWrites = parsed.runtime?.writes;
 
   const out = {
-    root: dirname(path), path, keyDir,
+    root: dirname(path), path, keyDirs,
     allowedDomains: parsed.network?.allow ?? [],
     runtimeWrites: runtimeWrites === undefined ? undefined : asArray(runtimeWrites, "runtime.writes"),
+    redact: parsed.runtime?.redact,
     roles: {},
   };
 
@@ -120,12 +124,13 @@ export function loadConfig(path) {
     const r = roles[name];
     const writes = asArray(r.writes, `roles.${name}.writes`);
     const keys = asArray(r.keys, `roles.${name}.keys`);
-    if (keys.length && !keyDir)
+    if (keys.length && keyDirs.length === 0)
       throw new Error(`${path}: roles.${name} lists keys, but [keys] dir is not set`);
     out.roles[name] = {
       name,
       writes,
       keys,
+      env: asArray(r.env, `roles.${name}.env`),
       network: r.network === undefined ? null : asArray(r.network, `roles.${name}.network`),
     };
   }

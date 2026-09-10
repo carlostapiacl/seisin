@@ -20,6 +20,9 @@ import { fileURLToPath } from "node:url";
 import { findConfig, loadConfig, CONFIG_NAME } from "./config.js";
 import { settingsFor, RUNTIME_WRITES, expand } from "./srt.js";
 import { explain, ownersOf } from "./owners.js";
+import { buildEnv } from "./env.js";
+import { secretsOf, redactor } from "./redact.js";
+import { scan } from "./scan.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const [, , command, ...rest] = process.argv;
@@ -67,12 +70,35 @@ function run(argv) {
   const srt = resolveSrt();
   if (!srt) die("sandbox runtime not found. Install it with: npm i -g @anthropic-ai/sandbox-runtime");
 
+  const { env, dropped } = buildEnv(process.env, cfg.roles[role]);
+  if (argv.includes("--debug-env"))
+    process.stderr.write(`${C.dim}seisin: dropped ${dropped.join(" ")}${C.off}\n`);
+
   process.stderr.write(
     `${C.dim}seisin: ${role} · writes ${settings.filesystem.allowWrite.length} path(s) · ` +
-    `reads ${settings.filesystem.allowRead.length} key(s)${C.off}\n`
+    `reads ${settings.filesystem.allowRead.length} key(s) · ` +
+    `env ${Object.keys(env).length} kept, ${dropped.length} dropped${C.off}\n`
   );
 
-  const child = spawn(srt, ["--settings", file, ...cmd], { stdio: "inherit" });
+  // Redaction needs the output to pass through this process, and piping breaks
+  // anything that draws its own screen. So it turns itself off on a terminal
+  // and on for the runs that end up in a log, which is where a leaked key
+  // actually survives. Say so rather than deciding it quietly.
+  const wantRedact = cfg.redact !== false && cfg.roles[role].keys.length > 0;
+  const canRedact = wantRedact && !process.stdout.isTTY;
+  if (wantRedact && !canRedact)
+    process.stderr.write(`${C.dim}seisin: redaction off — interactive terminal${C.off}\n`);
+
+  const secrets = canRedact ? secretsOf(settings, readFileSync) : [];
+  const out = secrets.length ? redactor(secrets) : null;
+  const err = secrets.length ? redactor(secrets) : null;
+  if (out) { out.pipe(process.stdout); err.pipe(process.stderr); }
+
+  const child = spawn(srt, ["--settings", file, ...cmd], {
+    stdio: out ? ["inherit", "pipe", "pipe"] : "inherit",
+    env,
+  });
+  if (out) { child.stdout.pipe(out); child.stderr.pipe(err); }
   child.on("exit", (code, signal) => process.exit(signal ? 1 : code ?? 0));
   child.on("error", (e) => die(`could not start the sandbox: ${e.message}`));
 }
@@ -120,7 +146,7 @@ function check(argv) {
     process.stdout.write(`  ${C.dim}Every role can write scratch, so territory does not hold here. Move the repo, or set [runtime] writes = [].${C.off}\n\n`);
   }
 
-  if (!cfg.keyDir && Object.values(cfg.roles).some((r) => r.keys.length))
+  if (cfg.keyDirs.length === 0 && Object.values(cfg.roles).some((r) => r.keys.length))
     process.stdout.write(`  ${C.yellow}keys are listed but [keys] dir is unset — nothing will be scoped${C.off}\n\n`);
 }
 
@@ -231,6 +257,33 @@ function ui() {
   process.stdout.write(`\n  opened ${file}\n\n`);
 }
 
+/* ── scan ─────────────────────────────────────────────────────────────── */
+
+function scanCmd() {
+  const cfg = config();
+  const hits = scan(cfg.root, cfg.keyDirs);
+
+  if (hits.length === 0) {
+    const where = cfg.keyDirs.length ? cfg.keyDirs.join(", ") : "nowhere — [keys] dir is unset";
+    process.stdout.write(`\n  ${C.green}no credential-shaped content outside ${where}${C.off}\n\n`);
+    return;
+  }
+
+  const byFile = new Map();
+  for (const h of hits) (byFile.get(h.file) ?? byFile.set(h.file, []).get(h.file)).push(h);
+
+  process.stdout.write(`\n  ${C.yellow}${hits.length} finding(s) in ${byFile.size} file(s), outside every declared key directory${C.off}\n`);
+  process.stdout.write(`  ${C.dim}Reads outside the denied paths are open, so every role can read these.${C.off}\n\n`);
+
+  for (const [file, list] of byFile) {
+    process.stdout.write(`  ${C.b}${file}${C.off}\n`);
+    for (const h of list.slice(0, 4)) process.stdout.write(`    ${C.dim}:${h.line}${C.off}  ${h.shape}\n`);
+    if (list.length > 4) process.stdout.write(`    ${C.dim}… and ${list.length - 4} more${C.off}\n`);
+  }
+  process.stdout.write(`\n  ${C.dim}seisin does not move these. Where a credential lives is your call.${C.off}\n\n`);
+  process.exit(1);
+}
+
 /* ── dispatch ─────────────────────────────────────────────────────────── */
 
 const USAGE = `
@@ -239,7 +292,7 @@ ${C.b}seisin${C.off} — give each agent its own folders and its own keys
   seisin run <role> -- <command...>    run a command as that role
   seisin check [role]                  print the map, run nothing
   seisin explain <role> read|write <path>
-  seisin init                          propose a ${CONFIG_NAME} for this repo
+  seisin scan                           find secrets outside the declared key dirs\n  seisin init                           propose a ${CONFIG_NAME} for this repo
   seisin ui                            open the console
 
 Enforcement comes from @anthropic-ai/sandbox-runtime, which asks the OS.
@@ -250,6 +303,7 @@ switch (command) {
   case "run": run(rest); break;
   case "check": check(rest); break;
   case "explain": explainCmd(rest); break;
+  case "scan": scanCmd(); break;
   case "init": init(); break;
   case "ui": ui(); break;
   case "-v": case "--version":
