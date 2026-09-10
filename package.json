@@ -1,0 +1,35 @@
+{
+  "name": "keyward",
+  "version": "0.1.0",
+  "description": "Give each AI agent its own folders and its own keys. Enforced by the kernel, and when it blocks it tells you whose file it is.",
+  "keywords": [
+    "ai-agents",
+    "claude-code",
+    "sandbox",
+    "permissions",
+    "multi-agent",
+    "seatbelt",
+    "bubblewrap",
+    "codeowners"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "keyward": "./src/cli.js"
+  },
+  "files": [
+    "src",
+    "ui",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@anthropic-ai/sandbox-runtime": "^1.0.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}
