@@ -318,3 +318,12 @@ test("shell debris does not become a log entry", () => {
   assert.deepEqual(targetsOf("Bash", { command: "echo x > src/api/real.ts" }),
     [{ action: "write", path: "src/api/real.ts" }]);
 });
+
+test("scratch covers the XDG dirs, and never ~/.config", () => {
+  // The first list named ~/.claude and ~/.codex and stopped there, so the first
+  // agent that was neither — opencode, logging to ~/.local/share — died at
+  // startup. ~/.config stays out on purpose: that is where gh keeps its token.
+  const w = settingsFor(cfg, "frontend").filesystem.allowWrite;
+  assert.ok(w.some((p) => p.endsWith("/.local/share")));
+  assert.ok(!w.some((p) => p.endsWith("/.config")));
+});

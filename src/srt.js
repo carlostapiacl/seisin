@@ -26,12 +26,27 @@ import { realpathSync } from "node:fs";
  * own config directory and its tools write scratch files to the temp dir, so a
  * policy of "your folders and nothing else" stops the agent before it starts.
  *
+ * The list is not Claude-shaped by accident and it was Claude-shaped by
+ * mistake: the first version named `~/.claude` and `~/.codex` and stopped
+ * there, so the first agent that was neither — opencode, which logs to
+ * `~/.local/share/opencode` — died on startup with `FileSystem.open`. Hence the
+ * XDG directories, which is where a CLI that follows convention puts its state.
+ *
+ * `~/.config` is deliberately NOT here. That is where credentials live —
+ * `~/.config/gh/hosts.yml` holds a GitHub token — and while reads outside the
+ * declared key directories are open anyway, letting an agent WRITE there is a
+ * different thing. A CLI that needs it can be granted it by name.
+ *
  * These are grants, so they are listed rather than assumed: `seisin check`
  * prints them, and `[runtime] writes = []` turns them off for anyone who wants
  * to find out the hard way. Note what is NOT here — the home directory, the
  * shell profile, anything under the repo. Scratch space is not a back door.
  */
-export const RUNTIME_WRITES = ["~/.claude", "~/.codex", "~/.cache", "$TMPDIR", "/tmp"];
+export const RUNTIME_WRITES = [
+  "~/.claude", "~/.codex",                 // the CLIs that keep state under their own name
+  "~/.local/share", "~/.local/state",      // XDG data and state: where most others log
+  "~/.cache", "$TMPDIR", "/tmp",
+];
 
 /**
  * `~` and `$TMPDIR` are the only expansions; everything else is a literal path.
