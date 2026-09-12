@@ -201,6 +201,30 @@ export function loadConfig(path) {
   // they prevent is invisible in review — the config reads one way and the
   // policy is another.
   const roles = own(parsed, "roles") ?? {};
+
+  /**
+   * A role is a leaf. `[roles.a.b]` is a typo, with certainty.
+   *
+   * In TOML the dot separates keys, so `[roles.mimo-v2.5-free-1]` declares a
+   * role called `mimo-v2` with a nested table inside it. `check` printed a list
+   * of plausible-looking names and said nothing; the failure arrived later as
+   * `unknown role "mimo-v2.5-free-1"`. Fifteen of eighteen runs on somebody's
+   * bench died on it, and the surviving three were the model names with no dots
+   * in them.
+   *
+   * There is no ambiguity to preserve here — a nested table under [roles] has
+   * no meaning in this tool — so it is an error, and it names both what was
+   * written and what it became.
+   */
+  for (const name of Object.keys(roles)) {
+    const r = own(roles, name);
+    const nested = Object.keys(r ?? {}).filter((k) => r[k] && typeof r[k] === "object" && !Array.isArray(r[k]));
+    if (nested.length)
+      throw new Error(
+        `${path}: [roles.${name}.${nested[0]}] — a dot separates keys in TOML, so this ` +
+        `declares a role called "${name}", not "${name}.${nested[0]}".\n` +
+        `  Role names cannot contain dots. Use "${name}-${nested[0]}".`);
+  }
   const names = Object.keys(roles);
   if (names.length === 0) throw new Error(`${path}: no [roles.<name>] sections found`);
 
