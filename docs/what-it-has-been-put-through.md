@@ -6,12 +6,14 @@
 
 ## The suite
 
-**112 tests**, run on macOS and Linux, Node 18/20/22, on every push
+**115 tests**, run on macOS and Linux, Node 18/20/22, on every push
 ([workflow](../.github/workflows/test.yml)).
 
-Sixteen of them are not unit tests: they run real commands through the real
-sandbox and check what the kernel did. That distinction matters enough that CI
-**fails if those sixteen skip** — `srt` missing makes them skip themselves, and
+Thirteen of them are not unit tests: they run real commands through the real
+sandbox and check what the kernel did — and they skip themselves when `srt` is
+not installed, so on a machine without it the suite reports 99 passing and 13
+skipped rather than failing. That distinction matters enough that CI **fails if
+those thirteen skip** — `srt` missing makes them skip themselves, and
 a green run that quietly tested nothing looks exactly like a real one.
 
 ```
@@ -122,6 +124,36 @@ The last two are the threat-model question rather than bugs, and they are
 answered the same way: `[runtime] isolate = true` now closes reading as well as
 writing, and it stays opt-in. Measured both ways — `~/.ssh` reads fine by
 default and comes back `Operation not permitted` isolated.
+
+### Review 4 — the config parser
+
+One finding, and it was the kind that does not show up in review at all.
+
+`[roles.__proto__]` does not appear in `Object.keys(roles)`. So `seisin check`
+printed the roles that exist and said nothing — while every other role
+inherited whatever that table declared. A config reading
+
+```toml
+[roles.frontend]
+keys = []
+```
+
+came out of the parser owning the whole repo and holding `GITHUB_TOKEN`,
+because forty lines earlier a table nobody could see had said so.
+
+Closed twice over, because what it produces is invisible: the parser refuses
+the three reserved names and builds every table with a null prototype, and
+`loadConfig` reads only properties a file actually declared. Each was tested on
+its own — the second one against a prototype polluted by hand.
+
+The same review tightened three more: config is now emitted through one rule
+instead of three (`init` did not check what `applyGrant` did, and
+`renderObserved` builds lines out of log targets, which is text an agent
+chose); log entries are validated the way queue entries already were, so a
+process in the box cannot write `allowed` lines for paths it never touched —
+which would not move the boundary but would move `review`, and
+`init --from-observations` builds a policy out of exactly that; and the README
+said 16 tests run against the real sandbox when 13 do.
 
 ## Still open, and named
 

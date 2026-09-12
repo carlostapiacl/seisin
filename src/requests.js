@@ -13,7 +13,7 @@
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { STATE_DIR } from "./layout.js";
+import { STATE_DIR, tomlString } from "./layout.js";
 import { send } from "./spool.js";
 
 export const REQUESTS_NAME = "requests.jsonl";
@@ -159,10 +159,7 @@ export function applyGrant(toml, request, note = "") {
   // be written down at all. The strict parser would reject the result rather
   // than widen anything — but leaving someone with a config that no longer
   // loads, after they approved something, is its own kind of broken.
-  if (/["\r\n]/.test(request.grant))
-    throw new Error(
-      `cannot grant "${request.grant}": seisin.toml has no way to write a quote or a newline ` +
-      `inside a value. Rename the path, or add the line by hand.`);
+  tomlString(request.grant);   // refuses what the format cannot hold
 
   const items = (m[2].match(/"[^"]*"/g) ?? []).map((s) => s.slice(1, -1));
   if (items.includes(request.grant)) return { toml, changed: false };

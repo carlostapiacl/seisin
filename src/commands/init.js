@@ -13,7 +13,7 @@
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { CONFIG_NAME } from "../layout.js";
+import { CONFIG_NAME, tomlString, tomlName } from "../layout.js";
 import { read, logPath, observed, generalise } from "../log.js";
 import { C, out } from "../render.js";
 
@@ -87,9 +87,9 @@ export function renderConfig(found) {
     "",
   ];
   for (const r of found.roles) {
-    lines.push(`[roles.${r.name}]`);
-    lines.push(`writes = [${r.writes.map((w) => `"${w}"`).join(", ")}]`);
-    lines.push(`keys   = [${r.keys.map((k) => `"${k}"`).join(", ")}]`);
+    lines.push(`[roles.${tomlName(r.name)}]`);
+    lines.push(`writes = [${r.writes.map(tomlString).join(", ")}]`);
+    lines.push(`keys   = [${r.keys.map(tomlString).join(", ")}]`);
     lines.push("");
   }
   return lines.join("\n");
@@ -107,14 +107,17 @@ export function renderObserved(config, entries) {
     "",
   ];
   if (config.keyDirs.length)
-    lines.push("[keys]", `dir = [${config.keyDirs.map((d) => `"${d}"`).join(", ")}]`, "");
-  lines.push("[network]", `allow = [${config.allowedDomains.map((d) => `"${d}"`).join(", ")}]`, "");
+    lines.push("[keys]", `dir = [${config.keyDirs.map(tomlString).join(", ")}]`, "");
+  lines.push("[network]", `allow = [${config.allowedDomains.map(tomlString).join(", ")}]`, "");
 
   for (const [name, seen] of roles) {
     const keys = [...new Set([...seen.keys].map((k) => k.replace(/^.*\//, "")))];
-    lines.push(`[roles.${name}]`);
-    lines.push(`writes = [${generalise([...seen.writes]).map((w) => `"${w}"`).join(", ")}]`);
-    lines.push(`keys   = [${keys.map((k) => `"${k}"`).join(", ")}]`);
+    // Every value below came out of the log, and the log records paths the
+    // agent chose. tomlString refuses what the format cannot hold rather than
+    // emitting a file that parses into something else.
+    lines.push(`[roles.${tomlName(name)}]`);
+    lines.push(`writes = [${generalise([...seen.writes]).map(tomlString).join(", ")}]`);
+    lines.push(`keys   = [${keys.map(tomlString).join(", ")}]`);
     lines.push(`# observed: ${seen.writes.size} path(s) written, ${seen.keys.size} key(s) read`);
     lines.push("");
   }

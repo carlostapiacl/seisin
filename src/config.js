@@ -30,8 +30,33 @@ const RE_TABLE = /^\[([A-Za-z0-9_.\-]+)\]$/;
 const RE_PAIR = /^([A-Za-z0-9_\-]+)\s*=\s*(.+)$/;
 
 /** Minimal TOML subset -> plain object. Throws with a line number on bad input. */
+/**
+ * Names a table or key may not have.
+ *
+ * `[roles.__proto__]` does not show up in `Object.keys(roles)`, so `check`
+ * prints the roles that exist and says nothing — while every other role
+ * inherits whatever it declared. A config reading `[roles.frontend]` with no
+ * `writes` came out of the parser owning the entire repo and holding
+ * GITHUB_TOKEN, and no amount of reading the file would show it.
+ *
+ * The tables below are made with a null prototype, which stops the inheritance
+ * on its own. The names are refused as well, because a config containing them
+ * is not a config with a mistake in it.
+ */
+const FORBIDDEN = new Set(["__proto__", "prototype", "constructor"]);
+
+/** A table with no prototype, so nothing is inherited into it. */
+function dict() {
+  return Object.create(null);
+}
+
+/** Read a property only if the object actually has it. */
+export function own(obj, key) {
+  return obj && Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined;
+}
+
 export function parseToml(text) {
-  const out = {};
+  const out = dict();
   let table = out;
   let tableName = "";
   // "Last one wins" is TOML-ish and wrong for a permission file. A policy can
@@ -49,13 +74,22 @@ export function parseToml(text) {
     const header = RE_TABLE.exec(line);
     if (header) {
       tableName = header[1];
+      for (const part of tableName.split("."))
+        if (FORBIDDEN.has(part))
+          throw new Error(
+            `${CONFIG_NAME}:${i + 1}: "[${tableName}]" uses the reserved name "${part}". ` +
+            `A table named that would not appear as a role and would hand its settings to ` +
+            `every other one.`);
       if (seenTables.has(tableName))
         throw new Error(
           `${CONFIG_NAME}:${i + 1}: [${tableName}] appears twice. ` +
           `A later block would silently override the earlier one — put every setting for ` +
           `${tableName} in one place.`);
       seenTables.add(tableName);
-      table = tableName.split(".").reduce((node, key) => (node[key] ??= {}), out);
+      table = tableName.split(".").reduce((node, key) => {
+        if (!Object.prototype.hasOwnProperty.call(node, key)) node[key] = dict();
+        return node[key];
+      }, out);
       continue;
     }
 
@@ -67,6 +101,8 @@ export function parseToml(text) {
     if (value.startsWith("[") && !value.includes("]")) {
       while (!value.includes("]") && i + 1 < lines.length) value += " " + stripComment(lines[++i]).trim();
     }
+    if (FORBIDDEN.has(key))
+      throw new Error(`${CONFIG_NAME}:${i + 1}: "${key}" is a reserved name and cannot be a setting.`);
     const seen = `${tableName}.${key}`;
     if (seenKeys.has(seen))
       throw new Error(
@@ -158,46 +194,54 @@ function readValue(value, lineNo) {
  */
 export function loadConfig(path) {
   const parsed = parseToml(readFileSync(path, "utf8"));
-  const roles = parsed.roles ?? {};
+  // Read only what the file actually declared. The parser refuses the names
+  // that make inheritance possible, and this is the second half of the same
+  // rule: if one of them ever gets through, a role still cannot pick up a
+  // setting it never wrote down. Two independent stops, because the failure
+  // they prevent is invisible in review — the config reads one way and the
+  // policy is another.
+  const roles = own(parsed, "roles") ?? {};
   const names = Object.keys(roles);
   if (names.length === 0) throw new Error(`${path}: no [roles.<name>] sections found`);
 
   // One directory or several. Several is the common case once a repo has more
   // than one kind of secret, and making people flatten them to satisfy the tool
   // is how a tool gets kept out.
-  const keyDirs = parsed.keys?.dir === undefined ? [] : asArray(parsed.keys.dir, "keys.dir");
+  const keyDir = own(own(parsed, "keys"), "dir");
+  const keyDirs = keyDir === undefined ? [] : asArray(keyDir, "keys.dir");
   // `undefined` means "use the defaults"; an explicit empty array means "none".
   // The difference matters: one is a user who has not thought about it, the
   // other is a user who has.
-  const runtimeWrites = parsed.runtime?.writes;
+  const runtime = own(parsed, "runtime");
+  const runtimeWrites = own(runtime, "writes");
 
   const out = {
     root: dirname(path), path, keyDirs,
-    allowedDomains: parsed.network?.allow ?? [],
+    allowedDomains: own(own(parsed, "network"), "allow") ?? [],
     runtimeWrites: runtimeWrites === undefined ? undefined : asArray(runtimeWrites, "runtime.writes"),
     // `[runtime] isolate = true` gives each role its own HOME and TMPDIR
     // instead of the real ones. Off by default because turning it on makes
     // every CLI in the box see an empty home — which means logging in again,
     // and a permission tool that silently signs you out is a permission tool
     // people uninstall. See srt.js.
-    isolate: parsed.runtime?.isolate === true,
-    redact: parsed.runtime?.redact,
-    scanIgnore: asArray(parsed.scan?.ignore, "scan.ignore"),
+    isolate: own(runtime, "isolate") === true,
+    redact: own(runtime, "redact"),
+    scanIgnore: asArray(own(own(parsed, "scan"), "ignore"), "scan.ignore"),
     roles: {},
   };
 
   for (const name of names) {
-    const r = roles[name];
-    const writes = asArray(r.writes, `roles.${name}.writes`);
-    const keys = asArray(r.keys, `roles.${name}.keys`);
+    const r = own(roles, name);
+    const writes = asArray(own(r, "writes"), `roles.${name}.writes`);
+    const keys = asArray(own(r, "keys"), `roles.${name}.keys`);
     if (keys.length && keyDirs.length === 0)
       throw new Error(`${path}: roles.${name} lists keys, but [keys] dir is not set`);
     out.roles[name] = {
       name,
       writes,
       keys,
-      env: asArray(r.env, `roles.${name}.env`),
-      network: r.network === undefined ? null : asArray(r.network, `roles.${name}.network`),
+      env: asArray(own(r, "env"), `roles.${name}.env`),
+      network: own(r, "network") === undefined ? null : asArray(own(r, "network"), `roles.${name}.network`),
     };
   }
   return out;
