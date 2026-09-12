@@ -19,8 +19,28 @@ export function covers(glob, path) {
   return toRegExp(g).test(p);
 }
 
+/**
+ * One spelling per file, before anybody decides anything about it.
+ *
+ * `..` is the reason this is more than tidying. `src/web/../api/orders.ts` is
+ * backend's file, and the unresolved form let it match frontend's `src/web/**`
+ * — so `whose` named the wrong owner, the hook raised no request, and the log
+ * recorded `allowed` for a write the kernel then refused. The boundary held;
+ * every sentence seisin said about it was wrong, which is the half of the tool
+ * that is actually ours.
+ *
+ * A path that climbs above the repo root comes back as `..`, which owns
+ * nothing and matches nothing. Outside the repo has no owner by definition.
+ */
 function normalize(s) {
-  return s.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+$/, "");
+  const flat = s.replace(/\\/g, "/").replace(/\/+/g, "/").replace(/\/+$/, "");
+  const up = [];
+  for (const part of flat.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === ".." && up.length && up[up.length - 1] !== "..") { up.pop(); continue; }
+    up.push(part);
+  }
+  return up.join("/");
 }
 
 /**
