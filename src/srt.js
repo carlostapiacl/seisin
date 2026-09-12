@@ -69,7 +69,15 @@ export function expand(p) {
 }
 
 /** Reads are denied wholesale under the key directory, then re-allowed one file at a time. */
-export function settingsFor(config, roleName) {
+/**
+ * The settings one role gets.
+ *
+ * `spool` is the path of the parent's audit socket, when a parent is holding
+ * one. It is granted by path so the hook can report what it decided without
+ * the repo's state directory being writable from inside — see spool.js. With
+ * no parent there is nothing to grant and nothing to reach.
+ */
+export function settingsFor(config, roleName, spool = null) {
   const role = config.roles[roleName];
   if (!role) throw new Error(`unknown role "${roleName}". Known: ${Object.keys(config.roles).join(", ")}`);
 
@@ -89,7 +97,9 @@ export function settingsFor(config, roleName) {
     network: {
       allowedDomains: role.network ?? config.allowedDomains,
       deniedDomains: [],
-      allowUnixSockets: [],
+      // Exactly one socket: the parent's audit spool, when there is a parent.
+      // Granted by path, not by turning unix sockets on.
+      allowUnixSockets: spool ? [spool] : [],
       allowLocalBinding: false,
     },
     filesystem: {
@@ -97,12 +107,11 @@ export function settingsFor(config, roleName) {
       allowRead,
       allowWrite: [
         ...role.writes.map(toWritePath).map(abs),
-        // seisin's own log directory, always. The hook records every attempt
-        // there, and `.seisin/` belongs to no role — so without this the hook
-        // cannot write and, because it swallows its own errors on purpose, it
-        // fails silently. The log came back empty from a run that worked
-        // perfectly, which is the worst way for an instrument to break.
-        abs(STATE_DIR),
+        // `.seisin/` is deliberately NOT here. It used to be, because the hook
+        // runs inside the box and has to record what it decided — which made
+        // the log and the queue writable by the process they are a record of.
+        // The hook now sends its lines to the parent over a socket and the
+        // parent holds the file. See spool.js.
         ...(config.runtimeWrites ?? RUNTIME_WRITES).map(expand),
       ],
       denyWrite: [],

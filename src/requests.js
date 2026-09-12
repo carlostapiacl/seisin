@@ -14,6 +14,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { STATE_DIR } from "./layout.js";
+import { send } from "./spool.js";
 
 export const REQUESTS_NAME = "requests.jsonl";
 
@@ -42,6 +43,7 @@ export function grantFor({ action, target }) {
 }
 
 function write(file, entry) {
+  if (send("requests", entry)) return true;
   try {
     mkdirSync(dirname(file), { recursive: true });
     appendFileSync(file, JSON.stringify({ at: new Date().toISOString(), ...entry }) + "\n");

@@ -13,6 +13,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { STATE_DIR, LOG_NAME } from "./layout.js";
+import { send } from "./spool.js";
 
 export { STATE_DIR, LOG_NAME } from "./layout.js";
 
@@ -29,6 +30,8 @@ export function logPath(root) {
  * gets `false` if it cares.
  */
 export function append(file, entry) {
+  // Confined: the parent owns the file, we only get to send a line. See spool.js.
+  if (send("log", entry)) return true;
   try {
     mkdirSync(dirname(file), { recursive: true });
     appendFileSync(file, JSON.stringify({ at: new Date().toISOString(), ...entry }) + "\n");

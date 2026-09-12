@@ -24,6 +24,7 @@ import { record, settle, pending, applyGrant, grantFor } from "../src/requests.j
 import { Readable } from "node:stream";
 import { serveMcp, TOOLS, HANDLERS, PROTOCOLS } from "../src/mcp.js";
 import { serve } from "../src/serve.js";
+import { spool, send, flush } from "../src/spool.js";
 import { settingsFor, RUNTIME_WRITES } from "../src/srt.js";
 
 const cfg = {
@@ -120,7 +121,7 @@ test("every role also gets the scratch space an agent cannot run without", () =>
   // under its own config dir and its tools write to the temp dir. Measured
   // against a real config — with territory only, nothing started.
   const w = settingsFor(cfg, "frontend").filesystem.allowWrite;
-  assert.equal(w.length, 1 + 1 + RUNTIME_WRITES.length); // territory + .seisin + scratch
+  assert.equal(w.length, 1 + RUNTIME_WRITES.length);     // territory + scratch, and nothing else
   assert.ok(w.some((p) => p.endsWith("/.claude")));
   // The literal "/tmp" is deliberately NOT what lands: on macOS it is a symlink
   // and the sandbox enforces on the destination, so the grant is resolved first.
@@ -128,12 +129,12 @@ test("every role also gets the scratch space an agent cannot run without", () =>
   assert.ok(!w.includes("/tmp") || realpathSync("/tmp") === "/tmp");
 });
 
-test("the scratch grants can be turned off, but only on purpose", () => {
-  // The log directory survives the opt-out: turning off scratch is a choice
-  // about the agent's toolchain, not a request to blind the instrument.
+test("the scratch grants can be turned off, and then territory is all there is", () => {
+  // Turning off scratch is a choice about the agent's toolchain. Nothing else
+  // is smuggled back in — the audit directory is not here either, because the
+  // instrument no longer needs a hole to write through.
   const strict = { ...cfg, runtimeWrites: [] };
-  assert.deepEqual(settingsFor(strict, "frontend").filesystem.allowWrite,
-    ["/repo/src/web", "/repo/.seisin"]);
+  assert.deepEqual(settingsFor(strict, "frontend").filesystem.allowWrite, ["/repo/src/web"]);
 });
 
 test("the scratch grants never include the home directory itself", () => {
@@ -287,13 +288,23 @@ test("a half-written log line is skipped, not fatal", () => {
   assert.equal(entries.length, 1);
 });
 
-test("seisin's own log directory is always writable", () => {
-  // The hook records into `.seisin/`, which belongs to no role. Without this
-  // the hook cannot write, and since it swallows its own errors by design the
-  // log comes back empty from a run that worked — an instrument failing in the
-  // one way you cannot notice.
+test("the audit directory is not writable from inside the box", () => {
+  // It used to be, because the hook runs inside and has to record what it
+  // decided — which made the log and the queue writable by the process they
+  // are a record of. An external review named it: nothing enforced the word
+  // "append-only" that those files use about themselves.
   const w = settingsFor(cfg, "frontend").filesystem.allowWrite;
-  assert.ok(w.some((p) => p.endsWith("/.seisin")));
+  assert.ok(!w.some((p) => p.endsWith("/.seisin")), ".seisin is reachable from inside");
+});
+
+test("the audit socket is granted by path, and only when there is one", () => {
+  // The replacement for that grant: the hook sends a line to the parent, which
+  // holds the file. One socket, named, not "unix sockets are on now".
+  assert.deepEqual(settingsFor(cfg, "frontend").network.allowUnixSockets, []);
+  const s = settingsFor(cfg, "frontend", "/tmp/seisin-1.sock");
+  assert.deepEqual(s.network.allowUnixSockets, ["/tmp/seisin-1.sock"]);
+  // and it does not quietly become a filesystem grant
+  assert.ok(!s.filesystem.allowWrite.includes("/tmp/seisin-1.sock"));
 });
 
 test("reading an ordinary file is never denied", () => {
@@ -549,6 +560,36 @@ const shared2 = {
     backend: { name: "backend", writes: ["src/api/**"], keys: [], network: null },
   },
 };
+
+/* ── el carrete de auditoría ──────────────────────────────────────────── */
+
+test("the spool carries an entry to the parent, and the parent picks the file", async (t) => {
+  // El único verbo alcanzable desde adentro es "mandá una línea": no hay
+  // descriptor, así que no hay seek, truncate ni unlink. Y el remitente no
+  // elige la ruta — nombra un destino y el padre decide qué significa.
+  const got = [];
+  const s = await spool((to, entry) => got.push([to, entry]), join(tmpdir(), `seisin-t${process.pid}.sock`));
+  t.after(() => s.close());
+
+  send("log", { role: "frontend", verdict: "denied" }, s.path);
+  send("requests", { role: "qa", action: "write" }, s.path);
+  send("otro-lado", { role: "qa" }, s.path);            // destino inventado
+  send("log", "no soy un objeto", s.path);
+  await flush();
+  await new Promise((r) => setTimeout(r, 60));
+
+  assert.deepEqual(got.map((g) => g[0]), ["log", "requests", "log"]);
+  assert.equal(got[0][1].role, "frontend");
+  assert.ok(got[0][1].at, "el sello de tiempo es del momento de la decisión, no de cuando el padre lo leyó");
+});
+
+test("with no parent listening, send says so instead of pretending", () => {
+  // Sin padre, append() cae al archivo. Si send() mintiera, el hook creería
+  // haber grabado y el registro quedaría vacío en una corrida que funcionó —
+  // que es exactamente cómo se rompió este instrumento la primera vez.
+  assert.equal(send("log", { role: "x" }, undefined), false);
+  assert.equal(send("log", { role: "x" }, ""), false);
+});
 
 /* ── la consola ───────────────────────────────────────────────────────── */
 

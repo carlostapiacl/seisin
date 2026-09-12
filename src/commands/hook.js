@@ -9,6 +9,7 @@
  */
 import { findConfig, loadConfig } from "../config.js";
 import { decide } from "../hook.js";
+import { flush } from "../spool.js";
 
 export async function hook(stdin = process.stdin, env = process.env) {
   const role = env.SEISIN_ROLE;
@@ -32,5 +33,10 @@ export async function hook(stdin = process.stdin, env = process.env) {
   }
   if (!config.roles[role]) return null;
 
-  return decide(config, role, event, { observe: env.SEISIN_OBSERVE === "1" });
+  const decision = decide(config, role, event, { observe: env.SEISIN_OBSERVE === "1" });
+  // The entries went to a socket, and cli.js exits as soon as we return. An
+  // exit does not drain a socket, so the record would be lost precisely on the
+  // turns that produced one.
+  await flush();
+  return decision;
 }
