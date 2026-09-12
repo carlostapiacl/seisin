@@ -396,10 +396,13 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
     L.push('    "allowLocalBinding": false');
     L.push("  },");
     L.push('  <span class="k">"filesystem"</span>: {');
-    L.push('    <span class="d">"denyRead"</span>: ["'+KEYDIR+'"],');
+    // KEYDIR comes from seisin.toml, which is a file the console may be
+    // pointed at without having written it. Unescaped it was HTML injection
+    // into a page that carries SEISIN_TOKEN — and that token approves grants.
+    L.push('    <span class="d">"denyRead"</span>: ["'+esc(KEYDIR)+'"],');
     if(r.keys.length){
       L.push('    <span class="g">"allowRead"</span>: [');
-      r.keys.forEach(function(k,i){L.push('      "'+KEYDIR+"/"+esc(k)+'.txt"'+(i<r.keys.length-1?",":""));});
+      r.keys.forEach(function(k,i){L.push('      "'+esc(KEYDIR)+"/"+esc(k)+'.txt"'+(i<r.keys.length-1?",":""));});
       L.push("    ],");
     }else{
       L.push('    <span class="g">"allowRead"</span>: [],  <span class="c">// declares none</span>');
@@ -436,7 +439,7 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
       return;
     }
     var L=['<span class="c"># Anything not listed is denied.</span>',"",
-           "[keys]",'dir = "'+KEYDIR+'"',"","[network]",'allow = ["github.com", "*.github.com"]',""];
+           "[keys]",'dir = "'+esc(KEYDIR)+'"',"","[network]",'allow = ["github.com", "*.github.com"]',""];
     ROLES.forEach(function(r){
       L.push('<span class="k">[roles.'+esc(r.name)+"]</span>");
       L.push("writes = ["+r.writes.map(function(w){return '"'+esc(w)+'"';}).join(", ")+"]");

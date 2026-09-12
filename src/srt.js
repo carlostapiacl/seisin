@@ -16,7 +16,7 @@
 import { join } from "node:path";
 import { STATE_DIR, CONFIG_NAME } from "./layout.js";
 import { homedir, tmpdir } from "node:os";
-import { realpathSync } from "node:fs";
+import { realpathSync, lstatSync } from "node:fs";
 
 /**
  * What every agent needs to write no matter which role it is.
@@ -69,6 +69,15 @@ export const RUNTIME_WRITES = [
  * literal path, writing to /tmp inside the sandbox failed while the policy
  * looked correct on screen.
  */
+/** Is this exact path a symlink? False if it is not on disk. */
+function isLink(p) {
+  try {
+    return lstatSync(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
 /** The path with symlinks followed, or the path itself if it is not on disk. */
 function realOrSelf(p) {
   try {
@@ -112,7 +121,24 @@ export function settingsFor(config, roleName, spool = null) {
   // re-allowed. A key written without a directory resolves against the first
   // one, which keeps the ordinary single-directory config short.
   const dirs = config.keyDirs ?? [];
-  for (const dir of dirs) denyRead.push(abs(dir));
+  for (const dir of dirs) {
+    // A key *file* that is a symlink is refused below. The directory itself is
+    // the same hole one level up: denyRead names the path as written, and the
+    // runtime enforces on the destination — so `.secrets -> /tmp/elsewhere`
+    // gives a deny that covers nothing and an allow that reaches out of the
+    // repo. Refused rather than resolved, because a key directory that is not
+    // where it says it is has nothing to gain from being clever about.
+    const here = abs(dir);
+    // lstat on the directory itself, not a comparison of resolved paths: on
+    // macOS /var is a link to /private/var, so a repo under a temp directory
+    // would fail this check for an ancestor it does not control.
+    if (isLink(here))
+      throw new Error(
+        `[keys] dir "${dir}" is a symlink to ${realOrSelf(here)}.\n` +
+        `  The sandbox enforces on the destination, so the deny would not cover what the ` +
+        `allow reaches. Point [keys] dir at the real location instead.`);
+    denyRead.push(here);
+  }
 
   /**
    * Isolated mode also narrows what a role may READ, which the ordinary mode

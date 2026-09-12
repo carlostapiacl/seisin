@@ -18,6 +18,7 @@ import { secretsOf, redactor } from "../redact.js";
 import { STATE_DIR } from "../layout.js";
 import { C, err } from "../render.js";
 import { pending, record, requestsPath } from "../requests.js";
+import { ownersOf } from "../owners.js";
 import { append, logPath } from "../log.js";
 import { renderQueue } from "./requests.js";
 
@@ -82,8 +83,32 @@ export async function run(config, argv) {
    */
   const sockPath = spoolPath();
   const audit = await spool((to, entry) => {
-    if (to === "log") append(logPath(config.root), entry);
-    else record(requestsPath(config.root), entry);
+    /**
+     * Nothing from inside the box is taken at its word.
+     *
+     * The sender is the process being recorded, so every field it supplies is
+     * a claim. Two of them matter. `role` decides whose request this is — left
+     * alone, a frontend agent could file one as backend and wait for a human to
+     * approve it. `owners` decides who the queue says it belongs to, and the
+     * parent can work that out itself from the policy.
+     *
+     * So the role is overwritten with the role of this run, the owners are
+     * recomputed, and anything shaped wrong is dropped. Forging a *log* line is
+     * noise. Forging a *request* is a sentence placed in front of a person for
+     * approval, and that is a different thing entirely.
+     */
+    if (!entry || typeof entry !== "object") return;
+
+    if (to === "log") return void append(logPath(config.root), { ...entry, role });
+
+    if (entry.action !== "read" && entry.action !== "write") return;
+    if (typeof entry.target !== "string" || !entry.target.trim()) return;
+    record(requestsPath(config.root), {
+      role,
+      action: entry.action,
+      target: entry.target,
+      owners: ownersOf(config, entry.target),
+    });
   }, sockPath);
 
   const settings = settingsFor(config, role, sockPath);

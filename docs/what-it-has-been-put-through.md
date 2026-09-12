@@ -6,7 +6,7 @@
 
 ## The suite
 
-**99 tests**, run on macOS and Linux, Node 18/20/22, on every push
+**103 tests**, run on macOS and Linux, Node 18/20/22, on every push
 ([workflow](../.github/workflows/test.yml)).
 
 Thirteen of them are not unit tests: they run real commands through the real

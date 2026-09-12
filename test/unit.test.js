@@ -464,7 +464,13 @@ test("granting something a role already has changes nothing", () => {
 });
 
 test("a key request grants the key, not a directory glob", () => {
-  assert.equal(grantFor({ action: "read", target: ".secrets/netlify.txt" }), "netlify.txt");
+  // Con directorio, el directorio se conserva. Recortarlo convertía un pedido
+  // por `shared/api.txt` en una concesión de `api.txt`, que settingsFor resuelve
+  // contra el PRIMER directorio de claves — la persona aprueba un archivo y se
+  // termina leyendo otro con el mismo nombre.
+  assert.equal(grantFor({ action: "read", target: ".secrets/netlify.txt" }), ".secrets/netlify.txt");
+  assert.equal(grantFor({ action: "read", target: "shared/api.txt" }), "shared/api.txt");
+  assert.equal(grantFor({ action: "read", target: "netlify.txt" }), "netlify.txt");
   assert.equal(grantFor({ action: "write", target: "src/api/a.ts" }), "src/api/**");
 });
 
@@ -704,6 +710,47 @@ test("a key that is a symlink out of its directory is refused", (t) => {
                        roles: { f: { name: "f", writes: ["src/**"], keys: [k], network: null } } });
   assert.throws(() => settingsFor(mk("tok.txt"), "f"), /is a symlink/);
   assert.ok(settingsFor(mk("propia.txt"), "f").filesystem.allowRead.some((p) => p.endsWith("propia.txt")));
+});
+
+test("a key directory that is a symlink is refused", (t) => {
+  // El archivo-clave symlink ya estaba cerrado; el directorio es el mismo hueco
+  // un nivel arriba. denyRead nombra la ruta tal cual y el runtime aplica sobre
+  // el destino, así que `.secrets -> /tmp/otro` da un deny que no cubre nada y
+  // un allow que sale del repo.
+  const box = mkdtempSync(join(tmpdir(), "seisin-kd-"));
+  t.after(() => rmSync(box, { recursive: true, force: true }));
+  const afuera = join(box, "afuera");
+  mkdirSync(afuera, { recursive: true });
+  writeFileSync(join(afuera, "tok.txt"), "SECRETO\n");
+  symlinkSync(afuera, join(box, ".secrets"));
+
+  const cfg = { root: box, path: join(box, "seisin.toml"), keyDirs: [".secrets"], allowedDomains: [],
+                roles: { a: { name: "a", writes: [], keys: ["tok.txt"], network: null } } };
+  assert.throws(() => settingsFor(cfg, "a"), /is a symlink/);
+});
+
+test("a grant the config cannot represent is refused, not written", () => {
+  // El subset no tiene escapes, así que un valor con comilla o salto de línea
+  // no se puede escribir. El parser estricto rechazaría el resultado — pero
+  // dejar a alguien con un config que ya no carga, después de que aprobó algo,
+  // es su propia forma de estar roto.
+  const base = '[roles.a]\nwrites = ["src/**"]\nkeys   = []\n';
+  assert.throws(() => applyGrant(base, { role: "a", action: "write", grant: 'src/x"/**', times: 1 }, ""),
+    /no way to write a quote/);
+  assert.ok(applyGrant(base, { role: "a", action: "write", grant: "src/ok/**", times: 1 }, "").changed);
+});
+
+test("a forged queue entry cannot crash the queue", () => {
+  // Leer la cola no puede ser lo que falle: `run` la imprime al salir y la
+  // consola la sondea, así que un reventón acá tumba la mitad que usa una
+  // persona. Una línea sin `target` llegaba desde el sandbox y lo lograba.
+  const box = mkdtempSync(join(tmpdir(), "seisin-q-"));
+  const f = join(box, "requests.jsonl");
+  writeFileSync(f, JSON.stringify({ kind: "asked", key: "a:write:b", role: "a", action: "write" }) + "\n");
+  const q = pending(f);
+  rmSync(box, { recursive: true, force: true });
+  assert.equal(q.length, 1);
+  assert.equal(q[0].grant, "");
 });
 
 test("check says what it cannot enforce, and exits on it", () => {

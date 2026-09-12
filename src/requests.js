@@ -31,15 +31,25 @@ export function requestsPath(root) {
  * queue that says it is becomes a queue nobody reads.
  */
 export function keyOf({ role, action, target }) {
-  const dir = action === "read" ? target : target.split("/").slice(0, -1).join("/") || ".";
+  // A line can arrive malformed — a killed process, or something inside the
+  // sandbox writing to the queue on purpose. Reading the queue must not be the
+  // thing that fails: `seisin run` prints it on the way out and the console
+  // polls it, so a crash here takes down the half of the tool a person uses.
+  const t = typeof target === "string" ? target : "";
+  const dir = action === "read" ? t : t.split("/").slice(0, -1).join("/") || ".";
   return `${role}:${action}:${dir}`;
 }
 
 /** The glob a grant would add, derived from what was asked. */
 export function grantFor({ action, target }) {
-  if (action === "read") return target.replace(/^.*\//, "");
-  const dir = target.split("/").slice(0, -1).join("/");
-  return dir ? `${dir}/**` : target;
+  const t = typeof target === "string" ? target : "";
+  // A key keeps its directory when it has one. Stripping it turned a request
+  // for `shared/api.txt` into a grant of `api.txt`, which settingsFor then
+  // resolves against the FIRST key directory — so the person approves one file
+  // and another one of the same name is what gets read.
+  if (action === "read") return t.includes("/") ? t : t.replace(/^.*\//, "");
+  const dir = t.split("/").slice(0, -1).join("/");
+  return dir ? `${dir}/**` : t;
 }
 
 function write(file, entry) {
@@ -144,6 +154,15 @@ export function applyGrant(toml, request, note = "") {
       `[roles.${request.role}] has no ${field} list to grant into. ` +
       `Add \`${field} = []\` to that section first — seisin will not write it into another role's block.`
     );
+
+  // The subset has no escapes, so a value carrying a quote or a newline cannot
+  // be written down at all. The strict parser would reject the result rather
+  // than widen anything — but leaving someone with a config that no longer
+  // loads, after they approved something, is its own kind of broken.
+  if (/["\r\n]/.test(request.grant))
+    throw new Error(
+      `cannot grant "${request.grant}": seisin.toml has no way to write a quote or a newline ` +
+      `inside a value. Rename the path, or add the line by hand.`);
 
   const items = (m[2].match(/"[^"]*"/g) ?? []).map((s) => s.slice(1, -1));
   if (items.includes(request.grant)) return { toml, changed: false };
