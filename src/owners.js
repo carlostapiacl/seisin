@@ -82,10 +82,33 @@ export function ownersOf(config, path) {
 
 /** Every role allowed to read `key`, matched with or without its extension. */
 export function keyHolders(config, key) {
+  const dirs = config.keyDirs ?? [];
+
+  /**
+   * Both sides resolved to a path before anything is compared.
+   *
+   * A declaration without a directory means the first key directory — that is
+   * what settingsFor does — and the hook sees whatever path the tool call
+   * used. So `database.txt` in the config and `.secrets/database.txt` from a
+   * Read are the same file and must match.
+   *
+   * What must NOT match is `.secrets/api.txt` against `shared/api.txt`. With
+   * two key directories those are different files, and comparing basenames
+   * made `explain` answer "allowed" for a key the sandbox would refuse. A
+   * wrong yes from the layer whose only job is explaining is worse than no
+   * answer at all.
+   */
+  const resolve = (s) => (s.includes("/") ? s : `${dirs[0] ?? "."}/${s}`);
   const bare = (s) => s.replace(/^.*\//, "").replace(/\.[^.]+$/, "");
-  const want = bare(key);
+
+  const wanted = resolve(key);
+  // The extension-less form is how a person asks — `seisin explain f read
+  // netlify` — so it stays, and only for an unqualified question.
+  const loose = !key.includes("/");
+
   return Object.values(config.roles)
-    .filter((r) => r.keys.some((k) => k === key || bare(k) === want))
+    .filter((r) => r.keys.some((k) =>
+      resolve(k) === wanted || (loose && bare(k) === bare(key))))
     .map((r) => r.name);
 }
 
