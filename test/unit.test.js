@@ -481,6 +481,18 @@ test("the public surface can read the queue and cannot approve", () => {
   assert.equal(publica.applyGrant, undefined);
 });
 
+/* ── lo que la herramienta no cubre ──────────────────────────────────── */
+
+test("check states the gap it does not cover, every time", () => {
+  // El README lo decía en tres lugares y `check` no lo decía en ninguno, que es
+  // el único que alguien mira antes de confiar en el mapa. Fijado acá porque un
+  // límite que se puede borrar sin que nada se queje vuelve a ser una promesa.
+  const { limits } = inspect(cfg, null, "seisin.toml");
+  const borrado = limits.find((l) => l.kind === "unlink-uncovered");
+  assert.ok(borrado, "check ya no dice que un rol puede borrar dentro de su territorio");
+  assert.match(borrado.detail, /denyUnlink/);   // y adónde fue el pedido
+});
+
 /* ── el servidor MCP ──────────────────────────────────────────────────── */
 
 test("the MCP surface has no tool that changes anything", () => {

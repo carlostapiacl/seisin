@@ -1,5 +1,11 @@
 node_modules/
-.keyward/
+# Runtime state: the activity log and the request queue. Local to a checkout and
+# not policy — seisin.toml is the part that belongs in the repo. Left tracked,
+# the log publishes which agent touched which file and when.
+.seisin/
 *.log
 .DS_Store
 test/.sandbox-box/
+
+# mkdtemp debris from an interrupted test run — the tests clean up, a Ctrl-C does not
+test/req-*/
