@@ -29,6 +29,7 @@ import { log, watch } from "./commands/log.js";
 import { hook } from "./commands/hook.js";
 import { ui } from "./commands/ui.js";
 import { requests, grant, deny } from "./commands/requests.js";
+import { whose } from "./commands/whose.js";
 import { serveMcp } from "./mcp.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -41,6 +42,7 @@ ${C.b}seisin${C.off} — give each agent its own folders and its own keys
   seisin run <role> --observe -- <cmd>  record, deny nothing
   seisin check [role]                   print the map, run nothing
   seisin explain <role> read|write <path>
+  seisin whose <path>                   who owns it — safe to call from inside the box
   seisin scan                           find secrets outside the declared key dirs
   seisin requests                       what the agents asked for and could not do
   seisin grant <n> [--reason "…"]       approve one, with its provenance
@@ -77,6 +79,7 @@ const COMMANDS = {
   watch: () => void watch(config()),
   init: () => void (argv.includes("--from-observations") ? initFromObservations(config()) : init()),
   ui: () => ui(config(), argv),
+  whose: () => void whose(config(), argv),
   requests: () => (requests(config()).length ? 1 : 0),
   grant: () => void grant(config(), argv),
   deny: () => void deny(config(), argv),

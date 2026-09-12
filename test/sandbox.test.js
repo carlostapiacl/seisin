@@ -11,7 +11,7 @@
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -128,4 +128,37 @@ test("the agent's own flags are not eaten by the sandbox", { skip }, () => {
     { cwd: repo, encoding: "utf8" });
   assert.equal(r.status, 0);
   assert.match(r.stdout, /--settings --debug -c survived/);
+});
+
+test("CR-1 · a missing boundary refuses to run, and the child never starts", { skip: false }, () => {
+  // El modo de falla más caro del informe de campo: dos caminos de aplicación
+  // de distinta fuerza, y el débil elegido en silencio. Acá no hay camino débil:
+  // sin runtime no se ejecuta nada.
+  const canario = join(repo, "canario-cr1.txt");
+  const r = spawnSync(process.execPath, [CLI, "run", "frontend", "--", "sh", "-c", `touch ${JSON.stringify(canario)}`],
+    { cwd: repo, encoding: "utf8", env: { ...process.env, PATH: "/nonexistent" } });
+  assert.notEqual(r.status, 0);
+  assert.ok(!existsSync(canario), "el hijo corrió igual: eso es degradación silenciosa");
+});
+
+test("CR-2 · ownership does not depend on which role is asking", { skip }, () => {
+  // La respuesta a "de quién es esto" sale de un solo mapa con todos los roles,
+  // así que es simétrica. El mapa por corrida del informe hacía que un archivo
+  // ajeno pareciera sin dueño.
+  const preguntar = (rol, ruta) => spawnSync(process.execPath, [CLI, "whose", ruta],
+    { cwd: repo, encoding: "utf8", env: { ...process.env, SEISIN_ROLE: rol } }).stdout;
+  assert.match(preguntar("frontend", "src/api/x.ts"), /belongs to backend/);
+  assert.match(preguntar("backend", "src/web/y.ts"), /belongs to frontend/);
+});
+
+test("CR-3 · the confined process can ask whose it is", { skip }, () => {
+  // El titular del README —"no, y es de X"— viene del hook, y quien sólo
+  // envuelve un proceso no lo tiene. Esta consulta lo cierra sin integración:
+  // la instrucción pasa a ser "ante EPERM, preguntá de quién es".
+  const r = spawnSync(process.execPath,
+    [CLI, "run", "frontend", "--", process.execPath, CLI, "whose", "src/api/server.ts"],
+    { cwd: repo, encoding: "utf8" });
+  assert.equal(r.status, 0, "la consulta quedó bloqueada por la caja que está consultando");
+  assert.match(r.stdout, /belongs to backend/);
+  assert.match(r.stdout, /you are frontend/);
 });
