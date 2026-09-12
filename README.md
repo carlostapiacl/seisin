@@ -4,11 +4,15 @@
 
 **Give each AI agent its own folders and its own keys.** The kernel enforces it, and when it blocks something it tells you *whose* file it was.
 
-```
-$ seisin run frontend -- claude -p "fix the cart"
+![seisin denying a write outside a role's territory, then naming the owner](docs/img/demo.gif)
 
-  frontend  write  src/api/orders.ts
-  denied — src/api/orders.ts belongs to backend
+```
+$ seisin run frontend -- sh -c 'echo // fix >> src/api/orders.ts'
+  sh: src/api/orders.ts: Operation not permitted
+
+$ seisin run frontend -- seisin whose src/api/orders.ts
+  src/api/orders.ts belongs to backend
+  you are frontend. Hand it over rather than working around it.
 ```
 
 That second line is the whole point. Every other permission layer in this space answers *yes* or *no*. Answering **"no, and it belongs to `backend`"** turns a block into a handoff.
