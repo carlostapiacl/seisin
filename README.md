@@ -248,6 +248,8 @@ takes a person in a channel the agent does not have. The public API reflects
 that: `pendingRequests` is exported, the functions that approve are not.
 [The reasoning is written down](docs/permission-requests.md).
 
+![the console: a pending request, a reason, and the territory changing when it is approved](docs/img/console.gif)
+
 Two places, both human: `seisin grant <n>` in a terminal, or the console, where
 the queue is a panel with a reason field and two buttons. Approving there edits
 your `seisin.toml` in place and the territory on screen changes with it.

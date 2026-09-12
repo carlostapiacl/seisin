@@ -46,6 +46,11 @@ function state(configPath) {
     root: cfg.root,
     config: cfg.path,
     requests: pending(requestsPath(cfg.root)),
+    // The file itself, not a regeneration of it. The page can render a policy
+    // from its own model, and that model has no comments — so showing it under
+    // the heading "seisin.toml" next to "copy this back" invites someone to
+    // paste away the provenance a grant just wrote.
+    toml: readFileSync(cfg.path, "utf8"),
     keyDirs: cfg.keyDirs,
     allowedDomains: cfg.allowedDomains,
     roles,
