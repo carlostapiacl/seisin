@@ -20,7 +20,7 @@ import { inspect, sharedPaths } from "../src/inspect.js";
 import { renderReport, renderVerdict } from "../src/render.js";
 import { renderConfig } from "../src/commands/init.js";
 import * as publica from "../src/index.js";
-import { record, settle, pending, applyGrant, grantFor } from "../src/requests.js";
+import { record, settle, pending, applyGrant, grantFor, cleanReason } from "../src/requests.js";
 import { Readable } from "node:stream";
 import { serveMcp, TOOLS, HANDLERS, PROTOCOLS } from "../src/mcp.js";
 import { serve } from "../src/serve.js";
@@ -602,6 +602,77 @@ test("no input makes the parser lose or invent an item", () => {
     const src = `writes = [${items.map((s) => `"${s}"`).join(", ")}]`;
     assert.deepEqual(parseToml(src).writes, items, src);
   }
+});
+
+/* ── adversariales ────────────────────────────────────────────────────── */
+
+test("the confinement's own paperwork is never writable, however wide the territory", () => {
+  // `writes = ["**"]` es razonable para un agente solo, y le entregaba su
+  // propio archivo de política: reescribir seisin.toml y correr de nuevo con
+  // más territorio. Comprobado contra el kernel real antes de arreglarlo.
+  const cfg = {
+    root: "/repo", path: "/repo/seisin.toml", keyDirs: [".secrets"], allowedDomains: [],
+    roles: { owner: { name: "owner", writes: ["**"], keys: [], network: null } },
+  };
+  const { denyWrite, allowWrite } = settingsFor(cfg, "owner").filesystem;
+  assert.ok(allowWrite.includes("/repo"), "el rol sí tiene el repo entero");
+  for (const p of ["/repo/seisin.toml", "/repo/.seisin", "/repo/.secrets"])
+    assert.ok(denyWrite.includes(p), `${p} debería ser inescribible`);
+  // y el socket de auditoría, que vive en scratch compartido
+  assert.ok(settingsFor(cfg, "owner", "/tmp/s.sock").denyWrite === undefined ||
+            settingsFor(cfg, "owner", "/tmp/s.sock").filesystem.denyWrite.includes("/tmp/s.sock"));
+});
+
+test("a grant lands in the role it was approved for, or nowhere", () => {
+  // El bug: la búsqueda del campo no estaba acotada a la sección del rol, así
+  // que aprobar para un rol sin `writes` escribía el permiso en el SIGUIENTE
+  // rol — con un comentario diciendo para quién era.
+  const sinWrites = '[roles.frontend]\nkeys = []\n\n[roles.backend]\nwrites = ["src/api/**"]\nkeys   = []\n';
+  assert.throws(
+    () => applyGrant(sinWrites, { role: "frontend", action: "write", grant: "src/X/**", times: 2 }, "para frontend"),
+    /has no writes list/);
+
+  const bien = '[roles.frontend]\nwrites = ["src/web/**"]\nkeys   = []\n\n[roles.backend]\nwrites = ["src/api/**"]\n';
+  const { toml } = applyGrant(bien, { role: "frontend", action: "write", grant: "src/X/**", times: 2 }, "ok");
+  const front = toml.slice(toml.indexOf("[roles.frontend]"), toml.indexOf("[roles.backend]"));
+  assert.match(front, /src\/X/);
+  assert.ok(!toml.slice(toml.indexOf("[roles.backend]")).includes("src/X"));
+});
+
+test("an approver's reason cannot become configuration", () => {
+  // Un motivo es texto libre que escribe una persona, y a una persona se la
+  // puede convencer de pegar algo. Un salto de línea cerraría el comentario y
+  // lo que sigue se parsea como TOML.
+  const base = '[roles.frontend]\nwrites = ["src/web/**"]\nkeys   = []\n';
+  const veneno = 'ok\n\n[roles.frontend]\nwrites = ["**"]\nkeys = []\n#';
+  const { toml } = applyGrant(base, { role: "frontend", action: "write", grant: "src/api/**", times: 1 }, veneno);
+  assert.equal(toml.split("\n").filter((l) => l.trim() === "[roles.frontend]").length, 1);
+  assert.deepEqual(parseToml(toml).roles.frontend.writes, ["src/web/**", "src/api/**"]);
+});
+
+test("a key cannot point outside the directories declared for keys", () => {
+  // Una barra en el nombre hacía la ruta relativa a la raíz del repo, así que
+  // keys = ["../.ssh/id_rsa"] era una concesión de lectura escrita en la única
+  // lista que nadie revisa dos veces, porque se supone que todo ahí es clave.
+  const mk = (k, dirs) => ({ root: "/repo", path: "/repo/seisin.toml", keyDirs: dirs, allowedDomains: [],
+                             roles: { f: { name: "f", writes: ["src/**"], keys: [k], network: null } } });
+  assert.throws(() => settingsFor(mk("../.ssh/id_rsa", [".secrets"]), "f"), /outside every \[keys\] dir/);
+  assert.ok(settingsFor(mk("netlify.txt", [".secrets"]), "f").filesystem.allowRead
+    .includes("/repo/.secrets/netlify.txt"));
+  // y declarar un segundo directorio es la forma soportada de usar otro lugar
+  assert.ok(settingsFor(mk("shared/api.txt", [".secrets", "shared"]), "f").filesystem.allowRead
+    .includes("/repo/shared/api.txt"));
+});
+
+test("isolated mode gives each role its own home, and the real one to nobody", () => {
+  const cfg = { root: "/repo", path: "/repo/seisin.toml", keyDirs: [], allowedDomains: [], isolate: true,
+                roles: { a: { name: "a", writes: ["src/**"], keys: [], network: null },
+                         b: { name: "b", writes: ["src/**"], keys: [], network: null } } };
+  const wa = settingsFor(cfg, "a").filesystem.allowWrite;
+  const wb = settingsFor(cfg, "b").filesystem.allowWrite;
+  assert.ok(!wa.some((p) => p.includes("/.claude")), "el ~/.claude real sigue concedido");
+  assert.ok(!wa.some((p) => wb.includes(p) && p.includes("seisin-home")), "los roles comparten scratch");
+  assert.ok(wa.some((p) => p.endsWith("/a")), "el rol no tiene un home propio");
 });
 
 /* ── el carrete de auditoría ──────────────────────────────────────────── */

@@ -110,25 +110,72 @@ export function pending(file, { includeSettled = false } = {}) {
  * wrote has comments and an order that mean something, and a tool that
  * reformats it on every grant is a tool people stop letting near it.
  */
+/**
+ * Adds a granted glob to a role in the config text, with its provenance.
+ *
+ * Edits the text rather than re-emitting the file, because a config someone
+ * wrote has comments and an order that mean something, and a tool that
+ * reformats it on every grant is a tool people stop letting near it.
+ *
+ * The edit is bounded to the role's own section, and that is not tidiness. The
+ * first version searched from the role header to the next `writes =` anywhere
+ * in the file, so approving for a role that had no `writes` line wrote the
+ * grant into the NEXT role — with a comment saying who it was for. A human
+ * approved one thing and the file recorded another. In a permission tool that
+ * is the worst possible bug, and it is not exotic: a role with only `keys`
+ * declared is an ordinary config.
+ */
 export function applyGrant(toml, request, note = "") {
   const field = request.action === "read" ? "keys" : "writes";
-  const section = new RegExp(`(^\\[roles\\.${escapeRe(request.role)}\\]$)`, "m");
-  if (!section.test(toml)) throw new Error(`no [roles.${request.role}] section to grant into`);
+  const header = new RegExp(`^\\[roles\\.${escapeRe(request.role)}\\]\\s*$`, "m");
+  const at = header.exec(toml);
+  if (!at) throw new Error(`no [roles.${request.role}] section to grant into`);
 
-  const stamp = `# granted ${new Date().toISOString().slice(0, 10)} · asked ${request.times}×${note ? ` · "${note}"` : ""}`;
-  const line = new RegExp(`(^\\[roles\\.${escapeRe(request.role)}\\][\\s\\S]*?^${field}\\s*=\\s*)\\[([^\\]]*)\\]`, "m");
-  const m = line.exec(toml);
-  if (!m) throw new Error(`[roles.${request.role}] has no ${field} list to grant into`);
+  // The section runs from its header to the next table header, or to the end.
+  const from = at.index + at[0].length;
+  const next = /^\[[^\]]+\]\s*$/m.exec(toml.slice(from));
+  const to = next ? from + next.index : toml.length;
+  const section = toml.slice(from, to);
+
+  const line = new RegExp(`^(${field}\\s*=\\s*)\\[([^\\]]*)\\]`, "m");
+  const m = line.exec(section);
+  if (!m)
+    throw new Error(
+      `[roles.${request.role}] has no ${field} list to grant into. ` +
+      `Add \`${field} = []\` to that section first — seisin will not write it into another role's block.`
+    );
 
   const items = (m[2].match(/"[^"]*"/g) ?? []).map((s) => s.slice(1, -1));
   if (items.includes(request.grant)) return { toml, changed: false };
 
+  const stamp = `# granted ${new Date().toISOString().slice(0, 10)} · asked ${request.times}×` +
+                `${note ? ` · "${cleanReason(note)}"` : ""}`;
   const body = [...items, request.grant]
     .map((v) => `  "${v}"${v === request.grant ? `,   ${stamp}` : ","}`)
     .join("\n")
-    .replace(/,(\s*#[^\n]*)?$/, "$1");   // the last entry takes no trailing comma
+    .replace(/,(\s*#[^\n]*)?$/, "$1");
 
-  return { toml: toml.replace(line, `$1[\n${body}\n]`), changed: true };
+  const edited = section.replace(line, `$1[\n${body}\n]`);
+  return { toml: toml.slice(0, from) + edited + toml.slice(to), changed: true };
+}
+
+/**
+ * The approver's own words, made safe to put in a config file.
+ *
+ * A reason is free text typed by a person, and a person can be talked into
+ * typing something — "paste this as the reason" is a plausible thing for an
+ * agent to suggest. Newlines in a comment would end the comment, and what
+ * follows is parsed as TOML. The strict parser rejects the result rather than
+ * widening anything, so the worst case is a config that no longer loads, but a
+ * permission file that can be broken by a sentence is still broken.
+ */
+export function cleanReason(s) {
+  return String(s ?? "")
+    .replace(/[\r\n\t]/g, " ")
+    .replace(/["\\]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 240);
 }
 
 function escapeRe(s) {
