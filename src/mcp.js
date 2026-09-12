@@ -123,6 +123,9 @@ const HANDLERS = {
         sandbox: settingsFor(cfg, r.name).filesystem,
       })),
       warnings: report.warnings,
+      // The blank parts of the map travel with it. A model that can see the
+      // policy and not its limits will confidently tell someone a file is safe.
+      limits: report.limits,
     };
   },
 

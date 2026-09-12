@@ -29,8 +29,31 @@ export function inspect(config, only = null, where = config.path) {
     roles: roles.map((r) => ({ name: r.name, writes: r.writes, keys: r.keys })),
     shared: sharedPaths(config, roles),
     warnings: warningsFor(config, roles),
+    limits: LIMITS,
   };
 }
+
+/**
+ * What the tool cannot do at all — as opposed to `warnings`, which are things
+ * wrong with *this* config.
+ *
+ * Kept apart on purpose. A limit printed as a warning reads as something the
+ * operator could fix, and after the third run it reads as nothing at all.
+ *
+ * These are the sentences someone needs before they trust the map on screen
+ * more than it deserves, so `check` prints them every time rather than behind a
+ * flag: the moment to learn that deletes are not covered is while you are
+ * looking at the policy, not afterwards.
+ */
+const LIMITS = [
+  {
+    kind: "unlink-uncovered",
+    headline: "a role can delete inside its own territory",
+    detail:
+      "writes and deletes are one permission to the kernel. denyUnlink is filed " +
+      "upstream (docs/upstream/denyUnlink.md); until it exists this is not covered.",
+  },
+];
 
 /**
  * Paths more than one role claims.

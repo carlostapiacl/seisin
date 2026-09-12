@@ -47,6 +47,14 @@ export function renderReport(report) {
     if (w.detail) lines.push(`  ${C.dim}${w.detail}${C.off}\n`);
     lines.push("\n");
   }
+
+  // Dim, and last: a standing limit is not an alarm, but it is not a footnote
+  // either — it is the part of the map that is blank.
+  for (const l of report.limits ?? []) {
+    lines.push(`  ${C.dim}${l.headline}${C.off}\n`);
+    if (l.detail) lines.push(`  ${C.dim}${l.detail}${C.off}\n`);
+    lines.push("\n");
+  }
   return lines.join("");
 }
 
