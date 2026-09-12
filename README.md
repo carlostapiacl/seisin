@@ -105,6 +105,18 @@ them rather than running unconfined, which is the right failure and an unhelpful
 apt install bubblewrap ripgrep socat      # or your distro's equivalent
 ```
 
+**On Ubuntu 24.04 and newer**, unprivileged user namespaces are off by default and
+bubblewrap needs one. Every run dies with `bwrap: No permissions to create new
+namespace`:
+
+```bash
+sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+```
+
+Worth knowing what this looks like when you hit it: seisin appears to deny
+*everything*, because the sandbox never starts. It is not a policy problem and
+no amount of editing `seisin.toml` will move it.
+
 **Inside a container** bubblewrap needs to create namespaces and mount `/proc`, which a
 default Docker container forbids. `--cap-add SYS_ADMIN --security-opt seccomp=unconfined`
 gets namespaces; mounting `/proc` needs `--privileged`. If you cannot grant that, run
@@ -392,8 +404,8 @@ This space already has good work, and seisin is not the first thing here:
 
 ## Status
 
-`0.1.0`, 89 tests. The suite runs on macOS and Linux, on Node 18/20/22, against
-the real sandbox and real commands — and CI fails if the sandbox half *skips*,
+`0.1.0`, 89 tests, all 89 passing on both macOS and Linux against the real
+sandbox and real commands, on Node 18/20/22 — and CI fails if the sandbox half *skips*,
 because a green run that quietly tested nothing looks exactly like a real one.
 The config format may still move before `1.0` — if it does, `seisin check` will
 tell you what changed.
