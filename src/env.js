@@ -21,6 +21,9 @@
  */
 export const BASE = [
   "PATH", "HOME", "USER", "LOGNAME", "SHELL", "PWD", "TMPDIR",
+  // Set explicitly by `run` in isolated mode, and carried here so a tool that
+  // reads them directly lands in the role's own home rather than the real one.
+  "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME",
   "TERM", "TERM_PROGRAM", "COLORTERM", "LANG", "LC_ALL", "LC_CTYPE", "TZ",
   "SSL_CERT_FILE", "SSL_CERT_DIR", "NODE_EXTRA_CA_CERTS",
 ];

@@ -131,6 +131,14 @@ const HANDLERS = {
   },
 
   seisin_explain({ role, action, target }) {
+    // The schema says enum: [read, write]. Nothing was checking, so anything
+    // that was not "read" fell into the write branch — including a typo, which
+    // would answer the wrong question confidently. A declared schema that is
+    // not enforced is documentation.
+    if (action !== "read" && action !== "write")
+      throw new Error(`action must be "read" or "write", got ${JSON.stringify(action)}`);
+    if (typeof target !== "string" || !target)
+      throw new Error("target must be a non-empty path");
     const cfg = config();
     if (!cfg.roles[role])
       return { error: `unknown role "${role}"`, known: Object.keys(cfg.roles) };
@@ -155,11 +163,17 @@ const HANDLERS = {
   },
 
   seisin_activity({ role, verdict, limit }) {
+    if (verdict !== undefined && !["allowed", "denied", "observed"].includes(verdict))
+      throw new Error(`verdict must be allowed, denied or observed, got ${JSON.stringify(verdict)}`);
+    const n = limit === undefined ? 30 : Number(limit);
+    if (!Number.isInteger(n) || n < 1 || n > 1000) throw new Error("limit must be 1..1000");
     const cfg = config();
-    return { entries: read(logPath(cfg.root), { role, verdict, limit: limit ?? 30 }) };
+    return { entries: read(logPath(cfg.root), { role, verdict, limit: n }) };
   },
 
   seisin_draft_grant({ number }) {
+    if (!Number.isInteger(Number(number)) || Number(number) < 1)
+      throw new Error("number must be a positive integer from seisin_requests");
     const cfg = config();
     const req = pending(requestsPath(cfg.root))[Number(number) - 1];
     if (!req) throw new Error(`no pending request #${number}`);
@@ -245,6 +259,13 @@ export function serveMcp(version = "0.0.0", input = process.stdin, output = proc
 
   input.on("data", (chunk) => {
     buffer += chunk;
+    // A megabyte with no newline in it is not a JSON-RPC message, it is a
+    // client — or something wearing one — filling this process's memory.
+    // spool.js already caps its input; this one did not.
+    if (buffer.length > 1_000_000) {
+      buffer = "";
+      return;
+    }
     let nl;
     while ((nl = buffer.indexOf("\n")) !== -1) {
       const line = buffer.slice(0, nl).trim();

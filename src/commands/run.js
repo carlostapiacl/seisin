@@ -11,7 +11,7 @@ import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
-import { settingsFor } from "../srt.js";
+import { settingsFor, roleHome } from "../srt.js";
 import { buildEnv } from "../env.js";
 import { spool, spoolPath, SOCK_ENV } from "../spool.js";
 import { secretsOf, redactor } from "../redact.js";
@@ -56,8 +56,17 @@ export function writeSettings(config, role, sock = null) {
 }
 
 export async function run(config, argv) {
+  /**
+   * Ours before the `--`, theirs after it.
+   *
+   * `argv.includes("--observe")` scanned the whole line, so `seisin run x --
+   * claude --observe` put seisin into observe mode over a flag that belonged to
+   * the agent. It is the same mistake the `--` separator was added to stop srt
+   * making with the agent's flags, made one layer up.
+   */
   const split = argv.indexOf("--");
   const role = argv[0];
+  const mine = split === -1 ? argv.slice(1) : argv.slice(1, split);
   const cmd = split === -1 ? argv.slice(1) : argv.slice(split + 1);
   if (!role || cmd.length === 0) throw new Error("usage: seisin run <role> -- <command...>");
   if (!config.roles[role])
@@ -85,13 +94,37 @@ export async function run(config, argv) {
 
   // The hook runs inside the child and has to know which role it is. These are
   // the only variables seisin injects, and none carries a secret.
-  const observe = argv.includes("--observe");
+  const observe = mine.includes("--observe");
   const { env, dropped } = buildEnv(process.env, config.roles[role]);
   env.SEISIN_ROLE = role;
   env.SEISIN_CONFIG = config.path;
   env[SOCK_ENV] = sockPath;
+
+  /**
+   * Isolated mode: point the toolchain at a home of this role's own.
+   *
+   * Granting `~/.claude` to every role is what made "its own folders" only
+   * true of the repo. A CLI that keeps session state — or a token — under the
+   * real home put it somewhere every other role could read and write.
+   *
+   * The XDG variables are set as well as HOME, because a tool that reads
+   * `XDG_CACHE_HOME` directly would otherwise still land in the real one, and
+   * that failure is silent: the run works and the isolation does not.
+   */
+  if (config.isolate) {
+    const home = roleHome(config, role);
+    for (const d of [home, join(home, ".config"), join(home, ".local", "share"),
+                     join(home, ".local", "state"), join(home, ".cache"), join(home, "tmp")])
+      mkdirSync(d, { recursive: true });
+    env.HOME = home;
+    env.XDG_CONFIG_HOME = join(home, ".config");
+    env.XDG_DATA_HOME = join(home, ".local", "share");
+    env.XDG_STATE_HOME = join(home, ".local", "state");
+    env.XDG_CACHE_HOME = join(home, ".cache");
+    env.TMPDIR = join(home, "tmp");
+  }
   if (observe) env.SEISIN_OBSERVE = "1";
-  if (argv.includes("--debug-env")) err(`${C.dim}seisin: dropped ${dropped.join(" ")}${C.off}\n`);
+  if (mine.includes("--debug-env")) err(`${C.dim}seisin: dropped ${dropped.join(" ")}${C.off}\n`);
 
   err(
     `${C.dim}seisin: ${role} · writes ${settings.filesystem.allowWrite.length} path(s) · ` +

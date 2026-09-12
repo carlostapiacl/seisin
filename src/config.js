@@ -156,6 +156,12 @@ export function loadConfig(path) {
     root: dirname(path), path, keyDirs,
     allowedDomains: parsed.network?.allow ?? [],
     runtimeWrites: runtimeWrites === undefined ? undefined : asArray(runtimeWrites, "runtime.writes"),
+    // `[runtime] isolate = true` gives each role its own HOME and TMPDIR
+    // instead of the real ones. Off by default because turning it on makes
+    // every CLI in the box see an empty home — which means logging in again,
+    // and a permission tool that silently signs you out is a permission tool
+    // people uninstall. See srt.js.
+    isolate: parsed.runtime?.isolate === true,
     redact: parsed.runtime?.redact,
     scanIgnore: asArray(parsed.scan?.ignore, "scan.ignore"),
     roles: {},

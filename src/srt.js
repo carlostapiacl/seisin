@@ -14,7 +14,7 @@
  *      error, which is most of what this file is for.
  */
 import { join } from "node:path";
-import { STATE_DIR } from "./layout.js";
+import { STATE_DIR, CONFIG_NAME } from "./layout.js";
 import { homedir, tmpdir } from "node:os";
 import { realpathSync } from "node:fs";
 
@@ -42,6 +42,18 @@ import { realpathSync } from "node:fs";
  * to find out the hard way. Note what is NOT here — the home directory, the
  * shell profile, anything under the repo. Scratch space is not a back door.
  */
+/**
+ * Where a role's home and scratch live when `[runtime] isolate = true`.
+ *
+ * Under the state directory but outside the repo tree the roles write, so one
+ * role cannot reach another's. Kept out of `.seisin/` inside the repo because
+ * that whole directory is denyWrite now.
+ */
+export function roleHome(config, role) {
+  const id = Buffer.from(config.root).toString("base64url").slice(-16);
+  return join(tmpdir(), `seisin-home-${id}`, role);
+}
+
 export const RUNTIME_WRITES = [
   "~/.claude", "~/.codex",                 // the CLIs that keep state under their own name
   "~/.local/share", "~/.local/state",      // XDG data and state: where most others log
@@ -82,6 +94,8 @@ export function settingsFor(config, roleName, spool = null) {
   if (!role) throw new Error(`unknown role "${roleName}". Known: ${Object.keys(config.roles).join(", ")}`);
 
   const abs = (p) => (p.startsWith("/") ? p : join(config.root, p));
+  const isolated = config.isolate === true;
+  const home = isolated ? roleHome(config, roleName) : null;
   const denyRead = [];
   const allowRead = [];
 
@@ -90,8 +104,26 @@ export function settingsFor(config, roleName, spool = null) {
   // one, which keeps the ordinary single-directory config short.
   const dirs = config.keyDirs ?? [];
   for (const dir of dirs) denyRead.push(abs(dir));
-  for (const key of role.keys)
-    allowRead.push(key.includes("/") ? abs(key) : abs(join(dirs[0] ?? ".", key)));
+  for (const key of role.keys) {
+    const path = key.includes("/") ? abs(key) : abs(join(dirs[0] ?? ".", key));
+    // A key has to live in a declared key directory. Without this check a
+    // slash in the name made the path relative to the repo root instead, so
+    // `keys = ["../.ssh/id_rsa"]` re-opened a read outside `.secrets` — which
+    // is a read grant written in the one list nobody reads twice, because
+    // everything in it is supposed to be a key.
+    const inside = dirs.some((d) => {
+      const root = abs(d);
+      return path === root || path.startsWith(root.endsWith("/") ? root : root + "/");
+    });
+    if (!inside)
+      throw new Error(
+        `keys = "${key}" for role ${role.name} resolves to ${path}, outside every [keys] dir ` +
+        `(${dirs.join(", ") || "none declared"}).\n` +
+        `  A key must live in a declared key directory. To use another location, declare it: ` +
+        `[keys] dir = ["${dirs[0] ?? ".secrets"}", "<the other one>"].`
+      );
+    allowRead.push(path);
+  }
 
   return {
     network: {
@@ -112,9 +144,39 @@ export function settingsFor(config, roleName, spool = null) {
         // the log and the queue writable by the process they are a record of.
         // The hook now sends its lines to the parent over a socket and the
         // parent holds the file. See spool.js.
-        ...(config.runtimeWrites ?? RUNTIME_WRITES).map(expand),
+        // Isolated: this role's own home and scratch, and nothing shared.
+        // Otherwise: the real ~/.claude, ~/.cache and /tmp, which every role
+        // shares — convenient, and the reason `isolate` exists.
+        ...(isolated
+          ? [home, join(home, ".config"), join(home, ".local"), join(home, ".cache"), join(home, "tmp")]
+          : (config.runtimeWrites ?? RUNTIME_WRITES).map(expand)),
       ],
-      denyWrite: [],
+      /**
+       * The confinement's own paperwork, never writable — not even by a role
+       * that was granted the whole repo.
+       *
+       * `writes = ["**"]` is a reasonable thing to write for a solo agent, and
+       * it used to hand that agent its own policy file: rewrite seisin.toml,
+       * get a wider territory on the next run. Measured against the real
+       * kernel, not reasoned about. denyWrite wins over allowWrite in the
+       * profile, so this holds however wide the territory gets.
+       *
+       * The key directories are already unreachable through denyRead — the
+       * runtime turns a read-denied path into an unlink/create denial too — but
+       * they are named here as well, because relying on that coupling is
+       * relying on someone else's implementation detail staying put.
+       */
+      denyWrite: [
+        abs(config.path ?? CONFIG_NAME),
+        abs(STATE_DIR),
+        ...dirs.map(abs),
+        // The audit socket lives under the scratch space every role can write,
+        // so without this the agent could simply unlink the channel that
+        // records it. Connecting is `network-outbound` and deleting is
+        // `file-write-unlink` — different operations, so denying the second
+        // leaves the first working.
+        ...(spool ? [spool] : []),
+      ],
     },
   };
 }
