@@ -304,8 +304,15 @@ seisin watch                     # follow it live
 ```
 
 One append-only JSONL under `.seisin/`, and that is the whole storage design — no daemon, no
-socket, no database. `watch` is a tail. The file is the shared state, so anything that can read
-it can watch it.
+database. `watch` is a tail. The file is the shared state, so anything that can read it can
+watch it.
+
+**The agent cannot reach that file.** `.seisin/` is not in any role's territory, because a
+record the recorded process can edit is not a record. The hook sends each line to `seisin run`
+over a unix socket granted by path, and the parent does the writing — so the only verb
+available from inside the box is *append one line*: no seek, no truncate, no unlink. What a
+hostile agent can still do is send lines, so it can add noise to its own history. What it can
+no longer do is change what is already there.
 
 That log is also what makes the sandbox legible at all. When the kernel refuses a write, the
 only thing that surfaces is `Operation not permitted` on the child's stderr: no path, no
