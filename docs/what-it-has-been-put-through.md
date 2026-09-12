@@ -95,6 +95,26 @@ a → the real ~/.claude    cannot see it
 a → b's home              blocked
 ```
 
+### Review 3 — the same reviewer, on the fixed version
+
+Confirmed the seven above closed, then found eight more.
+
+| | what it was |
+|---|---|
+| **A policy could be cancelled further down the file** | duplicate tables and duplicate keys both parsed, last one wins. A config reads restrictive at the top and is undone forty lines below; the reviewer reads the first block |
+| **A key that is a symlink escaped its directory** | the check compared text and the sandbox enforces on the destination. `.secrets/github-token.txt -> ~/.ssh/id_rsa` was a read grant on the ssh key. Measured: the read succeeded through the link *and* through the real path |
+| **`check` mislabelled what it could not enforce** | every settingsFor error was reported as a glob problem, sending the reader to the wrong line — and it exited 0 on a config `run` would refuse |
+| **The audit socket was at a guessable path** | already unlinkable-proof, but any other process of this user could connect and add lines |
+| **Territory outside the repo was silent** | supported on purpose, and a different promise from "this repo, divided" |
+| **`env = ["GITHUB_TOKEN"]` was silent** | the one place a secret reaches a role without being a declared key |
+| **Reading was wide open** | "read anything except the declared key directories" leaves `~/.ssh`, `~/.aws`, `~/.npmrc`, `~/.config/gh` readable to every role |
+| **Isolated mode was off by default** | so the shared-home fix applied only to people who switched it on |
+
+The last two are the threat-model question rather than bugs, and they are
+answered the same way: `[runtime] isolate = true` now closes reading as well as
+writing, and it stays opt-in. Measured both ways — `~/.ssh` reads fine by
+default and comes back `Operation not permitted` isolated.
+
 ## Still open, and named
 
 - **Deleting inside your own territory.** `rm` in a role's own folders
@@ -104,10 +124,15 @@ a → b's home              blocked
 - **Forgery in the audit trail.** A hostile agent can still *send* lines, so it
   can pad its own history. It cannot erase or alter what is there. Tampering is
   closed; forgery is not.
-- **Isolated mode is off by default**, so the shared-home finding is fixed only
-  for people who turn it on. On, every CLI in the box sees an empty home and
-  asks to log in again — a permission tool that silently signs you out is one
-  people uninstall, so it is a choice rather than a default.
+- **Isolated mode is off by default.** With it off, reading is wide — `~/.ssh`
+  and `~/.aws` are ordinary files to every role — and `~/.claude`, `~/.cache`
+  and `/tmp` are shared between them. With it on, every CLI in the box sees an
+  empty home and asks to log in again, and a permission tool that silently signs
+  you out is one people uninstall. So it is a choice, made in the config, rather
+  than a default. Which of the two you want *is* the threat model.
+- **No resource limits.** CPU, memory, PID count and disk are not bounded. A
+  runaway agent can still exhaust the machine; the boundary is about what it
+  can reach, not how much of it there is.
 - **Windows.** The runtime has a backend. seisin has never been pointed at it.
 - **No fuzzing.** The parser has a property test over a fixed corpus, which is
   not the same thing.
