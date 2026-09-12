@@ -947,6 +947,25 @@ test("wiring merges into settings that already exist", (t) => {
   assert.ok(JSON.stringify(after).includes("mio"), "se llevó puesto el hook de otro");
 });
 
+test("a role name with a dot is a typo, and says so at config time", (t) => {
+  // En TOML el punto separa claves, así que [roles.mimo-v2.5-free-1] declara un
+  // rol llamado "mimo-v2". `check` imprimía una lista de nombres plausibles sin
+  // quejarse y el fallo llegaba después como `unknown role`. Quince de dieciocho
+  // corridas de alguien murieron por esto; las tres que sobrevivieron eran los
+  // nombres sin punto. No hay ambigüedad que preservar: una tabla anidada bajo
+  // [roles] no significa nada acá.
+  const box = mkdtempSync(join(tmpdir(), "seisin-dot-"));
+  t.after(() => rmSync(box, { recursive: true, force: true }));
+  const f = join(box, "seisin.toml");
+
+  writeFileSync(f, '[roles.mimo-v2.5-free-1]\nwrites = ["x/**"]\nkeys = []\n');
+  assert.throws(() => loadConfig(f), /not "mimo-v2\.5-free-1"/);
+  assert.throws(() => loadConfig(f), /mimo-v2-5-free-1/);   // propone el nombre que sí funciona
+
+  writeFileSync(f, '[roles.mimo-v2-5-free-1]\nwrites = ["x/**"]\nkeys = []\n');
+  assert.deepEqual(Object.keys(loadConfig(f).roles), ["mimo-v2-5-free-1"]);
+});
+
 /* ── lo que el registro dice de la política ───────────────────────────── */
 
 /** Un registro de mentira con la forma que escribe el hook. */
