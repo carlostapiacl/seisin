@@ -20,3 +20,28 @@ export const STATE_DIR = ".seisin";
 
 /** The append-only record of every decision, inside STATE_DIR. */
 export const LOG_NAME = "log.jsonl";
+
+/**
+ * A value, written as a TOML string — or refused.
+ *
+ * The subset has no escapes, so a quote or a newline cannot be represented at
+ * all. Every place that emits config went its own way about this: applyGrant
+ * checked, init did not, and renderObserved built lines out of log targets,
+ * which is text an agent chose. One rule, in one place, so the next emitter
+ * inherits it instead of rediscovering it.
+ */
+export function tomlString(s) {
+  const v = String(s);
+  if (/["\r\n]/.test(v))
+    throw new Error(
+      `cannot write ${JSON.stringify(v)} into ${CONFIG_NAME}: the format has no way to ` +
+      `represent a quote or a newline inside a value.`);
+  return `"${v}"`;
+}
+
+/** A role name, written as a table header — or refused. */
+export function tomlName(s) {
+  if (!/^[A-Za-z0-9_-]+$/.test(String(s)))
+    throw new Error(`cannot write role name ${JSON.stringify(s)}: letters, digits, _ and - only.`);
+  return String(s);
+}

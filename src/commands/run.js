@@ -99,7 +99,27 @@ export async function run(config, argv) {
      */
     if (!entry || typeof entry !== "object") return;
 
-    if (to === "log") return void append(logPath(config.root), { ...entry, role });
+    if (to === "log") {
+      // The same treatment the queue already got. The role was overwritten but
+      // everything else was passed through, so a process inside the box could
+      // write "allowed" lines for paths it never touched — which would not move
+      // the boundary, but would move `review`, and `init --from-observations`
+      // builds a policy out of exactly this.
+      if (entry.action !== "read" && entry.action !== "write") return;
+      if (!["allowed", "denied", "observed"].includes(entry.verdict)) return;
+      if (typeof entry.target !== "string" || !entry.target.trim()) return;
+      return void append(logPath(config.root), {
+        at: entry.at,
+        role,
+        tool: String(entry.tool ?? "").slice(0, 40),
+        action: entry.action,
+        kind: entry.kind === "key" ? "key" : "file",
+        target: entry.target.slice(0, 1000),
+        verdict: entry.verdict,
+        owners: ownersOf(config, entry.target),      // recomputed, never taken
+        reason: String(entry.reason ?? "").slice(0, 500),
+      });
+    }
 
     if (entry.action !== "read" && entry.action !== "write") return;
     if (typeof entry.target !== "string" || !entry.target.trim()) return;

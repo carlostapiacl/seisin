@@ -5,7 +5,8 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseToml } from "../src/config.js";
+import { parseToml, loadConfig } from "../src/config.js";
+import { tomlString, tomlName } from "../src/layout.js";
 import { covers, ownersOf, keyHolders, explain } from "../src/owners.js";
 import { realpathSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -737,7 +738,7 @@ test("a grant the config cannot represent is refused, not written", () => {
   // es su propia forma de estar roto.
   const base = '[roles.a]\nwrites = ["src/**"]\nkeys   = []\n';
   assert.throws(() => applyGrant(base, { role: "a", action: "write", grant: 'src/x"/**', times: 1 }, ""),
-    /no way to write a quote/);
+    /no way to represent a quote/);
   assert.ok(applyGrant(base, { role: "a", action: "write", grant: "src/ok/**", times: 1 }, "").changed);
 });
 
@@ -846,6 +847,49 @@ test("scan reports a symlink that leaves the repo, and does not open it", (t) =>
   assert.match(link.file, /suelto/);
   assert.match(link.shape, /id_rsa/);        // nombra el destino
   assert.ok(!/BEGIN OPENSSH/.test(JSON.stringify(hits)), "leyó el destino");
+});
+
+test("a table named __proto__ cannot hand its settings to every other role", () => {
+  // El peor tipo: invisible en revisión humana. [roles.__proto__] no aparece en
+  // Object.keys(roles), así que `check` imprime los roles que existen y no dice
+  // nada — mientras cada uno hereda lo que esa tabla declaró. Un config que se
+  // lee `[roles.frontend]` sin writes salía del parser dueño del repo entero y
+  // con GITHUB_TOKEN en la mano.
+  for (const nombre of ["__proto__", "prototype", "constructor"])
+    assert.throws(() => parseToml(`[roles.${nombre}]\nwrites = ["**"]\n`), /reserved name/, nombre);
+  assert.throws(() => parseToml('[roles.a]\nconstructor = ["x"]\n'), /reserved name/);
+
+  // Y el prototipo global quedó intacto tras todos esos intentos.
+  assert.equal({}.writes, undefined);
+  assert.deepEqual(Object.keys(parseToml('[roles.a]\nwrites = ["src/**"]\nkeys = []\n').roles), ["a"]);
+});
+
+test("a role never inherits a setting it did not write down", (t) => {
+  // La segunda defensa, sola. Si alguna vez se escapa un nombre, loadConfig
+  // sigue leyendo solo propiedades propias: dos frenos independientes, porque
+  // lo que evitan es invisible — el archivo se lee de una forma y la política
+  // es otra.
+  Object.prototype.writes = ["**"];
+  Object.prototype.env = ["GITHUB_TOKEN"];
+  t.after(() => { delete Object.prototype.writes; delete Object.prototype.env; });
+
+  const box = mkdtempSync(join(tmpdir(), "seisin-pp-"));
+  t.after(() => rmSync(box, { recursive: true, force: true }));
+  writeFileSync(join(box, "seisin.toml"), "[roles.frontend]\nkeys = []\n");
+
+  const c = loadConfig(join(box, "seisin.toml"));
+  assert.deepEqual(c.roles.frontend.writes, []);
+  assert.deepEqual(c.roles.frontend.env, []);
+});
+
+test("one rule decides what can be written into the config, everywhere", () => {
+  // applyGrant lo comprobaba, init no, y renderObserved armaba líneas con
+  // targets del registro — texto que eligió el agente.
+  assert.throws(() => tomlString('src/x"'), /no way to represent/);
+  assert.throws(() => tomlString("src/x\n[roles.b]"), /no way to represent/);
+  assert.equal(tomlString("src/web/**"), '"src/web/**"');
+  assert.throws(() => tomlName("a b"), /letters, digits/);
+  assert.equal(tomlName("dev-plat"), "dev-plat");
 });
 
 /* ── lo que el registro dice de la política ───────────────────────────── */
