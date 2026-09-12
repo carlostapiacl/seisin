@@ -966,6 +966,26 @@ test("a role name with a dot is a typo, and says so at config time", (t) => {
   assert.deepEqual(Object.keys(loadConfig(f).roles), ["mimo-v2-5-free-1"]);
 });
 
+test("check asks when a role cannot reach any model", () => {
+  // El mismo defecto tres veces, reportado por tres personas: una lista de lo
+  // que los agentes necesitan, escrita en un lugar que no sabe qué agente va a
+  // correr. La última vez costó seis corridas de un banco que terminaron en
+  // ocho segundos con un 403 — que en una tabla de resultados se lee como "este
+  // modelo no puede con la tarea".
+  const mk = (dominios) => ({ root: "/repo", path: "/repo/seisin.toml", keyDirs: [],
+    allowedDomains: dominios,
+    roles: { dev: { name: "dev", writes: ["src/**"], keys: [], network: null } } });
+  const avisa = (c) => inspect(c, null, "x").warnings.some((w) => w.kind === "no-model-endpoint");
+
+  assert.ok(avisa(mk(["opencode.ai", "*.opencode.ai", "pypi.org"])), "la lista del banco pasó");
+  assert.ok(avisa(mk([])), "una lista vacía pasó");
+  assert.ok(!avisa(mk(["api.anthropic.com", "github.com"])), "avisó sobre una lista correcta");
+  // per-role gana sobre la global
+  const porRol = mk([]);
+  porRol.roles.dev.network = ["openrouter.ai"];
+  assert.ok(!avisa(porRol));
+});
+
 /* ── lo que el registro dice de la política ───────────────────────────── */
 
 /** Un registro de mentira con la forma que escribe el hook. */
