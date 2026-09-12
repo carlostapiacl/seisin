@@ -74,12 +74,37 @@ if (roles.length === 0) {
   process.exit(1);
 }
 
+/**
+ * One path, rewritten from the repository root to `relativeTo`.
+ *
+ * The `..` escape is the whole point. A territory does not have to stay inside
+ * the cell — ours does not: a role owns its work tree under the cell and its
+ * handover note in the engine's log directory one level up. The first version
+ * rewrote what fell under the base and returned everything else unchanged,
+ * which put two different bases in one file. Both entries read as correct and
+ * the file could not be: from the cell, the root-relative one does not exist.
+ *
+ * Nothing failed. The role simply did not get the territory it was granted, and
+ * the only symptom was whatever the agent did when a write it expected to work
+ * came back refused — which is the exact failure mode this tool exists to end.
+ */
+const escapesUsed = [];
+
 const strip = (p) => {
   const fromRoot = root && p.startsWith(root) ? p.slice(root.length).replace(/^\/+/, "") : p;
   if (!relativeTo) return fromRoot;
   const base = relativeTo.replace(/^\/+|\/+$/g, "");
   if (fromRoot === base) return ".";
-  return fromRoot.startsWith(base + "/") ? fromRoot.slice(base.length + 1) : fromRoot;
+  if (fromRoot.startsWith(base + "/")) return fromRoot.slice(base.length + 1);
+
+  // Outside the base: walk up as far as the common prefix, then down.
+  const from = base.split("/").filter(Boolean);
+  const to = fromRoot.split("/").filter(Boolean);
+  let i = 0;
+  while (i < from.length && i < to.length && from[i] === to[i]) i++;
+  const out = [...Array(from.length - i).fill(".."), ...to.slice(i)].join("/");
+  escapesUsed.push(`${fromRoot}  →  ${out}`);
+  return out;
 };
 
 const out = [
@@ -101,6 +126,8 @@ else out.push(
 // never reaches the policy this file is about.
 out.push(
   `[network]`,
+  `# This list is Claude's. A role running a different agent needs that agent's`,
+  `# host added, or it sits in a perfect territory unable to reach its own model.`,
   `allow = [`,
   `  "api.anthropic.com", "*.anthropic.com",`,
   `  "github.com", "*.github.com",`,
@@ -117,6 +144,16 @@ for (const role of roles) {
   out.push(`keys   = [${own.map((k) => `"${k}"`).join(", ")}]`);
   if (noGit.has(role)) out.push(`# no git in the source config: this role only reads and writes its own notes`);
   out.push(``);
+}
+
+// Say it where the reviewer is already looking. A territory that leaves the
+// cell is a real thing to declare, and a `..` that appears without comment is
+// the kind of line someone deletes as a typo.
+if (escapesUsed.length) {
+  out.splice(5, 0,
+    `# ${escapesUsed.length} path(s) reach outside ${relativeTo} and are written as escapes:`,
+    ...escapesUsed.map((e) => `#   ${e}`),
+    ``);
 }
 
 process.stdout.write(out.join("\n"));
