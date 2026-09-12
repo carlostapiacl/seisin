@@ -52,6 +52,6 @@ Sleep 3500ms
 # Encode the frames vhs left behind:
 #
 #   cd ~/seisin-demo
-#   ffmpeg -y -framerate 50 -i frames/frame-cursor-%05d.png \
+#   ffmpeg -y -framerate 50 -i frames/frame-text-%05d.png \
 #     -vf "fps=20,scale=1100:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer" \
 #     demo.gif
