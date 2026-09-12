@@ -31,5 +31,10 @@
   },
   "scripts": {
     "test": "node --test test/*.test.js"
+  },
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./package.json": "./package.json"
   }
 }

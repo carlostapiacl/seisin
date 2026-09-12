@@ -1,0 +1,127 @@
+/**
+ * Everything that decides how output looks, and nothing that decides anything else.
+ *
+ * This exists because the commands used to do both. A function that computes a
+ * verdict and paints it in the same breath can only be tested by running the
+ * binary and matching a regular expression against its stdout — which is what
+ * the suite was doing eight times, and which tests the renderer as much as the
+ * logic. Split apart, the decision returns data and the test reads a field.
+ *
+ * Nothing here reads config, touches the filesystem, or exits. If a change to
+ * this file could alter what seisin allows, it is in the wrong file.
+ */
+
+/**
+ * ANSI codes, or empty strings when nobody is watching.
+ *
+ * Resolved once at import: a pipe does not become a terminal halfway through a
+ * command. `NO_COLOR` is honoured because this prints into logs and CI.
+ */
+export const C =
+  process.stdout.isTTY && !process.env.NO_COLOR
+    ? {
+        dim: "\x1b[2m", b: "\x1b[1m", off: "\x1b[0m",
+        red: "\x1b[31m", green: "\x1b[32m", yellow: "\x1b[33m", blue: "\x1b[34m",
+      }
+    : { dim: "", b: "", off: "", red: "", green: "", yellow: "", blue: "" };
+
+export const out = (s) => process.stdout.write(s);
+export const err = (s) => process.stderr.write(s);
+
+/* ── the map ──────────────────────────────────────────────────────────── */
+
+/** The `check` report, as text. Takes the object `inspect()` returns. */
+export function renderReport(report) {
+  const lines = [`\n${C.b}${report.where}${C.off}\n\n`];
+  const width = Math.max(...report.roles.map((r) => r.name.length), 4);
+
+  for (const r of report.roles) {
+    const writes = r.writes.join(" ") || `${C.dim}nothing${C.off}`;
+    const keys = r.keys.length ? r.keys.join(" ") : `${C.dim}none${C.off}`;
+    lines.push(`  ${C.b}${r.name.padEnd(width)}${C.off}  ${C.blue}writes${C.off} ${writes}\n`);
+    lines.push(`  ${" ".repeat(width)}  ${C.green}keys${C.off}   ${keys}\n\n`);
+  }
+
+  for (const w of report.warnings) {
+    lines.push(`  ${C.yellow}${w.headline}${C.off}\n`);
+    if (w.detail) lines.push(`  ${C.dim}${w.detail}${C.off}\n`);
+    lines.push("\n");
+  }
+  return lines.join("");
+}
+
+/* ── one verdict ──────────────────────────────────────────────────────── */
+
+/** The `explain` answer, as text. Takes what `owners.explain()` returns. */
+export function renderVerdict(role, action, target, verdict) {
+  const head = verdict.allowed ? `${C.green}allowed${C.off}` : `${C.yellow}denied${C.off}`;
+  return `\n  ${head}  ${C.b}${role}${C.off} ${action} ${target}\n  ${C.dim}${verdict.reason}${C.off}\n\n`;
+}
+
+/* ── the log ──────────────────────────────────────────────────────────── */
+
+/**
+ * One log entry, one line, always the same shape.
+ *
+ * Denials are amber and not red on purpose: a role stopped at its own border is
+ * the system working, and painting routine correctness as an error teaches
+ * people to stop reading the colour.
+ */
+export function renderEntry(e) {
+  const mark =
+    e.verdict === "denied" ? `${C.yellow}denied ${C.off}`
+    : e.verdict === "observed" ? `${C.dim}seen   ${C.off}`
+    : `${C.green}allowed${C.off}`;
+  const owners =
+    e.owners?.length && e.verdict === "denied" ? `  ${C.dim}→ ${e.owners.join(", ")}${C.off}` : "";
+  return `  ${C.dim}${(e.at ?? "").slice(11, 19)}${C.off}  ${mark}  ${C.b}${e.role}${C.off} ${e.action} ${e.target}${owners}\n`;
+}
+
+/* ── the scan ─────────────────────────────────────────────────────────── */
+
+/**
+ * Two lists, never one.
+ *
+ * A provider-issued string and a line that merely mentions a password are
+ * different claims. Merging them is how a scanner earns a reputation for crying
+ * wolf, and the first real run of this one returned 200 findings of which 2
+ * mattered. The split is the whole reason the output is readable.
+ */
+export function renderScan(result, keyDirs) {
+  const { certain, review, skipped, truncated } = result;
+  const where = keyDirs.length ? keyDirs.join(", ") : `${C.yellow}nowhere — [keys] dir is unset${C.off}`;
+  const lines = [`\n  ${C.dim}protected: ${where}${C.off}\n\n`];
+
+  if (certain.length === 0 && review.length === 0) {
+    lines.push(`  ${C.green}nothing credential-shaped outside the declared directories${C.off}\n\n`);
+    return lines.join("");
+  }
+
+  if (certain.length) {
+    lines.push(`  ${C.red}${certain.length} credential(s)${C.off} — these shapes are issued, not written by accident\n\n`);
+    for (const h of certain) lines.push(`    ${C.b}${h.file}${C.off}${C.dim}:${h.line}${C.off}  ${h.shape}\n`);
+    lines.push("\n");
+  }
+
+  if (review.length) {
+    const byFile = new Map();
+    for (const h of review) byFile.set(h.file, (byFile.get(h.file) ?? 0) + 1);
+    lines.push(`  ${C.yellow}${review.length} line(s) to look at${C.off} in ${byFile.size} file(s) — a secret-shaped name with a literal value\n\n`);
+    for (const [file, n] of [...byFile].slice(0, 15))
+      lines.push(`    ${file}${C.dim}${n > 1 ? `  ×${n}` : ""}${C.off}\n`);
+    if (byFile.size > 15) lines.push(`    ${C.dim}… and ${byFile.size - 15} more file(s)${C.off}\n`);
+    lines.push("\n");
+  }
+
+  // What was thrown away matters as much as what was kept: it is the only way
+  // to tell a quiet scan from a broken one.
+  const quiet = [];
+  if (skipped.reference) quiet.push(`${skipped.reference} value(s) read from the environment`);
+  if (skipped.placeholder) quiet.push(`${skipped.placeholder} placeholder(s)`);
+  if (skipped.ignored) quiet.push(`${skipped.ignored} ignored path(s)`);
+  if (skipped.protectedDirs) quiet.push(`${skipped.protectedDirs} inside declared key dir(s)`);
+  if (quiet.length) lines.push(`  ${C.dim}not reported: ${quiet.join(" · ")}${C.off}\n`);
+  if (truncated) lines.push(`  ${C.yellow}stopped at the limit — there are more${C.off}\n`);
+  lines.push(`  ${C.dim}seisin does not move these. Where a credential lives is your call.${C.off}\n\n`);
+  return lines.join("");
+}

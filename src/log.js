@@ -12,12 +12,12 @@
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { STATE_DIR, LOG_NAME } from "./layout.js";
 
-export const LOG_DIR = ".seisin";
-export const LOG_NAME = "log.jsonl";
+export { STATE_DIR, LOG_NAME } from "./layout.js";
 
 export function logPath(root) {
-  return join(root, LOG_DIR, LOG_NAME);
+  return join(root, STATE_DIR, LOG_NAME);
 }
 
 /**
