@@ -32,7 +32,7 @@ export function covers(glob, path) {
  * A path that climbs above the repo root comes back as `..`, which owns
  * nothing and matches nothing. Outside the repo has no owner by definition.
  */
-function normalize(s) {
+export function normalize(s) {
   const flat = s.replace(/\\/g, "/").replace(/\/+/g, "/").replace(/\/+$/, "");
   const up = [];
   for (const part of flat.split("/")) {

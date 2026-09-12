@@ -97,10 +97,11 @@ export function renderEntry(e) {
  */
 export function renderScan(result, keyDirs) {
   const { certain, review, skipped, truncated } = result;
+  const links = result.links ?? [];
   const where = keyDirs.length ? keyDirs.join(", ") : `${C.yellow}nowhere — [keys] dir is unset${C.off}`;
   const lines = [`\n  ${C.dim}protected: ${where}${C.off}\n\n`];
 
-  if (certain.length === 0 && review.length === 0) {
+  if (certain.length === 0 && review.length === 0 && links.length === 0) {
     lines.push(`  ${C.green}nothing credential-shaped outside the declared directories${C.off}\n\n`);
     return lines.join("");
   }
@@ -118,6 +119,15 @@ export function renderScan(result, keyDirs) {
     for (const [file, n] of [...byFile].slice(0, 15))
       lines.push(`    ${file}${C.dim}${n > 1 ? `  ×${n}` : ""}${C.off}\n`);
     if (byFile.size > 15) lines.push(`    ${C.dim}… and ${byFile.size - 15} more file(s)${C.off}\n`);
+    lines.push("\n");
+  }
+
+  // Links are their own finding, not a line with a secret-shaped name in it.
+  // What is reported is that the link leaves the repo — the destination is
+  // named and never opened, because the point is that it exists.
+  if (links.length) {
+    lines.push(`  ${C.yellow}${links.length} symlink(s) out of the repo${C.off} — present in the tree, stored somewhere else\n\n`);
+    for (const h of links.slice(0, 15)) lines.push(`    ${C.b}${h.file}${C.off} ${C.dim}→${C.off} ${h.shape}\n`);
     lines.push("\n");
   }
 

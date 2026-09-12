@@ -26,7 +26,7 @@ import { serveMcp, TOOLS, HANDLERS, PROTOCOLS } from "../src/mcp.js";
 import { serve } from "../src/serve.js";
 import { review } from "../src/review.js";
 import { spool, send, flush } from "../src/spool.js";
-import { settingsFor, RUNTIME_WRITES } from "../src/srt.js";
+import { settingsFor, RUNTIME_WRITES, roleHomeRoot } from "../src/srt.js";
 
 const cfg = {
   root: "/repo",
@@ -786,6 +786,66 @@ test("isolated mode closes reading too, not just writing", () => {
   // y sin isolate sigue siendo abierto, que es lo documentado
   const abierto = settingsFor({ ...cfg, isolate: false }, "a").filesystem.denyRead;
   assert.ok(!abierto.some((d) => d.endsWith("/.ssh")));
+});
+
+test("isolated roles cannot read each other's homes, not just write", () => {
+  // El hallazgo más incómodo de todos: el documento de auditoría decía que esto
+  // estaba cerrado porque lo único que medí fue la ESCRITURA. La lectura estaba
+  // abierta, así que `a` leía el token de sesión que la CLI de `b` acababa de
+  // escribir. Mismo patrón que los directorios de claves: negar el padre,
+  // permitir el propio.
+  const cfg = { root: "/repo", path: "/repo/seisin.toml", keyDirs: [], allowedDomains: [], isolate: true,
+                roles: { a: { name: "a", writes: ["src/**"], keys: [], network: null },
+                         b: { name: "b", writes: ["src/**"], keys: [], network: null } } };
+  const fa = settingsFor(cfg, "a").filesystem;
+  // realOrSelf en el código, lo mismo acá: la raíz no existe en disco para un
+  // repo de mentira, y realpathSync sobre algo inexistente tira.
+  const raiz = fa.denyRead.find((p) => p.includes("seisin-home"));
+  assert.ok(raiz, "la raíz de los homes no está negada");
+  assert.ok(fa.allowRead.some((p) => p === join(raiz, "a")), "el rol no recupera el suyo");
+  assert.ok(!fa.allowRead.some((p) => p === join(raiz, "b")), "alcanza el de otro");
+});
+
+test("the audit socket's directory is denied, not just the socket", () => {
+  // Negar solo el socket dejaba `mv /tmp/seisin-xxxx /tmp/gone` como forma de
+  // sacar el canal sin tocar nunca el archivo protegido.
+  const cfg = { root: "/repo", path: "/repo/seisin.toml", keyDirs: [], allowedDomains: [],
+                roles: { a: { name: "a", writes: ["src/**"], keys: [], network: null } } };
+  const { denyWrite } = settingsFor(cfg, "a", "/tmp/seisin-abc/spool.sock").filesystem;
+  assert.ok(denyWrite.includes("/tmp/seisin-abc/spool.sock"));
+  assert.ok(denyWrite.includes("/tmp/seisin-abc"));
+});
+
+test("a directory that merely shares a key dir's name is not a key", () => {
+  // `includes` hacía que src/web/.secrets/readme.md se tratara como credencial
+  // y se negara con un mensaje sobre claves, para un archivo que no lo es. El
+  // motivo que da una denegación es el producto entero.
+  const cfg = { root: "/repo", keyDirs: [".secrets"], allowedDomains: [],
+                roles: { f: { name: "f", writes: ["src/web/**"], keys: ["k.txt"], network: null } } };
+  const leer = (p) => decide(cfg, "f", { tool_name: "Read", tool_input: { file_path: p } },
+                             { now: () => true, ask: () => true });
+  assert.ok(!leer("src/web/.secrets/readme.md")?.hookSpecificOutput, "lo trató como clave");
+  assert.ok(leer(".secrets/otra.txt")?.hookSpecificOutput, "una clave real dejó de objetarse");
+});
+
+test("scan reports a symlink that leaves the repo, and does not open it", (t) => {
+  // scan es el comando que contesta "¿tengo credenciales fuera de los
+  // directorios declarados?", y un link es la única forma de que una credencial
+  // esté en el árbol sin ser un archivo del árbol. Se saltaba en silencio
+  // porque un symlink no es isFile().
+  const box = mkdtempSync(join(tmpdir(), "seisin-sl-"));
+  const fuera = mkdtempSync(join(tmpdir(), "seisin-out-"));
+  t.after(() => { rmSync(box, { recursive: true, force: true }); rmSync(fuera, { recursive: true, force: true }); });
+  writeFileSync(join(fuera, "id_rsa"), "-----BEGIN OPENSSH PRIVATE KEY-----\n");
+  mkdirSync(join(box, "src"), { recursive: true });
+  symlinkSync(join(fuera, "id_rsa"), join(box, "src", "suelto"));
+
+  const { hits } = scan(box, [], undefined);
+  const link = hits.find((h) => h.level === "link");
+  assert.ok(link, "el symlink no se reportó");
+  assert.match(link.file, /suelto/);
+  assert.match(link.shape, /id_rsa/);        // nombra el destino
+  assert.ok(!/BEGIN OPENSSH/.test(JSON.stringify(hits)), "leyó el destino");
 });
 
 /* ── lo que el registro dice de la política ───────────────────────────── */

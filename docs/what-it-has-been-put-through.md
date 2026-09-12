@@ -6,7 +6,7 @@
 
 ## The suite
 
-**108 tests**, run on macOS and Linux, Node 18/20/22, on every push
+**112 tests**, run on macOS and Linux, Node 18/20/22, on every push
 ([workflow](../.github/workflows/test.yml)).
 
 Sixteen of them are not unit tests: they run real commands through the real
@@ -91,9 +91,17 @@ a confined process sending a line arrived
 ```
 role a HOME  .../seisin-home-<repo>/a
 role b HOME  .../seisin-home-<repo>/b
-a → the real ~/.claude    cannot see it
-a → b's home              blocked
+a → the real ~/.claude         cannot see it
+a → writing b's home           blocked
+a → reading b's home           blocked
 ```
+
+That last line was **wrong here for a day**. The only thing measured was the
+write, and the sentence written down read as general — so `a` could read the
+session token `b`'s CLI had just written, while this page said otherwise. A
+reviewer found it by reading the generated settings rather than the claim. It
+is the failure this whole project is about, committed on the page that lists
+the others.
 
 ### Review 3 — the same reviewer, on the fixed version
 

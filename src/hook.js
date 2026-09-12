@@ -16,7 +16,7 @@
  * is a minor one here, because the enforcer is the kernel and it is not fooled.
  * What escapes this file goes unexplained, not unblocked.
  */
-import { explain } from "./owners.js";
+import { explain, normalize } from "./owners.js";
 import { append, logPath } from "./log.js";
 import { record, requestsPath } from "./requests.js";
 
@@ -81,8 +81,23 @@ function looksLikeAPath(p) {
 }
 
 /** A path inside a declared key directory is a key, and reads of it are policy. */
+/**
+ * Is this path inside a declared key directory?
+ *
+ * By prefix, not by `includes`. The loose version matched a key directory's
+ * name anywhere in the path, so `src/web/.secrets/readme.md` was treated as a
+ * credential — denied with a message about keys, for a file that is nothing of
+ * the sort. Wrong in the harmless direction, and still wrong: the reason a
+ * denial gives is the entire product.
+ */
 function kindOf(config, path) {
-  return (config.keyDirs ?? []).some((d) => path === d || path.includes(d + "/")) ? "key" : "file";
+  const p = normalize(path);
+  return (config.keyDirs ?? []).some((d) => {
+    const k = normalize(d);
+    return p === k || p.startsWith(k + "/");
+  })
+    ? "key"
+    : "file";
 }
 
 /**
