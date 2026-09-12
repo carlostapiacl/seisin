@@ -18,7 +18,8 @@
 # vhs 0.12 on this machine captures frames but fails to encode, silently, with
 # exit 0. So it emits frames and ffmpeg does the last step — see the command at
 # the bottom of this file.
-Output "/Users/carlos/seisin-demo/frames/"
+# vhs needs an absolute path here — a relative one silently writes nowhere.
+Output "/tmp/seisin-demo/frames/"
 
 Set Shell bash
 Set FontSize 17
@@ -51,7 +52,7 @@ Sleep 3500ms
 
 # Encode the frames vhs left behind:
 #
-#   cd ~/seisin-demo
+#   cd /tmp/seisin-demo
 #   ffmpeg -y -framerate 50 -i frames/frame-text-%05d.png \
 #     -vf "fps=20,scale=1100:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer" \
 #     demo.gif
