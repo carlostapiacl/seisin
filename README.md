@@ -454,7 +454,17 @@ Set `writes = []` to opt out and find out why it is there.
 - **Not a sandbox.** [`sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime) is the sandbox, and it is Anthropic's. seisin writes its settings and explains its refusals.
 - **Not an orchestrator.** It does not run your agents, schedule them, or merge their work. It runs one command as one role.
 - **Not a secret manager.** It scopes *reads* of files you already have. Where those files come from is your problem.
-- **Not useful for a single agent.** If only one agent ever touches the repo, "whose file is this" has one answer and you don't need this.
+- **Not what a single agent needs first.** If only one agent ever touches the repo,
+  *whose file is this* has one answer, and the ownership half of this tool is dead
+  weight. Turn on your agent's own sandboxing instead — Claude Code has it built in,
+  over this same runtime, with nothing to install.
+
+  What is left over for one agent is real but narrow: the environment gets built
+  rather than inherited (measured on one machine: **15 variables kept, 60 dropped**,
+  among them `GITHUB_TOKEN` and the AWS pair), reads of the declared key directory
+  are denied to everything, and the network allowlist covers the whole process
+  rather than one tool. Worth it if that is a gap you actually have. seisin starts
+  earning its setup at **two** agents, and that is where it was designed to be.
 
 ## Why not a container
 
