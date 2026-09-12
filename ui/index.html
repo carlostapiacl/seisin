@@ -240,7 +240,7 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
     </div>
 
     <div class="box">
-      <header id="configfile"><h2>seisin.toml</h2><span class="note">copy this back into your repo</span></header>
+      <header id="configfile"><h2>seisin.toml</h2><span class="note" id="toml-note">copy this back into your repo</span></header>
       <pre id="toml"></pre>
     </div>
 
@@ -416,7 +416,25 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
     document.getElementById("cfg").innerHTML=L.join("\n");
   }
 
+  /**
+   * The policy, as TOML.
+   *
+   * Two different things depending on where the page is running, and the
+   * difference matters. Served live, it prints the file on disk verbatim —
+   * comments, order and the provenance a grant wrote. Opened as a file, there
+   * is no disk to read, so it renders the in-memory model, which by definition
+   * has no comments. Rendering the model in live mode and labelling it
+   * "seisin.toml · copy this back into your repo" was an instruction to paste
+   * away the one record of why a permission exists.
+   */
   function drawToml(){
+    if (ONDISK !== null) {
+      var html = esc(ONDISK)
+        .replace(/^(\[[^\]]+\])$/gm, '<span class="k">$1</span>')
+        .replace(/(#[^\n]*)$/gm, '<span class="c">$1</span>');
+      document.getElementById("toml").innerHTML = html;
+      return;
+    }
     var L=['<span class="c"># Anything not listed is denied.</span>',"",
            "[keys]",'dir = "'+KEYDIR+'"',"","[network]",'allow = ["github.com", "*.github.com"]',""];
     ROLES.forEach(function(r){
@@ -474,6 +492,7 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
   /* ── requests ─────────────────────────────────────────────────────────── */
 
   var REQS = [];
+  var ONDISK = null;   // the file on disk, when there is one
 
   /**
    * The queue, as something a person acts on.
@@ -577,6 +596,7 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
     }));
     LOG = fromServer(s.log);
     REQS = s.requests || [];
+    ONDISK = s.toml || null;
     label.textContent = s.config.replace(/^.*\//, "") + " · live";
     label.style.color = "var(--green)";
     // The footer used to claim this page never touches your repo. It reads it
@@ -584,6 +604,7 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
     // otherwise in the one place a cautious reader looks was the worst of the
     // two possible lies.
     document.getElementById("kill").hidden = true;
+    document.getElementById("toml-note").textContent = "the file on disk, as it stands";
     document.getElementById("foot-mode").textContent = "Live.";
     document.getElementById("foot-text").innerHTML =
       "This page reads <b>" + esc(s.config) + "</b> and the log on disk. Editing the policy above is a preview \u2014 copy the " +
@@ -641,6 +662,7 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
     }));
     LOG = fromServer(s.log);
     REQS = s.requests || [];
+    ONDISK = s.toml || null;
     draw();
   }
 
