@@ -23,6 +23,7 @@ import * as publica from "../src/index.js";
 import { record, settle, pending, applyGrant, grantFor } from "../src/requests.js";
 import { Readable } from "node:stream";
 import { serveMcp, TOOLS, HANDLERS, PROTOCOLS } from "../src/mcp.js";
+import { serve } from "../src/serve.js";
 import { settingsFor, RUNTIME_WRITES } from "../src/srt.js";
 
 const cfg = {
@@ -494,6 +495,78 @@ test("a territory can reach outside the config's own directory", () => {
   assert.ok(explain(cfg, "dev", "write", "../bitacora/lab/dev.md").allowed);
   // y el escape no abre el directorio entero
   assert.ok(!explain(cfg, "dev", "write", "../bitacora/lab/qa.md").allowed);
+});
+
+/* ── la consola ───────────────────────────────────────────────────────── */
+
+/** Levanta la consola sobre un repo de mentira y devuelve cómo hablarle. */
+async function consola(t) {
+  const box = mkdtempSync(join(tmpdir(), "seisin-ui-"));
+  writeFileSync(join(box, "seisin.toml"),
+    '[keys]\ndir = ".secrets"\n\n[roles.frontend]\nwrites = ["src/web/**"]\nkeys   = []\n\n[roles.backend]\nwrites = ["src/api/**"]\nkeys   = []\n');
+  const q = join(box, ".seisin", "requests.jsonl");
+  record(q, { role: "frontend", action: "write", target: "src/api/checkout/a.ts", owners: ["backend"] });
+
+  const server = await serve(join(box, "seisin.toml"), 0);
+  const port = server.address().port;
+  t.after(() => server.close());
+
+  const page = await (await fetch(`http://127.0.0.1:${port}/`)).text();
+  const token = (page.match(/window\.SEISIN_TOKEN=\"([a-f0-9]+)\"/) ?? [])[1];
+  const post = (body, tok = token) =>
+    fetch(`http://127.0.0.1:${port}/api/decide`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(tok ? { "x-seisin-token": tok } : {}) },
+      body: JSON.stringify(body),
+    });
+  return { box, port, token, post };
+}
+
+test("the console hands the page a token and refuses a write without it", async (t) => {
+  // Loopback no es una frontera contra el navegador: cualquier pestaña abierta
+  // puede hacer POST a 127.0.0.1. Lo que no puede es leer este token.
+  const { token, post, box } = await consola(t);
+  assert.match(token ?? "", /^[a-f0-9]{48}$/);
+
+  const sin = await post({ number: 1, decision: "granted" }, null);
+  assert.equal(sin.status, 403);
+  const mal = await post({ number: 1, decision: "granted" }, "0".repeat(48));
+  assert.equal(mal.status, 403);
+  // y nada cambió en el disco
+  assert.ok(!readFileSync(join(box, "seisin.toml"), "utf8").includes("checkout"));
+});
+
+test("approving in the console writes the policy, with its reason", async (t) => {
+  const { post, box } = await consola(t);
+  const r = await post({ number: 1, decision: "granted", reason: "se lleva el checkout" });
+  assert.equal(r.status, 200);
+
+  const toml = readFileSync(join(box, "seisin.toml"), "utf8");
+  assert.match(toml, /src\/api\/checkout\/\*\*/);
+  assert.match(toml, /se lleva el checkout/);     // la procedencia viaja con la línea
+  assert.equal(pending(join(box, ".seisin", "requests.jsonl")).length, 0);
+});
+
+test("refusing in the console settles the request and grants nothing", async (t) => {
+  const { post, box } = await consola(t);
+  assert.equal((await post({ number: 1, decision: "denied", reason: "no es suyo" })).status, 200);
+  assert.ok(!readFileSync(join(box, "seisin.toml"), "utf8").includes("checkout"));
+  assert.equal(pending(join(box, ".seisin", "requests.jsonl")).length, 0);
+});
+
+test("the console refuses a decision it does not understand", async (t) => {
+  const { post, box } = await consola(t);
+  for (const cuerpo of [{ number: 9, decision: "granted" }, { number: 1, decision: "maybe" }])
+    assert.equal((await post(cuerpo)).status, 400);
+  assert.ok(!readFileSync(join(box, "seisin.toml"), "utf8").includes("checkout"));
+});
+
+test("the console's state carries the queue the page renders", async (t) => {
+  const { port } = await consola(t);
+  const s = await (await fetch(`http://127.0.0.1:${port}/api/state`)).json();
+  assert.equal(s.requests.length, 1);
+  assert.equal(s.requests[0].grant, "src/api/checkout/**");
+  assert.deepEqual(s.requests[0].owners, ["backend"]);
 });
 
 /* ── lo que la herramienta no cubre ──────────────────────────────────── */

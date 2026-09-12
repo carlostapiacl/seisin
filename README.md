@@ -1,5 +1,10 @@
 # seisin
 
+[![npm](https://img.shields.io/npm/v/seisin?color=222)](https://www.npmjs.com/package/seisin)
+[![license](https://img.shields.io/badge/license-MIT-222)](LICENSE)
+[![node](https://img.shields.io/badge/node-%E2%89%A518-222)](package.json)
+[![no dependencies](https://img.shields.io/badge/dependencies-1-222)](package.json)
+
 > **seisin** *(n.)* — the legal possession of a piece of land. Not who owns it on paper: who holds it now.
 
 **Give each AI agent its own folders and its own keys.** The kernel enforces it, and when it blocks something it tells you *whose* file it was.
@@ -16,6 +21,20 @@ $ seisin run frontend -- seisin whose src/api/orders.ts
 ```
 
 That second line is the whole point. Every other permission layer in this space answers *yes* or *no*. Answering **"no, and it belongs to `backend`"** turns a block into a handoff.
+
+## Sixty seconds
+
+```bash
+npm install -g seisin
+cd your-repo
+seisin init                            # proposes a policy from what the repo already says
+seisin check                           # read it before you trust it
+seisin run frontend -- claude -p "…"   # run an agent inside its own territory
+```
+
+On Linux, [three system packages first](#install). Everything below is why it works and where it does not.
+
+**Contents** · [Why this exists](#why-this-exists) · [What it is *not* for](#what-it-is-for-and-what-it-is-not-for) · [Install](#install) · [Configure](#configure) · [Agents it runs](#which-agents-it-has-been-run-with) · [Requests](#when-it-says-no-it-leaves-a-request-behind) · [MCP](#ask-your-own-assistant) · [How it holds](#how-it-holds) · [Secrets](#how-it-protects-secrets) · [Status](#status)
 
 ---
 
@@ -228,6 +247,15 @@ your behalf — can read the queue and draft the change. Turning it into policy
 takes a person in a channel the agent does not have. The public API reflects
 that: `pendingRequests` is exported, the functions that approve are not.
 [The reasoning is written down](docs/permission-requests.md).
+
+Two places, both human: `seisin grant <n>` in a terminal, or the console, where
+the queue is a panel with a reason field and two buttons. Approving there edits
+your `seisin.toml` in place and the territory on screen changes with it.
+
+The console is allowed to hold that half and the MCP server is not, and the
+reason is measured rather than asserted: a confined role curling the console's
+own port gets the same nothing it gets from a domain outside its allowlist. The
+MCP server, by contrast, speaks on the agent's own stdio.
 
 The notice rides on what you are already looking at: `seisin run` prints the
 queue when the run ends, in the same terminal that just showed you the denial.
