@@ -1,0 +1,59 @@
+# The suite, on both platforms it claims to work on.
+#
+# It exists because of a contradiction a reviewer found in the README: one
+# section said the suite passed on Debian 12, another said the sandbox half had
+# never run on Linux. Both had been true at different times and nothing was
+# re-checking, so the file drifted from the fact. A README can go stale; a job
+# that runs on every push cannot.
+#
+# The sandbox tests need the real runtime and the real kernel. They skip
+# themselves when `srt` is missing rather than passing vacuously — so the step
+# below installs it first, and the job fails if the suite reports no sandbox
+# tests at all.
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  suite:
+    name: ${{ matrix.os }} · node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+        node: [18, 20, 22]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      # bubblewrap is the enforcement on Linux; ripgrep and socat are the two
+      # the runtime refuses to start without. On macOS Seatbelt is in the kernel.
+      - name: system packages (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap ripgrep socat
+
+      - name: install the sandbox runtime
+        run: npm install -g @anthropic-ai/sandbox-runtime
+
+      - run: npm install
+
+      - name: suite
+        run: npm test
+
+      # A green run that skipped every sandbox test is the failure this whole
+      # job exists to prevent, and it looks identical to a real pass.
+      - name: the sandbox half actually ran
+        run: |
+          node --test test/sandbox.test.js 2>&1 | tee /tmp/sandbox.log
+          if grep -qE '^# skipped [1-9]' /tmp/sandbox.log; then
+            echo "::error::sandbox tests skipped — srt was not usable on this runner"
+            exit 1
+          fi
