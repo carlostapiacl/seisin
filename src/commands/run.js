@@ -16,6 +16,8 @@ import { buildEnv } from "../env.js";
 import { secretsOf, redactor } from "../redact.js";
 import { STATE_DIR } from "../layout.js";
 import { C, err } from "../render.js";
+import { pending, requestsPath } from "../requests.js";
+import { renderQueue } from "./requests.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -111,6 +113,12 @@ export function run(config, argv) {
   // cannot save anything) as the floor.
   child.on("exit", (code, signal) => {
     const status = signal ? 1 : code ?? 0;
+    // The notice rides on what you are already looking at. A queue nobody opens
+    // is not human-in-the-loop, and this is the terminal that just showed you
+    // the denial — so it goes to stderr, beside it, not into the agent's stdout
+    // where a pipeline would swallow it.
+    const queue = pending(requestsPath(config.root));
+    if (queue.length) err(renderQueue(queue));
     if (!outStream) return process.exit(status);
     let left = 2;
     const guard = setTimeout(() => process.exit(status), 2000);

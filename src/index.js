@@ -34,6 +34,17 @@ export { scan, SHAPES, DEFAULT_IGNORE } from "./scan.js";
 /** The append-only record, and what can be learned from it. */
 export { read as readLog, logPath, observed, generalise } from "./log.js";
 
+/**
+ * The queue of refusals waiting on a person.
+ *
+ * `pending` and `grantFor` are public because reading the queue and drafting a
+ * proposal are things a caller — including an MCP server — legitimately does.
+ * `settle` and `applyGrant` are NOT exported: approving is not a tool call, and
+ * the surface should make that hard to get wrong rather than merely document
+ * it. See docs/permission-requests.md.
+ */
+export { pending as pendingRequests, requestsPath, grantFor } from "./requests.js";
+
 /** One PreToolUse decision. */
 export { decide, targetsOf } from "./hook.js";
 

@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseToml } from "../src/config.js";
 import { covers, ownersOf, keyHolders, explain } from "../src/owners.js";
-import { realpathSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { realpathSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildEnv } from "../src/env.js";
@@ -20,6 +20,7 @@ import { inspect, sharedPaths } from "../src/inspect.js";
 import { renderReport, renderVerdict } from "../src/render.js";
 import { renderConfig } from "../src/commands/init.js";
 import * as publica from "../src/index.js";
+import { record, settle, pending, applyGrant, grantFor } from "../src/requests.js";
 import { settingsFor, RUNTIME_WRITES } from "../src/srt.js";
 
 const cfg = {
@@ -395,4 +396,85 @@ test("the public API exposes decisions, not rendering", () => {
   assert.ok(publica.explain && publica.settingsFor && publica.inspect && publica.scan);
   assert.equal(publica.renderReport, undefined);
   assert.equal(publica.run, undefined);
+});
+
+/* ── pedidos de permiso ───────────────────────────────────────────────── */
+
+test("many denials in one directory are one request, not many", () => {
+  // Un agente frenado en a.ts y después en b.ts no hace dos preguntas, y una
+  // cola que dice que sí se vuelve una cola que nadie lee.
+  const box = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), "req-"));
+  const f = join(box, "requests.jsonl");
+  for (const t of ["src/api/a.ts", "src/api/b.ts", "src/api/a.ts"])
+    record(f, { role: "frontend", action: "write", target: t, owners: ["backend"] });
+  const q = pending(f);
+  rmSync(box, { recursive: true, force: true });
+  assert.equal(q.length, 1);
+  assert.equal(q[0].times, 3);
+  assert.equal(q[0].grant, "src/api/**");
+  assert.deepEqual(q[0].owners, ["backend"]);
+});
+
+test("a settled request leaves the queue but not the file", () => {
+  // Append-only: una decisión que se puede reescribir no es evidencia.
+  const box = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), "req-"));
+  const f = join(box, "requests.jsonl");
+  record(f, { role: "qa", action: "write", target: "docs/x.md", owners: [] });
+  const [req] = pending(f);
+  settle(f, req.key, "denied", "no es suyo");
+  const abiertos = pending(f);
+  const todos = pending(f, { includeSettled: true });
+  const lineas = readFileSync(f, "utf8").trim().split("\n").length;
+  rmSync(box, { recursive: true, force: true });
+  assert.equal(abiertos.length, 0);
+  assert.equal(todos[0].state, "denied");
+  assert.equal(todos[0].reason, "no es suyo");
+  assert.equal(lineas, 2);
+});
+
+test("a grant lands in the right role, with its provenance", () => {
+  const toml = '[roles.frontend]\nwrites = ["src/web/**"]\nkeys   = []\n\n[roles.backend]\nwrites = ["src/api/**"]\n';
+  const req = { role: "frontend", action: "write", grant: "src/api/**", times: 3 };
+  const { toml: after, changed } = applyGrant(toml, req, "se lleva el checkout");
+  assert.ok(changed);
+  assert.match(after, /"src\/web\/\*\*",/);
+  assert.match(after, /"src\/api\/\*\*"\s+# granted .* asked 3× · "se lleva el checkout"/);
+  // y no tocó al otro rol
+  assert.match(after, /\[roles\.backend\]\nwrites = \["src\/api\/\*\*"\]/);
+});
+
+test("granting something a role already has changes nothing", () => {
+  const toml = '[roles.a]\nwrites = ["x/**"]\n';
+  const { changed } = applyGrant(toml, { role: "a", action: "write", grant: "x/**", times: 1 }, "");
+  assert.equal(changed, false);
+});
+
+test("a key request grants the key, not a directory glob", () => {
+  assert.equal(grantFor({ action: "read", target: ".secrets/netlify.txt" }), "netlify.txt");
+  assert.equal(grantFor({ action: "write", target: "src/api/a.ts" }), "src/api/**");
+});
+
+test("observing records no requests, because nothing was refused", () => {
+  const asked = [];
+  decide({ ...cfg, root: "/repo" }, "frontend",
+    { tool_name: "Write", tool_input: { file_path: "src/api/s.ts" } },
+    { observe: true, now: () => true, ask: (_f, r) => asked.push(r) });
+  assert.deepEqual(asked, []);
+});
+
+test("a denial leaves a request behind", () => {
+  const asked = [];
+  decide({ ...cfg, root: "/repo" }, "frontend",
+    { tool_name: "Write", tool_input: { file_path: "src/api/s.ts" } },
+    { now: () => true, ask: (_f, r) => asked.push(r) });
+  assert.equal(asked.length, 1);
+  assert.deepEqual(asked[0].owners, ["backend"]);
+});
+
+test("the public surface can read the queue and cannot approve", () => {
+  // La invariante del diseño, como prueba: aprobar no es una llamada de
+  // herramienta, así que ni settle ni applyGrant salen por la puerta pública.
+  assert.ok(publica.pendingRequests && publica.grantFor);
+  assert.equal(publica.settle, undefined);
+  assert.equal(publica.applyGrant, undefined);
 });
