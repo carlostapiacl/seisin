@@ -481,6 +481,21 @@ test("the public surface can read the queue and cannot approve", () => {
   assert.equal(publica.applyGrant, undefined);
 });
 
+test("a territory can reach outside the config's own directory", () => {
+  // El adaptador emite `../` cuando el territorio sale de la célula, y eso solo
+  // es correcto si acá se sostiene. Un rol posee su árbol de trabajo adentro y
+  // su traspaso un nivel arriba; sin esto el generador tendría que elegir entre
+  // dos bases relativas en un archivo, que fue el bug que lo trajo.
+  const cfg = {
+    root: "/repo", keyDirs: [], allowedDomains: [],
+    roles: { dev: { name: "dev", writes: ["proyecto/**", "../bitacora/lab/dev.md"], keys: [], network: null } },
+  };
+  assert.ok(explain(cfg, "dev", "write", "proyecto/a.py").allowed);
+  assert.ok(explain(cfg, "dev", "write", "../bitacora/lab/dev.md").allowed);
+  // y el escape no abre el directorio entero
+  assert.ok(!explain(cfg, "dev", "write", "../bitacora/lab/qa.md").allowed);
+});
+
 /* ── lo que la herramienta no cubre ──────────────────────────────────── */
 
 test("check states the gap it does not cover, every time", () => {
