@@ -35,7 +35,7 @@ seisin run frontend -- claude -p "…"   # run an agent inside its own territory
 
 On Linux, [three system packages first](#install). Everything below is why it works and where it does not.
 
-**Contents** · [Why this exists](#why-this-exists) · [What it is *not* for](#what-it-is-for-and-what-it-is-not-for) · [Install](#install) · [Configure](#configure) · [Agents it runs](#which-agents-it-has-been-run-with) · [Requests](#when-it-says-no-it-leaves-a-request-behind) · [MCP](#ask-your-own-assistant) · [How it holds](#how-it-holds) · [Secrets](#how-it-protects-secrets) · [Status](#status)
+**Contents** · [Why this exists](#why-this-exists) · [What it is *not* for](#what-it-is-for-and-what-it-is-not-for) · [Install](#install) · [Configure](#configure) · [Agents it runs](#which-agents-it-has-been-run-with) · [Requests](#when-it-says-no-it-leaves-a-request-behind) · [MCP](#ask-your-own-assistant) · [How it holds](#how-it-holds) · [Secrets](#how-it-protects-secrets) · [What it survived](docs/what-it-has-been-put-through.md) · [Status](#status)
 
 ---
 
@@ -57,6 +57,11 @@ A rule is a string comparison against a command someone might not spell that way
 
 > **It turns an agent's mistake into a contained mistake. It does not turn a hostile
 > agent into a harmless one.**
+>
+> Two outside reviews have gone through it looking for ways past the boundary and
+> found eleven things between them. [What it has been put
+> through](docs/what-it-has-been-put-through.md) lists all of them — what was
+> fixed, what was measured, and what is still open.
 
 That distinction is the whole threat model, and it is worth reading before you install
 rather than after.
