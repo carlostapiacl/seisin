@@ -79,7 +79,7 @@ fixtures:
 
 And three things that outweigh all of the above:
 
-1. **It is days old and has one author.** Around two thousand lines that nobody has
+1. **It is days old and has one author.** Around three thousand lines that nobody has
    audited except its writer and one field report. "Secure" is not a word earned that fast.
 2. **The enforcement is someone else's beta.** `sandbox-runtime` describes itself as a
    research preview with an evolving API. A hole there is a hole here.
@@ -274,7 +274,7 @@ There is no daemon and nothing to leave running.
 Read-only **by construction** — the server opens nothing for writing, and a test
 asserts that no tool in it mutates anything. It can draft the exact change a
 request would make; applying it is a command a person runs. Zero dependencies:
-the official SDK wanted 94 packages for a server that speaks JSON on two file
+the official SDK wanted 91 packages for a server that speaks JSON on two file
 descriptors.
 
 ## Seeing what happened
@@ -391,9 +391,23 @@ This space already has good work, and seisin is not the first thing here:
 
 ## Status
 
-`0.1.0`. The mechanism is tested end to end on macOS. Linux support comes from the runtime, and is not yet covered by the suite. The config format may still move before `1.0` — if it does, `seisin check` will tell you what changed.
+`0.1.0`, 80 tests. The mechanism is tested end to end on macOS, against the real
+sandbox and real commands. The config format may still move before `1.0` — if it
+does, `seisin check` will tell you what changed.
 
-Issues and pull requests welcome, particularly: Linux, the `PreToolUse` hook that carries the owner into the agent's own context, and better `init` heuristics.
+**What is genuinely open**, so nobody spends an afternoon on something that is
+already done:
+
+| | |
+|---|---|
+| **Linux** | enforcement comes from the runtime and should work; the *sandbox* half of the suite has never been run there. The unit half passes on Node 18. Someone running the full suite on a Linux box is the single most useful contribution right now |
+| **Windows** | the runtime has a backend. seisin has never been pointed at it |
+| **Deleting inside your own territory** | not covered, and not coverable here — [the ask is upstream](docs/upstream/denyUnlink.md), with the measurement behind it |
+| **`init` heuristics** | it reads `.claude/agents/` then `CODEOWNERS`. Every other convention is a guess nobody has made yet |
+
+Issues and pull requests welcome. If you are reporting something that got past
+the boundary, `seisin log --verdict denied` and the `seisin.toml` are the two
+things that make it reproducible.
 
 ## The name
 

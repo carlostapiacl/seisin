@@ -19,7 +19,8 @@
  * `docs/permission-requests.md`.
  *
  * ── Why there is no SDK ──
- * The official SDK pulls 94 packages and 26 MB — express, hono, cors, jose —
+ * The official SDK pulls 91 packages and 26 MB — express, hono, cors, jose —
+ * (counted against 1.30.0; it was 94 a version ago, which is the point)
  * for a server that speaks line-delimited JSON on two file descriptors. In a
  * tool people install to reduce their attack surface, that is the wrong trade.
  * The cost of this choice is written down under PROTOCOLS below: we track the
