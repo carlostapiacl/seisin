@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseToml } from "../src/config.js";
 import { covers, ownersOf, keyHolders, explain } from "../src/owners.js";
-import { realpathSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { realpathSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildEnv } from "../src/env.js";
@@ -760,6 +760,25 @@ test("the spool carries an entry to the parent, and the parent picks the file", 
   assert.deepEqual(got.map((g) => g[0]), ["log", "requests", "log"]);
   assert.equal(got[0][1].role, "frontend");
   assert.ok(got[0][1].at, "el sello de tiempo es del momento de la decisión, no de cuando el padre lo leyó");
+});
+
+test("closing the spool removes the socket and nothing around it", async (t) => {
+  // Regresión con dientes. close() borraba dirname(path) razonando que
+  // spoolPath() acababa de crear ese directorio — pero un llamador que pasa su
+  // propia ruta hace que dirname sea el temp del sistema, así que cerrar el
+  // carrete lo borraba entero. CI lo encontró: todo lo posterior falló con
+  // ENOENT sobre mkdtemp.
+  const dir = mkdtempSync(join(tmpdir(), "seisin-vecino-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const vecino = join(dir, "no-me-toques.txt");
+  writeFileSync(vecino, "acá estaba\n");
+
+  const s = await spool(() => {}, join(dir, "spool.sock"));
+  s.close();
+
+  assert.ok(existsSync(dir), "el carrete se llevó el directorio del llamador");
+  assert.ok(existsSync(vecino), "el carrete se llevó un archivo que no era suyo");
+  assert.ok(!existsSync(join(dir, "spool.sock")), "el socket quedó");
 });
 
 test("with no parent listening, send says so instead of pretending", () => {

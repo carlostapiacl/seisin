@@ -8,7 +8,7 @@
  * Everything in here is ordering that was wrong once. The comments say which.
  */
 import { spawn } from "node:child_process";
-import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { settingsFor, roleHome } from "../srt.js";
@@ -179,6 +179,8 @@ export async function run(config, argv) {
     // agent's last turn may still be in flight, and reporting a queue that is
     // one entry behind is how a request goes unnoticed for a day.
     audit.close();
+    // The run made this directory, so the run removes it.
+    try { rmSync(dirname(sockPath), { recursive: true, force: true }); } catch {}
 
     const queue = pending(requestsPath(config.root));
     if (queue.length) err(renderQueue(queue));
