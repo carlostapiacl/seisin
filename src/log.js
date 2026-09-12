@@ -2,13 +2,16 @@
  * One append-only JSONL file, and that is the whole storage design.
  *
  * `seisin log`, `seisin watch` and the console all read this file. There is no
- * daemon, no socket and no database, because the moment there is one, seisin
- * stops being a launcher you can reason about and becomes a service you have to
- * operate. A file that only grows is the version of "live" that survives a
- * crash, a reboot and being read by three things at once.
+ * daemon and no database, because the moment there is one, seisin stops being a
+ * launcher you can reason about and becomes a service you have to operate. A
+ * file that only grows is the version of "live" that survives a crash, a reboot
+ * and being read by three things at once.
  *
  * Append-only also means the log is evidence. Nothing here rewrites a line, so
- * what an agent tried last night reads the same today.
+ * what an agent tried last night reads the same today — and since the change in
+ * spool.js, nothing inside the sandbox can rewrite one either. append() below
+ * tries the parent's socket first for exactly that reason; writing the file
+ * directly is what happens when there is no parent, outside the box.
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";

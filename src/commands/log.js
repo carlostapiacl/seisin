@@ -2,8 +2,11 @@
  * `seisin log` and `seisin watch` — reading the record.
  *
  * Both are views of one append-only file and nothing else. `watch` is a tail:
- * there is no daemon and no socket, because the file already is the shared
- * state, so anything that can read it can follow it.
+ * there is no daemon, because the file already is the shared state, so anything
+ * that can read it can follow it.
+ *
+ * Reading is the easy half. Writing goes through spool.js when the writer is
+ * inside a sandbox, so that the record is not editable by what it records.
  */
 import { createReadStream, watch as watchDir } from "node:fs";
 import { dirname, relative } from "node:path";
