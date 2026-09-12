@@ -20,11 +20,25 @@ import { basename } from "node:path";
 
 const [file, ...flags] = process.argv.slice(2);
 if (!file || !existsSync(file)) {
-  process.stderr.write("usage: equipo-conf.js <cell.conf> [--root <repo root>]\n");
+  process.stderr.write("usage: equipo-conf.js <cell.conf> [--root <repo root>] [--relative-to <dir under root>]\n");
   process.exit(2);
 }
-const rootIdx = flags.indexOf("--root");
-const root = rootIdx === -1 ? "" : flags[rootIdx + 1] ?? "";
+const flag = (name) => {
+  const i = flags.indexOf(name);
+  return i === -1 ? "" : flags[i + 1] ?? "";
+};
+const root = flag("--root");
+
+/**
+ * Where the emitted paths should be relative to.
+ *
+ * The territory in a cell config is written from the portfolio root, so a
+ * seisin.toml placed inside a cell resolves every path one level too deep and
+ * silently grants nothing that exists. Found twice — once here and once in a
+ * field report from a user who hit it in the lab — which is enough to make it
+ * a flag rather than a footnote.
+ */
+const relativeTo = flag("--relative-to");
 
 const text = readFileSync(file, "utf8");
 const cell = basename(file).replace(/\.conf$/, "");
@@ -60,7 +74,13 @@ if (roles.length === 0) {
   process.exit(1);
 }
 
-const strip = (p) => (root && p.startsWith(root) ? p.slice(root.length).replace(/^\/+/, "") : p);
+const strip = (p) => {
+  const fromRoot = root && p.startsWith(root) ? p.slice(root.length).replace(/^\/+/, "") : p;
+  if (!relativeTo) return fromRoot;
+  const base = relativeTo.replace(/^\/+|\/+$/g, "");
+  if (fromRoot === base) return ".";
+  return fromRoot.startsWith(base + "/") ? fromRoot.slice(base.length + 1) : fromRoot;
+};
 
 const out = [
   `# Generated from ${basename(file)} by adapters/equipo-conf.js`,
