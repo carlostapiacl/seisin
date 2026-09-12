@@ -110,15 +110,41 @@ export function renderObserved(config, entries) {
     lines.push("[keys]", `dir = [${config.keyDirs.map(tomlString).join(", ")}]`, "");
   lines.push("[network]", `allow = [${config.allowedDomains.map(tomlString).join(", ")}]`, "");
 
-  for (const [name, seen] of roles) {
-    const keys = [...new Set([...seen.keys].map((k) => k.replace(/^.*\//, "")))];
+  /**
+   * Every declared role appears, whether it acted or not.
+   *
+   * This used to emit only the roles the log had seen, and the file says "diff
+   * it, then move it" — so moving it deleted the territory of every role that
+   * happened to be idle during the observation window, silently. A role that
+   * did nothing is not a role that needs nothing; it is a role nobody watched.
+   *
+   * So observation *adds*. What was declared stays, what was seen is appended,
+   * and the comment beside each role says which part came from where — because
+   * the whole reason to read this file is to tell the two apart.
+   */
+  for (const name of new Set([...Object.keys(config.roles), ...roles.keys()])) {
+    const declared = config.roles[name];
+    const seen = roles.get(name);
+
+    const from = declared ? declared.writes : [];
+    const found = seen ? generalise([...seen.writes]).filter((w) => !from.includes(w)) : [];
+    const keys = [
+      ...(declared ? declared.keys : []),
+      ...(seen ? [...new Set([...seen.keys].map((k) => k.replace(/^.*\//, "")))] : []),
+    ];
+
     // Every value below came out of the log, and the log records paths the
     // agent chose. tomlString refuses what the format cannot hold rather than
     // emitting a file that parses into something else.
     lines.push(`[roles.${tomlName(name)}]`);
-    lines.push(`writes = [${generalise([...seen.writes]).map(tomlString).join(", ")}]`);
-    lines.push(`keys   = [${keys.map(tomlString).join(", ")}]`);
-    lines.push(`# observed: ${seen.writes.size} path(s) written, ${seen.keys.size} key(s) read`);
+    lines.push(`writes = [${[...from, ...found].map(tomlString).join(", ")}]`);
+    lines.push(`keys   = [${[...new Set(keys)].map(tomlString).join(", ")}]`);
+    lines.push(
+      seen
+        ? `# declared ${from.length}; observation added ${found.length} ` +
+          `(${seen.writes.size} path(s) written, ${seen.keys.size} key(s) read)`
+        : `# declared ${from.length}; this role did nothing while observing — kept as written`
+    );
     lines.push("");
   }
   return { toml: lines.join("\n"), roles: roles.size };

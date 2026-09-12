@@ -102,14 +102,23 @@ export function observed(entries) {
  * role that touched `src/api/a` and `src/api/b` gets `src/api/**` rather than
  * `src/**`, which would hand it the whole tree on the strength of two files.
  */
-export function generalise(paths, floor = 1) {
+export function generalise(paths) {
   const dirs = new Set();
+  const files = new Set();          // things at the repo root have no directory
+
   for (const p of paths) {
     const parts = p.split("/").filter(Boolean);
-    parts.pop(); // the file itself
-    if (parts.length === 0) { dirs.add(p); continue; }
-    dirs.add(parts.join("/"));
+    parts.pop();                    // drop the file itself
+    // A path with nothing above it is a file at the root. It used to be added
+    // to `dirs` and then given a `/**` like everything else, so observing a
+    // write to NOTAS.md proposed `NOTAS.md/**` — the children of a directory
+    // that does not exist, which grants nothing over the file that was written.
+    if (parts.length === 0) files.add(p);
+    else dirs.add(parts.join("/"));
   }
+
   const kept = [...dirs].filter((d) => ![...dirs].some((o) => o !== d && d.startsWith(o + "/")));
-  return kept.map((d) => (d.split("/").length > floor ? d + "/**" : d + "/**")).sort();
+  // A root file already covered by a directory grant does not need naming.
+  const loose = [...files].filter((f) => ![...kept].some((d) => f.startsWith(d + "/")));
+  return [...kept.map((d) => d + "/**"), ...loose].sort();
 }

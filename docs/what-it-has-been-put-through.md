@@ -6,7 +6,7 @@
 
 ## The suite
 
-**120 tests**, run on macOS and Linux, Node 18/20/22, on every push
+**123 tests**, run on macOS and Linux, Node 18/20/22, on every push
 ([workflow](../.github/workflows/test.yml)).
 
 Thirteen of them are not unit tests: they run real commands through the real
@@ -154,6 +154,33 @@ process in the box cannot write `allowed` lines for paths it never touched —
 which would not move the boundary but would move `review`, and
 `init --from-observations` builds a policy out of exactly that; and the README
 said 16 tests run against the real sandbox when 13 do.
+
+### Review 5 — the npm package, before publishing
+
+The tarball that would be published, installed globally, exercised by the team
+that runs this in production. The half I cannot test alone — a real agent
+crossing a real boundary — closed end to end: the denial, the request landing
+in the queue, the grant rewriting `seisin.toml` with its provenance and
+comments intact, and the same run succeeding afterwards.
+
+Two defects, both in `init --from-observations`:
+
+| | what it was |
+|---|---|
+| **A file became a directory that does not exist** | observing a write to `NOTAS.md` proposed `NOTAS.md/**`, which grants nothing over the file that was actually written |
+| **The observed policy deleted the roles that were idle** | it emitted only the roles the log had seen, and the file says *"diff it, then move it"* — so moving it silently removed the territory of every role that happened to do nothing during the window. A role that did nothing is not a role that needs nothing; it is a role nobody watched. Observation adds now, and each role says which part came from where |
+
+Everything deliberately broken held: malformed arrays, an empty config, a role
+with spaces, `--` in the wrong place, a territory outside the repo. Each named
+the file, the line and the known roles.
+
+**One open question, from the same run.** The agent knew whose file it was — but
+it worked that out by reading `seisin.toml` and `.seisin/frontend.json` itself.
+What it was handed was `EPERM`. The hook's side is verified here: it returns
+`permissionDecision: "deny"` with the owner's name, for `Write` and `Edit`
+alike. Whether that reached the agent's context in their run, or a different
+call produced the `EPERM`, is one data point away and it is the sentence this
+whole project is built on.
 
 ## Still open, and named
 
