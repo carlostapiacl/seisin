@@ -19,7 +19,7 @@ import { read, generalise } from "../src/log.js";
 import { tmpdir } from "node:os";
 import { inspect, sharedPaths } from "../src/inspect.js";
 import { renderReport, renderVerdict } from "../src/render.js";
-import { renderConfig } from "../src/commands/init.js";
+import { renderConfig, renderObserved } from "../src/commands/init.js";
 import * as publica from "../src/index.js";
 import { record, settle, pending, applyGrant, grantFor, cleanReason } from "../src/requests.js";
 import { Readable } from "node:stream";
@@ -984,6 +984,52 @@ test("check asks when a role cannot reach any model", () => {
   const porRol = mk([]);
   porRol.roles.dev.network = ["openrouter.ai"];
   assert.ok(!avisa(porRol));
+});
+
+test("a file at the root is a file, not a directory that does not exist", () => {
+  // Observar una escritura a NOTAS.md proponía `NOTAS.md/**` — los hijos de un
+  // directorio inexistente, así que la política observada no concedía nada
+  // sobre el archivo que de verdad se escribió.
+  assert.deepEqual(generalise(["NOTAS.md"]), ["NOTAS.md"]);
+  assert.deepEqual(generalise(["src/web/App.tsx", "src/web/a.css"]), ["src/web/**"]);
+  assert.deepEqual(generalise(["NOTAS.md", "src/web/App.tsx"]), ["NOTAS.md", "src/web/**"]);
+  // un archivo de raíz ya cubierto por un directorio no hace falta nombrarlo
+  assert.deepEqual(generalise(["src/a.ts", "src/b/c.ts"]), ["src/**"]);
+});
+
+test("observation adds to the policy instead of replacing it", () => {
+  // El archivo dice "diff it, then move it", y moverlo borraba el territorio de
+  // todo rol que estuviera quieto durante la ventana. Un rol que no hizo nada
+  // no es un rol que no necesita nada: es un rol que nadie miró.
+  const cfg = {
+    root: "/repo", path: "/repo/seisin.toml", keyDirs: [], allowedDomains: [],
+    roles: {
+      frontend: { name: "frontend", writes: ["web/**"], keys: [], network: null },
+      backend: { name: "backend", writes: ["api/**"], keys: [], network: null },
+    },
+  };
+  const { toml } = renderObserved(cfg, [
+    { role: "frontend", action: "write", target: "NOTAS.md", verdict: "observed" },
+    { role: "frontend", action: "write", target: "docs/guia.md", verdict: "observed" },
+  ]);
+
+  assert.match(toml, /\[roles\.backend\]/, "borró el rol que no actuó");
+  assert.match(toml, /writes = \["api\/\*\*"\]/, "borró su territorio declarado");
+  assert.match(toml, /"web\/\*\*", "NOTAS\.md", "docs\/\*\*"/, "no sumó lo observado a lo declarado");
+  assert.match(toml, /this role did nothing while observing/);
+});
+
+test("the hook answers Claude Code with a denial that names the owner", () => {
+  // El lado de seisin de la promesa que abre el README. El kernel solo dice
+  // "Operation not permitted"; esto es lo único que lleva el dueño al contexto
+  // del agente.
+  const cfg2 = { ...cfg, root: "/repo" };
+  for (const tool of ["Write", "Edit"]) {
+    const out = decide(cfg2, "frontend", { tool_name: tool, tool_input: { file_path: "src/api/s.ts" } },
+                       { now: () => true, ask: () => true });
+    assert.equal(out.hookSpecificOutput.permissionDecision, "deny", tool);
+    assert.match(out.hookSpecificOutput.permissionDecisionReason, /belongs to backend/, tool);
+  }
 });
 
 /* ── lo que el registro dice de la política ───────────────────────────── */
