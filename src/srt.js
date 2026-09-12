@@ -13,7 +13,7 @@
  *      back to its defaults. Emitting the whole object removes that class of
  *      error, which is most of what this file is for.
  */
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { STATE_DIR, CONFIG_NAME } from "./layout.js";
 import { homedir, tmpdir } from "node:os";
 import { realpathSync, lstatSync } from "node:fs";
@@ -49,9 +49,13 @@ import { realpathSync, lstatSync } from "node:fs";
  * role cannot reach another's. Kept out of `.seisin/` inside the repo because
  * that whole directory is denyWrite now.
  */
-export function roleHome(config, role) {
+export function roleHomeRoot(config) {
   const id = Buffer.from(config.root).toString("base64url").slice(-16);
-  return join(tmpdir(), `seisin-home-${id}`, role);
+  return join(tmpdir(), `seisin-home-${id}`);
+}
+
+export function roleHome(config, role) {
+  return join(roleHomeRoot(config), role);
 }
 
 export const RUNTIME_WRITES = [
@@ -164,6 +168,14 @@ export function settingsFor(config, roleName, spool = null) {
           "~/.npmrc", "~/.netrc", "~/.git-credentials",
           "~/.config", "~/.claude", "~/.codex"].map(expand),
     );
+    // And the other roles' homes. Giving each role its own HOME closed writing
+    // between them and left reading wide open — so `a` could read the session
+    // token `b`'s CLI had just written. Worse, the audit page said this was
+    // closed, because the only thing measured was the write.
+    //
+    // Same shape as the key directories: deny the parent, allow your own.
+    denyRead.push(realOrSelf(roleHomeRoot(config)));
+    allowRead.push(realOrSelf(home));
   }
   for (const key of role.keys) {
     const path = key.includes("/") ? abs(key) : abs(join(dirs[0] ?? ".", key));
@@ -238,12 +250,12 @@ export function settingsFor(config, roleName, spool = null) {
         abs(config.path ?? CONFIG_NAME),
         abs(STATE_DIR),
         ...dirs.map(abs),
-        // The audit socket lives under the scratch space every role can write,
-        // so without this the agent could simply unlink the channel that
-        // records it. Connecting is `network-outbound` and deleting is
-        // `file-write-unlink` — different operations, so denying the second
-        // leaves the first working.
-        ...(spool ? [spool] : []),
+        // The audit socket, and the directory holding it. Denying only the
+        // socket left `mv /tmp/seisin-xxxx /tmp/gone` as a way to take the
+        // channel out without ever touching the file that was protected.
+        // Connecting is `network-outbound` and both of those are
+        // `file-write-unlink`, so denying them leaves the first working.
+        ...(spool ? [spool, dirname(spool)] : []),
       ],
     },
   };
