@@ -29,6 +29,43 @@ A rule is a string comparison against a command someone might not spell that way
 
 `seisin` answers the second question and hands the first one to the operating system.
 
+## What it is for, and what it is not for
+
+> **It turns an agent's mistake into a contained mistake. It does not turn a hostile
+> agent into a harmless one.**
+
+That distinction is the whole threat model, and it is worth reading before you install
+rather than after.
+
+**It holds against an agent that is wrong.** One that edits the file it was not asked
+about, reads the key meant for another role, or calls an API nobody declared. The kernel
+refuses, and it does not care how the command was spelled — verified against a grandchild
+process, an absolute path, a symlink, a `python -c`, and a shell redirect the agent fell
+back to when its own file API was refused.
+
+**It is not built to hold against an agent that is trying.** Measured, in this repo's own
+fixtures:
+
+| | |
+|---|---|
+| it can read everything except the declared keys | by design — an agent that cannot read the repo cannot work. `seisin scan` exists because secrets live elsewhere too |
+| it can write anything inside its own territory | including staging an exfiltration, or destroying its own uncommitted work with `rm` |
+| `base64` defeats the redaction | only the literal value is masked, and only on stdout and stderr |
+| an allowed domain is an allowed channel | if the agent's own API is reachable, so is everything that goes through it |
+| the hook is text-based and evadable | on purpose. What escapes it goes **unexplained, not unblocked** — but attribution is not a control |
+
+And three things that outweigh all of the above:
+
+1. **It is days old and has one author.** Around two thousand lines that nobody has
+   audited except its writer and one field report. "Secure" is not a word earned that fast.
+2. **The enforcement is someone else's beta.** `sandbox-runtime` describes itself as a
+   research preview with an evolving API. A hole there is a hole here.
+3. **Two platforms tested, by one person, on one machine each.**
+
+For several of your own agents, on your own machine, getting in each other's way — that is
+what this is for, and it is a great deal better than nothing. For putting an agent you do
+not control in front of data you care about, it is not.
+
 ## Install
 
 ```bash
