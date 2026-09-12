@@ -134,6 +134,22 @@ Append-only matters for the same reason it does for the log: a decision that can
 be rewritten is not evidence. A granted or refused request is not deleted, it is
 followed by a line saying what happened to it.
 
+And "append-only" is now enforced rather than asserted. It was not, for a while:
+`.seisin/` sat in every role's allowWrite because the hook runs inside the box
+and has to record what it decided — so the queue was writable by the processes
+it is a record of, and a request could be truncated, rewritten or invented. The
+file said the word and nothing held it up.
+
+The directory left the territory and a socket took its place. The hook sends a
+line to `seisin run`, which holds the file; `allowUnixSockets` grants that one
+socket path, so it is a channel rather than an opening. From inside, the only
+verb is *send one line* — there is no descriptor, so no seek, truncate or
+unlink.
+
+The honest limit: a hostile agent can still send lines, so it can pad its own
+queue. It cannot erase or alter what is already there. Forgery and tampering are
+different problems and only the second one is closed here.
+
 ## The MCP server
 
 `seisin mcp` speaks the Model Context Protocol on stdio, so your own assistant
