@@ -561,6 +561,49 @@ const shared2 = {
   },
 };
 
+/* ── el parser ────────────────────────────────────────────────────────── */
+
+test("malformed input is an error, never a guess", () => {
+  // El lector viejo sacaba las cadenas con un regex e ignoraba lo que hubiera
+  // entre ellas: ["a" BASURA "b"] daba ["a","b"], y una comilla sin cerrar daba
+  // "". Un archivo de permisos entendido a medias es peor que uno rechazado,
+  // porque la mitad que se descartó es la que quisiste escribir.
+  const malos = [
+    'writes = ["a" BASURA "b"]',
+    'writes = ["a" "b"]',
+    'writes = ["a", , "b"]',
+    'writes = [, "a"]',
+    'dir = "a" basura',
+    'dir = "sin cerrar',
+    'writes = ["a", "b"',
+    "writes = [a, b]",
+  ];
+  for (const src of malos)
+    assert.throws(() => parseToml(src), /seisin\.toml:\d+:/, `aceptó: ${src}`);
+});
+
+test("everything the subset actually supports still parses", () => {
+  assert.deepEqual(parseToml('writes = ["a", "b"]').writes, ["a", "b"]);
+  assert.deepEqual(parseToml('writes = ["a", "b",]').writes, ["a", "b"]);   // coma final
+  assert.deepEqual(parseToml("writes = []").writes, []);
+  assert.deepEqual(parseToml('writes = [ "a" ,  "b" ]').writes, ["a", "b"]);
+  assert.equal(parseToml('dir = ".secrets"').dir, ".secrets");              // regresión del doble slice
+  assert.equal(parseToml("redact = false").redact, false);
+  // Un `#` dentro de comillas no es un comentario.
+  assert.equal(parseToml('dir = "a#b"').dir, "a#b");
+});
+
+test("no input makes the parser lose or invent an item", () => {
+  // Property-based, chico y determinista: para cualquier lista de rutas
+  // plausibles, lo que entra es lo que sale — o se rechaza. Nunca la mitad.
+  const piezas = ["src/**", "a b/c", ".env", "x", "a.b.c", "..", "*/", "#no-comentario"];
+  for (let n = 0; n <= piezas.length; n++) {
+    const items = piezas.slice(0, n);
+    const src = `writes = [${items.map((s) => `"${s}"`).join(", ")}]`;
+    assert.deepEqual(parseToml(src).writes, items, src);
+  }
+});
+
 /* ── el carrete de auditoría ──────────────────────────────────────────── */
 
 test("the spool carries an entry to the parent, and the parent picks the file", async (t) => {
@@ -673,6 +716,11 @@ test("check states the gap it does not cover, every time", () => {
   const borrado = limits.find((l) => l.kind === "unlink-uncovered");
   assert.ok(borrado, "check ya no dice que un rol puede borrar dentro de su territorio");
   assert.match(borrado.detail, /denyUnlink/);   // y adónde fue el pedido
+
+  // El aislamiento de claves cubre lo declarado, no todo secreto del repo.
+  const claves = limits.find((l) => l.kind === "keys-only-what-you-declared");
+  assert.ok(claves, "check no dice que las claves fuera de [keys] son legibles");
+  assert.match(claves.detail, /seisin scan/);
 });
 
 /* ── el servidor MCP ──────────────────────────────────────────────────── */

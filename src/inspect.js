@@ -47,6 +47,15 @@ export function inspect(config, only = null, where = config.path) {
  */
 const LIMITS = [
   {
+    kind: "keys-only-what-you-declared",
+    headline: "key isolation covers the directory you declared, and nothing else",
+    detail:
+      "a credential sitting in the repo outside [keys] dir is ordinary readable " +
+      "content to every role. Run `seisin scan` to find them — check does not, " +
+      "because reading the whole tree on every invocation is how a command stops " +
+      "being run.",
+  },
+  {
     kind: "unlink-uncovered",
     headline: "a role can delete inside its own territory",
     detail:

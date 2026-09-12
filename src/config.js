@@ -70,24 +70,63 @@ function stripComment(line) {
   return line;
 }
 
+/**
+ * One value, read strictly.
+ *
+ * Strict is the whole point, and it was not before. The array reader used to
+ * pick quoted runs out of the line with a regex and ignore everything between
+ * them, so `["a" GARBAGE "b"]` parsed as `["a","b"]` and an unterminated string
+ * parsed as `""`. A permission file that is half-understood is worse than one
+ * that is rejected: the half that was dropped is the half you meant.
+ *
+ * So this scans rather than matches, and anything it does not recognise is an
+ * error with a line number. There are no escapes — a `"` ends the string. If a
+ * path of yours needs a quote in it, that is outside this subset and the
+ * message says so instead of guessing.
+ */
 function readValue(value, lineNo) {
   const v = value.trim();
+  const bad = (msg) => { throw new Error(`${CONFIG_NAME}:${lineNo}: ${msg}`); };
+
   if (v === "true") return true;
   if (v === "false") return false;
-  if (v.startsWith("[")) {
-    const inner = v.slice(1, v.lastIndexOf("]"));
-    const items = inner.match(/"[^"]*"/g) || [];
-    if (inner.trim() && items.length === 0)
-      throw new Error(`${CONFIG_NAME}:${lineNo}: array items must be double-quoted`);
-    return items.map((s) => s.slice(1, -1));
+
+  if (v.startsWith('"')) {
+    const end = v.indexOf('"', 1);
+    if (end === -1) bad(`unterminated string — no closing quote in ${v}`);
+    const rest = v.slice(end + 1).trim();
+    if (rest) bad(`unexpected ${JSON.stringify(rest)} after the string`);
+    return v.slice(1, end);
   }
-  // One slice, not two. The first version chained `.slice(1, -1)` on top of the
-  // unquote and ate the leading character, so `".secrets"` came back as `secrets`.
-  // That is silent and it is the worst kind: `denyRead` then pointed at a path
-  // that does not exist, and every key was readable by every role. Caught by the
-  // end-to-end test, never by reading the line.
-  if (v.startsWith('"')) return v.slice(1, v.lastIndexOf('"'));
-  throw new Error(`${CONFIG_NAME}:${lineNo}: value must be a string, an array of strings, or a boolean`);
+
+  if (v.startsWith("[")) {
+    if (!v.endsWith("]")) bad("unterminated array — no closing bracket");
+    const items = [];
+    let i = 1;
+    const body = v.slice(0, -1);          // everything up to the closing bracket
+    let expectItem = true;                // a list alternates item, comma, item…
+
+    while (i < body.length) {
+      const c = body[i];
+      if (c === " " || c === "\t") { i++; continue; }
+
+      if (c === ",") {
+        if (expectItem) bad("empty array slot — two commas in a row, or a leading comma");
+        expectItem = true; i++; continue;
+      }
+      if (!expectItem) bad(`missing comma before ${JSON.stringify(body.slice(i, i + 12))}`);
+      if (c !== '"') bad(`array items must be double-quoted, found ${JSON.stringify(body.slice(i, i + 12))}`);
+
+      const end = body.indexOf('"', i + 1);
+      if (end === -1) bad("unterminated string inside the array");
+      items.push(body.slice(i + 1, end));
+      i = end + 1;
+      expectItem = false;                 // a trailing comma is fine; a trailing item is not
+    }
+    return items;
+  }
+
+  bad("value must be a string, an array of strings, or a boolean");
 }
 
 /**
