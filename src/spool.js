@@ -27,7 +27,7 @@
  * else did.
  */
 import { createServer, createConnection } from "node:net";
-import { unlinkSync, existsSync, mkdtempSync, chmodSync, rmSync } from "node:fs";
+import { unlinkSync, existsSync, mkdtempSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 
@@ -91,8 +91,13 @@ export function spool(sink, path = spoolPath()) {
       path,
       close() {
         server.close();
-        // The directory goes with it: it was made for this run.
-        try { rmSync(dirname(path), { recursive: true, force: true }); } catch {}
+        // Only the socket. The first version removed `dirname(path)` too,
+        // reasoning that spoolPath() had just made that directory — but a
+        // caller passing its own path makes dirname the system temp directory,
+        // and closing the spool deleted it. That is a caller's whole scratch
+        // space gone, for a cleanup. Whoever created the directory removes it:
+        // see `run`, which owns the one spoolPath() makes.
+        try { unlinkSync(path); } catch {}
       },
     }));
   });
