@@ -72,7 +72,11 @@ function config() {
  */
 const COMMANDS = {
   run: async () => await run(config(), argv),
-  check: () => void check(config(), argv),
+  // Non-zero when the policy cannot be enforced as written, so `seisin check`
+  // composes in a pre-commit hook or CI the way `explain` and `scan` already do.
+  // Warnings about a config that WILL work still exit 0 — failing on those
+  // would make the command unusable within a week.
+  check: () => (check(config(), argv).warnings.some((w) => w.kind === "cannot-be-enforced") ? 1 : 0),
   explain: () => (explainCommand(config(), argv).allowed ? 0 : 1),
   scan: () => (scanCommand(config()).certain.length ? 1 : 0),
   log: () => void log(config(), argv),

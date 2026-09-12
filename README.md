@@ -416,7 +416,7 @@ This space already has good work, and seisin is not the first thing here:
 
 ## Status
 
-`0.1.0`, 89 tests, all 89 passing on both macOS and Linux against the real
+`0.1.0`, 99 tests, all passing on both macOS and Linux against the real
 sandbox and real commands, on Node 18/20/22 — and CI fails if the sandbox half *skips*,
 because a green run that quietly tested nothing looks exactly like a real one.
 The config format may still move before `1.0` — if it does, `seisin check` will

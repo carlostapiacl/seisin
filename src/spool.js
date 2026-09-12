@@ -27,9 +27,9 @@
  * else did.
  */
 import { createServer, createConnection } from "node:net";
-import { unlinkSync, existsSync } from "node:fs";
+import { unlinkSync, existsSync, mkdtempSync, chmodSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 
 /** The env var a confined hook looks for. Absent means "write the file". */
 export const SOCK_ENV = "SEISIN_SPOOL";
@@ -41,8 +41,15 @@ export const SOCK_ENV = "SEISIN_SPOOL";
  * Kept short because a unix socket path is capped near 104 bytes on macOS and
  * the failure when it is too long is an unhelpful EINVAL.
  */
-export function spoolPath(pid = process.pid) {
-  return join(tmpdir(), `seisin-${pid}.sock`);
+export function spoolPath() {
+  // A random directory, 0700, rather than a name anyone can guess from the pid.
+  // The socket itself is already denyWrite so the agent cannot unlink it, but
+  // any other process running as this user could otherwise connect and add
+  // lines. That does not let them erase anything — forgery is the part that
+  // stays open — but a predictable path invites it for free.
+  const dir = mkdtempSync(join(tmpdir(), "seisin-"));
+  chmodSync(dir, 0o700);
+  return join(dir, "spool.sock");
 }
 
 /**
@@ -84,7 +91,8 @@ export function spool(sink, path = spoolPath()) {
       path,
       close() {
         server.close();
-        try { unlinkSync(path); } catch {}
+        // The directory goes with it: it was made for this run.
+        try { rmSync(dirname(path), { recursive: true, force: true }); } catch {}
       },
     }));
   });

@@ -90,14 +90,18 @@ function warningsFor(config, roles) {
   // reads like one. `run` refuses it; `check` exists precisely so you find that
   // out while reading the map rather than mid-turn.
   for (const r of roles) {
-    for (const w of r.writes) {
-      try {
-        settingsFor(config, r.name);
-      } catch (e) {
-        warnings.push({ kind: "unenforceable-glob", headline: `${r.name}: ${e.message.split("\n")[0]}`,
-                        detail: e.message.split("\n").slice(1).map((s) => s.trim()).join(" ") });
-        break;
-      }
+    try {
+      settingsFor(config, r.name);
+    } catch (e) {
+      // Whatever settingsFor refuses, `run` will refuse too. The label used to
+      // say "unenforceable-glob" for every one of them, which mislabelled the
+      // key-outside-its-directory error as a glob problem — a warning that
+      // names the wrong cause sends the reader to the wrong line.
+      warnings.push({
+        kind: "cannot-be-enforced",
+        headline: `${r.name}: ${e.message.split("\n")[0]}`,
+        detail: e.message.split("\n").slice(1).map((s) => s.trim()).filter(Boolean).join(" "),
+      });
     }
   }
   const shared = sharedPaths(config, roles);
@@ -128,6 +132,35 @@ function warningsFor(config, roles) {
       headline: `this repo lives inside shared scratch space (${inside[0]})`,
       detail: "Every role can write scratch, so territory does not hold here. Move the repo, or set [runtime] writes = [].",
     });
+
+  // A territory that leaves the repo is supported — a role can own its handover
+  // note one level up — but it is a different promise from "this repo, divided",
+  // and it should be a sentence somebody chose rather than a line that drifted.
+  for (const r of roles) {
+    const out = r.writes.filter((w) => w.startsWith("/") || w.startsWith("../"));
+    if (out.length)
+      warnings.push({
+        kind: "territory-outside-repo",
+        headline: `${r.name} writes outside this repo: ${out.join(" ")}`,
+        detail: "the sandbox will grant it. Nothing here checks what lives there.",
+      });
+  }
+
+  // `env` is a hole in the [keys] model, on purpose: some tools only take a
+  // credential through the environment. It should still be loud, because it is
+  // the one place a secret reaches a role without being a declared key.
+  const SECRETISH = /(TOKEN|KEY|SECRET|PASSWORD|PASSWD|AUTH|COOKIE|SESSION|PRIVATE|CREDENTIAL)/i;
+  for (const r of roles) {
+    const risky = (r.env ?? []).filter((n) => SECRETISH.test(n));
+    if (risky.length)
+      warnings.push({
+        kind: "secret-through-env",
+        headline: `${r.name} receives ${risky.join(", ")} through the environment`,
+        detail:
+          "that bypasses [keys] entirely: it is not scoped, not redacted by name, and not " +
+          "visible in the key map. Declare it as a key file where the tool allows one.",
+      });
+  }
 
   if (config.keyDirs.length === 0 && Object.values(config.roles).some((r) => r.keys.length))
     warnings.push({

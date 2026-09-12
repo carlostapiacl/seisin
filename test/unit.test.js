@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseToml } from "../src/config.js";
 import { covers, ownersOf, keyHolders, explain } from "../src/owners.js";
-import { realpathSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { realpathSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildEnv } from "../src/env.js";
@@ -534,7 +534,7 @@ test("a pattern the kernel cannot express is refused, not widened", () => {
 test("check says so before anything runs", () => {
   const cfg = { root: "/repo", keyDirs: [], allowedDomains: [], path: "seisin.toml",
                 roles: { r: { name: "r", writes: ["src/*"], keys: [], network: null } } };
-  const w = inspect(cfg, null, "seisin.toml").warnings.find((x) => x.kind === "unenforceable-glob");
+  const w = inspect(cfg, null, "seisin.toml").warnings.find((x) => x.kind === "cannot-be-enforced");
   assert.ok(w, "check no avisa de un patrón que run va a rechazar");
   assert.match(w.headline, /src\/\*/);
 });
@@ -673,6 +673,71 @@ test("isolated mode gives each role its own home, and the real one to nobody", (
   assert.ok(!wa.some((p) => p.includes("/.claude")), "el ~/.claude real sigue concedido");
   assert.ok(!wa.some((p) => wb.includes(p) && p.includes("seisin-home")), "los roles comparten scratch");
   assert.ok(wa.some((p) => p.endsWith("/a")), "el rol no tiene un home propio");
+});
+
+test("a policy cannot be cancelled further down the file", () => {
+  // "Último gana" es TOML-ish y equivocado acá: una policy puede verse
+  // restrictiva arriba y anularse cuarenta líneas abajo, y quien la revisa lee
+  // el primer bloque.
+  assert.throws(() => parseToml('[roles.a]\nwrites = ["src/**"]\n\n[roles.a]\nwrites = ["**"]\n'),
+    /appears twice/);
+  assert.throws(() => parseToml('[roles.a]\nwrites = ["src/**"]\nwrites = ["**"]\n'),
+    /set twice/);
+  // dos roles distintos con el mismo campo siguen siendo normales
+  assert.ok(parseToml('[roles.a]\nwrites = []\n\n[roles.b]\nwrites = []\n'));
+});
+
+test("a key that is a symlink out of its directory is refused", (t) => {
+  // El sandbox aplica sobre el destino de un symlink — la misma propiedad que
+  // hizo que conceder /tmp no concediera nada. Así que .secrets/token.txt →
+  // ~/.ssh/id_rsa es una concesión de lectura sobre la clave ssh, escrita en la
+  // única lista que nadie audita dos veces.
+  const box = mkdtempSync(join(tmpdir(), "seisin-sym-"));
+  t.after(() => rmSync(box, { recursive: true, force: true }));
+  mkdirSync(join(box, ".secrets"), { recursive: true });
+  const afuera = join(box, "afuera.txt");
+  writeFileSync(afuera, "SECRETO\n");
+  symlinkSync(afuera, join(box, ".secrets", "tok.txt"));
+  writeFileSync(join(box, ".secrets", "propia.txt"), "SECRETO\n");
+
+  const mk = (k) => ({ root: box, path: join(box, "seisin.toml"), keyDirs: [".secrets"], allowedDomains: [],
+                       roles: { f: { name: "f", writes: ["src/**"], keys: [k], network: null } } });
+  assert.throws(() => settingsFor(mk("tok.txt"), "f"), /is a symlink/);
+  assert.ok(settingsFor(mk("propia.txt"), "f").filesystem.allowRead.some((p) => p.endsWith("propia.txt")));
+});
+
+test("check says what it cannot enforce, and exits on it", () => {
+  // La etiqueta importa: decía "unenforceable-glob" para cualquier error, así
+  // que una clave fuera de su directorio se reportaba como problema de glob y
+  // mandaba al lector a la línea equivocada.
+  const cfg = { root: "/repo", path: "/repo/seisin.toml", keyDirs: [], allowedDomains: [],
+                roles: { r: { name: "r", writes: ["src/*"], keys: [], network: null } } };
+  const w = inspect(cfg, null, "seisin.toml").warnings.find((x) => x.kind === "cannot-be-enforced");
+  assert.ok(w);
+  assert.match(w.headline, /r: /);
+});
+
+test("check is loud about the two ways around the key model", () => {
+  const cfg = { root: "/repo", path: "/repo/seisin.toml", keyDirs: [".secrets"], allowedDomains: [],
+                roles: { a: { name: "a", writes: ["src/**", "../otro/**"], keys: [],
+                              env: ["GITHUB_TOKEN", "LANG"], network: null } } };
+  const kinds = inspect(cfg, null, "x").warnings.map((w) => w.kind);
+  assert.ok(kinds.includes("territory-outside-repo"));
+  assert.ok(kinds.includes("secret-through-env"));
+});
+
+test("isolated mode closes reading too, not just writing", () => {
+  // Por defecto el modelo es "leé lo que quieras salvo los directorios de
+  // claves declarados", así que ~/.ssh y ~/.aws son archivos comunes para
+  // cualquier rol. Razonable para agentes propios; el juego entero para otra cosa.
+  const cfg = { root: "/repo", path: "/repo/seisin.toml", keyDirs: [], allowedDomains: [], isolate: true,
+                roles: { a: { name: "a", writes: ["src/**"], keys: [], network: null } } };
+  const { denyRead } = settingsFor(cfg, "a").filesystem;
+  for (const p of [".ssh", ".aws", ".config"])
+    assert.ok(denyRead.some((d) => d.endsWith("/" + p)), `${p} legible en modo aislado`);
+  // y sin isolate sigue siendo abierto, que es lo documentado
+  const abierto = settingsFor({ ...cfg, isolate: false }, "a").filesystem.denyRead;
+  assert.ok(!abierto.some((d) => d.endsWith("/.ssh")));
 });
 
 /* ── el carrete de auditoría ──────────────────────────────────────────── */
