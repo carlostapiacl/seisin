@@ -13,6 +13,15 @@
     "codeowners"
   ],
   "license": "MIT",
+  "author": "Carlos Tapia",
+  "homepage": "https://github.com/carlostapiaolguin3-stack/seisin#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/carlostapiaolguin3-stack/seisin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/carlostapiaolguin3-stack/seisin/issues"
+  },
   "type": "module",
   "bin": {
     "seisin": "./src/cli.js"
