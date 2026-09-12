@@ -37,6 +37,18 @@ npm install -g seisin
 
 That pulls in [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime), which does the enforcing: Seatbelt on macOS, bubblewrap on Linux. No containers, no VMs, no daemon. seisin has **no other dependencies**.
 
+**On Linux you also need three system packages** — the runtime refuses to start without
+them rather than running unconfined, which is the right failure and an unhelpful message:
+
+```bash
+apt install bubblewrap ripgrep socat      # or your distro's equivalent
+```
+
+**Inside a container** bubblewrap needs to create namespaces and mount `/proc`, which a
+default Docker container forbids. `--cap-add SYS_ADMIN --security-opt seccomp=unconfined`
+gets namespaces; mounting `/proc` needs `--privileged`. If you cannot grant that, run
+seisin on the host and let the container be what it sandboxes.
+
 ## Use
 
 ```bash
@@ -78,6 +90,9 @@ not a claim worth making about a permission tool, so here is what has actually b
 |---|---|---|
 | **Claude Code** (`claude -p`) | 2.1.x | Territory and keys enforced; network egress refused an undeclared domain by name |
 | **opencode** (`opencode run`) | **1.18.30** | Same, **on a free model with no API key at all** |
+
+Both on macOS 15 (Seatbelt). The suite also passes on **Linux x86_64** — Debian 12,
+node 22, bubblewrap 0.8.0 — 73 of 73.
 
 The opencode run is the interesting one, because **opencode has no per-path sandbox flag** —
 its only permission control is `--auto`, "auto-approve permissions that are not explicitly
