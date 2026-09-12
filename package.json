@@ -27,7 +27,7 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@anthropic-ai/sandbox-runtime": "^1.0.0"
+    "@anthropic-ai/sandbox-runtime": "^0.0.76"
   },
   "scripts": {
     "test": "node --test test/*.test.js"
