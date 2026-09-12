@@ -1,7 +1,7 @@
 {
   "name": "seisin",
   "version": "0.1.0",
-  "description": "Give each AI agent its own folders and its own keys. Enforced by the kernel, and when it blocks it tells you whose file it is.",
+  "description": "A permission layer for AI coding agents: role-scoped folders and keys, enforced by the OS, and when it blocks it tells you whose file it was.",
   "keywords": [
     "ai-agents",
     "claude-code",
@@ -10,7 +10,10 @@
     "multi-agent",
     "seatbelt",
     "bubblewrap",
-    "codeowners"
+    "codeowners",
+    "rbac",
+    "agent-permissions",
+    "code-ownership"
   ],
   "license": "MIT",
   "author": "Carlos Tapia",
