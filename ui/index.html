@@ -151,6 +151,21 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
   main{padding:16px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+  /* Requests. A queue nobody opens is not human-in-the-loop, so it looks like
+     something waiting rather than another table of facts. */
+  .req{display:flex;gap:14px;align-items:flex-start;padding:14px 16px;border-top:1px solid var(--line)}
+  .req:first-child{border-top:0}
+  .req .who{flex:1;min-width:0}
+  .req .who b{font-weight:600}
+  .req .path{font-family:var(--mono);font-size:12.5px;color:var(--fg)}
+  .req .sub{font-size:12px;color:var(--dim);margin-top:3px}
+  .req .act{display:flex;gap:8px;align-items:center;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end}
+  .req input{font:inherit;font-size:12.5px;padding:6px 9px;border:1px solid var(--line);border-radius:6px;
+             background:var(--bg);color:var(--fg);width:min(30vw,220px)}
+  .req input:focus{outline:2px solid var(--blue);outline-offset:1px}
+  .req .empty{color:var(--dim);padding:18px 16px}
+  .asked{font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -167,9 +182,10 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
     </div>
     <div class="list">
       <div class="cap">Policy</div>
-      <a class="on" href="#" aria-current="page"><i>⚷</i>Roles<span class="pin" id="pin"></span></a>
-      <a href="#"><i>◷</i>Activity</a>
-      <a href="#"><i>⚙</i>Config file</a>
+      <a class="on" href="#policy" aria-current="page"><i>⚷</i>Roles<span class="pin" id="pin"></span></a>
+      <a href="#requests" id="nav-req"><i>⚖</i>Requests<span class="pin" id="req-pin"></span></a>
+      <a href="#activity"><i>◷</i>Activity</a>
+      <a href="#configfile"><i>⚙</i>Config file</a>
       <div class="cap">Docs</div>
       <a href="https://github.com/anthropic-experimental/sandbox-runtime" target="_blank" rel="noopener"><i>↗</i>sandbox-runtime</a>
     </div>
@@ -193,7 +209,7 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
     </div>
 
     <div class="box">
-      <header><h2>Policy</h2><span class="note">click a role to see its generated settings</span></header>
+      <header id="policy"><h2>Policy</h2><span class="note">click a role to see its generated settings</span></header>
       <div class="scrollx">
         <table>
           <thead><tr>
@@ -204,25 +220,33 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
       </div>
     </div>
 
+    <div class="box" id="requests" hidden>
+      <header>
+        <h2>Waiting on you</h2>
+        <span class="note">what an agent was refused and would like — approving happens here or in the terminal, never through MCP</span>
+      </header>
+      <div id="reqs"></div>
+    </div>
+
     <div class="two">
       <div class="box">
         <header><h2 id="cfg-title">.seisin/frontend.json</h2><span class="note">what seisin hands the runtime</span></header>
         <pre id="cfg"></pre>
       </div>
       <div class="box">
-        <header><h2>Activity</h2><span class="note">every decision, with its owner</span></header>
+        <header id="activity"><h2>Activity</h2><span class="note">every decision, with its owner</span></header>
         <div id="log"></div>
       </div>
     </div>
 
     <div class="box">
-      <header><h2>seisin.toml</h2><span class="note">copy this back into your repo</span></header>
+      <header id="configfile"><h2>seisin.toml</h2><span class="note">copy this back into your repo</span></header>
       <pre id="toml"></pre>
     </div>
 
     <div class="foot">
-      <b>Console preview.</b> This page edits a policy in memory and shows what would be generated — it does not read or write your repo.
-      Copy the <b>seisin.toml</b> above to keep a change.<br>
+      <b id="foot-mode">Console preview.</b> <span id="foot-text">Opened as a file, this page edits a policy in memory and shows what
+      would be generated. Copy the <b>seisin.toml</b> above to keep a change.</span><br>
       The JSON matches <b>@anthropic-ai/sandbox-runtime 0.0.76</b>, whose schema the test suite exercises against the real binary.
     </div>
   </main>
@@ -431,6 +455,15 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
     });
   }
 
+  /**
+   * A what-if, and only where a what-if is honest.
+   *
+   * seisin.toml cannot express an unsandboxed role — this shows what the map
+   * would be worth without the boundary, which is a useful thing to see once
+   * and a lie to leave on screen next to real decisions read from disk. It
+   * writes an entry into the Activity panel, and in live mode that panel is
+   * the log. Hidden when live for that reason; boot() does the hiding.
+   */
   document.getElementById("kill").onclick=function(){
     var anyOpen=ROLES.some(function(r){return !r.sandbox;});
     ROLES.forEach(function(r){r.sandbox=anyOpen;});
@@ -438,7 +471,76 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
     draw();
   };
 
-  function draw(){drawRows();drawCfg();drawToml();drawLog();}
+  /* ── requests ─────────────────────────────────────────────────────────── */
+
+  var REQS = [];
+
+  /**
+   * The queue, as something a person acts on.
+   *
+   * Hidden entirely when empty rather than shown as an empty table: the point
+   * of this panel is to be noticed on the days it has something in it.
+   */
+  function drawReqs(){
+    var box = document.getElementById("requests");
+    var pin = document.getElementById("req-pin");
+    var host = document.getElementById("reqs");
+    pin.textContent = REQS.length ? String(REQS.length) : "";
+    box.hidden = REQS.length === 0;
+    if (!REQS.length) { host.innerHTML = ""; return; }
+
+    host.innerHTML = REQS.map(function(r, i){
+      var owners = (r.owners && r.owners.length) ? " — belongs to <b>" + esc(r.owners.join(", ")) + "</b>" : "";
+      var times = r.times > 1 ? ' · <span class="asked">asked ' + r.times + "×</span>" : "";
+      return '<div class="req">' +
+        '<div class="who">' +
+          "<div><b>" + esc(r.role) + "</b> wants to " + esc(r.action) +
+            ' <span class="path">' + esc(r.grant) + "</span>" + owners + "</div>" +
+          '<div class="sub">first refused on ' + esc(r.target) + times + "</div>" +
+        "</div>" +
+        '<div class="act">' +
+          '<input id="why-' + i + '" placeholder="why — this outlives you" aria-label="reason">' +
+          '<button class="btn" data-n="' + (i+1) + '" data-d="granted" type="button">Approve</button>' +
+          '<button class="btn warn" data-n="' + (i+1) + '" data-d="denied" type="button">Refuse</button>' +
+        "</div>" +
+      "</div>";
+    }).join("");
+
+    host.querySelectorAll("button[data-n]").forEach(function(b){
+      b.addEventListener("click", function(){ act(b); });
+    });
+  }
+
+  /**
+   * One decision, sent once.
+   *
+   * The buttons go dead on click because a double-approve is not idempotent
+   * here — the second one would be numbered against a queue that already moved.
+   */
+  async function act(btn){
+    var n = Number(btn.dataset.n);
+    var why = (document.getElementById("why-" + (n-1)) || {}).value || "";
+    var row = btn.closest(".req");
+    row.querySelectorAll("button,input").forEach(function(e){ e.disabled = true; });
+    try {
+      var r = await fetch("/api/decide", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-seisin-token": window.SEISIN_TOKEN || "" },
+        body: JSON.stringify({ number: n, decision: btn.dataset.d, reason: why })
+      });
+      var out = await r.json();
+      if (!r.ok) throw new Error(out.error || "refused");
+      // Re-read rather than patch: the grant rewrote seisin.toml, so the
+      // territory on screen is stale too, not just the queue.
+      await reload();
+    } catch (e) {
+      row.querySelectorAll("button,input").forEach(function(el){ el.disabled = false; });
+      var s = row.querySelector(".sub");
+      s.innerHTML = '<span style="color:var(--amber)">' + esc(e.message) + "</span>";
+    }
+  }
+
+  function draw(){drawRows();drawCfg();drawToml();drawLog();drawReqs();}
 
   /**
    * The page works two ways on purpose.
@@ -474,8 +576,18 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
       blocks: r.blocks
     }));
     LOG = fromServer(s.log);
+    REQS = s.requests || [];
     label.textContent = s.config.replace(/^.*\//, "") + " · live";
     label.style.color = "var(--green)";
+    // The footer used to claim this page never touches your repo. It reads it
+    // on every poll, and approving a request rewrites seisin.toml. Saying
+    // otherwise in the one place a cautious reader looks was the worst of the
+    // two possible lies.
+    document.getElementById("kill").hidden = true;
+    document.getElementById("foot-mode").textContent = "Live.";
+    document.getElementById("foot-text").innerHTML =
+      "This page reads <b>" + esc(s.config) + "</b> and the log on disk. Editing the policy above is a preview \u2014 copy the " +
+      "<b>seisin.toml</b> to keep it. Approving a request is the one action that writes: it edits your config in place, with its reason.";
     draw();
     setInterval(refreshLog, 2000);
   }
@@ -499,6 +611,11 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
       const s = await r.json();
       if (s.error) return;
       LOG = fromServer(s.log);
+      // The queue is filled by the hook, in another process, so it arrives here
+      // the same way the log does: by polling. Re-rendered only when it changed,
+      // so a reason someone is halfway through typing is not wiped every 2s.
+      var fresh = JSON.stringify(s.requests || []);
+      if (fresh !== JSON.stringify(REQS)) { REQS = JSON.parse(fresh); drawReqs(); }
       // Only the counters that come from the log are refreshed. Whatever the
       // reader has been editing on screen stays put — a page that resets your
       // work every two seconds is worse than one that does not update.
@@ -508,6 +625,23 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
       });
       drawLog(); drawRows();
     } catch (_) { /* server went away: keep what is on screen */ }
+  }
+
+  /** Everything again, after a decision rewrote the policy on disk. */
+  async function reload(){
+    const r = await fetch("/api/state", { cache: "no-store" });
+    const s = await r.json();
+    if (s.error) return;
+    KEYDIR = (s.keyDirs && s.keyDirs[0]) || ".secrets";
+    KEYS = [...new Set(s.roles.flatMap(x => x.keys))].map(k => k.replace(/\.[^.]+$/, ""));
+    ROLES = s.roles.map(x => ({
+      name: x.name, writes: x.writes.slice(),
+      keys: x.keys.map(k => k.replace(/\.[^.]+$/, "")),
+      sandbox: true, blocks: x.blocks
+    }));
+    LOG = fromServer(s.log);
+    REQS = s.requests || [];
+    draw();
   }
 
   boot();

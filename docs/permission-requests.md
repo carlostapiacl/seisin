@@ -55,6 +55,32 @@ This is also why the UI is not where approval is *hosted* — it is one of two
 places where a human can do it. The other is a terminal, which matters because
 the tool has to work for someone who never opens the console.
 
+### Why the console may approve and the MCP server may not
+
+Both run on the operator's machine, so the distinction has to be more than
+intent. It is: **a confined role cannot reach the console.**
+
+Measured, not assumed. From inside the box, `curl` against the console's own
+port on loopback gets exactly what it gets from a domain outside its allowlist —
+the egress proxy makes no exception for `127.0.0.1`:
+
+```
+console on 127.0.0.1     000   blocked
+api.anthropic.com        404   reached — it is in the allowlist
+example.com              000   blocked
+```
+
+The MCP server is the opposite by construction: it speaks on the agent's own
+stdio. Anything it can do, the agent can cause. So the split is not a policy
+about who *should* approve, it is a fact about who *can* reach the channel.
+
+One more thing had to be true, and was not for free. Loopback is no boundary
+against the browser — any page the operator has open can POST to `127.0.0.1`.
+So `seisin ui` mints a token per run, inlines it into the page it serves, and
+demands it back on the only endpoint that writes. A tab from somewhere else
+cannot read it, and asking for it in a custom header also forces a preflight
+this server never answers.
+
 ## The hook writes the request, not the agent
 
 The agent could describe *why* it wants the path, which would be richer. It does

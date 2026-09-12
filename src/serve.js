@@ -11,12 +11,14 @@
  * key each role can read, which is a map of where the credentials live.
  */
 import { createServer } from "node:http";
-import { readFileSync, existsSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
 import { read, logPath } from "./log.js";
 import { settingsFor } from "./srt.js";
+import { pending, requestsPath, settle, applyGrant } from "./requests.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -43,6 +45,7 @@ function state(configPath) {
   return {
     root: cfg.root,
     config: cfg.path,
+    requests: pending(requestsPath(cfg.root)),
     keyDirs: cfg.keyDirs,
     allowedDomains: cfg.allowedDomains,
     roles,
@@ -51,11 +54,80 @@ function state(configPath) {
   };
 }
 
+/**
+ * Approve or refuse one pending request, as a person.
+ *
+ * This is the only thing in seisin that writes policy, and it lives here rather
+ * than in the MCP server for one reason: an agent cannot reach this. Measured,
+ * not assumed — a confined role curling this port gets the same nothing it gets
+ * from a domain outside its allowlist, because the egress proxy does not make
+ * an exception for loopback. That is what lets the console hold the half the
+ * MCP server deliberately does not.
+ */
+function decide(configPath, { number, decision, reason }) {
+  const cfg = loadConfig(configPath);
+  const file = requestsPath(cfg.root);
+  const req = pending(file)[Number(number) - 1];
+  if (!req) throw new Error(`no pending request #${number}`);
+  if (decision !== "granted" && decision !== "denied")
+    throw new Error(`decision must be granted or denied`);
+
+  if (decision === "granted") {
+    // The config is edited as text, so comments and order survive. Written
+    // before the queue is settled: if this throws, the request is still open
+    // rather than marked done against a file that never changed.
+    const { toml, changed } = applyGrant(readFileSync(cfg.path, "utf8"), req, reason);
+    if (changed) writeFileSync(cfg.path, toml);
+  }
+  settle(file, req.key, decision, reason ?? "");
+  return { ok: true, role: req.role, grant: req.grant, decision };
+}
+
+/** The body of a POST, capped: this endpoint takes three short fields. */
+function readBody(req) {
+  return new Promise((ok, fail) => {
+    let s = "";
+    req.on("data", (c) => {
+      s += c;
+      if (s.length > 4096) { fail(new Error("body too large")); req.destroy(); }
+    });
+    req.on("end", () => ok(s));
+  });
+}
+
 export function serve(configPath, port = 4178) {
   const page = join(HERE, "..", "ui", "index.html");
   if (!existsSync(page)) throw new Error("the console is missing from this install");
 
-  const server = createServer((req, res) => {
+  /**
+   * One secret per run, handed to the page and demanded back on every write.
+   *
+   * Loopback is not a boundary against the browser: any site the operator has
+   * open can POST to 127.0.0.1. It cannot read this token, and asking for it in
+   * a custom header also forces a preflight that this server never answers. So
+   * the page can approve and a tab from somewhere else cannot.
+   */
+  const token = randomBytes(24).toString("hex");
+
+  const server = createServer(async (req, res) => {
+    if (req.method === "POST" && req.url === "/api/decide") {
+      if (req.headers["x-seisin-token"] !== token) {
+        res.writeHead(403, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ error: "bad or missing token" }));
+      }
+      try {
+        const out = decide(configPath, JSON.parse((await readBody(req)) || "{}"));
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        return res.end(JSON.stringify(out));
+      } catch (e) {
+        res.writeHead(400, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ error: e.message }));
+      }
+    }
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      res.writeHead(405).end("method not allowed");
+      return;
+    }
     if (req.url === "/api/state") {
       let body;
       try {
@@ -69,8 +141,12 @@ export function serve(configPath, port = 4178) {
       return res.end(body);
     }
     if (req.url === "/" || req.url === "/index.html") {
+      // Inlined rather than put in the URL: a fragment survives in history, in
+      // a screenshot, and in whatever the operator pastes into a chat.
+      const html = readFileSync(page, "utf8")
+        .replace("</head>", `<script>window.SEISIN_TOKEN=${JSON.stringify(token)}</script></head>`);
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-      return res.end(readFileSync(page));
+      return res.end(html);
     }
     res.writeHead(404).end("not found");
   });
