@@ -69,6 +69,35 @@ keys   = ["database-url.txt", "sentry-dsn.txt"]
 
 `seisin init` will propose this from whatever your repo already says: `.claude/agents/`, then `CODEOWNERS`, then a blank start. It **proposes** — a generated policy you did not read is not a policy.
 
+## Which agents it has been run with
+
+seisin wraps a process, so in principle it works with any CLI. In practice "in principle" is
+not a claim worth making about a permission tool, so here is what has actually been exercised:
+
+| agent | version | result |
+|---|---|---|
+| **Claude Code** (`claude -p`) | 2.1.x | Territory and keys enforced; network egress refused an undeclared domain by name |
+| **opencode** (`opencode run`) | **1.18.30** | Same, **on a free model with no API key at all** |
+
+The opencode run is the interesting one, because **opencode has no per-path sandbox flag** —
+its only permission control is `--auto`, "auto-approve permissions that are not explicitly
+denied". Asked to write into another role's territory it failed twice: once through its own
+`FileSystem.writeFile`, and again through the shell redirect it fell back to.
+
+```
+Error: Unknown: FileSystem.writeFile (.../qa/informe.md)
+$ echo "revisado" > .../qa/informe.md
+zsh:1: operation not permitted
+```
+
+That is the point of putting the boundary in the kernel instead of in the agent: **an agent
+that cannot confine itself is confined anyway**, and adding a new one costs no adapter.
+
+It also found a real bug. The scratch list named `~/.claude` and `~/.codex` and stopped there,
+so the first agent that was neither did not fail a task — it failed to start, on its own log
+file. A boundary that only fits the agents its author happened to use is a coincidence, not a
+boundary. The XDG directories are in the list now.
+
 ## Where the first policy comes from
 
 Every permission tool dodges this question. Written by hand, the first policy is a guess, and
