@@ -10,8 +10,9 @@
  */
 import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
+import { CONFIG_NAME } from "./layout.js";
 
-export const CONFIG_NAME = "seisin.toml";
+export { CONFIG_NAME } from "./layout.js";
 
 /** Walk up from `from` until a seisin.toml shows up. Returns its path or null. */
 export function findConfig(from = process.cwd()) {

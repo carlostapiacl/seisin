@@ -15,6 +15,11 @@ import { redactor } from "../src/redact.js";
 import { scan } from "../src/scan.js";
 import { targetsOf, decide } from "../src/hook.js";
 import { read, generalise } from "../src/log.js";
+import { tmpdir } from "node:os";
+import { inspect, sharedPaths } from "../src/inspect.js";
+import { renderReport, renderVerdict } from "../src/render.js";
+import { renderConfig } from "../src/commands/init.js";
+import * as publica from "../src/index.js";
 import { settingsFor, RUNTIME_WRITES } from "../src/srt.js";
 
 const cfg = {
@@ -326,4 +331,68 @@ test("scratch covers the XDG dirs, and never ~/.config", () => {
   const w = settingsFor(cfg, "frontend").filesystem.allowWrite;
   assert.ok(w.some((p) => p.endsWith("/.local/share")));
   assert.ok(!w.some((p) => p.endsWith("/.config")));
+});
+
+/* ── lo que el refactor hizo alcanzable ───────────────────────────────── */
+
+test("inspect names a path two roles claim", () => {
+  // Antes esto sólo se podía comprobar lanzando el binario y buscando texto en
+  // su stdout, que prueba el renderizador tanto como la lógica.
+  const shared = { ...cfg, roles: { ...cfg.roles,
+    hotfix: { name: "hotfix", writes: ["src/**"], keys: [], env: [] } } };
+  const r = inspect(shared, null, "seisin.toml");
+  assert.ok(r.warnings.some((w) => w.kind === "shared"));
+  // `src/**` NO aparece: su raíz `src` la cubre un solo rol. Lo compartido son
+  // los dos territorios que quedan adentro del de hotfix.
+  assert.deepEqual(sharedPaths(shared).sort(), ["src/api/**", "src/web/**"]);
+});
+
+test("inspect warns when the repo sits inside shared scratch", () => {
+  // El aviso más valioso de `check`, y el que un test no podía tocar: el propio
+  // banco de pruebas vivía en el temp dir y hacía pasar una prueba de frontera
+  // por la razón equivocada.
+  const enScratch = { ...cfg, root: join(realpathSync(tmpdir()), "algun-repo") };
+  const r = inspect(enScratch, null, "seisin.toml");
+  assert.ok(r.warnings.some((w) => w.kind === "scratch"));
+});
+
+test("inspect warns when keys are declared with nowhere to scope them", () => {
+  const sinDir = { ...cfg, keyDirs: [] };
+  assert.ok(inspect(sinDir, null, "x").warnings.some((w) => w.kind === "keys-unscoped"));
+});
+
+test("asking about a role that does not exist is an error, not an empty report", () => {
+  // Contestar un typo con silencio es como un typo se convierte en una creencia.
+  assert.throws(() => inspect(cfg, "no-existe", "x"), /unknown role/);
+});
+
+test("the renderer never decides anything", () => {
+  // Contrato del módulo: mismo dato, mismo texto, sin leer nada de afuera.
+  const informe = inspect(cfg, null, "seisin.toml");
+  assert.equal(renderReport(informe), renderReport(informe));
+  assert.match(renderReport(informe), /frontend/);
+});
+
+test("a denial renders with its owner, an allow does not", () => {
+  const no = renderVerdict("frontend", "write", "src/api/s.ts",
+    explain(cfg, "frontend", "write", "src/api/s.ts"));
+  assert.match(no, /denied/);
+  assert.match(no, /belongs to backend/);
+  assert.match(renderVerdict("backend", "write", "src/api/s.ts",
+    explain(cfg, "backend", "write", "src/api/s.ts")), /allowed/);
+});
+
+test("the proposed config leads with the agent's own API", () => {
+  // Sin esto el agente no se autentica y falla con un 403 del proxy antes de
+  // trabajar, que se lee como instalación rota y no como política estricta.
+  const toml = renderConfig({ source: "prueba", roles: [{ name: "a", writes: ["x/**"], keys: [] }] });
+  assert.match(toml, /api\.anthropic\.com/);
+  assert.match(toml, /\[roles\.a\]/);
+});
+
+test("the public API exposes decisions, not rendering", () => {
+  // La línea que hace refactorizable el resto: lo que no está acá es interno.
+  assert.ok(publica.explain && publica.settingsFor && publica.inspect && publica.scan);
+  assert.equal(publica.renderReport, undefined);
+  assert.equal(publica.run, undefined);
 });

@@ -14,7 +14,7 @@
  *      error, which is most of what this file is for.
  */
 import { join } from "node:path";
-import { LOG_DIR } from "./log.js";
+import { STATE_DIR } from "./layout.js";
 import { homedir, tmpdir } from "node:os";
 import { realpathSync } from "node:fs";
 
@@ -102,7 +102,7 @@ export function settingsFor(config, roleName) {
         // cannot write and, because it swallows its own errors on purpose, it
         // fails silently. The log came back empty from a run that worked
         // perfectly, which is the worst way for an instrument to break.
-        abs(LOG_DIR),
+        abs(STATE_DIR),
         ...(config.runtimeWrites ?? RUNTIME_WRITES).map(expand),
       ],
       denyWrite: [],
