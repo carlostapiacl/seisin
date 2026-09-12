@@ -172,8 +172,9 @@ not a claim worth making about a permission tool, so here is what has actually b
 | **Claude Code** (`claude -p`) | 2.1.x | Territory and keys enforced; network egress refused an undeclared domain by name |
 | **opencode** (`opencode run`) | **1.18.30** | Same, **on a free model with no API key at all** |
 
-Both on macOS 15 (Seatbelt). The suite also passes on **Linux x86_64** — Debian 12,
-node 22, bubblewrap 0.8.0 — 73 of 73.
+Both on macOS 15 (Seatbelt). Linux is no longer a one-off measurement on one machine:
+[CI](.github/workflows/test.yml) runs the whole suite on Ubuntu and macOS, Node 18/20/22,
+on every push — and fails if the sandbox half *skips*.
 
 The opencode run is the interesting one, because **opencode has no per-path sandbox flag** —
 its only permission control is `--auto`, "auto-approve permissions that are not explicitly
@@ -489,7 +490,7 @@ This space already has good work, and seisin is not the first thing here:
 
 ## Status
 
-`0.1.0`, 103 tests, all passing on both macOS and Linux against the real
+`0.1.0`, 108 tests (16 of them against the real sandbox), all passing on both macOS and Linux against the real
 sandbox and real commands, on Node 18/20/22 — and CI fails if the sandbox half *skips*,
 because a green run that quietly tested nothing looks exactly like a real one.
 The config format may still move before `1.0` — if it does, `seisin check` will

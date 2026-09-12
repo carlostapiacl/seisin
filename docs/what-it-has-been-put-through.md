@@ -6,12 +6,12 @@
 
 ## The suite
 
-**103 tests**, run on macOS and Linux, Node 18/20/22, on every push
+**108 tests**, run on macOS and Linux, Node 18/20/22, on every push
 ([workflow](../.github/workflows/test.yml)).
 
-Thirteen of them are not unit tests: they run real commands through the real
+Sixteen of them are not unit tests: they run real commands through the real
 sandbox and check what the kernel did. That distinction matters enough that CI
-**fails if those thirteen skip** — `srt` missing makes them skip themselves, and
+**fails if those sixteen skip** — `srt` missing makes them skip themselves, and
 a green run that quietly tested nothing looks exactly like a real one.
 
 ```
