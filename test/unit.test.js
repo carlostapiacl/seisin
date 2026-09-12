@@ -24,6 +24,7 @@ import { record, settle, pending, applyGrant, grantFor, cleanReason } from "../s
 import { Readable } from "node:stream";
 import { serveMcp, TOOLS, HANDLERS, PROTOCOLS } from "../src/mcp.js";
 import { serve } from "../src/serve.js";
+import { review } from "../src/review.js";
 import { spool, send, flush } from "../src/spool.js";
 import { settingsFor, RUNTIME_WRITES } from "../src/srt.js";
 
@@ -785,6 +786,84 @@ test("isolated mode closes reading too, not just writing", () => {
   // y sin isolate sigue siendo abierto, que es lo documentado
   const abierto = settingsFor({ ...cfg, isolate: false }, "a").filesystem.denyRead;
   assert.ok(!abierto.some((d) => d.endsWith("/.ssh")));
+});
+
+/* ── lo que el registro dice de la política ───────────────────────────── */
+
+/** Un registro de mentira con la forma que escribe el hook. */
+function registro(t, lineas) {
+  const box = mkdtempSync(join(tmpdir(), "seisin-rev-"));
+  t.after(() => rmSync(box, { recursive: true, force: true }));
+  mkdirSync(join(box, ".seisin"), { recursive: true });
+  const f = join(box, ".seisin", "log.jsonl");
+  writeFileSync(f, lineas.map((l) => JSON.stringify({ at: "2026-09-01T00:00:00Z", ...l })).join("\n") + "\n");
+  return box;
+}
+
+const politica = (root) => ({
+  root, path: join(root, "seisin.toml"), keyDirs: [], allowedDomains: [],
+  roles: {
+    frontend: { name: "frontend", writes: ["src/web/**", "public/**"], keys: [], network: null },
+    backend: { name: "backend", writes: ["src/api/**"], keys: [], network: null },
+  },
+});
+
+test("repeated blocks on one place are one finding, not forty lines", (t) => {
+  // Cuarenta denegaciones en el mismo directorio no es un agente portándose
+  // mal: es una política equivocada. Hoy se leen como cuarenta líneas ámbar
+  // prolijas que nadie suma.
+  const root = registro(t, [
+    ...Array(5).fill({ role: "frontend", action: "write", target: "src/api/checkout/a.ts", verdict: "denied", owners: ["backend"] }),
+    { role: "frontend", action: "write", target: "src/web/App.tsx", verdict: "allowed" },
+  ]);
+  const r = review(politica(root));
+  assert.equal(r.friction.length, 1);
+  assert.equal(r.friction[0].times, 5);
+  assert.equal(r.friction[0].where, "src/api/checkout");
+  assert.deepEqual(r.friction[0].owners, ["backend"]);
+  // por debajo del umbral no es un hallazgo, es un martes
+  assert.equal(review(politica(root), { minDenials: 6 }).friction.length, 0);
+});
+
+test("a grant nobody ever used is the only way a policy gets smaller", (t) => {
+  // Todo archivo de permisos solo crece, en todas partes, y siempre por lo
+  // mismo: nadie puede demostrar que una línea está muerta. Acá el registro sí.
+  const root = registro(t, [
+    { role: "frontend", action: "write", target: "src/web/App.tsx", verdict: "allowed" },
+    { role: "backend", action: "write", target: "src/api/orders.ts", verdict: "allowed" },
+  ]);
+  const r = review(politica(root));
+  assert.deepEqual(r.unused, [{ role: "frontend", glob: "public/**" }]);
+  // y la ventana viaja con el hallazgo, porque "nunca usado" no significa nada
+  // sin "...en cuánto tiempo"
+  assert.ok(r.window.from && r.window.to);
+});
+
+test("a denial is not what makes a grant look used", (t) => {
+  // Si un intento rechazado contara, un rol que nunca logró escribir en su
+  // propio territorio parecería estar usándolo.
+  const root = registro(t, [
+    { role: "frontend", action: "write", target: "public/logo.svg", verdict: "denied", owners: ["backend"] },
+    { role: "frontend", action: "write", target: "src/web/a.tsx", verdict: "allowed" },
+  ]);
+  assert.ok(review(politica(root)).unused.some((u) => u.glob === "public/**"));
+});
+
+test("paths nobody claims are counted, not just mentioned one at a time", (t) => {
+  const root = registro(t, [
+    ...Array(3).fill({ role: "frontend", action: "write", target: "legacy/viejo.js", verdict: "denied", owners: [] }),
+    { role: "frontend", action: "write", target: "src/web/a.tsx", verdict: "allowed" },
+  ]);
+  const r = review(politica(root));
+  assert.deepEqual(r.unowned, [{ where: "legacy", times: 3 }]);
+});
+
+test("an empty log reports nothing rather than inventing a clean bill", (t) => {
+  const root = registro(t, []);
+  const r = review(politica(root));
+  assert.equal(r.entries, 0);
+  assert.equal(r.window, null);
+  assert.deepEqual(r.unused, []);   // sin datos no se declara muerto nada
 });
 
 /* ── el carrete de auditoría ──────────────────────────────────────────── */

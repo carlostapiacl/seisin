@@ -10,6 +10,8 @@
 
 **Give each AI agent its own folders and its own keys.** The kernel enforces it, and when it blocks something it tells you *whose* file it was.
 
+A **permission layer**, not a sandbox — it sits on top of one. The isolation comes from the OS; what seisin adds is the part an OS cannot know: which role a path belongs to, and therefore who to ask next.
+
 ![seisin denying a write outside a role's territory, then naming the owner](docs/img/demo.gif)
 
 ```
@@ -35,7 +37,7 @@ seisin run frontend -- claude -p "…"   # run an agent inside its own territory
 
 On Linux, [three system packages first](#install). Everything below is why it works and where it does not.
 
-**Contents** · [Why this exists](#why-this-exists) · [What it is *not* for](#what-it-is-for-and-what-it-is-not-for) · [Install](#install) · [Configure](#configure) · [Agents it runs](#which-agents-it-has-been-run-with) · [Requests](#when-it-says-no-it-leaves-a-request-behind) · [MCP](#ask-your-own-assistant) · [How it holds](#how-it-holds) · [Secrets](#how-it-protects-secrets) · [What it survived](docs/what-it-has-been-put-through.md) · [Status](#status)
+**Contents** · [Why this exists](#why-this-exists) · [What it is *not* for](#what-it-is-for-and-what-it-is-not-for) · [Install](#install) · [Configure](#configure) · [Agents it runs](#which-agents-it-has-been-run-with) · [Requests](#when-it-says-no-it-leaves-a-request-behind) · [MCP](#ask-your-own-assistant) · [Why not a container](#why-not-a-container) · [How it holds](#how-it-holds) · [Secrets](#how-it-protects-secrets) · [What it survived](docs/what-it-has-been-put-through.md) · [Status](#status)
 
 ---
 
@@ -134,6 +136,7 @@ seisin init                              # proposes a seisin.toml for this repo
 seisin check                             # print the map, run nothing
 seisin run frontend -- claude -p "…"     # run an agent as that role
 seisin explain frontend write src/api/x  # ask one question, exit 0 or 1
+seisin review                            # what the log says about the policy
 seisin ui                                # a console for editing the map
 ```
 
@@ -208,6 +211,44 @@ rounds, sixty-six times a role reached for a command that would have destroyed i
 uncommitted work, and the kernel boundary permitted every one. The ask that would close it
 is written up in [docs/upstream/denyUnlink.md](docs/upstream/denyUnlink.md), filed against
 the sandbox runtime rather than worked around here.
+
+## What the log says about the policy
+
+`check` reads the config and tells you what it would do. `review` reads what
+actually happened and tells you where the config was wrong about it.
+
+```
+$ seisin review
+
+  60 decisions, 2026-08-23 to 2026-09-11
+
+  Stopped, repeatedly
+       9×  frontend write src/api/checkout — belongs to backend
+       4×  backend write src/web — belongs to frontend
+
+  Granted, never used
+    frontend  public/**
+    backend   migrations/**
+
+  Owned by nobody
+       5×  legacy
+```
+
+Three questions, and the middle one is the reason this exists. **Every
+permission file only ever grows**, in every system, and always for the same
+reason: nobody can prove a line is dead, so the safe move is to leave it. Here
+the log can prove it — `public/**` was granted and nothing was written there in
+three weeks. That is the only direction that makes a policy *smaller*.
+
+The first is the one that changes how a denial reads. Forty blocks on one
+directory is not an agent misbehaving; it is a policy that is wrong, and until
+you add them up it looks like forty tidy amber lines.
+
+It is arithmetic over the log. No model, no network, no heuristics — the
+argument this whole tool makes is that interpreting text is the wrong way to
+decide things, and a component that reads the log and forms an opinion would
+contradict it on the way in. Every finding carries the window it was computed
+over, because *never used* means nothing without *in how long*.
 
 ## Where the first policy comes from
 
@@ -404,6 +445,38 @@ Set `writes = []` to opt out and find out why it is there.
 - **Not an orchestrator.** It does not run your agents, schedule them, or merge their work. It runs one command as one role.
 - **Not a secret manager.** It scopes *reads* of files you already have. Where those files come from is your problem.
 - **Not useful for a single agent.** If only one agent ever touches the repo, "whose file is this" has one answer and you don't need this.
+
+## Why not a container
+
+A fair question, and the honest answer is that a container is *more* isolation
+than this. If what you need is to run something you do not trust at all, run it
+in a VM — [Kaiden](https://openkaiden.ai), [Containarium](https://containarium.dev)
+and a growing shelf of others do that well, and this does not try to.
+
+They answer **"can this process reach the host?"** seisin answers a different
+question:
+
+```
+container / microVM        one box, one boundary, everything inside it is equal
+seisin                     one repo, several roles, and a boundary between them
+```
+
+Put two agents in one container and they are back where they started: the same
+files, the same keys, no answer to *whose is it*. That question is not about
+isolation strength at all — it is about ownership, and it is the one thing an
+operating system cannot know for you.
+
+Which is also why this is thin. Enforcement is
+[`@anthropic-ai/sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime)
+asking the kernel; seisin is the layer that decides what to ask for and says
+whose file it was when the answer is no. The two compose — put seisin inside a
+container if you want both, and the roles still hold.
+
+| | what it answers |
+|---|---|
+| VM / microVM | can this reach the host |
+| container | can this reach the host, cheaply |
+| **seisin** | **whose file is this, and may this role change it** |
 
 ## Prior art
 
