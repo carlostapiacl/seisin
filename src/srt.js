@@ -69,6 +69,15 @@ export const RUNTIME_WRITES = [
  * literal path, writing to /tmp inside the sandbox failed while the policy
  * looked correct on screen.
  */
+/** The path with symlinks followed, or the path itself if it is not on disk. */
+function realOrSelf(p) {
+  try {
+    return realpathSync(p);
+  } catch {
+    return p;
+  }
+}
+
 export function expand(p) {
   let out = p;
   if (p === "$TMPDIR") out = tmpdir();
@@ -104,6 +113,32 @@ export function settingsFor(config, roleName, spool = null) {
   // one, which keeps the ordinary single-directory config short.
   const dirs = config.keyDirs ?? [];
   for (const dir of dirs) denyRead.push(abs(dir));
+
+  /**
+   * Isolated mode also narrows what a role may READ, which the ordinary mode
+   * does not touch at all.
+   *
+   * By default the model is "read anything except the declared key
+   * directories", and that is a real limit worth saying out loud: `~/.ssh`,
+   * `~/.aws`, `~/.npmrc`, `~/.config/gh/hosts.yml` and `~/.kube/config` are all
+   * ordinary readable files to every role unless they happen to sit under a
+   * key directory. For agents you run yourself that is a reasonable trade —
+   * they need to read the machine to work. For anything you would not trust,
+   * it is the whole game.
+   *
+   * These are denies rather than an allowlist on purpose. A default-deny read
+   * set has to enumerate every library, interpreter and cache a toolchain
+   * touches, gets one wrong, and fails as an unexplainable crash inside the
+   * agent. Naming the places credentials actually live is narrower than the
+   * ideal and it is a boundary that holds up in practice.
+   */
+  if (isolated) {
+    denyRead.push(
+      ...["~/.ssh", "~/.aws", "~/.gnupg", "~/.kube", "~/.docker",
+          "~/.npmrc", "~/.netrc", "~/.git-credentials",
+          "~/.config", "~/.claude", "~/.codex"].map(expand),
+    );
+  }
   for (const key of role.keys) {
     const path = key.includes("/") ? abs(key) : abs(join(dirs[0] ?? ".", key));
     // A key has to live in a declared key directory. Without this check a
@@ -111,14 +146,21 @@ export function settingsFor(config, roleName, spool = null) {
     // `keys = ["../.ssh/id_rsa"]` re-opened a read outside `.secrets` — which
     // is a read grant written in the one list nobody reads twice, because
     // everything in it is supposed to be a key.
+    // Resolved, not compared as text. The sandbox enforces on the destination
+    // of a symlink — the same property that made a `/tmp` grant grant nothing —
+    // so `.secrets/github-token.txt -> ~/.ssh/id_rsa` is a read grant on the
+    // ssh key, written in the one list nobody audits twice. Measured: the read
+    // succeeded through the link and through the real path.
+    const real = realOrSelf(path);
     const inside = dirs.some((d) => {
-      const root = abs(d);
-      return path === root || path.startsWith(root.endsWith("/") ? root : root + "/");
+      const root = realOrSelf(abs(d));
+      return real === root || real.startsWith(root.endsWith("/") ? root : root + "/");
     });
     if (!inside)
       throw new Error(
-        `keys = "${key}" for role ${role.name} resolves to ${path}, outside every [keys] dir ` +
+        `keys = "${key}" for role ${role.name} resolves to ${real}, outside every [keys] dir ` +
         `(${dirs.join(", ") || "none declared"}).\n` +
+        `${real === path ? "" : `  (it is a symlink: ${path} → ${real})\n`}` +
         `  A key must live in a declared key directory. To use another location, declare it: ` +
         `[keys] dir = ["${dirs[0] ?? ".secrets"}", "<the other one>"].`
       );

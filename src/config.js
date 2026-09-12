@@ -33,6 +33,12 @@ const RE_PAIR = /^([A-Za-z0-9_\-]+)\s*=\s*(.+)$/;
 export function parseToml(text) {
   const out = {};
   let table = out;
+  let tableName = "";
+  // "Last one wins" is TOML-ish and wrong for a permission file. A policy can
+  // look restrictive at the top and be cancelled forty lines down, and the
+  // person reviewing it reads the first block. Both shapes are refused.
+  const seenTables = new Set();
+  const seenKeys = new Set();
   const lines = text.split(/\r?\n/);
 
   for (let i = 0; i < lines.length; i++) {
@@ -42,7 +48,14 @@ export function parseToml(text) {
 
     const header = RE_TABLE.exec(line);
     if (header) {
-      table = header[1].split(".").reduce((node, key) => (node[key] ??= {}), out);
+      tableName = header[1];
+      if (seenTables.has(tableName))
+        throw new Error(
+          `${CONFIG_NAME}:${i + 1}: [${tableName}] appears twice. ` +
+          `A later block would silently override the earlier one — put every setting for ` +
+          `${tableName} in one place.`);
+      seenTables.add(tableName);
+      table = tableName.split(".").reduce((node, key) => (node[key] ??= {}), out);
       continue;
     }
 
@@ -54,6 +67,12 @@ export function parseToml(text) {
     if (value.startsWith("[") && !value.includes("]")) {
       while (!value.includes("]") && i + 1 < lines.length) value += " " + stripComment(lines[++i]).trim();
     }
+    const seen = `${tableName}.${key}`;
+    if (seenKeys.has(seen))
+      throw new Error(
+        `${CONFIG_NAME}:${i + 1}: "${key}" is set twice in [${tableName || "the root"}]. ` +
+        `The second would win, which is not a thing a permission file should do quietly.`);
+    seenKeys.add(seen);
     table[key] = readValue(value, i + 1);
   }
   return out;
