@@ -111,7 +111,7 @@ export function expand(p) {
  * the repo's state directory being writable from inside — see spool.js. With
  * no parent there is nothing to grant and nothing to reach.
  */
-export function settingsFor(config, roleName, spool = null) {
+export function settingsFor(config, roleName, spool = null, observe = false) {
   const role = config.roles[roleName];
   if (!role) throw new Error(`unknown role "${roleName}". Known: ${Object.keys(config.roles).join(", ")}`);
 
@@ -218,7 +218,18 @@ export function settingsFor(config, roleName, spool = null) {
       denyRead,
       allowRead,
       allowWrite: [
-        ...role.writes.map(toWritePath).map(abs),
+        // Observing means the kernel stops refusing, because otherwise there is
+        // nothing to observe. `--observe` used to relax only the hook, so the
+        // sandbox denied the write anyway and the banner said "nothing denied"
+        // over a transcript of denials — and `init --from-observations` builds
+        // a policy out of that transcript. It would read "the agent needs
+        // nothing outside its territory", which is the opposite of the truth.
+        //
+        // The repo, and only the repo. Everything in denyWrite below still
+        // holds: the config, the state directory and the key directories stay
+        // shut even here, because observing is not a reason to hand over the
+        // paperwork of the confinement.
+        ...(observe ? [abs(".")] : role.writes.map(toWritePath).map(abs)),
         // `.seisin/` is deliberately NOT here. It used to be, because the hook
         // runs inside the box and has to record what it decided — which made
         // the log and the queue writable by the process they are a record of.

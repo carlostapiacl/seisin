@@ -32,12 +32,13 @@ npm install -g seisin
 cd your-repo
 seisin init                            # proposes a policy from what the repo already says
 seisin check                           # read it before you trust it
+seisin wire                            # let the agent record what it does
 seisin run frontend -- claude -p "…"   # run an agent inside its own territory
 ```
 
 On Linux, [three system packages first](#install). Everything below is why it works and where it does not.
 
-**Contents** · [Why this exists](#why-this-exists) · [What it is *not* for](#what-it-is-for-and-what-it-is-not-for) · [Install](#install) · [Configure](#configure) · [Agents it runs](#which-agents-it-has-been-run-with) · [Requests](#when-it-says-no-it-leaves-a-request-behind) · [MCP](#ask-your-own-assistant) · [Why not a container](#why-not-a-container) · [How it holds](#how-it-holds) · [Secrets](#how-it-protects-secrets) · [What it survived](docs/what-it-has-been-put-through.md) · [Status](#status)
+**Contents** · [Why this exists](#why-this-exists) · [What it is *not* for](#what-it-is-for-and-what-it-is-not-for) · [Install](#install) · [Configure](#configure) · [Agents it runs](#which-agents-it-has-been-run-with) · [Requests](#when-it-says-no-it-leaves-a-request-behind) · [MCP](#ask-your-own-assistant) · [Why not a container](#why-not-a-container) · [How it holds](#how-it-holds) · [Secrets](#how-it-protects-secrets) · [Decisions](docs/decisions.md) · [What it survived](docs/what-it-has-been-put-through.md) · [Status](#status)
 
 ---
 
@@ -137,6 +138,7 @@ seisin check                             # print the map, run nothing
 seisin run frontend -- claude -p "…"     # run an agent as that role
 seisin explain frontend write src/api/x  # ask one question, exit 0 or 1
 seisin review                            # what the log says about the policy
+seisin wire                              # install the PreToolUse hook in this repo
 seisin ui                                # a console for editing the map
 ```
 
@@ -361,6 +363,13 @@ available from inside the box is *append one line*: no seek, no truncate, no unl
 hostile agent can still do is send lines, so it can add noise to its own history. What it can
 no longer do is change what is already there.
 
+**The log exists because of the hook, and the hook has to be installed.**
+`seisin wire` writes the `PreToolUse` entry into this repo's
+`.claude/settings.json` — the project's, never your machine's. Skip it and the
+boundary still holds exactly as well; you just cannot see it work, and `log`,
+`watch`, `requests`, `grant` and `review` are all empty rather than broken.
+`seisin check` says so until you run it.
+
 That log is also what makes the sandbox legible at all. When the kernel refuses a write, the
 only thing that surfaces is `Operation not permitted` on the child's stderr: no path, no
 reason, nothing to read afterwards. Correct for an enforcer, useless as an instrument. The
@@ -490,7 +499,7 @@ This space already has good work, and seisin is not the first thing here:
 
 ## Status
 
-`0.1.0`, 115 tests, of which **13 need `@anthropic-ai/sandbox-runtime` installed**
+`0.1.0`, 118 tests, of which **13 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel, all passing on both macOS and Linux against the real
 sandbox and real commands, on Node 18/20/22 — and CI fails if the sandbox half *skips*,
 because a green run that quietly tested nothing looks exactly like a real one.
