@@ -7,9 +7,9 @@
  *
  * Everything in here is ordering that was wrong once. The comments say which.
  */
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { settingsFor } from "../srt.js";
 import { buildEnv } from "../env.js";
@@ -29,11 +29,19 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  * that refuses, because you keep trusting it.
  */
 export function resolveSrt() {
-  const local = join(HERE, "..", "..", "node_modules", ".bin", "srt");
-  if (existsSync(local)) return local;
-  const found = spawnSync("command", ["-v", "srt"], { shell: true, encoding: "utf8" });
-  const path = (found.stdout || "").trim();
-  return path && existsSync(path) ? path : null;
+  const bundled = join(HERE, "..", "..", "node_modules", ".bin", "srt");
+  if (existsSync(bundled)) return bundled;
+
+  // Walk PATH rather than asking a shell. `spawnSync(..., { shell: true })`
+  // prints a deprecation warning on every single run — Node's DEP0190 — which
+  // is a line of noise in front of every user for the sake of finding one file.
+  // It is also the concatenation hazard the warning is about.
+  for (const dir of (process.env.PATH ?? "").split(delimiter)) {
+    if (!dir) continue;
+    const candidate = join(dir, "srt");
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
 }
 
 /** Writes `.seisin/<role>.json` and returns its path. */
