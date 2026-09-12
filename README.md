@@ -165,11 +165,12 @@ of what it had actually done. Wrapping a plain shell and a plain interpreter ins
 | `python3 -c "open('qa/report.md','w')"` (the program's own syscall) | `PermissionError: [Errno 1]` |
 | `rm -f proyecto/FILE.txt` (**destructive, inside** own territory) | **rc=0, file gone** |
 
-The last row is not a bug, it is the shape of the tool: seisin answers *where*, not *what*. A
-[field report from that user](docs/field-report-text-parsing-guard.md) has the whole
-measurement — nineteen defects their previous text-parsing hook produced, which classes the
-kernel boundary makes impossible, the 320-against-1,938 line accounting, and five change
-requests with the test for each.
+The last row is not a bug, it is the shape of the tool: seisin answers *where*, not *what*.
+A team running this in front of an agent fleet measured how often it matters: across ~330
+rounds, sixty-six times a role reached for a command that would have destroyed its own
+uncommitted work, and the kernel boundary permitted every one. The ask that would close it
+is written up in [docs/upstream/denyUnlink.md](docs/upstream/denyUnlink.md), filed against
+the sandbox runtime rather than worked around here.
 
 ## Where the first policy comes from
 
