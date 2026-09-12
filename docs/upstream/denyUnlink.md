@@ -124,12 +124,30 @@ directories and its own keys, and delegates all enforcement here — deliberatel
 because a tool like that has no business owning the correctness of a sandbox
 profile.
 
-The one thing it cannot express is this one. A field report from an agent team
-running in production found three defects of exactly this class: destructive
-operations *inside* a role's own territory, where the path check passes and the
-act is still wrong. Those three are the reason a 356-line text-inspecting guard
-is still in that codebase — and text inspection is the approach the rest of the
-report spends sixteen defects arguing against.
+The one thing it cannot express is this one, and the cost of that is measured
+rather than assumed. An agent team running in production kept a text-inspecting
+guard in front of the same work for ~330 rounds. It blocked 913 actions, of
+which 112 were destructive — but that is the wrong number to bring here:
+
+```
+913  blocked actions, ~330 rounds
+112  destructive
+ 46  ...aimed at ANOTHER role's paths   → a path boundary already refuses these
+ 66  ...inside the role's OWN territory → permitted by the box, every one
+```
+
+Sixty-six times, a role reached for a command that would have destroyed its own
+uncommitted work — thirty-four recursive deletes, eleven `reset --hard` over a
+shared tree, the rest git mutating the working copy — and the only thing that
+stopped it was a program guessing at intent from the text of a command.
+
+That is the ask stated as cost. The 46 are excluded on purpose: counting them
+would inflate it with cases a path boundary already covers.
+
+Note what the 34 recursive deletes imply for scope. The guard catches them by
+path; `mv` of the same directory is one syscall away and ends with the same
+files gone. Covering `unlink` and forgetting `rename` moves the accident rather
+than preventing it.
 
 So the choice today is to keep parsing commands to guess at intent, or to accept
 the gap. `denyUnlink` is what would let it be neither.
