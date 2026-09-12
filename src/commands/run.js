@@ -13,10 +13,12 @@ import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { settingsFor } from "../srt.js";
 import { buildEnv } from "../env.js";
+import { spool, spoolPath, SOCK_ENV } from "../spool.js";
 import { secretsOf, redactor } from "../redact.js";
 import { STATE_DIR } from "../layout.js";
 import { C, err } from "../render.js";
-import { pending, requestsPath } from "../requests.js";
+import { pending, record, requestsPath } from "../requests.js";
+import { append, logPath } from "../log.js";
 import { renderQueue } from "./requests.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -45,15 +47,15 @@ export function resolveSrt() {
 }
 
 /** Writes `.seisin/<role>.json` and returns its path. */
-export function writeSettings(config, role) {
+export function writeSettings(config, role, sock = null) {
   const dir = join(config.root, STATE_DIR);
   mkdirSync(dir, { recursive: true });
   const file = join(dir, `${role}.json`);
-  writeFileSync(file, JSON.stringify(settingsFor(config, role), null, 2) + "\n");
+  writeFileSync(file, JSON.stringify(settingsFor(config, role, sock), null, 2) + "\n");
   return file;
 }
 
-export function run(config, argv) {
+export async function run(config, argv) {
   const split = argv.indexOf("--");
   const role = argv[0];
   const cmd = split === -1 ? argv.slice(1) : argv.slice(split + 1);
@@ -61,8 +63,22 @@ export function run(config, argv) {
   if (!config.roles[role])
     throw new Error(`unknown role "${role}". Known: ${Object.keys(config.roles).join(", ")}`);
 
-  const settings = settingsFor(config, role);
-  const file = writeSettings(config, role);
+  /**
+   * The audit spool: this process holds the log and the queue, and the hook
+   * inside the box gets a socket instead of a directory. That is the whole
+   * reason `.seisin/` is no longer in anybody's allowWrite — see spool.js.
+   *
+   * Entries arrive with their own `at` already set by the sender, so what lands
+   * on disk is when the decision happened, not when the parent got around to it.
+   */
+  const sockPath = spoolPath();
+  const audit = await spool((to, entry) => {
+    if (to === "log") append(logPath(config.root), entry);
+    else record(requestsPath(config.root), entry);
+  }, sockPath);
+
+  const settings = settingsFor(config, role, sockPath);
+  const file = writeSettings(config, role, sockPath);
 
   const srt = resolveSrt();
   if (!srt) throw new Error("sandbox runtime not found. Install it with: npm i -g @anthropic-ai/sandbox-runtime");
@@ -73,6 +89,7 @@ export function run(config, argv) {
   const { env, dropped } = buildEnv(process.env, config.roles[role]);
   env.SEISIN_ROLE = role;
   env.SEISIN_CONFIG = config.path;
+  env[SOCK_ENV] = sockPath;
   if (observe) env.SEISIN_OBSERVE = "1";
   if (argv.includes("--debug-env")) err(`${C.dim}seisin: dropped ${dropped.join(" ")}${C.off}\n`);
 
@@ -125,6 +142,11 @@ export function run(config, argv) {
     // is not human-in-the-loop, and this is the terminal that just showed you
     // the denial — so it goes to stderr, beside it, not into the agent's stdout
     // where a pipeline would swallow it.
+    // Close the spool before reading the queue: a line the hook sent on the
+    // agent's last turn may still be in flight, and reporting a queue that is
+    // one entry behind is how a request goes unnoticed for a day.
+    audit.close();
+
     const queue = pending(requestsPath(config.root));
     if (queue.length) err(renderQueue(queue));
     if (!outStream) return process.exit(status);

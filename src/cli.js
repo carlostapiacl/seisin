@@ -71,7 +71,7 @@ function config() {
  * the exceptions — they hand the process over and never come back here.
  */
 const COMMANDS = {
-  run: () => run(config(), argv),
+  run: async () => await run(config(), argv),
   check: () => void check(config(), argv),
   explain: () => (explainCommand(config(), argv).allowed ? 0 : 1),
   scan: () => (scanCommand(config()).certain.length ? 1 : 0),
