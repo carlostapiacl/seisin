@@ -41,7 +41,7 @@ const USAGE = `
 ${C.b}seisin${C.off} — give each agent its own folders and its own keys
 
   seisin run <role> -- <command...>     run a command as that role
-  seisin run <role> --observe -- <cmd>  record, deny nothing
+  seisin run <role> --observe -- <cmd>  open the repo and watch — the network stays shut
   seisin check [role]                   print the map, run nothing
   seisin explain <role> read|write <path>
   seisin whose <path>                   who owns it — safe to call from inside the box
