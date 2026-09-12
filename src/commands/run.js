@@ -175,7 +175,7 @@ export async function run(config, argv) {
     `${C.dim}seisin: ${role} · writes ${settings.filesystem.allowWrite.length} path(s) · ` +
     `reads ${settings.filesystem.allowRead.length} key(s) · ` +
     `env ${Object.keys(env).length} kept, ${dropped.length} dropped` +
-    `${observe ? ` · ${C.yellow}OBSERVING — the whole repo is writable${C.off}${C.dim}` : ""}${C.off}\n`
+    `${observe ? ` · ${C.yellow}OBSERVING — the repo is writable, the network is NOT${C.off}${C.dim}` : ""}${C.off}\n`
   );
 
   // Redaction needs the output to pass through this process, and piping breaks

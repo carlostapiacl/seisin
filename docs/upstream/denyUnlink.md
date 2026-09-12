@@ -153,4 +153,32 @@ than preventing it.
 So the choice today is to keep parsing commands to guess at intent, or to accept
 the gap. `denyUnlink` is what would let it be neither.
 
+## A second, smaller ask: a way to observe the network
+
+Same reporter, same week, and it is the network half of the same problem.
+
+`allowedDomains` has no "any domain" form. A bare `"*"` is refused as an invalid
+pattern — correctly, since it is not a domain — so there is no way to run an
+agent with the egress proxy permissive and find out what it reaches.
+
+That matters because **discovering the list is the only path to a tight one**.
+Their bench needed the domains `codex` uses: not in its config, not in `strings`
+on the binary, not documented. The way to find out is to watch the agent try,
+and there is no mode in which it can try. So the restriction was dropped for
+that family entirely and declared in the results — "generous because we could
+not find out", which is how permission files become seven hundred `allow`
+entries.
+
+Two shapes would each solve it, and the second is smaller:
+
+- `allowAllDomains: true`, refusing to combine with `allowedDomains`, so it
+  cannot be reached by accident.
+- Or report blocked connections. The proxy already knows the host it refused —
+  it produces `403 Connection blocked by network allowlist` — and that
+  information currently exists only inside the confined process's own output,
+  where the tool doing the confining cannot read it.
+
+The second is strictly better for this use: the answer to "what does this agent
+need" is a list of what it was denied, which the proxy has and nobody can see.
+
 [s]: https://github.com/carlostapiaolguin3-stack/seisin
