@@ -1,6 +1,7 @@
 # Upstream ask · `denyUnlink`
 
-> Filed against [anthropic-experimental/sandbox-runtime][repo]. Kept here because
+> The ask this project takes to [anthropic-experimental/sandbox-runtime][repo].
+> Kept here because
 > `seisin check` reports this gap to users, and a documented gap should say what
 > is being done about it.
 >

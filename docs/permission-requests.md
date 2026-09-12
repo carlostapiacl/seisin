@@ -165,7 +165,8 @@ difference between an invariant and a paragraph.
 
 ### Why it has no SDK
 
-The official MCP SDK pulls **94 packages and 26 MB** — express, hono, cors, jose
+The official MCP SDK pulls **91 packages and 26 MB** (measured against 1.30.0)
+— express, hono, cors, jose
 — for a server that exchanges line-delimited JSON on two file descriptors. In a
 tool people install to *reduce* their attack surface, every transitive
 dependency is the thing they were trying to avoid.

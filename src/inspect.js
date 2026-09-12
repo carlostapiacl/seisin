@@ -50,8 +50,11 @@ const LIMITS = [
     kind: "unlink-uncovered",
     headline: "a role can delete inside its own territory",
     detail:
-      "writes and deletes are one permission to the kernel. denyUnlink is filed " +
-      "upstream (docs/upstream/denyUnlink.md); until it exists this is not covered.",
+      // The path that used to be here ships with the repo and not with the npm
+      // package, so for most readers it named a file they do not have.
+      "writes and deletes are one permission to the kernel, so `rm` inside a " +
+      "role's own folders succeeds. Closing it needs denyUnlink in the sandbox " +
+      "runtime: github.com/carlostapiaolguin3-stack/seisin#how-it-holds",
   },
 ];
 
