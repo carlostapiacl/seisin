@@ -108,6 +108,48 @@ Append-only matters for the same reason it does for the log: a decision that can
 be rewritten is not evidence. A granted or refused request is not deleted, it is
 followed by a line saying what happened to it.
 
+## The MCP server
+
+`seisin mcp` speaks the Model Context Protocol on stdio, so your own assistant
+can answer "who owns `src/api`?" and "what is frontend waiting on?" without you
+opening a config.
+
+It is read-only **by construction**, not by policy. Nothing on disk is opened
+for writing by that process. `seisin_draft_grant` returns the change as text and
+the command a person runs; it does not stage a proposal file, because a staged
+file is one `mv` away from being policy and the last step is supposed to belong
+to a human in a channel the agent does not have.
+
+```jsonc
+// .mcp.json, or wherever your client keeps servers
+{ "mcpServers": { "seisin": { "command": "seisin", "args": ["mcp"] } } }
+```
+
+| tool | answers |
+|---|---|
+| `seisin_state` | the whole map, plus every way it does not hold |
+| `seisin_explain` | may this role touch this path, and whose is it |
+| `seisin_requests` | what is waiting on a person |
+| `seisin_activity` | recent allow/deny decisions |
+| `seisin_draft_grant` | the change a request would make — as text, not applied |
+
+A test asserts that no tool name in that list mutates anything. If somebody adds
+`seisin_grant`, the suite goes red before it reaches a release, which is the
+difference between an invariant and a paragraph.
+
+### Why it has no SDK
+
+The official MCP SDK pulls **94 packages and 26 MB** — express, hono, cors, jose
+— for a server that exchanges line-delimited JSON on two file descriptors. In a
+tool people install to *reduce* their attack surface, every transitive
+dependency is the thing they were trying to avoid.
+
+The cost is honest and worth stating: the protocol is tracked by hand, and it
+moves — the 2026-07-28 revision made the core stateless and moved the handshake
+into `_meta`. For a stdio server with read-only tools the shape of
+`tools/list` and `tools/call` did not change, which is the only reason this is
+defensible. `PROTOCOLS` in `src/mcp.js` is where a break would surface first.
+
 ## What this is not
 
 - **Not an approval workflow.** There are no roles, no delegation, no
