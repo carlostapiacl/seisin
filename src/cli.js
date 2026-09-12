@@ -28,6 +28,7 @@ import { init, initFromObservations } from "./commands/init.js";
 import { log, watch } from "./commands/log.js";
 import { hook } from "./commands/hook.js";
 import { ui } from "./commands/ui.js";
+import { requests, grant, deny } from "./commands/requests.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const [, , command, ...argv] = process.argv;
@@ -40,6 +41,9 @@ ${C.b}seisin${C.off} — give each agent its own folders and its own keys
   seisin check [role]                   print the map, run nothing
   seisin explain <role> read|write <path>
   seisin scan                           find secrets outside the declared key dirs
+  seisin requests                       what the agents asked for and could not do
+  seisin grant <n> [--reason "…"]       approve one, with its provenance
+  seisin deny <n> [--reason "…"]        refuse one, and record why
   seisin log [--role r] [--verdict denied]
   seisin watch                          follow the log live
   seisin init [--from-observations]     propose a ${CONFIG_NAME} for this repo
@@ -71,6 +75,9 @@ const COMMANDS = {
   watch: () => void watch(config()),
   init: () => void (argv.includes("--from-observations") ? initFromObservations(config()) : init()),
   ui: () => ui(config(), argv),
+  requests: () => (requests(config()).length ? 1 : 0),
+  grant: () => void grant(config(), argv),
+  deny: () => void deny(config(), argv),
   hook: async () => {
     const decision = await hook();
     if (decision?.hookSpecificOutput) out(JSON.stringify(decision) + "\n");

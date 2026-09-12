@@ -18,6 +18,7 @@
  */
 import { explain } from "./owners.js";
 import { append, logPath } from "./log.js";
+import { record, requestsPath } from "./requests.js";
 
 /** Tools whose input names a file directly. */
 const FILE_TOOLS = {
@@ -91,9 +92,10 @@ function kindOf(config, path) {
  * the same decisions and returns none of them, so a policy can be written from
  * what a real run did instead of from what someone imagined it would do.
  */
-export function decide(config, role, event, { observe = false, now = append } = {}) {
+export function decide(config, role, event, { observe = false, now = append, ask = record } = {}) {
   const targets = targetsOf(event.tool_name, event.tool_input);
   const file = logPath(config.root);
+  const queue = requestsPath(config.root);
   const verdicts = [];
 
   for (const t of targets) {
@@ -122,6 +124,13 @@ export function decide(config, role, event, { observe = false, now = append } = 
       owners: v.owners ?? [],
       reason: v.reason,
     });
+    // A denial already carries everything a request needs, so leave one behind:
+    // the refusal stops being a dead end and becomes something a person can act
+    // on in one command. Observing records nothing to approve — there was no
+    // denial to answer. See docs/permission-requests.md.
+    if (!observe && !v.allowed)
+      ask(queue, { role, action: kind === "key" ? "read" : t.action, target: rel, owners: v.owners ?? [] });
+
     verdicts.push({ ...v, target: rel, kind });
   }
 

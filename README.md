@@ -112,6 +112,53 @@ seisin init --from-observations                  # writes seisin.toml.observed
 It lands as `.observed`, not as your config. A policy generated behind your back is not a
 policy: diff it, then move it.
 
+## When it says no, it leaves a request behind
+
+A permission tool that can only say no is a tool people uninstall. The loop —
+denied, stop, go edit a config, run again — is three context switches for one
+line of policy, and the cheapest way to make it stop is to widen the policy
+generously and never look again. That is how a permission file becomes seven
+hundred entries nobody can read.
+
+So a denial leaves something you can act on:
+
+```
+  frontend  write  src/api/orders.ts
+  denied — src/api/orders.ts belongs to backend
+
+  1 pending request(s)
+
+    #1  frontend wants write on src/api/** (owned by backend) · asked 3×
+        first refused on src/api/orders.ts
+
+    seisin grant 1 --reason "…"   ·   seisin deny 1 --reason "…"
+```
+
+Many refusals in one directory are **one** request, not many — an agent denied
+on `a.ts` and then on `b.ts` is not asking two questions. And the grant records
+where it came from, next to the line it adds:
+
+```toml
+[roles.frontend]
+writes = [
+  "src/web/**",
+  "src/api/**"   # granted 2026-09-12 · asked 3× · "frontend owns checkout now"
+]
+```
+
+Without that, a policy is a list of permissions with no history, and the only
+safe thing to do with a line nobody remembers is leave it there.
+
+**Approving is deliberately not a tool call.** An agent — or an MCP server on
+your behalf — can read the queue and draft the change. Turning it into policy
+takes a person in a channel the agent does not have. The public API reflects
+that: `pendingRequests` is exported, the functions that approve are not.
+[The reasoning is written down](docs/permission-requests.md).
+
+The notice rides on what you are already looking at: `seisin run` prints the
+queue when the run ends, in the same terminal that just showed you the denial.
+There is no daemon and nothing to leave running.
+
 ## Seeing what happened
 
 ```bash
