@@ -176,6 +176,20 @@ The notice rides on what you are already looking at: `seisin run` prints the
 queue when the run ends, in the same terminal that just showed you the denial.
 There is no daemon and nothing to leave running.
 
+## Ask your own assistant
+
+```jsonc
+{ "mcpServers": { "seisin": { "command": "seisin", "args": ["mcp"] } } }
+```
+
+> *who owns src/api, and what is frontend waiting on?*
+
+Read-only **by construction** — the server opens nothing for writing, and a test
+asserts that no tool in it mutates anything. It can draft the exact change a
+request would make; applying it is a command a person runs. Zero dependencies:
+the official SDK wanted 94 packages for a server that speaks JSON on two file
+descriptors.
+
 ## Seeing what happened
 
 ```bash

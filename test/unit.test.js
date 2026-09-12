@@ -21,6 +21,8 @@ import { renderReport, renderVerdict } from "../src/render.js";
 import { renderConfig } from "../src/commands/init.js";
 import * as publica from "../src/index.js";
 import { record, settle, pending, applyGrant, grantFor } from "../src/requests.js";
+import { Readable } from "node:stream";
+import { serveMcp, TOOLS, HANDLERS, PROTOCOLS } from "../src/mcp.js";
 import { settingsFor, RUNTIME_WRITES } from "../src/srt.js";
 
 const cfg = {
@@ -477,4 +479,59 @@ test("the public surface can read the queue and cannot approve", () => {
   assert.ok(publica.pendingRequests && publica.grantFor);
   assert.equal(publica.settle, undefined);
   assert.equal(publica.applyGrant, undefined);
+});
+
+/* ── el servidor MCP ──────────────────────────────────────────────────── */
+
+test("the MCP surface has no tool that changes anything", () => {
+  // La invariante, como prueba y no como comentario. Si alguien agrega un
+  // seisin_grant, esto se pone rojo antes de que llegue a un release.
+  const nombres = TOOLS.map((t) => t.name);
+  const mutantes = nombres.filter((n) => /grant|deny|approve|apply|set|write|update|delete/.test(n));
+  assert.deepEqual(mutantes, ["seisin_draft_grant"]);   // draft: redacta, no aplica
+  assert.ok(nombres.every((n) => typeof HANDLERS[n] === "function"));
+});
+
+test("every MCP tool declares a schema a client can render", () => {
+  for (const t of TOOLS) {
+    assert.equal(typeof t.description, "string");
+    assert.equal(t.inputSchema.type, "object");
+    for (const req of t.inputSchema.required ?? [])
+      assert.ok(t.inputSchema.properties[req], `${t.name}: requires "${req}" but never declares it`);
+  }
+});
+
+test("version negotiation echoes a known version and offers the newest otherwise", async () => {
+  const NL = String.fromCharCode(10);
+  const hablar = async (version) => {
+    const dicho = [];
+    const req = { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: version } };
+    await serveMcp("9.9.9", Readable.from([JSON.stringify(req) + NL]), { write: (s) => dicho.push(s) });
+    return JSON.parse(dicho[0]).result;
+  };
+  const conocida = await hablar("2025-06-18");
+  const rara = await hablar("1999-01-01");
+  assert.equal(conocida.protocolVersion, "2025-06-18");   // conocida: se devuelve igual
+  assert.equal(rara.protocolVersion, PROTOCOLS[0]);       // desconocida: se ofrece la nuestra
+  assert.equal(conocida.serverInfo.version, "9.9.9");
+  assert.deepEqual(Object.keys(conocida.capabilities), ["tools"]);
+});
+
+test("a notification is never answered", async () => {
+  // Contestar una notificacion es un error de protocolo que algunos clientes
+  // toleran y en el que otros se cuelgan.
+  const NL = String.fromCharCode(10);
+  const dicho = [];
+  const nota = { jsonrpc: "2.0", method: "notifications/initialized" };
+  await serveMcp("1.0.0", Readable.from([JSON.stringify(nota) + NL]), { write: (s) => dicho.push(s) });
+  assert.deepEqual(dicho, []);
+});
+
+test("unparseable input does not kill the session", async () => {
+  const NL = String.fromCharCode(10);
+  const dicho = [];
+  const ping = { jsonrpc: "2.0", id: 7, method: "ping" };
+  await serveMcp("1.0.0", Readable.from(["esto no es json" + NL, JSON.stringify(ping) + NL]),
+    { write: (s) => dicho.push(s) });
+  assert.equal(JSON.parse(dicho[0]).id, 7);   // la basura se descarta y sigue atendiendo
 });

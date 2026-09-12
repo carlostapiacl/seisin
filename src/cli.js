@@ -29,6 +29,7 @@ import { log, watch } from "./commands/log.js";
 import { hook } from "./commands/hook.js";
 import { ui } from "./commands/ui.js";
 import { requests, grant, deny } from "./commands/requests.js";
+import { serveMcp } from "./mcp.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const [, , command, ...argv] = process.argv;
@@ -48,6 +49,7 @@ ${C.b}seisin${C.off} — give each agent its own folders and its own keys
   seisin watch                          follow the log live
   seisin init [--from-observations]     propose a ${CONFIG_NAME} for this repo
   seisin ui [--port n]                  open the console, live
+  seisin mcp                            an MCP server on stdio — read-only
 
 Enforcement comes from @anthropic-ai/sandbox-runtime, which asks the OS.
 seisin decides what to ask for, and says whose file it was when the answer is no.
@@ -78,6 +80,10 @@ const COMMANDS = {
   requests: () => (requests(config()).length ? 1 : 0),
   grant: () => void grant(config(), argv),
   deny: () => void deny(config(), argv),
+  mcp: async () => {
+    await serveMcp(version());
+    return 0;
+  },
   hook: async () => {
     const decision = await hook();
     if (decision?.hookSpecificOutput) out(JSON.stringify(decision) + "\n");
