@@ -400,7 +400,7 @@ already done:
 
 | | |
 |---|---|
-| **Linux** | enforcement comes from the runtime and should work; the *sandbox* half of the suite has never been run there. The unit half passes on Node 18. Someone running the full suite on a Linux box is the single most useful contribution right now |
+| **Linux** | the suite passed on Debian 12 at 73 tests; the 7 added since have only run on macOS, and nothing re-runs it automatically. A CI job on Linux is worth more here than any feature |
 | **Windows** | the runtime has a backend. seisin has never been pointed at it |
 | **Deleting inside your own territory** | not covered, and not coverable here — [the ask is upstream](docs/upstream/denyUnlink.md), with the measurement behind it |
 | **`init` heuristics** | it reads `.claude/agents/` then `CODEOWNERS`. Every other convention is a guess nobody has made yet |

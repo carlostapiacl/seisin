@@ -117,5 +117,40 @@ export function settingsFor(config, roleName) {
  * would be read as a literal directory named `**` and silently grant nothing.
  */
 function toWritePath(glob) {
-  return glob.replace(/\/\*\*$/, "").replace(/\/\*$/, "") || ".";
+  if (!EXPRESSIBLE(glob)) throw new Error(unexpressible(glob));
+  if (glob === "**") return ".";
+  return glob.replace(/\/\*\*$/, "") || ".";
+}
+
+/**
+ * A write pattern the kernel can be given without changing its meaning.
+ *
+ * Exactly two shapes qualify: a literal path, and a subtree ending in `/**`.
+ * Both map onto what allowWrite actually is — a prefix — so the policy, the
+ * explanation and the enforcement stay the same sentence.
+ *
+ * Everything else is refused, and the one that made this necessary is `src/*`.
+ * ownersOf() reads it as one level, because `*` compiles to `[^/]*`. The old
+ * translation trimmed the `/*` and handed the kernel `src`, which is the whole
+ * subtree. So `seisin explain` said denied and the write landed — measured, not
+ * theorised. The document was tighter than the boundary, which is the one
+ * direction a permission tool must never fail in.
+ *
+ * There is no exact translation to find later: Seatbelt and bubblewrap grant
+ * prefixes, and "one level down" is not a prefix. Refusing is not a placeholder
+ * here, it is the answer.
+ */
+const WILD = /[*?[\]]/;                       // owners.js treats all four as wildcards
+const EXPRESSIBLE = (g) =>
+  g === "**" ||                               // the whole repo
+  !WILD.test(g) ||                            // a literal path
+  (g.endsWith("/**") && !WILD.test(g.slice(0, -3)));   // a subtree, wildcard-free above it
+
+function unexpressible(glob) {
+  return `writes = "${glob}" cannot be enforced as written.\n` +
+    `  The sandbox grants a path and everything under it — there is no way to say ` +
+    `"one level deep".\n` +
+    `  Use "${glob.replace(/\/\*$/, "")}/**" for the whole subtree, or name the files.\n` +
+    `  Refusing rather than widening: the old behaviour granted the subtree while ` +
+    `seisin reported the narrow pattern.`;
 }

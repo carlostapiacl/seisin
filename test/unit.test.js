@@ -497,6 +497,59 @@ test("a territory can reach outside the config's own directory", () => {
   assert.ok(!explain(cfg, "dev", "write", "../bitacora/lab/qa.md").allowed);
 });
 
+/* ── policy == explicación == frontera ─────────────────────────────────── */
+
+test("a pattern the kernel cannot express is refused, not widened", () => {
+  // El hallazgo de una revisión externa, y era el peor posible. ownersOf() lee
+  // `src/*` como un nivel (`*` → [^/]*), y la traducción vieja recortaba el
+  // `/*` y le entregaba `src` al kernel, que es el subárbol entero. O sea:
+  // `seisin explain` decía denegado y la escritura entraba. Comprobado contra
+  // el sandbox real, no razonado.
+  const mk = (w) => ({ root: "/repo", keyDirs: [], allowedDomains: [],
+                       roles: { r: { name: "r", writes: [w], keys: [], network: null } } });
+
+  // No hay traducción exacta que encontrar después: el sandbox concede
+  // prefijos, y "un nivel abajo" no es un prefijo.
+  for (const malo of ["src/*", "src/*/foo/**", "src/??/**", "src/[ab]/**"])
+    assert.throws(() => settingsFor(mk(malo), "r"), /cannot be enforced/, malo);
+
+  // Y lo que sí es expresable sigue siéndolo, sin cambiar de significado.
+  const w = (g) => settingsFor(mk(g), "r").filesystem.allowWrite;
+  assert.ok(w("src/**").includes("/repo/src"));
+  assert.ok(w("src/api/x.ts").includes("/repo/src/api/x.ts"));
+  assert.ok(w("**").includes("/repo"));
+});
+
+test("check says so before anything runs", () => {
+  const cfg = { root: "/repo", keyDirs: [], allowedDomains: [], path: "seisin.toml",
+                roles: { r: { name: "r", writes: ["src/*"], keys: [], network: null } } };
+  const w = inspect(cfg, null, "seisin.toml").warnings.find((x) => x.kind === "unenforceable-glob");
+  assert.ok(w, "check no avisa de un patrón que run va a rechazar");
+  assert.match(w.headline, /src\/\*/);
+});
+
+test("a path is canonical before anyone decides who owns it", () => {
+  // src/web/../api/orders.ts es de backend. Sin resolver, matcheaba src/web/**:
+  // `whose` nombraba al dueño equivocado, el hook no levantaba pedido, y el log
+  // anotaba allowed para una escritura que el kernel después rechazaba. La
+  // frontera aguantaba; todo lo que seisin decía sobre ella era falso.
+  assert.deepEqual(ownersOf(shared2, "src/web/../api/orders.ts"), ["backend"]);
+  assert.ok(!explain(shared2, "frontend", "write", "src/web/../api/orders.ts").allowed);
+
+  assert.deepEqual(ownersOf(shared2, "src/web//./a.tsx"), ["frontend"]);
+  // Fuera del repo no es de nadie, y no hay patrón que lo alcance.
+  assert.deepEqual(ownersOf(shared2, "../fuera.txt"), []);
+  assert.ok(!explain(shared2, "frontend", "write", "../../etc/passwd").allowed);
+});
+
+const shared2 = {
+  root: "/repo", keyDirs: [], allowedDomains: [],
+  roles: {
+    frontend: { name: "frontend", writes: ["src/web/**"], keys: [], network: null },
+    backend: { name: "backend", writes: ["src/api/**"], keys: [], network: null },
+  },
+};
+
 /* ── la consola ───────────────────────────────────────────────────────── */
 
 /** Levanta la consola sobre un repo de mentira y devuelve cómo hablarle. */

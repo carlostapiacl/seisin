@@ -11,7 +11,7 @@
 import { resolve } from "node:path";
 import { realpathSync } from "node:fs";
 import { ownersOf } from "./owners.js";
-import { RUNTIME_WRITES, expand } from "./srt.js";
+import { RUNTIME_WRITES, expand, settingsFor } from "./srt.js";
 
 /**
  * A report on one config: the roles, and every way the map lies.
@@ -76,6 +76,21 @@ export function sharedPaths(config, roles = Object.values(config.roles)) {
 /** Every way this policy does not hold, each with what to do about it. */
 function warningsFor(config, roles) {
   const warnings = [];
+
+  // A pattern the kernel cannot be given is not a policy, it is a sentence that
+  // reads like one. `run` refuses it; `check` exists precisely so you find that
+  // out while reading the map rather than mid-turn.
+  for (const r of roles) {
+    for (const w of r.writes) {
+      try {
+        settingsFor(config, r.name);
+      } catch (e) {
+        warnings.push({ kind: "unenforceable-glob", headline: `${r.name}: ${e.message.split("\n")[0]}`,
+                        detail: e.message.split("\n").slice(1).map((s) => s.trim()).join(" ") });
+        break;
+      }
+    }
+  }
   const shared = sharedPaths(config, roles);
 
   if (shared.length)
