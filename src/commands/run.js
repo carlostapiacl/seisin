@@ -48,11 +48,11 @@ export function resolveSrt() {
 }
 
 /** Writes `.seisin/<role>.json` and returns its path. */
-export function writeSettings(config, role, sock = null) {
+export function writeSettings(config, role, sock = null, observe = false) {
   const dir = join(config.root, STATE_DIR);
   mkdirSync(dir, { recursive: true });
   const file = join(dir, `${role}.json`);
-  writeFileSync(file, JSON.stringify(settingsFor(config, role, sock), null, 2) + "\n");
+  writeFileSync(file, JSON.stringify(settingsFor(config, role, sock, observe), null, 2) + "\n");
   return file;
 }
 
@@ -81,6 +81,7 @@ export async function run(config, argv) {
    * Entries arrive with their own `at` already set by the sender, so what lands
    * on disk is when the decision happened, not when the parent got around to it.
    */
+  const observe = mine.includes("--observe");
   const sockPath = spoolPath();
   const audit = await spool((to, entry) => {
     /**
@@ -131,15 +132,14 @@ export async function run(config, argv) {
     });
   }, sockPath);
 
-  const settings = settingsFor(config, role, sockPath);
-  const file = writeSettings(config, role, sockPath);
+  const settings = settingsFor(config, role, sockPath, observe);
+  const file = writeSettings(config, role, sockPath, observe);
 
   const srt = resolveSrt();
   if (!srt) throw new Error("sandbox runtime not found. Install it with: npm i -g @anthropic-ai/sandbox-runtime");
 
   // The hook runs inside the child and has to know which role it is. These are
   // the only variables seisin injects, and none carries a secret.
-  const observe = mine.includes("--observe");
   const { env, dropped } = buildEnv(process.env, config.roles[role]);
   env.SEISIN_ROLE = role;
   env.SEISIN_CONFIG = config.path;
@@ -175,7 +175,7 @@ export async function run(config, argv) {
     `${C.dim}seisin: ${role} · writes ${settings.filesystem.allowWrite.length} path(s) · ` +
     `reads ${settings.filesystem.allowRead.length} key(s) · ` +
     `env ${Object.keys(env).length} kept, ${dropped.length} dropped` +
-    `${observe ? " · OBSERVING, nothing denied" : ""}${C.off}\n`
+    `${observe ? ` · ${C.yellow}OBSERVING — the whole repo is writable${C.off}${C.dim}` : ""}${C.off}\n`
   );
 
   // Redaction needs the output to pass through this process, and piping breaks

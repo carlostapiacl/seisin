@@ -26,6 +26,7 @@ import { Readable } from "node:stream";
 import { serveMcp, TOOLS, HANDLERS, PROTOCOLS } from "../src/mcp.js";
 import { serve } from "../src/serve.js";
 import { review } from "../src/review.js";
+import { wire, wired } from "../src/commands/wire.js";
 import { spool, send, flush } from "../src/spool.js";
 import { settingsFor, RUNTIME_WRITES, roleHomeRoot } from "../src/srt.js";
 
@@ -890,6 +891,60 @@ test("one rule decides what can be written into the config, everywhere", () => {
   assert.equal(tomlString("src/web/**"), '"src/web/**"');
   assert.throws(() => tomlName("a b"), /letters, digits/);
   assert.equal(tomlName("dev-plat"), "dev-plat");
+});
+
+test("observing means the kernel stops refusing, or there is nothing to observe", () => {
+  // --observe relajaba solo el hook, así que el sandbox denegaba igual y el
+  // banner decía "nothing denied" sobre una transcripción de denegaciones. Y
+  // `init --from-observations` construye una política con esa transcripción:
+  // saldría "el agente no necesita nada fuera de su territorio", que es lo
+  // contrario de la verdad.
+  const cfg = { root: "/repo", path: "/repo/seisin.toml", keyDirs: [".secrets"], allowedDomains: [],
+                roles: { dev: { name: "dev", writes: ["src/web/**"], keys: [], network: null } } };
+
+  const normal = settingsFor(cfg, "dev").filesystem;
+  assert.ok(normal.allowWrite.includes("/repo/src/web"));
+  assert.ok(!normal.allowWrite.includes("/repo"));
+
+  const mirando = settingsFor(cfg, "dev", null, true).filesystem;
+  assert.ok(mirando.allowWrite.includes("/repo"), "observar no abre el repo");
+  // y la papelería del confinamiento sigue cerrada incluso mirando
+  for (const p of ["/repo/seisin.toml", "/repo/.seisin", "/repo/.secrets"])
+    assert.ok(mirando.denyWrite.includes(p), `${p} quedó abierto al observar`);
+});
+
+test("check says when nothing is recording", (t) => {
+  // El hook es lo que escribe el registro, y el README lo describía como algo
+  // que ocurre sin decir nunca que hay que instalarlo. Así que `seisin log`
+  // volvía vacío después de doce corridas reales, y con él watch, requests,
+  // grant y review — la historia con la que abre el README.
+  const box = mkdtempSync(join(tmpdir(), "seisin-w-"));
+  t.after(() => rmSync(box, { recursive: true, force: true }));
+  const cfg = { root: box, path: join(box, "seisin.toml"), keyDirs: [], allowedDomains: [],
+                roles: { dev: { name: "dev", writes: ["src/**"], keys: [], network: null } } };
+
+  assert.ok(inspect(cfg, null, "x").warnings.some((w) => w.kind === "hook-not-wired"));
+  assert.equal(wire(cfg).changed, true);
+  assert.ok(wired(box));
+  assert.ok(!inspect(cfg, null, "x").warnings.some((w) => w.kind === "hook-not-wired"));
+  // idempotente: correrlo dos veces no agrega el hook otra vez
+  assert.equal(wire(cfg).changed, false);
+});
+
+test("wiring merges into settings that already exist", (t) => {
+  // Los hooks de alguien son suyos. Una herramienta que los pisa para
+  // instalarse no tiene segunda oportunidad.
+  const box = mkdtempSync(join(tmpdir(), "seisin-w2-"));
+  t.after(() => rmSync(box, { recursive: true, force: true }));
+  mkdirSync(join(box, ".claude"), { recursive: true });
+  writeFileSync(join(box, ".claude", "settings.json"),
+    JSON.stringify({ hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "mio" }] }] } }));
+
+  const cfg = { root: box, path: join(box, "seisin.toml"), keyDirs: [], allowedDomains: [], roles: {} };
+  wire(cfg);
+  const after = JSON.parse(readFileSync(join(box, ".claude", "settings.json"), "utf8"));
+  assert.equal(after.hooks.PreToolUse.length, 2);
+  assert.ok(JSON.stringify(after).includes("mio"), "se llevó puesto el hook de otro");
 });
 
 /* ── lo que el registro dice de la política ───────────────────────────── */

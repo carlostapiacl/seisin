@@ -11,6 +11,7 @@
 import { resolve } from "node:path";
 import { realpathSync } from "node:fs";
 import { ownersOf } from "./owners.js";
+import { wired } from "./commands/wire.js";
 import { RUNTIME_WRITES, expand, settingsFor } from "./srt.js";
 
 /**
@@ -131,6 +132,18 @@ function warningsFor(config, roles) {
       kind: "scratch",
       headline: `this repo lives inside shared scratch space (${inside[0]})`,
       detail: "Every role can write scratch, so territory does not hold here. Move the repo, or set [runtime] writes = [].",
+    });
+
+  // Without the hook nothing writes the log, and everything that reads it —
+  // log, watch, requests, grant, review — is empty rather than broken, which is
+  // indistinguishable from "nothing was ever denied". Plenty was.
+  if (!wired(config.root))
+    warnings.push({
+      kind: "hook-not-wired",
+      headline: "nothing is recording: the agent has not been told to run the hook",
+      detail:
+        "the boundary holds either way — but log, watch, requests, grant and review all " +
+        "read a record that nobody is writing. Run `seisin wire` once in this repo.",
     });
 
   // A territory that leaves the repo is supported — a role can own its handover
