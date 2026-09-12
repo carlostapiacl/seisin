@@ -98,6 +98,23 @@ so the first agent that was neither did not fail a task — it failed to start, 
 file. A boundary that only fits the agents its author happened to use is a coincidence, not a
 boundary. The XDG directories are in the list now.
 
+**Re-verified without an agent in the loop**, which is better evidence: an agent in the middle
+makes a permission test non-deterministic — in that first run the agent reported the opposite
+of what it had actually done. Wrapping a plain shell and a plain interpreter instead:
+
+| as `dev`, with `qa/**` owned by `qa` | result |
+|---|---|
+| `sh -c 'echo x > proyecto/FILE.txt'` (own territory) | rc=0, created |
+| `sh -c 'echo x > qa/report.md'` (shell redirect) | `Operation not permitted`, rc=1 |
+| `python3 -c "open('qa/report.md','w')"` (the program's own syscall) | `PermissionError: [Errno 1]` |
+| `rm -f proyecto/FILE.txt` (**destructive, inside** own territory) | **rc=0, file gone** |
+
+The last row is not a bug, it is the shape of the tool: seisin answers *where*, not *what*. A
+[field report from that user](docs/field-report-text-parsing-guard.md) has the whole
+measurement — nineteen defects their previous text-parsing hook produced, which classes the
+kernel boundary makes impossible, the 320-against-1,938 line accounting, and five change
+requests with the test for each.
+
 ## Where the first policy comes from
 
 Every permission tool dodges this question. Written by hand, the first policy is a guess, and
