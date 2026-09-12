@@ -59,6 +59,23 @@ jobs:
       - name: suite
         run: npm test
 
+      # Three times now a test count in the docs has drifted from the suite, and
+      # every time a reader found it before I did. In a project whose argument
+      # is "we measured it", a number that is quietly wrong costs more than the
+      # thing it counts. So it is checked rather than remembered.
+      - name: the documented counts are the real ones
+        if: matrix.os == 'macos-latest' && matrix.node == 22
+        run: |
+          total=$(npm test 2>&1 | grep -oE '^. pass [0-9]+' | grep -oE '[0-9]+')
+          sandbox=$(node --test test/sandbox.test.js 2>&1 | grep -oE '^. pass [0-9]+' | grep -oE '[0-9]+')
+          echo "suite=$total sandbox=$sandbox"
+          for f in README.md docs/what-it-has-been-put-through.md; do
+            grep -qE "\b$total tests\b" "$f" || {
+              echo "::error file=$f::says a test count that is not $total"; exit 1; }
+          done
+          grep -qE "\b$sandbox of them\b|\($sandbox of them" README.md docs/what-it-has-been-put-through.md \
+            || echo "::warning::sandbox count ($sandbox) not stated anywhere"
+
       # A green run that skipped every sandbox test is the failure this whole
       # job exists to prevent, and it looks identical to a real pass.
       - name: the sandbox half actually ran
