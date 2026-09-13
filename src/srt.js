@@ -17,6 +17,7 @@ import { join, dirname } from "node:path";
 import { STATE_DIR, CONFIG_NAME } from "./layout.js";
 import { homedir, tmpdir } from "node:os";
 import { realpathSync, lstatSync } from "node:fs";
+import { createHash } from "node:crypto";
 
 /**
  * What every agent needs to write no matter which role it is.
@@ -49,9 +50,53 @@ import { realpathSync, lstatSync } from "node:fs";
  * role cannot reach another's. Kept out of `.seisin/` inside the repo because
  * that whole directory is denyWrite now.
  */
+/**
+ * Short on purpose, and the reason is the same one spool.js already names: a
+ * unix socket path is capped near 104 bytes on macOS and the failure when it is
+ * too long is an unhelpful EINVAL.
+ *
+ * This file forgot that one layer down. The runtime creates its multiplexing
+ * socket INSIDE the role's home — `<home>/tmp/srt-mux-<pid>-0.sock`, 25 bytes —
+ * and the name here used to be `seisin-home-` plus 16 characters. On macOS
+ * `tmpdir()` is 48 bytes on its own, so the total cleared 104 for **every role
+ * name**, `qa` included: `isolate = true` did not misbehave, it failed to start.
+ * Measured, and it is why `homeFits` below exists rather than a comment.
+ *
+ * Eleven bytes instead of twenty-eight leaves room for a role name up to
+ * {@link MAX_ROLE_FOR_HOME} characters.
+ */
 export function roleHomeRoot(config) {
-  const id = Buffer.from(config.root).toString("base64url").slice(-16);
-  return join(tmpdir(), `seisin-home-${id}`);
+  /**
+   * A hash of the whole path, not a slice of it.
+   *
+   * This was `base64url(root).slice(-16)` — the TAIL of the encoded path, which
+   * is the tail of the path itself. Two checkouts that end the same way get the
+   * same id: `/Users/ana/dev/proyecto` and `/Users/bob/dev/proyecto` collide, and
+   * so do `/home/a/work/api` and `/home/b/work/api`. A collision here is not a
+   * cosmetic clash — both repos' role `dev` would share one HOME, which is the
+   * session token of one handed to the other. Measured on three of four ordinary
+   * pairs; shortening the slice to fit the socket limit would have made it more
+   * likely, not less.
+   */
+  const id = createHash("sha256").update(config.root).digest("base64url").slice(0, 8);
+  return join(tmpdir(), `sn-${id}`);
+}
+
+/** What the runtime appends inside the role's home, at its longest. */
+const SRT_SOCKET_TAIL = "/tmp/srt-mux-999999-0.sock".length;
+
+/** The platform's cap on a unix socket path. macOS is the tight one. */
+const SOCKET_MAX = 104;
+
+/**
+ * Whether a role's isolated home leaves room for the runtime's socket.
+ *
+ * Returns the room left over, negative when it does not fit. Callers refuse
+ * rather than let the runtime fail with EINVAL and no explanation — a boundary
+ * that cannot start should say so in its own words.
+ */
+export function homeFits(config, role) {
+  return SOCKET_MAX - (roleHome(config, role).length + SRT_SOCKET_TAIL);
 }
 
 export function roleHome(config, role) {
@@ -117,6 +162,26 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
 
   const abs = (p) => (p.startsWith("/") ? p : join(config.root, p));
   const isolated = config.isolate === true;
+
+  /**
+   * Refuse before the runtime does, because the runtime's refusal says nothing.
+   *
+   * With an isolated home too deep for the socket the runtime puts inside it,
+   * `srt` dies on `listen EINVAL: invalid argument` and a path — no role, no
+   * mention of `isolate`, nothing a reader could act on. This is the same
+   * failure seisin already documents in spool.js, reached from the other side.
+   */
+  if (isolated) {
+    const room = homeFits(config, roleName);
+    if (room < 0)
+      throw new Error(
+        `\`isolate = true\` cannot hold role "${roleName}" here: its home leaves ` +
+        `${-room} byte(s) too little for the runtime's socket, and a unix socket path ` +
+        `is capped near ${SOCKET_MAX} bytes.\n` +
+        `  Shorten the role name, or run with a shorter TMPDIR.`,
+      );
+  }
+
   const home = isolated ? roleHome(config, roleName) : null;
   const denyRead = [];
   const allowRead = [];
