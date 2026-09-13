@@ -7,7 +7,7 @@
 ## The split: the kernel enforces, seisin explains
 
 Everything else follows from this. Enforcement is
-[`@anthropic-ai/sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime)
+[`@anthropic-ai/sandbox-runtime`](https://github.com/anthropics/sandbox-runtime)
 asking the OS; seisin decides what to ask for and says whose file it was.
 
 It is why the hook is allowed to be imperfect. A hook that misreads a shell

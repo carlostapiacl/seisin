@@ -115,7 +115,7 @@ not control in front of data you care about, it is not.
 npm install -g seisin
 ```
 
-That pulls in [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime), which does the enforcing: Seatbelt on macOS, bubblewrap on Linux. No containers, no VMs, no daemon. seisin has **no other dependencies**.
+That pulls in [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropics/sandbox-runtime), which does the enforcing: Seatbelt on macOS, bubblewrap on Linux. No containers, no VMs, no daemon. seisin has **no other dependencies**.
 
 **On Linux you also need three system packages** — the runtime refuses to start without
 them rather than running unconfined, which is the right failure and an unhelpful message:
@@ -535,7 +535,7 @@ Set `writes = []` to opt out and find out why it is there.
 
 ## What it is not
 
-- **Not a sandbox.** [`sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime) is the sandbox, and it is Anthropic's. seisin writes its settings and explains its refusals.
+- **Not a sandbox.** [`sandbox-runtime`](https://github.com/anthropics/sandbox-runtime) is the sandbox, and it is Anthropic's. seisin writes its settings and explains its refusals.
 - **Not an orchestrator.** It does not run your agents, schedule them, or merge their work. It runs one command as one role.
 - **Not a secret manager.** It scopes *reads* of files you already have. Where those files come from is your problem.
 - **Not what a single agent needs first.** If only one agent ever touches the repo,
@@ -571,7 +571,7 @@ isolation strength at all — it is about ownership, and it is the one thing an
 operating system cannot know for you.
 
 Which is also why this is thin. Enforcement is
-[`@anthropic-ai/sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime)
+[`@anthropic-ai/sandbox-runtime`](https://github.com/anthropics/sandbox-runtime)
 asking the kernel; seisin is the layer that decides what to ask for and says
 whose file it was when the answer is no. The two compose — put seisin inside a
 container if you want both, and the roles still hold.
@@ -586,7 +586,7 @@ container if you want both, and the roles still hold.
 
 This space already has good work, and seisin is not the first thing here:
 
-- [`anthropic-experimental/sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime) — the enforcement. seisin is a thin thing on top of a serious one.
+- [`anthropics/sandbox-runtime`](https://github.com/anthropics/sandbox-runtime) — the enforcement. seisin is a thin thing on top of a serious one.
 - [`kornysietsma/claude-code-permissions-hook`](https://github.com/kornysietsma/claude-code-permissions-hook) — granular `PreToolUse` rules, one global policy.
 - [`XuebinMa/agent-guard`](https://github.com/XuebinMa/agent-guard) — a permission-enforcement SDK, also one global policy.
 - *Directory ownership* is recommended in half the multi-agent write-ups. As far as I could find, nobody enforces it, and nobody names the owner in the refusal. That gap is the reason for this repo.
