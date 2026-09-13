@@ -177,3 +177,34 @@ test("seisin refuses to run inside seisin, by name", () => {
   assert.match(r.stderr, /does not nest/);
   assert.match(r.stderr, /frontend/); // the box it is already in, not just the one it asked for
 });
+
+/**
+ * The test that was missing, and its absence is the whole story: `isolate = true`
+ * never started on macOS — the runtime's socket lives inside the role's home and
+ * the path cleared the 104-byte cap for every role name — and the suite stayed
+ * green because nothing here ever turned the feature on. Unit tests can check
+ * the arithmetic; only this can check that it runs.
+ */
+test("an isolated role starts, and loses the credentials the ordinary mode leaves open", { skip }, () => {
+  const box = join(dirname(fileURLToPath(import.meta.url)), ".sandbox-box");
+  const iso = mkdtempSync(join(box, "iso-"));
+  mkdirSync(join(iso, "src"), { recursive: true });
+  writeFileSync(join(iso, "seisin.toml"),
+    '[network]\nallow = []\n\n[roles.dev]\nwrites = ["src/**"]\n\n[runtime]\nisolate = true\n');
+
+  const run = (line) => spawnSync(process.execPath, [CLI, "run", "dev", "--", "sh", "-c", line],
+    { cwd: iso, encoding: "utf8" });
+
+  const arranca = run("echo up");
+  assert.equal(arranca.status, 0, `no arrancó: ${arranca.stderr.trim()}`);
+  assert.doesNotMatch(arranca.stderr, /EINVAL/, "el socket del runtime no entró en la ruta");
+
+  // Its own territory still works, and the home is its own.
+  assert.equal(run("echo x > src/a.txt").status, 0);
+  assert.match(run("echo $HOME").stdout, /sn-/);
+
+  // And the reason the mode exists: these are readable without it.
+  assert.notEqual(run("test -r ~/.ssh").status, 0, "~/.ssh sigue legible bajo isolate");
+
+  rmSync(iso, { recursive: true, force: true });
+});

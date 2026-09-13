@@ -6,12 +6,12 @@
 
 ## The suite
 
-**142 tests**, run on macOS and Linux, Node 18/20/22, on every push
+**148 tests**, run on macOS and Linux, Node 18/20/22, on every push
 ([workflow](../.github/workflows/test.yml)).
 
-Thirteen of them are not unit tests: they run real commands through the real
+Fourteen of them are not unit tests: they run real commands through the real
 sandbox and check what the kernel did — and they skip themselves when `srt` is
-not installed, so on a machine without it the suite reports 129 passing and 13
+not installed, so on a machine without it the suite reports 134 passing and 14
 skipped rather than failing. That distinction matters enough that CI **fails if
 those thirteen skip** — `srt` missing makes them skip themselves, and
 a green run that quietly tested nothing looks exactly like a real one.
@@ -181,6 +181,44 @@ What it was handed was `EPERM`. The hook's side is verified here: it returns
 alike. Whether that reached the agent's context in their run, or a different
 call produced the `EPERM`, is one data point away and it is the sentence this
 whole project is built on.
+
+### Found here, not by a reviewer — `isolate` never started on macOS
+
+Two outside reviews recommended making `[runtime] isolate = true` the default.
+Turning it on to weigh the cost is how it came out that **it did not run at all**
+on macOS, for every role name including a two-letter one:
+
+```
+Error: listen EINVAL: invalid argument
+  /var/folders/.../T/seisin-home-<16 chars>/dev/tmp/srt-mux-34547-0.sock    106 bytes
+```
+
+The runtime creates its multiplexing socket **inside** the role's home, a unix
+socket path is capped near 104 bytes, and `tmpdir()` on macOS is 48 of them
+before anything else is added. The budget for a role home is 79 bytes and the
+old name spent 81 before naming the role.
+
+`spool.js` documents this exact limit, in this exact repo, for its own socket.
+The same defect was re-derived one layer down — which is the tell that it is a
+design problem rather than an oversight.
+
+**Two fixes, and the second is the one that mattered.** The name went from
+`seisin-home-` plus sixteen characters to `sn-` plus eight, and `settingsFor`
+now refuses with its own message rather than letting the runtime fail on EINVAL
+with no role named. But shortening the id exposed what the id was: **the tail of
+the base64 of the path, which is the tail of the path**. `/Users/ana/dev/proyecto`
+and `/Users/bob/dev/proyecto` produced the same one — three of four ordinary
+pairs collided — and a collision here hands one checkout's role home, session
+token included, to another. That was already true at sixteen characters. It is a
+hash of the whole path now.
+
+**And the reason none of it was caught: no test turned the feature on.** A green
+suite said nothing about a documented mode that could not start. There are three
+now — the path arithmetic, the collision pairs, and one that runs a role under
+`isolate` end to end and asserts it both starts and loses `~/.ssh`.
+
+Verified after the fix on macOS 15 and, in Docker, on Debian with bubblewrap
+0.8.0: **148 of 148, nothing skipped on either.**
 
 ## Still open, and named
 

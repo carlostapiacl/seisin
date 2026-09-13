@@ -30,7 +30,7 @@ import { serve } from "../src/serve.js";
 import { review } from "../src/review.js";
 import { wire, wired } from "../src/commands/wire.js";
 import { spool, send, flush } from "../src/spool.js";
-import { settingsFor, RUNTIME_WRITES, roleHomeRoot } from "../src/srt.js";
+import { settingsFor, RUNTIME_WRITES, roleHomeRoot, homeFits } from "../src/srt.js";
 
 const cfg = {
   root: "/repo",
@@ -804,7 +804,12 @@ test("isolated roles cannot read each other's homes, not just write", () => {
   const fa = settingsFor(cfg, "a").filesystem;
   // realOrSelf en el código, lo mismo acá: la raíz no existe en disco para un
   // repo de mentira, y realpathSync sobre algo inexistente tira.
-  const raiz = fa.denyRead.find((p) => p.includes("seisin-home"));
+  // Contra la función, no contra el nombre: la primera versión buscaba el texto
+  // "seisin-home" y se rompió cuando ese prefijo tuvo que acortarse para que la
+  // ruta del socket entrara en los 104 bytes de macOS. Un test que fija el
+  // nombre de un detalle interno falla por el arreglo, no por el defecto.
+  const esperada = roleHomeRoot(cfg);
+  const raiz = fa.denyRead.find((p) => p === esperada);
   assert.ok(raiz, "la raíz de los homes no está negada");
   assert.ok(fa.allowRead.some((p) => p === join(raiz, "a")), "el rol no recupera el suyo");
   assert.ok(!fa.allowRead.some((p) => p === join(raiz, "b")), "alcanza el de otro");
@@ -1510,4 +1515,56 @@ test("the queue shows a held handoff on the request it belongs to", () => {
   assert.match(plain, /1 pending request/);
   assert.match(plain, /handoff held/);
   assert.match(plain, /still to do/);   // it is work, not a verdict
+});
+
+/**
+ * ── The isolated home has to fit a socket ──
+ *
+ * `isolate = true` never started on macOS, for every role name including `qa`:
+ * the runtime creates `<home>/tmp/srt-mux-<pid>-0.sock` inside the role's home,
+ * a unix socket path is capped near 104 bytes, and `tmpdir()` alone is 48 of
+ * them there. It failed as `listen EINVAL` with no role and no mention of
+ * isolate. No test enabled the feature, so a green suite said nothing.
+ */
+test("an isolated home leaves room for the runtime's socket, on this platform", () => {
+  const cfg = { root: "/Users/someone/Desktop/projects/a-repo-with-a-fairly-long-path/here" };
+  for (const role of ["qa", "dev", "dev-front", "dev-compras", "arquitecto"])
+    assert.ok(homeFits(cfg, role) >= 0,
+      `${role}: ${-homeFits(cfg, role)} byte(s) over the socket limit`);
+});
+
+test("a role whose isolated home cannot fit is refused by name, not by EINVAL", () => {
+  const largo = "a".repeat(120);
+  const cfg = { root: "/repo", path: "/repo/seisin.toml", keyDirs: [], allowedDomains: [], isolate: true,
+                roles: { [largo]: { name: largo, writes: ["src/**"], keys: [], network: null } } };
+  assert.throws(() => settingsFor(cfg, largo), (e) =>
+    /isolate/.test(e.message) && /socket/.test(e.message) && e.message.includes(largo));
+});
+
+test("without isolate the home length is nobody's problem", () => {
+  // El guard sólo corre en modo aislado: en el ordinario no hay casa que crear.
+  const largo = "b".repeat(120);
+  const cfg = { root: "/repo", path: "/repo/seisin.toml", keyDirs: [], allowedDomains: [], isolate: false,
+                roles: { [largo]: { name: largo, writes: ["src/**"], keys: [], network: null } } };
+  assert.ok(settingsFor(cfg, largo).filesystem);
+});
+
+test("two checkouts that end the same way do not share an isolated home", () => {
+  // El id era la COLA del base64 de la ruta, o sea la cola de la ruta. Estos
+  // pares colisionaban — y una colisión acá es el HOME de un repo entregado al
+  // otro, con la sesión de su CLI adentro.
+  const pares = [
+    ["/Users/ana/dev/proyecto", "/Users/bob/dev/proyecto"],
+    ["/home/a/work/api", "/home/b/work/api"],
+    ["/Users/carlos/x/seisin", "/Users/martin/x/seisin"],
+  ];
+  for (const [a, b] of pares)
+    assert.notEqual(roleHomeRoot({ root: a }), roleHomeRoot({ root: b }), `${a} vs ${b}`);
+});
+
+test("the same repo always gets the same isolated home", () => {
+  // Lo otro que un hash tiene que cumplir: estable entre corridas, o el rol
+  // pierde su estado en cada invocación.
+  const cfg = { root: "/Users/someone/repo" };
+  assert.equal(roleHomeRoot(cfg), roleHomeRoot({ ...cfg }));
 });
