@@ -74,6 +74,31 @@ export async function run(config, argv) {
     throw new Error(`unknown role "${role}". Known: ${Object.keys(config.roles).join(", ")}`);
 
   /**
+   * seisin does not run inside seisin, and says so here rather than later.
+   *
+   * Measured in both directions, with the inner role both wider and narrower
+   * than the outer one: the inner run dies in the runtime with rc=13 and a Node
+   * warning about an unsettled await — no role named, no boundary named, and it
+   * reads as seisin crashing rather than as a refusal. Before that it failed
+   * even earlier, on a $TMPDIR the outer box had already reshaped.
+   *
+   * This is the refusal, not a fix, because the shape it is usually reached for
+   * is wrong anyway: a dispatcher that starts roles from inside one role's box
+   * makes every worker a descendant of the box that should hold the least. Such
+   * a dispatcher belongs above the roles and gets asked, rather than running
+   * inside one of them.
+   */
+  const outer = process.env.SEISIN_ROLE;
+  if (outer)
+    throw new Error(
+      `already inside the box as "${outer}" — seisin does not nest.\n` +
+      `  Starting "${role}" from in here does not give it its own territory: the run dies in the\n` +
+      `  sandbox runtime, and what territory a second box would even hold is undefined.\n` +
+      `  Run roles as siblings from outside instead. Something that needs to start roles belongs\n` +
+      `  above them — asked by the role that wants the work done, not run inside it.`,
+    );
+
+  /**
    * The audit spool: this process holds the log and the queue, and the hook
    * inside the box gets a socket instead of a directory. That is the whole
    * reason `.seisin/` is no longer in anybody's allowWrite — see spool.js.

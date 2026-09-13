@@ -85,9 +85,28 @@ export function spool(sink, path = spoolPath()) {
     conn.on("error", () => {});
   });
 
-  server.on("error", () => {});
-  return new Promise((ok) => {
-    server.listen(path, () => ok({
+  /**
+   * A failed `listen` has to reject, and it used to do nothing at all.
+   *
+   * The error handler swallowed everything and the promise only ever settled
+   * from the `listen` callback, so any failure to bind — a denied path, a name
+   * too long for a unix socket, a directory that is not there — left an awaited
+   * promise pending forever. What the user saw was Node's "Detected unsettled
+   * top-level await" and rc=13: no error, no path, nothing naming the spool.
+   * Measured while running seisin inside seisin, where the outer box refuses
+   * the inner bind; but nothing about it is particular to that case, which is
+   * the reason it is fixed here rather than beside the nesting check.
+   *
+   * After a successful bind the handler goes back to swallowing, because by
+   * then an error belongs to one connection and must not take down the run
+   * that the audit trail is only observing.
+   */
+  return new Promise((ok, fail) => {
+    server.once("error", fail);
+    server.listen(path, () => {
+      server.removeListener("error", fail);
+      server.on("error", () => {});
+      ok({
       path,
       close() {
         server.close();
@@ -99,7 +118,8 @@ export function spool(sink, path = spoolPath()) {
         // see `run`, which owns the one spoolPath() makes.
         try { unlinkSync(path); } catch {}
       },
-    }));
+      });
+    });
   });
 }
 
