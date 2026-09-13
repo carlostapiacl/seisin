@@ -162,3 +162,18 @@ test("CR-3 · the confined process can ask whose it is", { skip }, () => {
   assert.match(r.stdout, /belongs to backend/);
   assert.match(r.stdout, /you are frontend/);
 });
+
+/**
+ * No `skip`: the refusal lands before the runtime is touched, so this holds on a
+ * machine without srt — which is also where a nested run would be most confusing.
+ */
+test("seisin refuses to run inside seisin, by name", () => {
+  const r = spawnSync(process.execPath, [CLI, "run", "backend", "--", "sh", "-c", "echo x"], {
+    cwd: repo,
+    encoding: "utf8",
+    env: { ...process.env, SEISIN_ROLE: "frontend" },
+  });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /does not nest/);
+  assert.match(r.stderr, /frontend/); // the box it is already in, not just the one it asked for
+});

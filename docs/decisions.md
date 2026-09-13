@@ -113,6 +113,31 @@ they were trying to avoid.
 The honest cost: the protocol is tracked by hand and it moves. `PROTOCOLS` in
 `src/mcp.js` is where a break surfaces first.
 
+## seisin does not nest, and refuses instead of trying
+
+`seisin run qa -- seisin run dev -- …` is refused by name. It was measured in both directions,
+with the inner role both wider and narrower than the outer one, and it never worked: the inner
+run died in the runtime with `rc=13` and a Node warning about an unsettled await — no role
+named, no boundary named, reading as seisin crashing rather than as a refusal. Before that it
+failed one step earlier, on a `$TMPDIR` the outer box had already reshaped.
+
+Making it work was the other side of the fork, and it was not taken, because the shape that
+reaches for it is usually the wrong one. The case is a dispatcher that starts roles: an
+orchestrator, a launcher, a queue runner. Putting that dispatcher *inside* a box makes every
+worker a descendant of it — and the dispatcher is the role that should hold the least, since
+it decides who works rather than doing the work. Whatever a second box would hold there, it is
+not "its own territory", and a permission tool should not be vague about that.
+
+So the shape the refusal points at is siblings, not descendants: the dispatcher sits above the
+roles and is *asked* to start one, rather than running inside one and spawning it. That keeps
+the narrow-privilege argument for the dispatcher intact — fixed executable, fixed cwd,
+sanitised env, role from an allowlist — while leaving each worker's territory decided by the
+policy rather than by whoever happened to launch it.
+
+**What is still unmeasured, and the refusal does not claim otherwise:** whether a nested box
+could only ever intersect with the one around it. That is a property of the sandbox runtime,
+not of seisin, and nothing here has tested it — the inner run never got far enough to try.
+
 ## Still open
 
 - **The queue says "refused" and means "asked for".** An agent can file a
