@@ -1,12 +1,12 @@
 # Upstream ask · surface violations to CLI callers
 
-Issue for [anthropic-experimental/sandbox-runtime][repo]. Split out of
+Issue for [anthropics/sandbox-runtime][repo]. Split out of
 [denyUnlink.md](denyUnlink.md) on 2026-09-13 — different ask, different answer,
 no platform debate, and it was diluting the other one.
 
 Verified against **0.0.76**.
 
-[repo]: https://github.com/anthropic-experimental/sandbox-runtime
+[repo]: https://github.com/anthropics/sandbox-runtime
 
 ---
 
