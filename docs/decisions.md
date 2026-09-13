@@ -164,3 +164,27 @@ turned off, because the boundary is already there and only one can exist.
   add lines to its own history.
 - **No resource limits.** CPU, memory, PIDs and disk are unbounded. The boundary
   is about what an agent can reach, not how much of it there is.
+- **A role still holds its keys in plaintext, and it need not.** `keys` names a
+  file the role reads, so the value is in the agent's context from the first
+  read — and from there it can leave by any allowed domain. The enforcement
+  runtime already implements the alternative: `credentials` with `mode: "mask"`
+  hands the process a sentinel and substitutes the real bytes at egress, only
+  toward the declared `injectHosts`. Measured on 0.0.76: the process sees
+  `fake_value_…`, the authorized host receives the real value, and **a host that
+  is allowed by the network policy but not declared for that credential receives
+  the sentinel**. It is declarable from the settings file, so seisin could emit
+  it without embedding the library.
+
+  Not done, and the reason is that it is not a new field. Masking works for
+  environment variables; on macOS the file form makes the file unreadable
+  instead, because substituting file contents needs a mount that Seatbelt does
+  not have. So adopting it changes what a key *is* — from a path the role reads
+  to a variable with declared destinations — and that is a config break, not an
+  option. The env-var form is the one to build: it behaves the same on both
+  platforms, where a file-only path would be Linux-only and untested.
+
+  **It closes half of a hole, and the half it does not close is the larger
+  one.** Masking protects the credentials this policy declares. It does nothing
+  about `~/.ssh`, `~/.aws` or `~/.npmrc`, which are ordinary readable files to
+  every role unless `isolate` is on — see the section above. Whoever weighs
+  these should weigh them together.
