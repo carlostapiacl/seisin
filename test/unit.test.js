@@ -1556,7 +1556,7 @@ test("two checkouts that end the same way do not share an isolated home", () => 
   const pares = [
     ["/Users/ana/dev/proyecto", "/Users/bob/dev/proyecto"],
     ["/home/a/work/api", "/home/b/work/api"],
-    ["/Users/carlos/x/seisin", "/Users/martin/x/seisin"],
+    ["/Users/uno/x/seisin", "/Users/dos/x/seisin"],
   ];
   for (const [a, b] of pares)
     assert.notEqual(roleHomeRoot({ root: a }), roleHomeRoot({ root: b }), `${a} vs ${b}`);

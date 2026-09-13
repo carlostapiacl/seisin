@@ -13,7 +13,7 @@ Fourteen of them are not unit tests: they run real commands through the real
 sandbox and check what the kernel did — and they skip themselves when `srt` is
 not installed, so on a machine without it the suite reports 134 passing and 14
 skipped rather than failing. That distinction matters enough that CI **fails if
-those thirteen skip** — `srt` missing makes them skip themselves, and
+those fourteen skip** — `srt` missing makes them skip themselves, and
 a green run that quietly tested nothing looks exactly like a real one.
 
 ```
@@ -26,6 +26,31 @@ a green run that quietly tested nothing looks exactly like a real one.
 ✔ the boundary survives a grandchild process
 ✔ an absolute path does not walk around the rule
 ```
+
+### Where each claim was actually run
+
+Two platforms enforce differently — Seatbelt on macOS, bubblewrap on Linux — so
+"it works" is a per-platform claim. This is what has been exercised on each, and
+what has not.
+
+| | macOS 15 · Seatbelt | Linux · bubblewrap |
+|---|---|---|
+| the suite | **148/148, nothing skipped** | **148/148, nothing skipped** — Debian bookworm, bwrap 0.8.0, Node 22, in Docker |
+| CI, every push | Node 18/20/22 | `ubuntu-latest`, Node 18/20/22 |
+| `[runtime] isolate = true` | ✅ — and it did not start here at all until the 104-byte socket fix | ✅ — `tmpdir()` is `/tmp`, so the path never came close |
+| Claude Code 2.1.270 | ✅ | not run |
+| opencode 1.18.30 | ✅ | not run |
+| codex 0.150.1 | ✅, with its own sandbox off | not run |
+| LangGraph 1.2.11 | ✅ | not run |
+| Windows | — | — |
+
+The four agents have only been run under macOS. The suite covers both, and the
+suite is what asserts the boundary holds; the agent runs are evidence that real
+tools behave inside it, and that evidence is one platform deep.
+
+The asymmetry in the `isolate` row is the reason this table exists. A defect can
+be specific to the platform its author develops on, stay invisible on the other,
+and be invisible in CI too when no test turns the feature on.
 
 ## Two outside reviews
 
