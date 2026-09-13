@@ -60,10 +60,12 @@ const LIMITS = [
     kind: "observe-cannot-see-the-network",
     headline: "`--observe` opens the filesystem, never the network",
     detail:
-      "so it cannot tell you which domains an agent needs — the runtime has no " +
-      "\"any domain\" form and refuses a wildcard. For an agent whose endpoints are not " +
-      "published, the only options are to find them another way or drop the network " +
-      "restriction for it. Filed upstream beside denyUnlink.",
+      "so it cannot tell you which domains an agent needs. The runtime does record every " +
+      "refusal the proxy makes — host, port and reason — but only a caller that embeds the " +
+      "library can read them; nothing reaches a caller that runs the binary, which is what " +
+      "seisin does. So for an agent whose endpoints are not published, the options are to " +
+      "find them another way or drop the network restriction for it. The ask is upstream: " +
+      "docs/upstream/cli-violations.md.",
   },
   {
     kind: "unlink-uncovered",
