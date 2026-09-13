@@ -1,6 +1,6 @@
 # Upstream ask · `denyUnlink`
 
-Issue for [anthropic-experimental/sandbox-runtime][repo]. Kept here because
+Issue for [anthropics/sandbox-runtime][repo]. Kept here because
 `seisin check` reports this gap to users, and a documented gap should say what
 is being done about it.
 
@@ -8,70 +8,48 @@ Verified against **0.0.76** on 2026-09-13; every command below was run.
 (`srt --version` reports `1.0.0`, which does not match `package.json` — trust
 the package version when reproducing.)
 
-[repo]: https://github.com/anthropic-experimental/sandbox-runtime
+[repo]: https://github.com/anthropics/sandbox-runtime
 
 ---
 
-## The issue, as posted
+## The issue
 
-> **Title:** `filesystem`: allow `unlink`/`rename` to be denied inside write-allowed paths
+**Filed 2026-09-13 as [anthropics/sandbox-runtime#545][issue]** —
+*filesystem: allow unlink/rename to be denied inside write-allowed paths*.
 
-````markdown
-## Summary
+That is where it lives now. This file keeps only what the issue deliberately
+left out, plus the reproducer, so a reader here does not have to leave to see
+what the ask is about.
 
-A write-allowed path can also be deleted or moved, and there is no opt-in path
-to anything narrower. "May edit this file" and "may destroy this file" are one
-permission today.
-
-`.git` is the case that cannot be worked around with `denyWrite`, because the
-runtime deliberately keeps it writable — `sandbox-utils.js`:
-
-    export const DANGEROUS_DIRECTORIES = ['.git', '.vscode', '.idea'];
-    /** Excludes .git since we need it writable for git operations -
-     *  instead we block specific paths within .git (hooks and config). */
+[issue]: https://github.com/anthropics/sandbox-runtime/issues/545
 
 ## Reproducer
 
-settings.json — writes allowed in the project, nothing else:
-
-```json
-{ "network": { "allowedDomains": [], "deniedDomains": [], "allowUnixSockets": [], "allowLocalBinding": false },
-  "filesystem": { "allowRead": ["/tmp/x/proj"], "denyRead": [], "allowWrite": ["/tmp/x/proj"], "denyWrite": [] } }
-```
+`proj/` is a git repo with one commit; writes are allowed in the project and
+nowhere else.
 
 ```bash
-# proj/ is a git repo with one commit
-srt --settings settings.json -- sh -c "rm -rf /tmp/x/proj/.git"
+D=$(mktemp -d); cd "$D"; R=$(python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "$D")
+mkdir -p proj && cd proj && git init -q . && echo hi > a.txt && git add -A \
+  && git -c user.email=t@t -c user.name=t commit -qm "the history that matters" && cd "$D"
 
-ls proj/.git          # config  hooks      <- directory survives
-git -C proj log       # fatal: not a git repository   <- history does not
+cat > settings.json <<EOF
+{ "network": { "allowedDomains": [], "deniedDomains": [], "allowUnixSockets": [], "allowLocalBinding": false },
+  "filesystem": { "allowRead": ["$R/proj"], "denyRead": [], "allowWrite": ["$R/proj"], "denyWrite": [] } }
+EOF
+
+srt --settings settings.json -- sh -c "rm -rf $R/proj/.git"
+
+ls proj/.git          # config  hooks                  <- the directory survives
+git -C proj log       # fatal: not a git repository    <- the history does not
 ```
 
 `objects`, `refs`, `HEAD` and `index` are gone. `rm` stopped only when it
 reached the denied `.git/hooks` and could not remove a non-empty directory, so
 what is left on disk looks like an intact `.git`.
 
-## Notes
-
-- The mechanism is already there, just never fed anything but denies:
-  `generateMoveBlockingRules` (`macos-sandbox-utils.js:433`) denies
-  `file-write-unlink` + `file-write-create` for any pattern list; `:522` passes
-  it only `resolved.denies`; `:542` then re-allows both for every write root
-  unconditionally. A `filesystem.denyUnlink` list subtracted from
-  `writeAllowFilters` at `:542` and added at `:522` looks sufficient from
-  outside.
-- `rename` has to be in scope, or the same files are destroyed by a different
-  syscall. The existing rule already pairs unlink with create for that reason.
-- **Linux:** bubblewrap is mount-based (`--ro-bind` gives read-only, not
-  "writable but not deletable") and seccomp cannot filter on path arguments, so
-  this is probably macOS-only. Precedent: `allowMachLookup` (#83). A field that
-  silently did nothing on Linux would be worse than the gap — better to refuse
-  to start there, as an invalid config already does.
-- Measured downstream: over ~330 rounds of a multi-agent run, 66 destructive
-  commands landed inside a role's own writable tree (34 recursive deletes, 11
-  `reset --hard`), each one permitted by the sandbox and caught only by a
-  text-inspecting guard in front of it.
-````
+Verified against **0.0.76** on 2026-09-13, as were the three line numbers the
+issue cites — unchanged from 0.0.75.
 
 ---
 
