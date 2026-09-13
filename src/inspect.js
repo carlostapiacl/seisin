@@ -65,7 +65,7 @@ const LIMITS = [
       "library can read them; nothing reaches a caller that runs the binary, which is what " +
       "seisin does. So for an agent whose endpoints are not published, the options are to " +
       "find them another way or drop the network restriction for it. The ask is upstream: " +
-      "docs/upstream/cli-violations.md.",
+      "github.com/carlostapiaolguin3-stack/seisin/blob/main/docs/upstream/cli-violations.md",
   },
   {
     kind: "unlink-uncovered",
