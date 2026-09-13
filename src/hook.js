@@ -101,6 +101,24 @@ function kindOf(config, path) {
 }
 
 /**
+ * The half of the refusal that nothing inside the box could otherwise know.
+ *
+ * `ask()` has already filed a request by the time this sentence is built — and
+ * until now it did so silently, so an agent could not tell the person who sent
+ * it that anything was pending. It closes two loops the bare refusal leaves
+ * open: retrying, because the queue deduplicates and a second attempt only
+ * raises a counter; and waiting, because nothing inside the sandbox can
+ * approve.
+ *
+ * It deliberately says nothing about the MCP server. The hook cannot know
+ * whether one is configured — `wire` writes `.claude/settings.json` and MCP
+ * servers live elsewhere — and naming a tool the agent may not hold costs it a
+ * turn to find out. An agent that does hold the tools discovers them the normal
+ * way; that is what their descriptions are for.
+ */
+const QUEUED = "Already queued for a person to answer — retrying or waiting will not move it.";
+
+/**
  * Decides and records one tool call.
  *
  * `observe` is the mode that makes the whole thing usable: it records exactly
@@ -167,11 +185,11 @@ export function decide(config, role, event, { observe = false, now = append, ask
       permissionDecisionReason:
         // The sentence has to name a next step, not just a refusal. An agent
         // told "no" retries; an agent told whose it is asks, or moves on.
-        denied.owners?.length
+        (denied.owners?.length
           ? wasRead
             ? `${denied.target} is declared for ${denied.owners.join(", ")}, not ${role}. Ask for what you need from it rather than reading the key.`
             : `${denied.target} belongs to ${denied.owners.join(", ")}. It is not ${role}'s to change — hand it over rather than working around it.`
-          : `${denied.reason} (seisin)`,
+          : `${denied.reason} (seisin)`) + " " + QUEUED,
     },
   };
 }

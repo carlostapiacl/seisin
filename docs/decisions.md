@@ -153,6 +153,33 @@ profile per command — `codex` does, via `sandbox-exec` — cannot do so inside
 command it tries to confine fails to start. Such an agent has to run with its own sandbox
 turned off, because the boundary is already there and only one can exist.
 
+## The refusal names the queue, and never the MCP
+
+A denial already files a permission request — and until now it did so silently,
+so nothing inside the box knew anything was pending. An agent could not tell the
+person who sent it that the work was waiting on an approval rather than simply
+impossible. The sentence now ends with *"Already queued for a person to answer —
+retrying or waiting will not move it."*
+
+Both halves earn their place. **Retrying**, because the queue deduplicates: a
+second attempt at the same grant raises a counter and produces nothing new.
+**Waiting**, because nothing reachable from inside the sandbox can approve, by
+the design two sections above — an agent that settles in to wait is an agent
+that has stopped working.
+
+Rejected: naming the MCP server in the same sentence. The hook cannot know
+whether one is configured — `wire` writes `.claude/settings.json` and MCP
+servers live in a different file — so the choice was between saying it always
+and guessing. Saying it always hands an agent that does not hold the tools a
+name to go looking for, which costs it a turn to learn it has nothing. An agent
+that *does* hold them discovers them the ordinary way, which is what tool
+descriptions are for; `seisin_requests` and `seisin_draft_grant` now say when to
+reach for them rather than only what they do.
+
+There is a test for the absence, not only for the presence. A decision that is
+only a paragraph gets undone by the next person who thinks the sentence could be
+more helpful.
+
 ## Still open
 
 - **The queue says "refused" and means "asked for".** An agent can file a

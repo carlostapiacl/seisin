@@ -76,7 +76,9 @@ const TOOLS = [
     name: "seisin_requests",
     description:
       "Permissions agents were refused and are waiting on a human for, with how many " +
-      "times each was asked. Read-only — approving is not available here, by design.",
+      "times each was asked. A refusal files one of these automatically, so this is where " +
+      "to look after being denied rather than retrying. Read-only — approving is not " +
+      "available here, by design.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -95,7 +97,9 @@ const TOOLS = [
     name: "seisin_draft_grant",
     description:
       "Draft the change a pending request would make, as text, plus the command a person " +
-      "runs to apply it. Writes nothing: the approval is a human action in another channel.",
+      "runs to apply it. Reach for this after a refusal: the denial is already in " +
+      "seisin_requests, and this turns it into a concrete proposal someone can approve. " +
+      "Writes nothing: the approval is a human action in another channel.",
     inputSchema: {
       type: "object",
       properties: { number: { type: "number", description: "position in seisin_requests" } },
