@@ -192,6 +192,14 @@ actually been exercised:
 | **opencode** (`opencode run`) | **1.18.30** | Same, **on a free model with no API key at all** |
 | **LangGraph** (`python graph.py`) | **1.2.11** | Same, **enforced against the interpreter's own `open()`** — in-process tools, no child command to match |
 
+**An agent that sandboxes itself has to stop.** `codex` confines each command it runs with its
+own `sandbox-exec` profile, and macOS refuses to apply a second Seatbelt profile to a process
+that already has one — `sandbox_apply: Operation not permitted`, with the most permissive
+profile that can be written, on both layers. So an agent like that runs under seisin with its
+own sandbox turned off: the boundary is already there, and only one can exist. It starts fine
+either way (`codex 0.150.1`, `gemini 0.57.0`, both verified), which is why this is worth saying
+out loud — the failure arrives later, on the first command the agent tries to confine.
+
 All three on macOS 15 (Seatbelt). Linux is no longer a one-off measurement on one machine:
 [CI](.github/workflows/test.yml) runs the whole suite on Ubuntu and macOS, Node 18/20/22,
 on every push — and fails if the sandbox half *skips*.
