@@ -134,9 +134,24 @@ the narrow-privilege argument for the dispatcher intact — fixed executable, fi
 sanitised env, role from an allowlist — while leaving each worker's territory decided by the
 policy rather than by whoever happened to launch it.
 
-**What is still unmeasured, and the refusal does not claim otherwise:** whether a nested box
-could only ever intersect with the one around it. That is a property of the sandbox runtime,
-not of seisin, and nothing here has tested it — the inner run never got far enough to try.
+**Measured afterwards, and it is stronger than the refusal assumed.** The open question was
+whether a nested box could only ever intersect with the one around it. It cannot nest at all:
+macOS refuses to apply a second Seatbelt profile to an already-sandboxed process, with
+`sandbox_apply: Operation not permitted`, and that is the OS and not this tool —
+
+```
+sandbox-exec -p '(version 1)(allow default)' sh -c "sandbox-exec -p '(version 1)(allow default)' sh -c 'echo hi'"
+  sandbox-exec: sandbox_apply: Operation not permitted
+```
+
+— with the most permissive profile that can be written, on both layers. So the refusal in
+`seisin run` is not a policy choice about a thing that might have worked; it names something
+the platform does not offer.
+
+**The consequence for agents that sandbox themselves:** an agent that applies its own Seatbelt
+profile per command — `codex` does, via `sandbox-exec` — cannot do so inside seisin. Every
+command it tries to confine fails to start. Such an agent has to run with its own sandbox
+turned off, because the boundary is already there and only one can exist.
 
 ## Still open
 
