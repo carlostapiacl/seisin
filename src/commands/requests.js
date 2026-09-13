@@ -34,9 +34,47 @@ export function renderQueue(queue) {
     const times = r.times > 1 ? ` ${C.dim}· asked ${r.times}×${C.off}` : "";
     lines.push(`    ${C.b}#${i + 1}${C.off}  ${r.role} wants ${r.action} on ${C.b}${r.grant}${C.off}${owners}${times}\n`);
     lines.push(`        ${C.dim}first refused on ${r.target}${C.off}\n`);
+    const note = handoffNote(r.handoff);
+    if (note) lines.push(`        ${C.yellow}${note}${C.off}\n`);
   });
   lines.push(`\n    ${C.dim}seisin grant <n> [--reason "…"]   ·   seisin deny <n> [--reason "…"]${C.off}\n\n`);
   return lines.join("");
+}
+
+/**
+ * One line saying why no worker is running for a request that is still open.
+ *
+ * Deliberately not a scheduler view. The failure this closes is narrow and
+ * expensive: work that was refused admission, left the queue looking idle, and
+ * was never done by anybody. A row that says which limit held it back is the
+ * whole fix; deciding who retries and when is a separate question that this
+ * does not have to answer first.
+ */
+export function handoffNote(h) {
+  if (!h) return "";
+  switch (h.outcome) {
+    case "throttled":
+      return `handoff held: ${limitWords(h.limit, h.role)} ${h.max}/${h.max} — still to do`;
+    case "cycle":
+      return `handoff stopped: ${h.role} is already in this chain — needs a person to split the work`;
+    case "depth":
+      return `handoff stopped: chain reached ${h.depth} of ${h.max} — needs a person`;
+    case "human":
+      return `handoff stopped: ${h.reason === "ambiguous" ? "more than one role owns this" : "no role owns this"}`;
+    case "route":
+      return `handed to ${h.role}`;
+    case "resolved":
+      return `no handoff needed — the policy moved and ${h.role} owns it now`;
+    default:
+      return `handoff outcome: ${h.outcome}`;
+  }
+}
+
+/** The limit names are internal; what a person reads should not be a field name. */
+function limitWords(limit, role) {
+  if (limit === "senderChains") return "open chains for this role";
+  if (limit === "receiverConcurrent") return `${role ?? "the owner"} already running`;
+  return limit ?? "a limit";
 }
 
 export function grant(config, argv = []) {
