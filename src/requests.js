@@ -75,6 +75,33 @@ export function settle(file, key, decision, reason = "") {
 }
 
 /**
+ * Records what the execution plane last tried to do about a request, which is a
+ * different question from what a person decided about it.
+ *
+ * `settle` answers "did the authority change?". This answers "what happened to
+ * the work?" — handed to the owner, stopped by a cycle, held back by a budget.
+ * They are kept apart deliberately: a request whose handoff was throttled is
+ * still `pending`, because nobody has decided anything about it. Writing the
+ * outcome into `state` would make admission look like a verdict.
+ *
+ * It exists so that a refusal to run cannot be invisible. Admission may
+ * postpone work; it may not make work disappear from the queue a person reads.
+ */
+export function recordHandoff(file, key, decision = {}) {
+  const { type, role, limit, max, reason, depth, chainId, revision } = decision;
+  return write(file, {
+    kind: "handoff", key, outcome: type ?? "unknown",
+    ...(role !== undefined && { role }),
+    ...(limit !== undefined && { limit }),
+    ...(max !== undefined && { max }),
+    ...(reason !== undefined && { reason }),
+    ...(depth !== undefined && { depth }),
+    ...(chainId != null && { chainId }),
+    ...(revision != null && { revision }),
+  });
+}
+
+/**
  * The queue as it stands: one entry per distinct request, with how many times
  * it was asked and what was decided.
  *
@@ -106,7 +133,24 @@ export function pending(file, { includeSettled = false } = {}) {
       continue;
     }
     const seen = byKey.get(e.key);
-    if (seen) { seen.state = e.kind; seen.reason = e.reason ?? ""; seen.decided = e.at; }
+    if (!seen) continue;
+
+    /**
+     * Two lifecycles in one file, and only one of them is `state`.
+     *
+     * Without this branch the catch-all below would set state = "handoff" and a
+     * throttled attempt would drop out of the pending queue — the exact silent
+     * disappearance the attempt is recorded to prevent.
+     */
+    if (e.kind === "handoff") {
+      seen.handoff = {
+        outcome: e.outcome, role: e.role, limit: e.limit, max: e.max,
+        reason: e.reason, depth: e.depth, chainId: e.chainId, at: e.at,
+      };
+      continue;
+    }
+
+    seen.state = e.kind; seen.reason = e.reason ?? ""; seen.decided = e.at;
   }
 
   const all = [...byKey.values()];
