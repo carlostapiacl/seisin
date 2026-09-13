@@ -6,12 +6,12 @@
 
 ## The suite
 
-**123 tests**, run on macOS and Linux, Node 18/20/22, on every push
+**142 tests**, run on macOS and Linux, Node 18/20/22, on every push
 ([workflow](../.github/workflows/test.yml)).
 
 Thirteen of them are not unit tests: they run real commands through the real
 sandbox and check what the kernel did — and they skip themselves when `srt` is
-not installed, so on a machine without it the suite reports 99 passing and 13
+not installed, so on a machine without it the suite reports 129 passing and 13
 skipped rather than failing. That distinction matters enough that CI **fails if
 those thirteen skip** — `srt` missing makes them skip themselves, and
 a green run that quietly tested nothing looks exactly like a real one.
