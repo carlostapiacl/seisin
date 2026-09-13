@@ -1,184 +1,116 @@
 # Upstream ask · `denyUnlink`
 
-> The ask this project takes to [anthropic-experimental/sandbox-runtime][repo].
-> Kept here because
-> `seisin check` reports this gap to users, and a documented gap should say what
-> is being done about it.
->
-> Everything below was verified against the installed package, **0.0.75**. Note
-> that `srt --version` reports `1.0.0`, which does not match `package.json` — so
-> when reproducing, trust the package version, not the binary.
+Issue for [anthropic-experimental/sandbox-runtime][repo]. Kept here because
+`seisin check` reports this gap to users, and a documented gap should say what
+is being done about it.
+
+Verified against **0.0.76** on 2026-09-13; every command below was run.
+(`srt --version` reports `1.0.0`, which does not match `package.json` — trust
+the package version when reproducing.)
 
 [repo]: https://github.com/anthropic-experimental/sandbox-runtime
 
 ---
 
-## Title
+## The issue, as posted
 
-`filesystem`: let `unlink`/`rename` be denied inside write-allowed paths
+> **Title:** `filesystem`: allow `unlink`/`rename` to be denied inside write-allowed paths
 
-## The gap
+````markdown
+## Summary
 
-A path that is write-allowed can be deleted, and there is no way to ask for
-anything narrower. For a tool confining an agent, "may edit the file" and "may
-destroy the file" are not the same permission, and today the schema cannot tell
-them apart.
+A write-allowed path can also be deleted or moved, and there is no opt-in path
+to anything narrower. "May edit this file" and "may destroy this file" are one
+permission today.
 
-What makes this worth a schema change rather than a workaround: **the profile
-already enforces the distinction**, just never in the direction a caller can
-request.
+`.git` is the case that cannot be worked around with `denyWrite`, because the
+runtime deliberately keeps it writable — `sandbox-utils.js`:
 
+    export const DANGEROUS_DIRECTORIES = ['.git', '.vscode', '.idea'];
+    /** Excludes .git since we need it writable for git operations -
+     *  instead we block specific paths within .git (hooks and config). */
+
+## Reproducer
+
+settings.json — writes allowed in the project, nothing else:
+
+```json
+{ "network": { "allowedDomains": [], "deniedDomains": [], "allowUnixSockets": [], "allowLocalBinding": false },
+  "filesystem": { "allowRead": ["/tmp/x/proj"], "denyRead": [], "allowWrite": ["/tmp/x/proj"], "denyWrite": [] } }
 ```
-policy: this role may WRITE in proj/src. Nothing else.
-
-  append  src/app.ts         → permitted   (correct — it is its territory)
-  rm      src/app.ts         → DELETED     (same permission, different act)
-  rm      .env (read-denied) → blocked     ← the mechanism already exists
-```
-
-<details><summary>full repro</summary>
 
 ```bash
-D=$(mktemp -d); cd "$D"; R=$(python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "$D")
-mkdir -p proj/src; echo hi > proj/src/app.ts; echo secret > proj/.env
+# proj/ is a git repo with one commit
+srt --settings settings.json -- sh -c "rm -rf /tmp/x/proj/.git"
 
-cat > settings.json <<EOF
-{ "network": { "allowedDomains": [], "deniedDomains": [], "allowUnixSockets": [], "allowLocalBinding": false },
-  "filesystem": { "allowRead": ["$R/proj"], "denyRead": ["$R/proj/.env"],
-                  "allowWrite": ["$R/proj/src"], "denyWrite": [] } }
-EOF
-
-srt --settings settings.json -- sh -c "rm -f $R/proj/src/app.ts"   # succeeds
-srt --settings settings.json -- sh -c "rm -f $R/proj/.env"         # blocked
+ls proj/.git          # config  hooks      <- directory survives
+git -C proj log       # fatal: not a git repository   <- history does not
 ```
 
-</details>
+`objects`, `refs`, `HEAD` and `index` are gone. `rm` stopped only when it
+reached the denied `.git/hooks` and could not remove a non-empty directory, so
+what is left on disk looks like an intact `.git`.
 
-## Where it is, in your code
+## Notes
 
-`dist/sandbox/macos-sandbox-utils.js` already has the whole mechanism, and it is
-parameterised by an arbitrary path list:
+- The mechanism is already there, just never fed anything but denies:
+  `generateMoveBlockingRules` (`macos-sandbox-utils.js:433`) denies
+  `file-write-unlink` + `file-write-create` for any pattern list; `:522` passes
+  it only `resolved.denies`; `:542` then re-allows both for every write root
+  unconditionally. A `filesystem.denyUnlink` list subtracted from
+  `writeAllowFilters` at `:542` and added at `:522` looks sufficient from
+  outside.
+- `rename` has to be in scope, or the same files are destroyed by a different
+  syscall. The existing rule already pairs unlink with create for that reason.
+- **Linux:** bubblewrap is mount-based (`--ro-bind` gives read-only, not
+  "writable but not deletable") and seccomp cannot filter on path arguments, so
+  this is probably macOS-only. Precedent: `allowMachLookup` (#83). A field that
+  silently did nothing on Linux would be worse than the gap — better to refuse
+  to start there, as an invalid config already does.
+- Measured downstream: over ~330 rounds of a multi-agent run, 66 destructive
+  commands landed inside a role's own writable tree (34 recursive deletes, 11
+  `reset --hard`), each one permitted by the sandbox and caught only by a
+  text-inspecting guard in front of it.
+````
 
-```js
-// :433 — takes any patterns, denies both ops
-function generateMoveBlockingRules(pathPatterns, logTag) {
-  return renderRule('deny', ['file-write-unlink', 'file-write-create'], …);
-}
+---
 
-// :522 — but it is only ever fed the denies
-rules.push(...generateMoveBlockingRules(resolved.denies.map(d => d.path), logTag));
+## Longer rationale · not part of the issue
 
-// :542 — and then this takes it back for every write root, unconditionally
-rules.push(...renderRule('allow', ['file-write-unlink', 'file-write-create'], writeAllowFilters, logTag));
-```
+Kept for this repo's own readers. The issue above is short on purpose: the
+accepted issues in that repo run 83–592 words and are summary / reproducer /
+notes, so anything past that is noise to the person reading it.
 
-The comment above `:542` explains exactly why it is there — a specific
-`(deny file-write-unlink)` is not overridden by a later `(allow file-write*)`
-wildcard, so without the re-allow, deletes break everywhere inside the project
-directory. That reasoning is right. The ask is only that the re-allow gain an
-exception list.
+### Why the path axis cannot cover this
 
-## Proposed surface
+The runtime already accepts that a write-allowed tree needs exceptions inside
+it: `.git/hooks` is always denied, `.git/config` is denied unless
+`allowGitConfig`, and `.vscode` / `.idea` / `.claude/commands` /
+`.claude/agents` are denied outright. One of those exceptions is already
+caller-controlled.
 
-One field, same shape as its neighbours:
+So the shape exists on the **path** axis, hardcoded. `.git` is where it runs
+out: it has to stay writable for git to work, which means it also stays
+deletable. The operation axis is the only one that reaches it.
 
-```jsonc
-"filesystem": {
-  "allowWrite":  ["/repo/src"],
-  "denyUnlink":  ["/repo/src/**/*.py"]   // may edit, may not delete or move
-}
-```
+### Where the 66 came from
 
-Implementation, as far as I can see it from the outside: subtract `denyUnlink`
-from `writeAllowFilters` at `:542`, and add it to the patterns passed at `:522`.
-Seatbelt is last-match-wins and the write section is emitted after the read
-section, which is the property the existing `denyWithinAllow` comment already
-relies on.
-
-**`rename` has to be in scope.** A guard that covers `unlink` and forgets
-`rename` leaves the same file destroyed by a different syscall. Your existing
-rule pairs `file-write-unlink` with `file-write-create` for precisely that
-reason, so the fix inherits it for free — which is an argument for reusing this
-path rather than adding a second one.
-
-## The objection, stated first: Linux
-
-This is where I would expect pushback, so: on macOS this looks like a few lines.
-On Linux I do not think it is reachable today.
-
-- bubblewrap is mount-based. `--ro-bind` gives read-only subtrees, not "writable
-  but not deletable".
-- `vendor/seccomp/{x64,arm64}/apply-seccomp` is a pre-built BPF filter aimed at
-  `socket(AF_UNIX, …)`, and seccomp cannot filter on path arguments at all —
-  BPF cannot safely dereference the pointer.
-
-So the honest options are a macOS-only field, or nothing. A field that silently
-does nothing on Linux would be worse than the gap it closes: a policy someone
-believes is enforced is more dangerous than one they know is not. If it ships
-macOS-only, I would want it to **fail loudly** on other platforms — refuse to
-start, the same way an invalid config already does — rather than warn.
-
-## Why this is being asked for
-
-Downstream ([seisin][s]) gives each agent in a multi-agent setup its own
-directories and its own keys, and delegates all enforcement here — deliberately,
-because a tool like that has no business owning the correctness of a sandbox
-profile.
-
-The one thing it cannot express is this one, and the cost of that is measured
-rather than assumed. An agent team running in production kept a text-inspecting
-guard in front of the same work for ~330 rounds. It blocked 913 actions, of
-which 112 were destructive — but that is the wrong number to bring here:
+Counted from the run logs of a private multi-agent deployment — the same one the
+`seisin check` guidance comes from. The breakdown, not the raw logs:
 
 ```
 913  blocked actions, ~330 rounds
 112  destructive
- 46  ...aimed at ANOTHER role's paths   → a path boundary already refuses these
- 66  ...inside the role's OWN territory → permitted by the box, every one
+ 46  ...aimed at ANOTHER role's paths   -> a path boundary already refuses these
+ 66  ...inside its OWN writable tree    -> permitted by the box, every one
 ```
 
-Sixty-six times, a role reached for a command that would have destroyed its own
-uncommitted work — thirty-four recursive deletes, eleven `reset --hard` over a
-shared tree, the rest git mutating the working copy — and the only thing that
-stopped it was a program guessing at intent from the text of a command.
+The 46 are excluded deliberately; counting them would inflate the ask with
+cases the existing path boundary already covers. The number in the issue is the
+corrected, smaller one.
 
-That is the ask stated as cost. The 46 are excluded on purpose: counting them
-would inflate it with cases a path boundary already covers.
+### Why this does not depend on seisin
 
-Note what the 34 recursive deletes imply for scope. The guard catches them by
-path; `mv` of the same directory is one syscall away and ends with the same
-files gone. Covering `unlink` and forgetting `rename` moves the accident rather
-than preventing it.
-
-So the choice today is to keep parsing commands to guess at intent, or to accept
-the gap. `denyUnlink` is what would let it be neither.
-
-## A second, smaller ask: a way to observe the network
-
-Same reporter, same week, and it is the network half of the same problem.
-
-`allowedDomains` has no "any domain" form. A bare `"*"` is refused as an invalid
-pattern — correctly, since it is not a domain — so there is no way to run an
-agent with the egress proxy permissive and find out what it reaches.
-
-That matters because **discovering the list is the only path to a tight one**.
-Their bench needed the domains `codex` uses: not in its config, not in `strings`
-on the binary, not documented. The way to find out is to watch the agent try,
-and there is no mode in which it can try. So the restriction was dropped for
-that family entirely and declared in the results — "generous because we could
-not find out", which is how permission files become seven hundred `allow`
-entries.
-
-Two shapes would each solve it, and the second is smaller:
-
-- `allowAllDomains: true`, refusing to combine with `allowedDomains`, so it
-  cannot be reached by accident.
-- Or report blocked connections. The proxy already knows the host it refused —
-  it produces `403 Connection blocked by network allowlist` — and that
-  information currently exists only inside the confined process's own output,
-  where the tool doing the confining cannot read it.
-
-The second is strictly better for this use: the answer to "what does this agent
-need" is a list of what it was denied, which the proxy has and nobody can see.
-
-[s]: https://github.com/carlostapiaolguin3-stack/seisin
+The reproducer is `srt` and a settings file. The principle is quoted from the
+runtime's own source. The exposure applies to any caller that lets a process
+write the tree it is working in — one agent, one project, one command.
