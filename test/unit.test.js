@@ -1568,3 +1568,52 @@ test("the same repo always gets the same isolated home", () => {
   const cfg = { root: "/Users/someone/repo" };
   assert.equal(roleHomeRoot(cfg), roleHomeRoot({ ...cfg }));
 });
+
+/** Config mínima para ejercitar el hook sin tocar disco. */
+function cfgHook() {
+  return { root: "/repo", path: "/repo/seisin.toml", keyDirs: [".secrets"], allowedDomains: [],
+           roles: { frontend: { name: "frontend", writes: ["src/web/**"], keys: [], network: null },
+                    backend: { name: "backend", writes: ["src/api/**"], keys: ["db.txt"], network: null } } };
+}
+
+test("a refusal tells the agent the request is already queued", () => {
+  // `ask()` archivaba la request en silencio: nadie adentro de la caja sabía que
+  // había algo pendiente, así que el agente no podía contárselo a quien lo mandó.
+  const out = decide(cfgHook(), "frontend",
+    { tool_name: "Write", tool_input: { file_path: "/repo/src/api/orders.ts" } },
+    { now() {}, ask() {} });
+  assert.match(out.hookSpecificOutput.permissionDecisionReason, /queued for a person/);
+});
+
+test("the refusal closes the retry loop and the wait, in both branches", () => {
+  const cfg = cfgHook();
+  const escritura = decide(cfg, "frontend",
+    { tool_name: "Write", tool_input: { file_path: "/repo/src/api/orders.ts" } }, { now() {}, ask() {} });
+  const llave = decide(cfg, "frontend",
+    { tool_name: "Read", tool_input: { file_path: "/repo/.secrets/db.txt" } }, { now() {}, ask() {} });
+  for (const o of [escritura, llave]) {
+    assert.match(o.hookSpecificOutput.permissionDecisionReason, /retrying or waiting/);
+  }
+  // Y la rama de llaves sigue sin hablar de cambiar nada, que es de lo que no se
+  // trata una lectura.
+  assert.doesNotMatch(llave.hookSpecificOutput.permissionDecisionReason, /to change/);
+});
+
+test("the refusal does not name the MCP server, because the hook cannot know it exists", () => {
+  // `wire` escribe .claude/settings.json; los servidores MCP viven en otro
+  // archivo. Nombrar una herramienta que el agente quizá no tiene le cuesta un
+  // turno averiguarlo. El que sí la tiene la descubre por su descripción.
+  const out = decide(cfgHook(), "frontend",
+    { tool_name: "Write", tool_input: { file_path: "/repo/src/api/orders.ts" } },
+    { now() {}, ask() {} });
+  assert.doesNotMatch(out.hookSpecificOutput.permissionDecisionReason, /mcp|seisin_/i);
+});
+
+test("observing says nothing about a queue, because it filed none", () => {
+  let pedidos = 0;
+  const out = decide(cfgHook(), "frontend",
+    { tool_name: "Write", tool_input: { file_path: "/repo/src/api/orders.ts" } },
+    { observe: true, now() {}, ask() { pedidos++; } });
+  assert.equal(out.decision, null);
+  assert.equal(pedidos, 0);
+});
