@@ -9,3 +9,6 @@ test/.sandbox-box/
 
 # mkdtemp debris from an interrupted test run — the tests clean up, a Ctrl-C does not
 test/req-*/
+
+# npm pack output — a build artifact, not source
+*.tgz
