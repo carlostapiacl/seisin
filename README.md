@@ -56,6 +56,17 @@ A rule is a string comparison against a command someone might not spell that way
 
 `seisin` answers the second question and hands the first one to the operating system.
 
+```
+   ONE GLOBAL POLICY                     WHOSE IS IT?
+
+   frontend ──┐                          frontend ──► src/web/**    ok
+              ├──► may this be written?  backend  ──► src/api/**    ok
+   backend  ──┘           yes
+                                         frontend ──► src/api/**    no
+   two agents, one answer,                    belongs to backend
+   the whole repo, all the time               → hand it over, do not work around it
+```
+
 ## What it is for, and what it is not for
 
 > **It turns an agent's mistake into a contained mistake. It does not turn a hostile
@@ -158,23 +169,30 @@ writes = ["src/web/**", "public/**"]
 keys   = ["netlify-token.txt"]
 
 [roles.backend]
-writes = ["src/api/**", "migrations/**"]
-keys   = ["database-url.txt", "sentry-dsn.txt"]
+writes   = ["src/api/**", "migrations/**"]
+keys     = ["database-url.txt", "sentry-dsn.txt"]
+network  = ["api.stripe.com"]   # this role only — it replaces [network] rather than adding
 ```
+
+`[network] allow` is the fallback for roles that do not name their own. A role that needs one
+extra host should say so on its own line: a domain in the global list is reachable by every
+role, including the ones whose whole job is to have nothing to reach.
 
 `seisin init` will propose this from whatever your repo already says: `.claude/agents/`, then `CODEOWNERS`, then a blank start. It **proposes** — a generated policy you did not read is not a policy.
 
 ## Which agents it has been run with
 
-seisin wraps a process, so in principle it works with any CLI. In practice "in principle" is
-not a claim worth making about a permission tool, so here is what has actually been exercised:
+seisin wraps a process, so in principle it works with any agent that runs as one — CLI or not. In
+practice "in principle" is not a claim worth making about a permission tool, so here is what has
+actually been exercised:
 
 | agent | version | result |
 |---|---|---|
 | **Claude Code** (`claude -p`) | 2.1.x | Territory and keys enforced; network egress refused an undeclared domain by name |
 | **opencode** (`opencode run`) | **1.18.30** | Same, **on a free model with no API key at all** |
+| **LangGraph** (`python graph.py`) | **1.2.11** | Same, **enforced against the interpreter's own `open()`** — in-process tools, no child command to match |
 
-Both on macOS 15 (Seatbelt). Linux is no longer a one-off measurement on one machine:
+All three on macOS 15 (Seatbelt). Linux is no longer a one-off measurement on one machine:
 [CI](.github/workflows/test.yml) runs the whole suite on Ubuntu and macOS, Node 18/20/22,
 on every push — and fails if the sandbox half *skips*.
 
@@ -196,6 +214,24 @@ It also found a real bug. The scratch list named `~/.claude` and `~/.codex` and 
 so the first agent that was neither did not fail a task — it failed to start, on its own log
 file. A boundary that only fits the agents its author happened to use is a coincidence, not a
 boundary. The XDG directories are in the list now.
+
+The LangGraph run answers a different question: **an agent framework is not a CLI.** Its tools
+are Python calls inside the same process, so there is no child command for a rule to match and no
+argv to inspect — the write is the interpreter's own `open()`. A six-node graph asked to write into
+another role's territory was refused there, refused again through the shell redirect it fell back
+to, refused the other role's key, and refused an undeclared domain. Run as the other role, the same
+graph gave the mirror image — every territory and key answer flipped, the undeclared domain refused
+for both — and its SQLite checkpointer persisted normally inside whichever territory was its own.
+
+One caveat belongs beside that row rather than after it: **a role is scoped to a process, and a
+graph is one process.** Every node of one graph shares one territory and one set of keys. Per-node
+territory means per-node subprocess, which is the thing an in-process framework exists to avoid.
+seisin fits a multi-agent framework at the boundary of the whole graph, not between its agents.
+
+And one failure mode worth meeting here rather than at 2am: SQLite reports a refused write as
+`attempt to write a readonly database`, not as a permission error. That reads like a misconfigured
+database, and you will debug the database. The hook names the owner instead — it is the case
+`seisin wire` is for.
 
 **Re-verified without an agent in the loop**, which is better evidence: an agent in the middle
 makes a permission test non-deterministic — in that first run the agent reported the opposite
@@ -301,6 +337,24 @@ writes = [
 ]
 ```
 
+```
+   frontend denied on src/api/orders.ts
+              │
+              ▼
+        request #1 ◄──── denied again on b.ts ──── same request, asked 2×
+              │
+              │   nothing inside the box moves it from here
+              ▼
+      ┌───────┴────────┐
+      ▼                ▼
+  seisin grant 1   seisin deny 1
+      │                ▼
+      │           policy unchanged,
+      ▼           the reason recorded
+  one line added to seisin.toml,
+  carrying where it came from
+```
+
 Without that, a policy is a list of permissions with no history, and the only
 safe thing to do with a line nobody remembers is leave it there.
 
@@ -383,6 +437,28 @@ hook runs one layer up and sees the attempt before it happens.
 | **seisin** | decides what to ask for, and names the owner | it doesn't enforce, it explains |
 | **sandbox-runtime → Seatbelt / bubblewrap** | the OS refuses the syscall | no |
 
+```
+   Write tool · Bash `rm -rf` · /bin/rm · python -c "open(…)" · a grandchild
+                                │
+                                │  however it was spelled, it arrives as one syscall
+                                ▼
+                             KERNEL
+                                │
+                                │  against the policy `seisin run` installed
+                                ▼
+                     inside this role's territory?
+                          │                  │
+                         yes                 no
+                          │                  │
+                          ▼                  ▼
+                        done         Operation not permitted
+                                             │
+                                             │  and, on a separate path, the hook
+                                             ▼
+                                    "belongs to backend"
+                                    explanation — never the boundary
+```
+
 That split is deliberate, and it is why seisin is small. Because the kernel is the boundary, seisin never has to be airtight — it only has to be *legible*. A leaky explainer costs you a confusing log line. A leaky enforcer costs you the repo.
 
 Verified by the test suite, which runs real commands in a real sandbox:
@@ -434,8 +510,16 @@ stops the agent before it starts. Every role therefore also gets:
 
 ```toml
 [runtime]
-writes = ["~/.claude", "~/.codex", "~/.cache", "$TMPDIR", "/tmp"]   # the default
+# the default, in full — `~/.local/{share,state}` is where an agent that is neither
+# claude nor codex keeps its log, and one that cannot write it does not fail a task,
+# it fails to start
+writes = ["~/.claude", "~/.codex", "~/.local/share", "~/.local/state",
+          "~/.cache", "$TMPDIR", "/tmp"]
 ```
+
+**Writing this key replaces that list; it does not add to it.** So a `[runtime] writes` copied
+from somewhere to grant one extra path silently drops the six it did not mention. Start from the
+list above and append.
 
 Two things follow, and both are the kind of thing you want to hear from the tool rather than
 discover:
