@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>seisin console</title>
+<!-- A plot map, which is what the word means: seisin is the legal term for possession
+     of a freehold estate in LAND. The square is the repo, the lines divide it into
+     parcels, and one parcel is claimed. Two strokes and one fill so the divisions
+     survive at 16px, where a favicon actually lives. Also in ui/favicon.svg for anyone
+     who wants the file; inline here so the console needs no second route to serve it. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%228%22%20fill%3D%22%2312161c%22%2F%3E%3Cg%20clip-path%3D%22url%28%23p%29%22%3E%3CclipPath%20id%3D%22p%22%3E%3Crect%20x%3D%226%22%20y%3D%226%22%20width%3D%2220%22%20height%3D%2220%22%20rx%3D%224%22%2F%3E%3C%2FclipPath%3E%3Crect%20x%3D%226%22%20y%3D%226%22%20width%3D%229%22%20height%3D%2211%22%20fill%3D%22%233fb950%22%2F%3E%3C%2Fg%3E%3Crect%20x%3D%226%22%20y%3D%226%22%20width%3D%2220%22%20height%3D%2220%22%20rx%3D%224%22%20fill%3D%22none%22%20stroke%3D%22%23e6edf3%22%20stroke-width%3D%222.6%22%2F%3E%3Cpath%20d%3D%22M15%206v11M6%2017h20%22%20stroke%3D%22%23e6edf3%22%20stroke-width%3D%222.6%22%20stroke-linecap%3D%22square%22%2F%3E%3C%2Fsvg%3E">
+<meta name="description" content="Which folders each agent writes, which keys it may read, and whose a path is when the answer is no.">
+<meta name="color-scheme" content="light dark">
 <style>
 /* Nothing moves on its own: fixed widths on the columns that change,
    min-heights on the cards, tabular numerals everywhere a digit updates.
@@ -14,6 +22,13 @@
   --fg:#1f2328; --mid:#59636e; --dim:#818b98;
   --green:#1a7f37; --amber:#9a6700; --blue:#0969da;
   --hover:#eaeef2; --active:#ddf4ff;
+  /* Declared, and it was not: `.req .path` asked for `var(--mono)` against a variable that
+     never existed, so the one place showing a requested path fell back to the body sans —
+     the exact place where a path has to read as a path. */
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  /* One duration for everything that responds to a pointer. The reduced-motion rule at the
+     bottom already switched transitions off; there were none to switch. */
+  --quick:140ms cubic-bezier(.2,0,.2,1);
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
@@ -38,7 +53,9 @@ body{margin:0;background:var(--bg);color:var(--fg);
   font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
 .mono{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace}
 
-.frame{display:grid;grid-template-columns:216px 1fr;min-height:100vh}
+/* `dvh`, not `vh`: on iOS Safari the address bar moves in and out of the measurement and the
+   page jumps while you scroll. Same pixel on a desktop. */
+.frame{display:grid;grid-template-columns:216px 1fr;min-height:100dvh}
 .side{background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column}
 .brand{padding:15px 14px 13px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
 .brand b{font-size:15px;font-weight:600;letter-spacing:-.01em}
@@ -140,6 +157,36 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
 .foot{font-size:11px;color:var(--dim);line-height:1.7;border-top:1px solid var(--line);padding-top:14px}
 .foot b{color:var(--mid);font-weight:600}
 
+/* Things that answer a pointer, answer visibly. Colour only — nothing moves position, so a
+   row cannot shift under the cursor while you are reading it. The press is the one exception
+   and it is 1px: enough to feel, too little to lose your place. */
+.side a,button.btn,button.tag,button.add,button.sw,.tag .x,td.role{
+  transition:background-color var(--quick),border-color var(--quick),color var(--quick)}
+button.btn:active,button.tag:active,button.add:active,button.sw:active{transform:translateY(1px)}
+
+/* THE TERRITORY COLUMN, which is where this table stops being readable.
+   A role whose policy names files one by one — because an OS sandbox cannot express
+   "the .py in this folder but not its subfolders" — arrives with dozens of paths, and forty
+   tags in a table cell is not a list, it is a wall. Collapsed, the cell says which folders
+   the role writes and how many paths in each; expanded, every path is there with its own
+   remove button. The summary is the useful reading and the detail is the one you ask for. */
+.terr .fold{border-style:dashed;color:var(--mid);cursor:pointer}
+.terr .fold b{font-weight:600;color:var(--fg);font-variant-numeric:tabular-nums}
+.terr .fold:hover{border-color:var(--blue);color:var(--blue)}
+.terr .more{font-size:11px;color:var(--blue);background:none;border:0;cursor:pointer;padding:2px 4px;
+  font:inherit;font-size:11px;text-decoration:underline;text-underline-offset:2px}
+
+/* The filter. The console could show you the map but not ask it anything — the one question
+   this tool exists to answer, "whose is this path", was only reachable from the CLI. */
+.filter{display:flex;align-items:center;gap:8px}
+.filter input{font:inherit;font-size:12px;padding:5px 9px;border:1px solid var(--line2);
+  border-radius:6px;background:var(--bg);color:var(--fg);width:min(46vw,260px);
+  font-family:var(--mono)}
+.filter input::placeholder{color:var(--dim);font-family:inherit}
+.filter .hits{font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums;min-width:7ch}
+.nohits{padding:22px 14px;color:var(--mid);font-size:13px}
+.nohits b{color:var(--fg);font-family:var(--mono)}
+
 @media (max-width:980px){.two{grid-template-columns:1fr}}
 @media (max-width:720px){
   .frame{grid-template-columns:1fr}
@@ -209,7 +256,18 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
     </div>
 
     <div class="box">
-      <header id="policy"><h2>Policy</h2><span class="note">click a role to see its generated settings</span></header>
+      <header id="policy">
+        <h2>Policy</h2>
+        <!-- The filter takes a path as readily as a role name, because "whose is this path"
+             is the question the CLI answers with `seisin whose` and the console could not
+             ask at all. A map you cannot query is a poster. -->
+        <div class="filter">
+          <label class="note" for="f">filter</label>
+          <input id="f" type="search" spellcheck="false" autocomplete="off"
+                 placeholder="a role, or a path like src/api" aria-label="Filter roles by name or path">
+          <span class="hits" id="f-hits" aria-live="polite"></span>
+        </div>
+      </header>
       <div class="scrollx">
         <table>
           <thead><tr>
@@ -217,6 +275,7 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
           </tr></thead>
           <tbody id="rows"></tbody>
         </table>
+        <p class="nohits" id="nohits" hidden></p>
       </div>
     </div>
 
@@ -298,10 +357,50 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
     LOG=LOG.slice(0,6);
   }
 
+  /** Above this many paths the territory cell folds into folder counts. Four is what fits on
+   *  one line at the narrowest column this table is allowed to reach. */
+  var FOLD_AT=4;
+  /** Which roles the reader has unfolded. Kept outside `draw` so a poll every two seconds
+   *  does not close a list someone is reading — the rule this file opens with. */
+  var OPEN={};
+  var FILTER="";
+
+  /** Paths grouped by the folder that holds them, biggest group first.
+   *  The group is the parent directory, with `/**` and a trailing filename removed, because
+   *  that is the unit a reader thinks in: "what does this role write under src/". */
+  function byFolder(paths){
+    var m={};
+    paths.forEach(function(p){
+      var dir=p.replace(/\/\*\*$/,"").replace(/\/[^/]*$/,"")||"/";
+      (m[dir]=m[dir]||[]).push(p);
+    });
+    return Object.keys(m).map(function(d){return {dir:d+"/",n:m[d].length,paths:m[d]};})
+                 .sort(function(a,b){return b.n-a.n||a.dir.localeCompare(b.dir);});
+  }
+
+  /** Does this role match what was typed? Name OR any path it writes.
+   *  Matching on paths is the point: typing a path answers "whose is this", which until now
+   *  you could only ask the CLI. */
+  function hits(r,q){
+    if(!q) return true;
+    q=q.toLowerCase();
+    if(r.name.toLowerCase().indexOf(q)!==-1) return true;
+    return r.writes.some(function(p){return p.toLowerCase().indexOf(q)!==-1;});
+  }
+
   function drawRows(){
     var tb=document.getElementById("rows"); tb.textContent="";
+    var shown=ROLES.filter(function(r){return hits(r,FILTER);});
+    var cuenta=document.getElementById("f-hits");
+    if(cuenta) cuenta.textContent=FILTER?(shown.length+" of "+ROLES.length):"";
+    var vacio=document.getElementById("nohits");
+    if(vacio) vacio.hidden=!(FILTER&&!shown.length);
+    if(vacio&&FILTER&&!shown.length)
+      vacio.innerHTML="No role writes anything matching <b>"+esc(FILTER)+"</b>. "+
+                      "If an agent needs it, that is a request nobody can approve yet — "+
+                      "no role owns the path.";
 
-    ROLES.forEach(function(r){
+    shown.forEach(function(r){
       var tr=document.createElement("tr");
       tr.className=(r.sandbox?"g":"a")+(r.name===sel?" on":"");
 
@@ -314,13 +413,38 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
 
       var c2=document.createElement("td"); c2.className="terr";
       var t2=document.createElement("div"); t2.className="tags";
-      r.writes.forEach(function(p,i){
+      function tagFor(p,i){
         var s=document.createElement("span"); s.className="tag w"; s.textContent=p;
         var x=document.createElement("button"); x.type="button"; x.className="x"; x.textContent="×";
         x.setAttribute("aria-label","Remove "+p+" from "+r.name);
         x.onclick=function(){r.writes.splice(i,1);note("admin","revoked folder",r.name+" ✕ "+p);draw();};
-        s.appendChild(x); t2.appendChild(s);
-      });
+        s.appendChild(x); return s;
+      }
+      // Below the threshold there is nothing to summarise and a fold would only hide what
+      // already fits. Above it, the folder counts ARE the reading: "this role writes 43
+      // files under equipo/" is the fact, and the forty-three names are the footnote.
+      if(r.writes.length<=FOLD_AT||OPEN[r.name]){
+        r.writes.forEach(function(p,i){ t2.appendChild(tagFor(p,i)); });
+        if(r.writes.length>FOLD_AT){
+          var less=document.createElement("button"); less.type="button"; less.className="more";
+          less.textContent="show folders"; less.onclick=function(){OPEN[r.name]=false;drawRows();};
+          t2.appendChild(less);
+        }
+      }else{
+        byFolder(r.writes).forEach(function(f){
+          var s=document.createElement("span"); s.className="tag fold"; s.tabIndex=0;
+          s.innerHTML=esc(f.dir)+" <b>"+f.n+"</b>";
+          s.title=f.paths.slice(0,12).join("\n")+(f.n>12?"\n… and "+(f.n-12)+" more":"");
+          function open(){OPEN[r.name]=true;drawRows();}
+          s.onclick=open;
+          s.onkeydown=function(e){if(e.key==="Enter"||e.key===" "){e.preventDefault();open();}};
+          t2.appendChild(s);
+        });
+        var more=document.createElement("button"); more.type="button"; more.className="more";
+        more.textContent="show all "+r.writes.length+" paths";
+        more.onclick=function(){OPEN[r.name]=true;drawRows();};
+        t2.appendChild(more);
+      }
       var add=document.createElement("button"); add.type="button"; add.className="add"; add.textContent="+ folder";
       add.onclick=function(){
         var v=prompt("Path from the repo root, with /** for the subtree:","src/");
@@ -630,6 +754,18 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
     draw();
     setInterval(refreshLog, 2000);
   }
+
+  // Wired once, outside `draw`, so a redraw never drops the listener or the typed text.
+  (function(){
+    var f = document.getElementById("f");
+    if (!f) return;
+    f.addEventListener("input", function(){ FILTER = f.value.trim(); drawRows(); });
+    // Escape clears without reaching for the mouse: the field is meant to be typed into and
+    // abandoned dozens of times while reading, not filled in once like a form.
+    f.addEventListener("keydown", function(e){
+      if (e.key === "Escape" && f.value) { e.preventDefault(); f.value = ""; FILTER = ""; drawRows(); }
+    });
+  })();
 
   /** The server's entries, in the shape the renderer already speaks. */
   function fromServer(entries){
