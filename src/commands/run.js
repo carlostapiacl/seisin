@@ -21,7 +21,7 @@ import { pending, record, requestsPath } from "../requests.js";
 import { ownersOf } from "../owners.js";
 import { append, logPath } from "../log.js";
 import { renderQueue } from "./requests.js";
-import { watchDenials, inScope, scopeOf } from "../violations.js";
+import { watchDenials, inScope, scopeOf, reachedForContent } from "../violations.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -254,8 +254,10 @@ export async function run(config, argv) {
   const scope = scopeOf(settings, config.root);
   const keyDirs = (config.keyDirs ?? []).map((d) => (d.startsWith("/") ? d : join(config.root, d)));
   let offPolicy = 0;                  // refused, but about nothing the policy names
+  let walks = 0;                      // a recursive search reaching a closed door
   const denials = watchDenials((d) => {
     if (!inScope(d.path, scope)) { offPolicy++; return; }
+    if (!reachedForContent(d)) { walks++; return; }
     // Relative inside the repo, absolute outside it. A role can be refused at
     // ~/.ssh under `isolate`, and "../../../.ssh/id_rsa" would be a worse
     // answer to "what was refused" than the path itself.
@@ -338,8 +340,9 @@ export async function run(config, argv) {
     // see is indistinguishable from a monitor that is not working, and this one
     // drops the majority of what the kernel says on a busy run.
     const { attributed, foreign } = denials.stats;
-    if (attributed || foreign || offPolicy)
-      err(`${C.dim}seisin: ${attributed - offPolicy} kernel denial(s) recorded` +
+    if (attributed || foreign || offPolicy || walks)
+      err(`${C.dim}seisin: ${attributed - offPolicy - walks} kernel denial(s) recorded` +
+          `${walks ? `, ${walks} directory scan(s)` : ""}` +
           `${offPolicy ? `, ${offPolicy} outside the policy's paths` : ""}` +
           `${foreign ? `, ${foreign} from other sandboxes` : ""}${C.off}\n`);
 

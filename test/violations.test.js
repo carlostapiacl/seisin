@@ -13,6 +13,7 @@ import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import {
   parseChunk, actionOf, shellSplit, isOurs, descends, inScope, scopeOf, watchDenials,
+  reachedForContent,
 } from "../src/violations.js";
 
 /* ── captured chunks ──────────────────────────────────────────────────── */
@@ -262,4 +263,25 @@ test("a refused stat is not an attempt to read a secret", async () => {
   // The operation that means content was actually reached for still counts.
   const real = WRITE_DENY.replace("file-write-create", "file-read-data");
   assert.equal(parseChunk(real).action, "read");
+});
+
+test("a recursive search reaching a closed door is not a read attempt", async () => {
+  // `file-read-data` on a file is a read; on a directory it is opendir, which is
+  // what rg/find/grep -r produce against every denied path on every run. The
+  // operation name is identical, so this was missed until a real log showed 78
+  // of 116 lines were directory opens of a key directory — none of them naming a
+  // file inside it.
+  const dir = { action: "read", path: "/repo/.secrets" };
+  const file = { action: "read", path: "/repo/.secrets/token.txt" };
+  const stat = (p) => ({ isDirectory: () => p === "/repo/.secrets" });
+
+  assert.equal(reachedForContent(dir, stat), false);
+  assert.ok(reachedForContent(file, stat));
+
+  // A refused create names something that does not exist yet: nothing to stat,
+  // and never a walk.
+  assert.ok(reachedForContent({ action: "write", path: "/repo/src/new.ts" }, stat));
+
+  // Not on disk any more: keep the line rather than filter it on a guess.
+  assert.ok(reachedForContent(file, () => { throw new Error("ENOENT"); }));
 });

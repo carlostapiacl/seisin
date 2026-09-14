@@ -41,6 +41,7 @@
  * unavailable watcher with the reason, and `seisin run` says so once.
  */
 import { spawn, execFileSync } from "node:child_process";
+import { statSync } from "node:fs";
 
 /** Only sandbox-runtime tags its violations this way. Everything else on the
  *  machine — Safari, mDNSResponder, Spotlight — is filtered out by the OS
@@ -216,6 +217,43 @@ export function processTree(run = execFileSync) {
     // recording nothing. A permission tool does not invent an owner.
   }
   return tree;
+}
+
+/**
+ * Did this refusal reach for content, or just walk past the door?
+ *
+ * `file-read-data` on a *file* is a read. On a *directory* it is `opendir` —
+ * what any recursive search produces when it reaches a denied path. `rg`, `find`
+ * and `grep -r` from the repo root hit every key directory on every invocation,
+ * and the kernel refuses each one.
+ *
+ * This is the same lesson as `file-read-metadata`, one layer up, and it was
+ * missed the first time because the operation name is identical: the difference
+ * is not in what the kernel said, it is in what was on the other end. Measured
+ * on the real log after the metadata fix: **78 of 116 lines** were directory
+ * opens of a key directory, and **not one of them named a file inside it**. A
+ * role going for a secret names the file.
+ *
+ * It matters more than volume. Those lines carry no owner — a key directory is
+ * closed to everyone, not held by someone — so they arrive at `review` as
+ * repeated friction with nobody to hand the work to, and its advice for
+ * repeated friction is *grant it, or move the territory*. Left alone, the
+ * strongest recommendation the tool made about a real repository was to grant
+ * two roles the credential directory.
+ *
+ * Writes are not filtered this way. A refused `file-write-create` names
+ * something that does not exist yet, and there is nothing to stat.
+ */
+export function reachedForContent(denial, stat = statSync) {
+  if (denial.action !== "read") return true;
+  try {
+    return !stat(denial.path).isDirectory();
+  } catch {
+    // Gone, or never there. A read of something that is not on disk is not a
+    // directory walk, so it keeps its line rather than being filtered on a
+    // guess.
+    return true;
+  }
 }
 
 /**
