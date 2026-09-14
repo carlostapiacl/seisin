@@ -277,6 +277,11 @@ uncommitted work, and the kernel boundary permitted every one. The ask that woul
 is written up in [docs/upstream/denyUnlink.md](docs/upstream/denyUnlink.md), filed against
 the sandbox runtime rather than worked around here.
 
+If you would rather see it than read it, [thirty seconds in a temp
+directory](docs/demo/) — an agent confined to its own project deletes the git history of the
+repo it is working in, and the `.git/` left behind looks intact. Nothing installed, seisin not
+used, because the gap is the runtime's and every tool on top of it inherits the same one.
+
 ## What the log says about the policy
 
 `check` reads the config and tells you what it would do. `review` reads what
@@ -632,7 +637,7 @@ already done:
 | | |
 |---|---|
 | **Windows** | the runtime has a backend. seisin has never been pointed at it, and no CI runner covers it |
-| **Deleting inside your own territory** | not covered, and not coverable here — [the ask is upstream](docs/upstream/denyUnlink.md), with the measurement behind it |
+| **Deleting inside your own territory** | not covered, and not coverable here — [the ask is upstream](docs/upstream/denyUnlink.md), with the measurement behind it and [a demo](docs/demo/) |
 | **`init` heuristics** | it reads `.claude/agents/` then `CODEOWNERS`. Every other convention is a guess nobody has made yet |
 
 Issues and pull requests welcome. If you are reporting something that got past
