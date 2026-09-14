@@ -8,8 +8,8 @@
  * does — each one is a way the policy silently does not hold — so they belong
  * where they can be exercised directly.
  */
-import { resolve } from "node:path";
-import { realpathSync } from "node:fs";
+import { resolve, dirname, basename, relative } from "node:path";
+import { realpathSync, lstatSync, readdirSync } from "node:fs";
 import { ownersOf } from "./owners.js";
 import { wired } from "./commands/wire.js";
 import { RUNTIME_WRITES, expand, settingsFor } from "./srt.js";
@@ -213,6 +213,91 @@ function warningsFor(config, roles) {
       });
   }
 
+  /**
+   * A file granted by name does not come with its neighbours.
+   *
+   * Measured, in production, and it survived two human reviews of the policy:
+   * a role was granted its database file and still could not write the
+   * database. The database opens a second file beside the first — a journal —
+   * and the sibling was outside the grant, so the write failed in the
+   * database's own words ("readonly") rather than as a permission error.
+   *
+   * What is deliberately NOT here: a list of which programs write which
+   * siblings. That would ask seisin to know about databases, and the next
+   * question is why it does not know about a lock file, the temporary file of
+   * an atomic write, or an editor's backup. The list has no end and every entry
+   * is a guess about a repo nobody foresaw. The general form needs no list: the
+   * kernel grants a path and everything under it, so a grant on a file covers
+   * the file and nothing else. Whether a tool will want a neighbour is the
+   * reader's to know; that the neighbour is not granted is arithmetic.
+   */
+  for (const r of roles) {
+    const { files, subtrees } = territoryOf(config, r);
+    // A file inside one of the role's own subtrees has its siblings covered by
+    // that subtree, so naming it changes nothing and warns about nothing.
+    const alone = files.filter((f) => !subtrees.some((s) => under(dirname(f.abs), s)));
+    if (alone.length)
+      warnings.push({
+        kind: "siblings-uncovered",
+        headline:
+          `${r.name}: ${alone.length} of ${r.writes.length} granted path(s) name a file, ` +
+          `not a folder: ${alone.map((f) => f.glob).join(" ")}`,
+        detail:
+          "the kernel grants exactly that path. Anything a tool creates beside it — a " +
+          "database's journal, a lock file, the temporary file of an atomic write — is a " +
+          "sibling, and a sibling is outside the grant; the failure arrives in the tool's " +
+          "own words, not as a permission error. Grant the folder where the tool needs " +
+          "neighbours.",
+      });
+
+    /**
+     * A territory written as a list of files is a photograph of the folder.
+     *
+     * A sandbox cannot say "the source files in this folder" — one level down
+     * is not a prefix, and `src/*` is refused above for exactly that reason,
+     * correctly. So a territory that means that has to be written as the files
+     * that exist today, and the day a file is added the policy is one behind:
+     * the owning role cannot write its own new file, and nothing fails loudly.
+     *
+     * Reported as a count, never as a verdict. "Comparable" here means only
+     * "a regular file in the same folder" — not the same extension, not the
+     * same shape of name, because either of those is a guess about what the
+     * territory *meant*, and a guess about intent is the thing this check
+     * exists to avoid. The unnamed files are listed by name instead, so the
+     * reader can see in one glance whether the gap is an oversight or a
+     * decision. seisin cannot tell, and does not pretend to.
+     *
+     * Silent when a folder has fewer than two named files (one file is a
+     * grant, not an enumeration) and when the folder is also granted as a
+     * subtree (then the list is decorative).
+     */
+    const byDir = new Map();
+    for (const f of alone) {
+      const dir = dirname(f.abs);
+      if (!byDir.has(dir)) byDir.set(dir, []);
+      byDir.get(dir).push(basename(f.abs));
+    }
+    for (const [dir, named] of byDir) {
+      if (named.length < 2) continue;
+      const onDisk = regularFilesIn(dir);
+      const unnamed = onDisk.filter((n) => !named.includes(n));
+      if (!unnamed.length) continue;
+      const shown = relative(resolve(config.root), dir);
+      const more = unnamed.length > 8 ? ` … and ${unnamed.length - 8} more` : "";
+      warnings.push({
+        kind: "enumerated-territory",
+        headline:
+          `${r.name} names ${named.length} of the ${onDisk.length} files in ` +
+          `${shown ? shown + "/" : "the repo root"}`,
+        detail:
+          `not named: ${unnamed.slice(0, 8).join(" ")}${more}. A sandbox grants a path, not ` +
+          `"the files of this kind here", so a territory that means that is the list of files ` +
+          `that existed when it was written — the next one added lands outside it, and nothing ` +
+          `fails loudly. Whether these are left out on purpose is not something a count can tell.`,
+      });
+    }
+  }
+
   // `env` is a hole in the [keys] model, on purpose: some tools only take a
   // credential through the environment. It should still be loud, because it is
   // the one place a secret reaches a role without being a declared key.
@@ -237,6 +322,63 @@ function warningsFor(config, roles) {
     });
 
   return warnings;
+}
+
+/**
+ * A role's territory, sorted by what the kernel will do with each line.
+ *
+ * Three shapes get through `settingsFor` (see EXPRESSIBLE in srt.js): the whole
+ * repo, a subtree `x/**`, and a literal path. The literal path is the one the
+ * text cannot settle on its own — `data/base.sqlite` and `data` are both
+ * literal, and to the kernel the second is a subtree because it is a directory.
+ * So the disk is asked, once per line: a regular file is a file, a directory is
+ * a subtree, and anything else — absent, a symlink, a socket — goes in neither
+ * count rather than being guessed at. That is one `lstat` per declared path,
+ * bounded by the length of the policy and not the size of the repo, which is
+ * the line `check` stays on.
+ *
+ * Subtrees come back as the absolute prefix the kernel will be handed, so that
+ * "is this file's folder inside that grant" is the same comparison the kernel
+ * makes — a prefix — and not a second reading of the glob.
+ */
+function territoryOf(config, role) {
+  const root = resolve(config.root);
+  const abs = (p) => resolve(root, p);
+  const files = [];
+  const subtrees = [];
+  for (const glob of role.writes) {
+    if (glob === "**" || glob.endsWith("/**")) {
+      subtrees.push(abs(glob === "**" ? "." : glob.slice(0, -3)));
+      continue;
+    }
+    if (/[*?[\]]/.test(glob)) continue;      // already refused above as cannot-be-enforced
+    const s = lstatOrNull(abs(glob));
+    if (s?.isFile()) files.push({ glob, abs: abs(glob) });
+    else if (s?.isDirectory()) subtrees.push(abs(glob));
+  }
+  return { files, subtrees };
+}
+
+/** Is `p` the prefix, or somewhere beneath it. The kernel's own test, in one line. */
+function under(p, prefix) {
+  return p === prefix || p.startsWith(prefix + "/");
+}
+
+/** The regular files directly inside `dir`, by name. Not folders, not links, not deeper. */
+function regularFilesIn(dir) {
+  try {
+    return readdirSync(dir, { withFileTypes: true }).filter((d) => d.isFile()).map((d) => d.name).sort();
+  } catch {
+    return [];
+  }
+}
+
+function lstatOrNull(p) {
+  try {
+    return lstatSync(p);
+  } catch {
+    return null;
+  }
 }
 
 /** The path with symlinks followed, or the path itself if it is not on disk. */
