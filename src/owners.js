@@ -11,13 +11,43 @@
  * exception, and they are handled separately below.
  */
 
-/** Does this glob cover this path? Supports `**`, `*`, `?` and a trailing `/`. */
+/**
+ * Does this glob cover this path? Supports `**`, `*`, `?` and a trailing `/`.
+ *
+ * A wildcard-free pattern is a **prefix**, because that is what the kernel is
+ * given. `toWritePath` in srt.js hands `src/api` to `allowWrite` unchanged, and
+ * a sandbox grants a path and everything under it — so `src/api`, `src/api/`
+ * and `src/api/**` are one grant to the OS, and reading the first of them as
+ * "that path only" made seisin describe a boundary that was not there.
+ *
+ * Measured against the real kernel, not reasoned about. With
+ * `writes = ["src/api"]`:
+ *
+ *     seisin explain dev write src/api/x.ts   ->  denied, "has no owner"
+ *     seisin run dev -- sh -c 'echo > src/api/x.ts'  ->  the file is written
+ *
+ * That is the document being tighter than the boundary, which
+ * [decisions.md](../docs/decisions.md) names as the one direction this must
+ * never fail in — and it is worse than the `src/*` case already recorded there,
+ * because nothing looked wrong: `whose` reported the path as unowned while a
+ * role could write it, so a reader was told it was protected.
+ *
+ * Refusing is not the answer here the way it was for `src/*`. "One level down"
+ * has no exact translation and had to be refused; a subtree has one, and the
+ * kernel is already enforcing it. What was missing was seisin saying so.
+ */
 export function covers(glob, path) {
   const p = normalize(path);
   let g = normalize(glob);
   if (glob.endsWith("/")) g += "/**";
+  // The path itself, or anything beneath it. The `/` is load-bearing: without
+  // it `src/api` would also cover `src/apifoo.ts`, which the kernel does not.
+  if (!WILD.test(g)) return p === g || p.startsWith(g + "/");
   return toRegExp(g).test(p);
 }
+
+/** The four characters toRegExp() treats as wildcards. */
+const WILD = /[*?[\]]/;
 
 /**
  * One spelling per file, before anybody decides anything about it.

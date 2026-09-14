@@ -43,7 +43,7 @@ The moment to revisit is a company asking about patents — not before. There is
 one catch worth knowing: today the copyright is held by one person, so
 relicensing is still possible. **That ends at the first merged pull request.**
 
-## Refusing beats widening, twice
+## Refusing beats widening — twice, and once it would have been the wrong answer
 
 Two places refuse rather than guess, for the same reason.
 
@@ -58,6 +58,47 @@ The config generator does the same with paths that leave the cell, and the
 principle is stated in the field report that prompted it: *if refusing is easier
 than computing the escape, refusing is the better bug.* Where computing it is
 exact, compute it; where it is ambiguous, refuse.
+
+**And the third case, found later, is the one where refusing would have been
+wrong.** `writes = ["src/api"]` — a folder, no glob — was read by `covers()` as
+that path and nothing else, while `toWritePath` handed `src/api` to the kernel
+unchanged, where `allowWrite` is a prefix. Measured:
+
+```
+seisin explain dev write src/api/x.ts          denied — "has no owner"
+seisin run dev -- sh -c 'echo > src/api/x.ts'  the file is written
+```
+
+Same failure as `src/*` and worse to live with, because nothing looked wrong.
+The `src/*` version at least produced a pattern somebody had written oddly;
+this one had `whose` reporting the path as **unowned** — telling a reader it was
+protected — while a role could write it, and telling an agent to hand off work
+that was already its own.
+
+The fix is not a refusal, and the difference is exactly the rule above. "One
+level down" has no exact translation into a prefix, so it is refused. A subtree
+*is* a prefix — the kernel was already enforcing it correctly, and the only
+thing missing was seisin saying the same thing. So `covers()` now reads a
+wildcard-free pattern as the path and everything under it, which is what
+`src/api`, `src/api/` and `src/api/**` have always meant to the OS.
+
+Found by an agent doing unrelated work in a neighbouring file, which is the
+argument for writing down the direction the failure has to point in: it is
+recognisable from the outside.
+
+**A fourth, same shape, same hour, found the same way.** `explain` did not strip
+the repo root from an absolute target, so `seisin explain dev write
+/abs/repo/src/api/x.ts` answered *denied — has no owner* about a file that role
+could write. `whose` had always stripped it and so does the hook; only the
+command people run **to check a boundary** disagreed with the boundary. A path
+genuinely outside the root still gets its honest "no owner" — that is a question
+about somewhere else.
+
+Three of these in one day, all pointing the same way, is not three accidents.
+The sentence they violate has to be a test, not a paragraph, which is what
+`test/document-vs-boundary.test.js` is for: each case asserts one half of the
+claim against the other, so that moving either one fails loudly instead of going
+quiet.
 
 ## `isolate` is off by default, and that is the threat model
 
@@ -291,6 +332,76 @@ attacker-controlled and racy. That is not attachable from outside and not worth
 reimplementing. On Linux the watcher reports itself unavailable with the reason,
 `seisin run` says so once, and the boundary is unchanged. **Claims are made per
 platform here or they are not made.**
+
+## `review` answers two questions it used to get wrong, and now declines one
+
+`review` is arithmetic over the log, and that has not changed. What changed is
+that arithmetic over the wrong input is still arithmetic — it just produces a
+confident wrong answer, which is worse than no answer at all. Both findings
+below came out of the same real repository on the same day, and both are the
+same mistake: the command answering a question its input could not support.
+
+### A key directory is not a territory drawn wrong
+
+"Stopped, repeatedly" existed to turn forty tidy amber lines into one sentence:
+*this is a policy that is wrong, not an agent misbehaving.* Its advice is **grant
+it, or move the territory**, and for a role stopped at another role's folder
+that advice is right.
+
+For a role stopped at a `[keys] dir` it is the opposite of right. A key
+directory is closed to **everyone** — nobody holds it, so there is no owner to
+name and no handoff to make — and it is the one place where granting is never
+the answer. Measured on a real repository: **six of the eight lines** at the top
+of this report were key directories, which made the loudest thing this command
+says *grant two roles the credential directory.*
+
+They are reported apart now, under a heading that says what they are: the policy
+working. The distinction was never missing — the log already carries `kind:
+"key"` from both writers, the hook from the config and the parent for a kernel
+denial. This report was the only thing not reading it.
+
+`guarded` does not affect the exit code, and that is deliberate. `review` exits 1
+on friction so it composes in CI; a boundary refusing exactly what it was
+configured to refuse must not fail a build, or a correct policy can never go
+green.
+
+### "Never used" declines to answer rather than answer from half a log
+
+This is the finding that can make a policy smaller, and therefore the one where
+being wrong deletes a permission somebody needed. It is read off `allowed`
+lines — and **only the hook writes those**. The kernel reports what it refused;
+it has nothing to say about what went through.
+
+So on a repo where `wire` was never run, the log holds denials and nothing else,
+every grant falls through as unused, and the section reports that the entire
+policy is dead — under a heading calling itself *the only evidence anyone will
+ever have for making a permission file smaller.* Measured: every write
+permission of every role, listed, while those roles were working.
+
+**It became reachable the day the kernel started writing here.** Before that an
+unwired repo had an empty log and this section said nothing, which was
+accidentally correct. That is the general shape and it is worth naming: a
+partial input is more dangerous than no input, because it looks like an answer.
+
+With no `allowed` line in the window, `unused` stays **empty rather than full**
+and `unusedKnowable` says why. Empty is the direction this has to fail in: a
+consumer that has never heard of the flag then under-reports instead of
+recommending the deletion of a working policy.
+
+### Found on the way, and it was older than either
+
+`src/review.js` and `src/scan.js` each contained literal NUL bytes, so **git
+classified both as binary**. Every diff of them, in every commit since they were
+written, reads `Bin 4635 -> 7446 bytes`. A file with no readable diff cannot be
+reviewed, on a project whose README asks you to read it before you trust it.
+
+Two different causes, two different fixes. In `review.js` the NUL was a
+separator inside Map keys, and it bought nothing: `tomlName` restricts a role
+name to `[A-Za-z0-9_-]`, so a space can never fall in the wrong place however
+odd the path is. It is a space now. In `scan.js` the constant is real — it is
+how a binary file is recognised while looking for secrets — so only its spelling
+changed, from the byte to `\u0000`. Same value, same test, and the file has a
+diff again.
 
 ## Still open
 

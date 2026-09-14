@@ -17,7 +17,26 @@ export function explainCommand(config, argv = []) {
   if (!config.roles[role]) throw new Error(`unknown role "${role}"`);
 
   const verb = action.startsWith("r") ? "read" : "write";
-  const verdict = explain(config, role, verb, target);
+
+  /**
+   * An absolute path inside the repo is the same question as the relative one.
+   *
+   * It was not being read that way: the policy is written in repo-relative
+   * paths, so an absolute target matched nothing and came back **denied — has
+   * no owner**, for a file its role could write perfectly well. `whose` has
+   * always stripped the root; the hook does too. Only this command did not, so
+   * the two answered differently about the same file, and the one people run to
+   * check a boundary was the one that was wrong.
+   *
+   * Wrong in the direction that matters, too: it reported a path as unowned and
+   * refused while the kernel allowed it — see "Refusing beats widening" in
+   * docs/decisions.md. A path outside the root is left exactly as written,
+   * because that is a question about somewhere else and it still deserves its
+   * honest "no owner".
+   */
+  const asked = target.startsWith(config.root + "/") ? target.slice(config.root.length + 1) : target;
+
+  const verdict = explain(config, role, verb, asked);
   out(renderVerdict(role, verb, target, verdict));
 
   const worktree = verb === "write" ? elsewhere(config, role, target, verdict) : [];
