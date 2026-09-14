@@ -15,8 +15,16 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { resolveSrt } from "../src/commands/run.js";
+
 const CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "cli.js");
-const haveSrt = spawnSync("command", ["-v", "srt"], { shell: true }).status === 0;
+// Resolved the way `seisin run` resolves it, not the way a shell would. This
+// asked `command -v srt` — the global install only — so a checkout whose
+// bundled runtime was right there skipped fourteen tests and reported green.
+// Found in Docker on Debian: `srt: installed`, and the sandbox half skipped
+// anyway. A test that decides it cannot run must decide that the same way the
+// code decides it can.
+const haveSrt = resolveSrt() !== null;
 const skip = haveSrt ? false : "sandbox runtime not installed (npm i -g @anthropic-ai/sandbox-runtime)";
 
 let repo;

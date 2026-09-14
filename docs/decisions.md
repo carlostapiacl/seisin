@@ -438,9 +438,26 @@ diff again.
 
 ## Still open
 
-- **The queue says "refused" and means "asked for".** An agent can file a
-  request for its own role without having been denied anything. The wording
-  should be settled before it hardens across the UI, the MCP and the README.
+- ~~**The queue says "refused" and means "asked for".**~~ **Settled 2026-09-14**,
+  and it was two problems rather than one.
+
+  The first is the one recorded here: nothing required a denial to have
+  happened, so a process inside the box could file a request for a path its own
+  role already owns and the queue would print *first refused on …* about an
+  event that never occurred — in front of a person about to approve it.
+  `seisin run` now drops any request the policy does not actually refuse. Same
+  treatment `owners` already got: the claim is recomputed by the parent rather
+  than believed, and the parent is the one process the confined side cannot
+  reach. It deliberately does **not** require the agent to have *tried* — asking
+  before reaching is reasonable — so the entry reads **asked**, which is true
+  either way.
+
+  The second was not written down and is worse to read: **the same word meant
+  two opposite things in the same command.** A queue entry said `first refused
+  on src/api/x.ts` — the kernel said no — and `seisin deny` answered `refused
+  frontend ✕ src/api/**` — *you* said no. Now the boundary **refuses** and a
+  person **declines**, which is the distinction this whole tool is built on, and
+  it was the one pair of words that blurred it.
 - **Deleting inside your own territory** is not covered and not coverable here.
   [The ask is upstream](upstream/denyUnlink.md).
 - **Forgery in the audit trail.** Tampering is closed; a hostile agent can still

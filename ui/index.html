@@ -316,7 +316,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       <div class="box" id="requests">
         <header>
           <h2>Waiting on you</h2>
-          <span class="note">what an agent was refused and would like — approving happens here or in the terminal, never through MCP</span>
+          <span class="note">what an agent asked for and cannot have yet — approving happens here or in the terminal, never through MCP</span>
         </header>
         <div id="reqs"></div>
       </div>
@@ -697,7 +697,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     box.hidden = false;
     if (!REQS.length) {
       host.innerHTML = '<p class="blank">Nothing waiting on you.' +
-        '<span>An agent lands here when the boundary refused it and it asked for the path ' +
+        '<span>An agent lands here when the policy denies it a path and it asks for the path ' +
         'rather than working around it. Approving is the one action in this console that ' +
         'writes to your policy \u2014 it edits <code>seisin.toml</code> in place, with your reason.</span></p>';
       return;
@@ -710,7 +710,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
         '<div class="who">' +
           "<div><b>" + esc(r.role) + "</b> wants to " + esc(r.action) +
             ' <span class="path">' + esc(r.grant) + "</span>" + owners + "</div>" +
-          '<div class="sub">first refused on ' + esc(r.target) + times + "</div>" +
+          '<div class="sub">first asked over ' + esc(r.target) + times + "</div>" +
         "</div>" +
         '<div class="act">' +
           '<input id="why-' + i + '" placeholder="why — this outlives you" aria-label="reason">' +
@@ -830,7 +830,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     policy:     {view:"roles",    title:"Roles",
                  sub:"Which folders each agent writes, which keys it may read, and whether it runs sandboxed."},
     requests:   {view:"requests", title:"Waiting on you",
-                 sub:"What an agent was refused and would like. Approving is the one action that writes to your policy."},
+                 sub:"What an agent asked for and cannot have yet. Approving is the one action that writes to your policy."},
     activity:   {view:"activity", title:"Activity",
                  sub:"Every decision the runtime made, newest last, each with the role that owns the path."},
     configfile: {view:"config",   title:"Config file",

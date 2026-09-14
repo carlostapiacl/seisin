@@ -35,7 +35,7 @@ what has not.
 
 | | macOS 15 · Seatbelt | Linux · bubblewrap |
 |---|---|---|
-| the suite | **224/224, nothing skipped** — 2026-09-14 | **148/148, nothing skipped** — Debian bookworm, bwrap 0.8.0, Node 22, in Docker, and **not re-run since**: the 76 tests added after that date have not been exercised on Linux |
+| the suite | **225/225, nothing skipped** — 2026-09-14 | **225/225, nothing skipped** — 2026-09-14, Debian 12.15, bwrap 0.8.0, Node 22, in Docker with `--privileged` (bubblewrap mounts `/proc`) |
 | CI, every push | Node 18/20/22 | `ubuntu-latest`, Node 18/20/22 |
 | `[runtime] isolate = "home"` (`= true`) | ✅ — and it did not start here at all until the 104-byte socket fix | ✅ — `tmpdir()` is `/tmp`, so the path never came close |
 | `[runtime] isolate = "credentials"` | ✅ — no role home, so the socket limit cannot reach it | ✅ |
@@ -250,6 +250,41 @@ now — the path arithmetic, the collision pairs, and one that runs a role under
 
 Verified after the fix on macOS 15 and, in Docker, on Debian with bubblewrap
 0.8.0: **148 of 148, nothing skipped on either.**
+
+### Found by running the suite on the other platform — `seisin run` was broken on Linux
+
+Not degraded: **broken**. Every run died before the agent started, with
+`denials.attributeTo is not a function`.
+
+The kernel-denial watcher returns an inert object where it cannot watch, and
+that object was missing a method `seisin run` calls unconditionally. On macOS
+the branch is never taken. On Linux it is always taken.
+
+**It survived a day because the suite could not see it either.** The fourteen
+tests that run real commands through the real kernel decided whether the runtime
+was present with `command -v srt` — the global install only, never the bundled
+one the code actually prefers. So they skipped, quietly, and a run with fourteen
+silent skips reports green. Two defects covering for each other: one that breaks
+a platform, one that hides it.
+
+Three things came out of parting them, and the middle one is the general lesson:
+
+- the inert watcher has the same **shape** as the live one. Everything a caller
+  may invoke exists at both ends; `available` says whether it will find
+  anything. A test asserts that for `linux`, `win32` and `freebsd`, because the
+  next platform added will take the same branch.
+- **a test that decides it cannot run must decide it the same way the code
+  decides it can.** `haveSrt` now resolves the runtime exactly as `seisin run`
+  does.
+- the per-run notice that Linux cannot record kernel denials is gone from
+  `seisin run` and is a standing limit in `seisin check` instead. On the
+  platform where that branch is always taken it printed on every single
+  command — a line the reader cannot act on, in front of everything they type,
+  and a notice seen five hundred times is not read the five hundred and first.
+
+Verified afterwards on Debian 12.15 with bubblewrap 0.8.0, in Docker with
+`--privileged`: **225 of 225, nothing skipped**, plus a real run that reads its
+declared key, writes inside its territory, and is refused outside it.
 
 ## Still open, and named
 
