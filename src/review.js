@@ -41,7 +41,7 @@ export function review(config, { minDenials = 3 } = {}) {
   const entries = read(logPath(config.root), { limit: 0 });
 
   if (entries.length === 0)
-    return { window: null, entries: 0, friction: [], unused: [], unowned: [] };
+    return { window: null, entries: 0, friction: [], guarded: [], unused: [], unusedKnowable: false, unowned: [] };
 
   const at = entries.map((e) => e.at).filter(Boolean).sort();
   const window = { from: at[0], to: at[at.length - 1], entries: entries.length };
