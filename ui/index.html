@@ -187,6 +187,19 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
 .nohits{padding:22px 14px;color:var(--mid);font-size:13px}
 .nohits b{color:var(--fg);font-family:var(--mono)}
 
+/* An empty count is not a count. `.pin` has a background and a min-width, so a role with no
+   pending anything rendered as a small grey blob next to the label — a badge that says
+   nothing but looks like it is trying to. */
+.side a .pin:empty{display:none}
+
+/* What a view says when it has nothing to show. Not a shrug: the two reasons a log is empty
+   need different answers, so it names them. */
+.blank{margin:0;padding:34px 16px;color:var(--fg);font-size:13px;line-height:1.7;text-align:center}
+.blank span{color:var(--mid);display:block;margin-top:6px;font-size:12px;
+  max-width:58ch;margin-inline:auto;text-wrap:pretty}
+.blank code{font-family:var(--mono);font-size:11.5px;background:var(--hover);
+  padding:1px 5px;border-radius:4px;color:var(--fg)}
+
 @media (max-width:980px){.two{grid-template-columns:1fr}}
 @media (max-width:720px){
   .frame{grid-template-columns:1fr}
@@ -238,15 +251,20 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     </div>
   </nav>
 
+  <!-- FOUR VIEWS, not four anchors into one long page. The sidebar used to jump you down a
+       scroll it had already rendered: the Config file link landed on a box under a table of
+       24 roles, and "Activity" meant "keep going". Each of these answers a different
+       question and none of them is a footnote to Roles, so each gets the screen. -->
   <main>
     <div class="head">
       <div>
-        <h1>Roles</h1>
-        <p>Which folders each agent writes, which keys it may read, and whether it runs sandboxed.</p>
+        <h1 id="v-title">Roles</h1>
+        <p id="v-sub">Which folders each agent writes, which keys it may read, and whether it runs sandboxed.</p>
       </div>
       <button class="btn warn" id="kill" type="button">Unsandbox everything</button>
     </div>
 
+    <section data-view="roles">
     <div class="cards">
       <div class="card"><h2>roles</h2><div class="n" id="c-roles">0</div><div class="s">declared in seisin.toml</div></div>
       <div class="card g"><h2>sandboxed</h2><div class="n" id="c-on">0</div><div class="s">enforced by the OS</div></div>
@@ -279,30 +297,41 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       </div>
     </div>
 
-    <div class="box" id="requests" hidden>
-      <header>
-        <h2>Waiting on you</h2>
-        <span class="note">what an agent was refused and would like — approving happens here or in the terminal, never through MCP</span>
-      </header>
-      <div id="reqs"></div>
+    <!-- The generated settings stay with Roles: they are not a fifth subject, they are what
+         the row you clicked resolves to. Splitting them off would leave a view whose whole
+         content depends on a selection made somewhere you can no longer see. -->
+    <div class="box">
+      <header><h2 id="cfg-title">.seisin/….json</h2><span class="note">what seisin hands the runtime for the selected role</span></header>
+      <pre id="cfg"></pre>
     </div>
+    </section>
 
-    <div class="two">
-      <div class="box">
-        <header><h2 id="cfg-title">.seisin/frontend.json</h2><span class="note">what seisin hands the runtime</span></header>
-        <pre id="cfg"></pre>
+    <section data-view="requests" hidden>
+      <div class="box" id="requests">
+        <header>
+          <h2>Waiting on you</h2>
+          <span class="note">what an agent was refused and would like — approving happens here or in the terminal, never through MCP</span>
+        </header>
+        <div id="reqs"></div>
       </div>
+    </section>
+
+    <section data-view="activity" hidden>
       <div class="box">
-        <header id="activity"><h2>Activity</h2><span class="note">every decision, with its owner</span></header>
+        <header><h2>Activity</h2><span class="note">every decision, with its owner</span></header>
         <div id="log"></div>
       </div>
-    </div>
+    </section>
 
+    <section data-view="config" hidden>
     <div class="box">
       <header id="configfile"><h2>seisin.toml</h2><span class="note" id="toml-note">copy this back into your repo</span></header>
       <pre id="toml"></pre>
     </div>
+    </section>
 
+    <!-- The footer stays outside the views: it says what mode the page is in and what the
+         JSON is measured against, and that is true on all four. -->
     <div class="foot">
       <b id="foot-mode">Console preview.</b> <span id="foot-text">Opened as a file, this page edits a policy in memory and shows what
       would be generated. Copy the <b>seisin.toml</b> above to keep a change.</span><br>
@@ -587,6 +616,16 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
 
   function drawLog(){
     var c=document.getElementById("log"); c.textContent="";
+    // An empty log is not a broken page, and now that Activity is a view of its own it has
+    // a whole screen to say nothing on. It means one of two things and they are worth
+    // telling apart: nothing has run under seisin yet, or everything that ran was allowed.
+    if(!LOG.length){
+      var z=document.createElement("p"); z.className="blank";
+      z.innerHTML="No decisions recorded yet.<br><span>The log fills when an agent actually "+
+                  "runs inside the box \u2014 <code>seisin run &lt;role&gt; -- \u2026</code>. "+
+                  "Asking <code>seisin explain</code> or reading this console does not write to it.</span>";
+      c.appendChild(z); return;
+    }
     LOG.forEach(function(e){
       var d=document.createElement("div");
       d.className="ev "+e.kind;
@@ -640,8 +679,17 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     var pin = document.getElementById("req-pin");
     var host = document.getElementById("reqs");
     pin.textContent = REQS.length ? String(REQS.length) : "";
-    box.hidden = REQS.length === 0;
-    if (!REQS.length) { host.innerHTML = ""; return; }
+    // The box used to hide itself when empty — right, when it sat under the roles table and
+    // an empty one was just noise. Now that Requests is a view of its own, hiding it leaves
+    // a page with a heading and nothing under it. It stays, and says what would fill it.
+    box.hidden = false;
+    if (!REQS.length) {
+      host.innerHTML = '<p class="blank">Nothing waiting on you.' +
+        '<span>An agent lands here when the boundary refused it and it asked for the path ' +
+        'rather than working around it. Approving is the one action in this console that ' +
+        'writes to your policy \u2014 it edits <code>seisin.toml</code> in place, with your reason.</span></p>';
+      return;
+    }
 
     host.innerHTML = REQS.map(function(r, i){
       var owners = (r.owners && r.owners.length) ? " — belongs to <b>" + esc(r.owners.join(", ")) + "</b>" : "";
@@ -745,6 +793,10 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     // on every poll, and approving a request rewrites seisin.toml. Saying
     // otherwise in the one place a cautious reader looks was the worst of the
     // two possible lies.
+    // Live, the button goes for good: this page edits a policy in memory, and "unsandbox
+    // everything" against a real repo is not a preview. `dataset.live` is what `show()`
+    // reads, so the router never brings it back when you return to Roles.
+    document.getElementById("kill").dataset.live = "1";
     document.getElementById("kill").hidden = true;
     document.getElementById("toml-note").textContent = "the file on disk, as it stands";
     document.getElementById("foot-mode").textContent = "Live.";
@@ -754,6 +806,49 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     draw();
     setInterval(refreshLog, 2000);
   }
+
+  /* ── the four views ─────────────────────────────────────────────────────────────────
+   * Hash routing and not a framework: this page is one file a server hands over whole, and
+   * it has to keep working opened straight off the disk with no server at all. A hash also
+   * means a view is a URL you can send someone — "look at Activity" is a link.
+   *
+   * The old hrefs (`#requests`, `#activity`, `#configfile`) are kept as the route names they
+   * already were, so a bookmark from before still lands where it used to. */
+  var VIEWS = {
+    policy:     {view:"roles",    title:"Roles",
+                 sub:"Which folders each agent writes, which keys it may read, and whether it runs sandboxed."},
+    requests:   {view:"requests", title:"Waiting on you",
+                 sub:"What an agent was refused and would like. Approving is the one action that writes to your policy."},
+    activity:   {view:"activity", title:"Activity",
+                 sub:"Every decision the runtime made, newest last, each with the role that owns the path."},
+    configfile: {view:"config",   title:"Config file",
+                 sub:"The policy as it stands on disk. Editing the table is a preview \u2014 this is the file."}
+  };
+
+  function show(route){
+    var v = VIEWS[route] || VIEWS.policy;
+    document.querySelectorAll("main section[data-view]").forEach(function(s){
+      s.hidden = s.getAttribute("data-view") !== v.view;
+    });
+    document.getElementById("v-title").textContent = v.title;
+    document.getElementById("v-sub").textContent = v.sub;
+    // "Unsandbox everything" acts on the policy table. Offering it from Activity would be a
+    // button that changes something you cannot see.
+    var kill = document.getElementById("kill");
+    if (kill) kill.hidden = (v.view !== "roles") || kill.dataset.live === "1";
+    document.querySelectorAll(".side .list a[href^='#']").forEach(function(a){
+      var on = a.getAttribute("href").slice(1) === route;
+      a.classList.toggle("on", on);
+      if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+    });
+    // Back to the top on a view change: landing halfway down a table you have never seen is
+    // what the anchors used to do.
+    window.scrollTo(0, 0);
+  }
+
+  function route(){ return (location.hash || "#policy").slice(1); }
+  window.addEventListener("hashchange", function(){ show(route()); });
+  show(route());
 
   // Wired once, outside `draw`, so a redraw never drops the listener or the typed text.
   (function(){
