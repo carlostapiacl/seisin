@@ -45,8 +45,12 @@ Sleep 400ms
 Type "seisin run frontend -- sh -c 'echo // fix >> src/api/orders.ts'" Sleep 500ms Enter
 Sleep 4s
 
-# And the part no other layer answers: whose it is.
-# This works from inside the box too, which is the point of it.
+# The refusal already named the owner and left a request behind — that is the
+# part no other layer answers, and since 2026-09-14 it arrives with the block
+# rather than waiting to be asked for.
+#
+# Asking directly still works, and works from INSIDE the box, which is the point
+# of it: the agent that was refused can find out who to hand the work to.
 Type "seisin run frontend -- seisin whose src/api/orders.ts" Sleep 500ms Enter
 Sleep 3500ms
 
