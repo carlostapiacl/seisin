@@ -553,6 +553,8 @@ keys = ["netlify-token.txt"]   # everything else in those directories is denied
 env  = ["BUILD_ID"]            # everything else in the environment is dropped
 ```
 
+**If your agent runs hooks of its own, they need a line here too.** Whatever a hook reads to learn which role it is gets dropped with everything else, and the symptom is two layers disagreeing about one file — your hook refusing a write that seisin just allowed, and the lower one is the one that is right — until the variable is named in `env`.
+
 **Two things this deliberately does not claim.** Redaction masks a literal value on the way
 through the launcher — a key written straight to a file never passes through it, and neither
 does one the agent base64'd first. It narrows a careless print; it is not a containment
