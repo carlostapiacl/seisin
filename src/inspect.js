@@ -248,6 +248,9 @@ function warningsFor(config, roles) {
   // A territory that leaves the repo is supported — a role can own its handover
   // note one level up — but it is a different promise from "this repo, divided",
   // and it should be a sentence somebody chose rather than a line that drifted.
+  const loose = [];      // roles granting individual files
+  const listed = [];     // role + folder pairs that enumerate
+
   for (const r of roles) {
     const out = r.writes.filter((w) => w.startsWith("/") || w.startsWith("../"));
     if (out.length)
@@ -282,18 +285,8 @@ function warningsFor(config, roles) {
     // that subtree, so naming it changes nothing and warns about nothing.
     const alone = files.filter((f) => !subtrees.some((s) => under(dirname(f.abs), s)));
     if (alone.length)
-      warnings.push({
-        kind: "siblings-uncovered",
-        headline:
-          `${r.name}: ${alone.length} of ${r.writes.length} granted path(s) name a file, ` +
-          `not a folder: ${alone.map((f) => f.glob).join(" ")}`,
-        detail:
-          "the kernel grants exactly that path. Anything a tool creates beside it — a " +
-          "database's journal, a lock file, the temporary file of an atomic write — is a " +
-          "sibling, and a sibling is outside the grant; the failure arrives in the tool's " +
-          "own words, not as a permission error. Grant the folder where the tool needs " +
-          "neighbours.",
-      });
+      loose.push({ role: r.name, n: alone.length, of: r.writes.length, globs: alone.map((f) => f.glob) });
+
 
     /**
      * A territory written as a list of files is a photograph of the folder.
@@ -329,18 +322,55 @@ function warningsFor(config, roles) {
       if (!unnamed.length) continue;
       const shown = relative(resolve(config.root), dir);
       const more = unnamed.length > 8 ? ` … and ${unnamed.length - 8} more` : "";
-      warnings.push({
-        kind: "enumerated-territory",
-        headline:
-          `${r.name} names ${named.length} of the ${onDisk.length} files in ` +
-          `${shown ? shown + "/" : "the repo root"}`,
-        detail:
-          `not named: ${unnamed.slice(0, 8).join(" ")}${more}. A sandbox grants a path, not ` +
-          `"the files of this kind here", so a territory that means that is the list of files ` +
-          `that existed when it was written — the next one added lands outside it, and nothing ` +
-          `fails loudly. Whether these are left out on purpose is not something a count can tell.`,
-      });
+      listed.push({ role: r.name, named: named.length, total: onDisk.length,
+                    where: shown ? shown + "/" : "the repo root", unnamed });
+
     }
+  }
+
+  /**
+   * One warning per finding, not one per role.
+   *
+   * These were emitted inside the role loop, which reads fine on the two-role
+   * fixture they were written against and falls apart on a real policy: 30
+   * roles produced 39 of these lines and took `seisin check` from 30 lines to
+   * **297**. That is the defect the detail text below is about — a check nobody
+   * finishes reading protects nobody — reached from the other side.
+   *
+   * So the count leads and a few examples follow. Whoever wants the full list
+   * has `seisin check <role>`, which is the question they were asking anyway.
+   */
+  if (loose.length) {
+    const shown = loose.slice(0, 3).map((l) => `${l.role} (${l.n} of ${l.of})`).join(", ");
+    const more = loose.length > 3 ? `, and ${loose.length - 3} more` : "";
+    warnings.push({
+      kind: "siblings-uncovered",
+      headline:
+        `${loose.length} role(s) grant individual files rather than folders: ${shown}${more}`,
+      detail:
+        "the kernel grants exactly that path. Anything a tool creates beside it — a " +
+        "database's journal, a lock file, the temporary file of an atomic write — is a " +
+        "sibling, and a sibling is outside the grant; the failure arrives in the tool's " +
+        "own words, not as a permission error. Grant the folder where the tool needs " +
+        "neighbours. `seisin check <role>` names the paths for one role.",
+    });
+  }
+
+  if (listed.length) {
+    const shown = listed.slice(0, 3)
+      .map((l) => `${l.role} names ${l.named} of ${l.total} in ${l.where}`).join("; ");
+    const more = listed.length > 3 ? `; and ${listed.length - 3} more` : "";
+    warnings.push({
+      kind: "enumerated-territory",
+      headline: `${listed.length} territory(ies) list some files of a folder: ${shown}${more}`,
+      detail:
+        `not named, in the first of them: ${listed[0].unnamed.slice(0, 8).join(" ")}` +
+        `${listed[0].unnamed.length > 8 ? ` … and ${listed[0].unnamed.length - 8} more` : ""}` +
+        `. A sandbox grants a path, ` +
+        `not "the files of this kind here", so a territory that means that is the list of files ` +
+        `that existed when it was written — the next one added lands outside it, and nothing ` +
+        `fails loudly. Whether these are left out on purpose is not something a count can tell.`,
+    });
   }
 
   // `env` is a hole in the [keys] model, on purpose: some tools only take a
