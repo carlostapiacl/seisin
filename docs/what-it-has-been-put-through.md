@@ -6,7 +6,7 @@
 
 ## The suite
 
-**152 tests**, run on macOS and Linux, Node 18/20/22, on every push
+**224 tests** (2026-09-14), on macOS and in CI on Node 18/20/22 at every push; the Linux run in the table below predates the last 76
 ([workflow](../.github/workflows/test.yml)).
 
 Fourteen of them are not unit tests: they run real commands through the real
@@ -35,9 +35,10 @@ what has not.
 
 | | macOS 15 · Seatbelt | Linux · bubblewrap |
 |---|---|---|
-| the suite | **148/148, nothing skipped** | **148/148, nothing skipped** — Debian bookworm, bwrap 0.8.0, Node 22, in Docker |
+| the suite | **224/224, nothing skipped** — 2026-09-14 | **148/148, nothing skipped** — Debian bookworm, bwrap 0.8.0, Node 22, in Docker, and **not re-run since**: the 76 tests added after that date have not been exercised on Linux |
 | CI, every push | Node 18/20/22 | `ubuntu-latest`, Node 18/20/22 |
-| `[runtime] isolate = true` | ✅ — and it did not start here at all until the 104-byte socket fix | ✅ — `tmpdir()` is `/tmp`, so the path never came close |
+| `[runtime] isolate = "home"` (`= true`) | ✅ — and it did not start here at all until the 104-byte socket fix | ✅ — `tmpdir()` is `/tmp`, so the path never came close |
+| `[runtime] isolate = "credentials"` | ✅ — no role home, so the socket limit cannot reach it | ✅ |
 | Claude Code 2.1.270 | ✅ | not run |
 | opencode 1.18.30 | ✅ | not run |
 | codex 0.150.1 | ✅, with its own sandbox off | not run |
@@ -146,9 +147,14 @@ Confirmed the seven above closed, then found eight more.
 | **Isolated mode was off by default** | so the shared-home fix applied only to people who switched it on |
 
 The last two are the threat-model question rather than bugs, and they are
-answered the same way: `[runtime] isolate = true` now closes reading as well as
-writing, and it stays opt-in. Measured both ways — `~/.ssh` reads fine by
-default and comes back `Operation not permitted` isolated.
+answered the same way: `[runtime] isolate` closes reading as well as writing,
+and it stays opt-in. Measured both ways — `~/.ssh` reads fine by default and
+comes back `Operation not permitted` isolated.
+
+**Amended 2026-09-14.** "It stays opt-in" was doing more work than it deserved.
+Opting in cost the agent its login, so the reviewers' point stood in practice
+even after this answer. It is two levels now: `"credentials"` closes those reads
+with the agent still logged in, `"home"` is the stronger one and keeps the cost.
 
 ### Review 4 — the config parser
 
@@ -254,12 +260,19 @@ Verified after the fix on macOS 15 and, in Docker, on Debian with bubblewrap
 - **Forgery in the audit trail.** A hostile agent can still *send* lines, so it
   can pad its own history. It cannot erase or alter what is there. Tampering is
   closed; forgery is not.
-- **Isolated mode is off by default.** With it off, reading is wide — `~/.ssh`
-  and `~/.aws` are ordinary files to every role — and `~/.claude`, `~/.cache`
-  and `/tmp` are shared between them. With it on, every CLI in the box sees an
-  empty home and asks to log in again, and a permission tool that silently signs
-  you out is one people uninstall. So it is a choice, made in the config, rather
-  than a default. Which of the two you want *is* the threat model.
+- **Isolated mode is off by default** — and since 2026-09-14 it is no longer the
+  all-or-nothing it is described as above. Two reviewers asked for it to be the
+  default, and the answer was that turning it on signs every CLI in the box out.
+  That was true of one switch doing two jobs. `isolate = "credentials"` now
+  closes `~/.ssh`, `~/.aws`, `~/.npmrc` and `~/.config` while leaving `HOME`
+  alone, and the agent stays logged in — measured. `isolate = "home"` is still
+  the stronger claim, still costs the login, and is still what `true` means.
+  With it off, reading remains wide.
+
+  So the reviewers were more right than the answer allowed: the half they wanted
+  did not need the cost that was used to decline it. What stays a choice is the
+  second half — whether one role may read another's session — and *that* is the
+  threat model. See `decisions.md`.
 - **No resource limits.** CPU, memory, PID count and disk are not bounded. A
   runaway agent can still exhaust the machine; the boundary is about what it
   can reach, not how much of it there is.

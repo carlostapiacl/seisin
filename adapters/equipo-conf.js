@@ -32,7 +32,7 @@ const root = flag("--root");
 /**
  * Where the emitted paths should be relative to.
  *
- * The territory in a cell config is written from the portfolio root, so a
+ * The territory in a cell config is written from the outer repository root, so a
  * seisin.toml placed inside a cell resolves every path one level too deep and
  * silently grants nothing that exists. Found twice — once here and once in a
  * field report from a user who hit it in the lab — which is enough to make it
@@ -116,7 +116,11 @@ const out = [
   ``,
 ];
 
-if (Object.keys(keys).length) out.push(`# [keys]`, `# dir = "02-confidencial/keys"`, ``);
+// A reminder to declare one, not a guess at where it is. The source format
+// names key FILES and never says which directory is the protected one, and
+// writing a path here that happens to be right for the author's repo is how an
+// adapter starts encoding one installation.
+if (Object.keys(keys).length) out.push(`# [keys]`, `# dir = "<your key directory>"`, ``);
 else out.push(
   `# No [claves] section in the source, so no role gets a key. That is the right`,
   `# default: grant them one at a time and you will notice which ones nobody needs.`,

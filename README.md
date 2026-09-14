@@ -19,13 +19,27 @@ A **permission layer**, not a sandbox — it sits on top of one. The isolation c
 ```
 $ seisin run frontend -- sh -c 'echo // fix >> src/api/orders.ts'
   sh: src/api/orders.ts: Operation not permitted
+  seisin: 1 kernel denial(s) recorded
 
+  1 pending request(s)
+
+    #1  frontend wants write on src/api/** (owned by backend)
+        first refused on src/api/orders.ts
+
+    seisin grant <n> [--reason "…"]   ·   seisin deny <n> [--reason "…"]
+```
+
+**Whose it was, at the moment it was refused.** Every other permission layer in this space answers *yes* or *no*. Answering **"no, and it belongs to `backend`"** turns a block into a handoff — and one a person can approve in a command, rather than a line somebody has to remember to go and read.
+
+The kernel is what refuses; the name comes from the policy. That first line is all the boundary itself can say — no path, no reason, nothing to read afterwards — so seisin reads the refusal out of the kernel's own log and answers the question it leaves open. On Linux only the hook can do that; [the ask is upstream](docs/upstream/cli-violations.md).
+
+The agent can ask directly too, from inside the box:
+
+```
 $ seisin run frontend -- seisin whose src/api/orders.ts
   src/api/orders.ts belongs to backend
   you are frontend. Hand it over rather than working around it.
 ```
-
-That second line is the whole point. Every other permission layer in this space answers *yes* or *no*. Answering **"no, and it belongs to `backend`"** turns a block into a handoff.
 
 ## Sixty seconds
 
@@ -682,10 +696,11 @@ This space already has good work, and seisin is not the first thing here:
 
 ## Status
 
-`0.1.0`, 152 tests, of which **14 need `@anthropic-ai/sandbox-runtime` installed**
-and run real commands through the real kernel, all passing on both macOS and Linux against the real
-sandbox and real commands, on Node 18/20/22 — and CI fails if the sandbox half *skips*,
-because a green run that quietly tested nothing looks exactly like a real one.
+`0.1.0`, 224 tests, of which **18 need `@anthropic-ai/sandbox-runtime` installed**
+and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
+a green run that quietly tested nothing looks exactly like a real one. Passing on macOS and on
+Node 18/20/22 in CI; **the last full Linux run was at 148 tests**, so the 76 added since have not
+been exercised against bubblewrap. [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run).
 The config format may still move before `1.0` — if it does, `seisin check` will
 tell you what changed.
 
