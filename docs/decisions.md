@@ -100,15 +100,48 @@ The sentence they violate has to be a test, not a paragraph, which is what
 claim against the other, so that moving either one fails loudly instead of going
 quiet.
 
-## `isolate` is off by default, and that is the threat model
+## `isolate` is off by default, has two levels, and that is the threat model
 
-With `[runtime] isolate = true` each role gets its own HOME, TMPDIR and XDG
-directories, and reading closes as well as writing — `~/.ssh`, `~/.aws`,
-`~/.npmrc` and the other roles' homes all go dark.
+`[runtime] isolate` used to be one switch and is now three values, because the
+half worth having was welded to the half that breaks things.
 
-Off by default, because turning it on makes every CLI in the box see an empty
-home and ask to log in again. A permission tool that silently signs you out is
-one people uninstall.
+```toml
+isolate = false           # default: a role reads your home like any process you run
+isolate = "credentials"   # ~/.ssh, ~/.aws, ~/.npmrc, ~/.config go dark. HOME untouched
+isolate = "home"          # the above, plus a HOME, TMPDIR and XDG set of the role's own
+```
+
+`true` still means `"home"`, so a config written before the split reads the same.
+
+**Why they had to come apart, measured rather than argued.** With a home of its
+own, `claude -p` answers `Not logged in - please run /login`. The cause is not
+this sandbox: Claude Code keeps its credential in the macOS **Keychain**, the
+login keychain lives at `$HOME/Library/Keychains`, and moving HOME points that
+at a keychain which is not there. `HOME=/empty claude -p` reproduces it with no
+sandbox anywhere, so it would happen to any tool that relocates a home.
+
+Meanwhile the part people actually want — the places credentials live, closed to
+every role — never needed a new HOME at all. Side by side against the real
+kernel:
+
+| | `~/.ssh` `~/.aws` `~/.npmrc` `~/.config/gh` | `~/.claude` | `claude -p` |
+|---|---|---|---|
+| `false` | open | open | **OK** |
+| `"credentials"` | **closed** | open | **OK** |
+| `"home"` | **closed** | closed | `Not logged in` |
+
+So `"credentials"` is adoptable on a machine you are already working on, and
+`"home"` keeps its honest price for the case it is actually for: a role that
+must not read another role's session. Which of the two you want is still the
+threat model — that is why neither is a default.
+
+**Rejected: linking the real keychain into the isolated home**, to get the
+separation without the logout. Measured against a throwaway keychain, a confined
+role reads **every** item in it, including one added without `-A`: a macOS ACL is
+per *application*, and `security` is the application, so any process in the box
+clears it. That trades one hole for a larger one — the login keychain is every
+password you have — and it is the kind of thing that has to be measured before
+it is offered, not after.
 
 Rejected: splitting the product into `mode = "team"` and `mode = "hostile"`.
 That is two names for the switch that already exists, and it implies a "hostile"
@@ -116,7 +149,7 @@ mode is *safe against hostile agents*, which this is not. **Which of the two you
 want is the threat model** — so it is a line in the config and a paragraph, not
 a brand.
 
-On the read side specifically: denies of the places credentials live, not a
+On the read side, at both levels: denies of the places credentials live, not a
 read allowlist. A default-deny read set has to enumerate every interpreter,
 library and cache a toolchain touches, gets one wrong, and fails as an
 unexplainable crash inside the agent. Narrower than the ideal, and it holds up.

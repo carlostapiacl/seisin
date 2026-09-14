@@ -103,6 +103,28 @@ export function roleHome(config, role) {
   return join(roleHomeRoot(config), role);
 }
 
+/**
+ * Where credentials live in a home directory, denied at both isolate levels.
+ *
+ * Denies rather than a read allowlist, and the reasoning is above: a
+ * default-deny read set has to enumerate every library, interpreter and cache a
+ * toolchain touches, gets one wrong, and fails as an unexplainable crash inside
+ * the agent. Naming the places credentials actually live is narrower than the
+ * ideal and holds up.
+ *
+ * `~/.config` is here whole rather than `~/.config/gh`: it is where a growing
+ * number of CLIs keep their tokens, and listing them one by one is the
+ * enumeration this list exists to avoid. A tool that needs a directory under it
+ * can be granted it by name.
+ */
+export const CREDENTIAL_HOMES = [
+  // The order is not arbitrary: `check` names the first few, so the ones a
+  // reader recognises instantly go first. Everything in the list is denied
+  // either way.
+  "~/.ssh", "~/.aws", "~/.npmrc", "~/.config",
+  "~/.gnupg", "~/.kube", "~/.docker", "~/.netrc", "~/.git-credentials",
+];
+
 export const RUNTIME_WRITES = [
   "~/.claude", "~/.codex",                 // the CLIs that keep state under their own name
   "~/.local/share", "~/.local/state",      // XDG data and state: where most others log
@@ -161,7 +183,16 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
   if (!role) throw new Error(`unknown role "${roleName}". Known: ${Object.keys(config.roles).join(", ")}`);
 
   const abs = (p) => (p.startsWith("/") ? p : join(config.root, p));
-  const isolated = config.isolate === true;
+  // "credentials" closes the places credentials live; "home" does that and
+  // gives the role a home of its own. Only the second one needs a new HOME,
+  // and only the second one signs every CLI in the box out. See config.js.
+  //
+  // `true` is normalised here as well as in the config reader, because a caller
+  // embedding the library builds this object itself and `isolate: true` has
+  // meant "home" since before there was a second level.
+  const level = config.isolate === true ? "home" : config.isolate;
+  const shielded = level === "credentials" || level === "home";
+  const isolated = level === "home";
 
   /**
    * Refuse before the runtime does, because the runtime's refusal says nothing.
@@ -227,12 +258,22 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
    * agent. Naming the places credentials actually live is narrower than the
    * ideal and it is a boundary that holds up in practice.
    */
+  if (shielded) denyRead.push(...CREDENTIAL_HOMES.map(expand));
+
+  /**
+   * `~/.claude` and `~/.codex` are closed only at the `home` level, and the
+   * difference is the whole reason the two levels exist.
+   *
+   * They hold a session, so closing them is right when each role is meant to be
+   * a separate identity. But on macOS the agent's credential is not in there at
+   * all — it is in the login keychain, reached through `$HOME`. At the
+   * `credentials` level HOME is untouched, so the agent stays logged in and
+   * every role shares that one session, exactly as they already do today.
+   * Closing these two here would cost the session without buying the
+   * separation, which is the worst of both.
+   */
   if (isolated) {
-    denyRead.push(
-      ...["~/.ssh", "~/.aws", "~/.gnupg", "~/.kube", "~/.docker",
-          "~/.npmrc", "~/.netrc", "~/.git-credentials",
-          "~/.config", "~/.claude", "~/.codex"].map(expand),
-    );
+    denyRead.push(...["~/.claude", "~/.codex"].map(expand));
     // And the other roles' homes. Giving each role its own HOME closed writing
     // between them and left reading wide open — so `a` could read the session
     // token `b`'s CLI had just written. Worse, the audit page said this was

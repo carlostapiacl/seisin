@@ -192,6 +192,46 @@ function readValue(value, lineNo) {
  * settings file rather than falling back to a permissive default, and seisin
  * matches that: a permission tool that guesses is worse than no permission tool.
  */
+/**
+ * `[runtime] isolate` — one setting, two levels, because they were one and
+ * should not have been.
+ *
+ *   false          (default) the role reads your home like any process you run
+ *   "credentials"  the places credentials live go dark. HOME is untouched
+ *   "home" / true  the above, plus a HOME, TMPDIR and XDG set of the role's own
+ *
+ * **Why the middle one exists.** These were a single switch, and the half that
+ * is worth having was welded to the half that breaks things. Measured on macOS:
+ * with a home of its own, `claude -p` answers `Not logged in - please run
+ * /login`, and the cause is not this sandbox at all. Claude Code keeps its
+ * credential in the macOS Keychain, the login keychain lives at
+ * `$HOME/Library/Keychains`, and moving HOME points that at a keychain which
+ * does not exist. `HOME=/empty claude -p` reproduces it with no sandbox in
+ * sight, so the same would happen to any tool that relocates a home.
+ *
+ * Meanwhile the part people actually want - `~/.ssh`, `~/.aws`, `~/.npmrc` and
+ * `~/.config/gh/hosts.yml` closed to every role - never needed a new HOME at
+ * all. Measured, with HOME left alone: all four refused, and the agent starts.
+ *
+ * So the levels split along what each one costs. `"credentials"` is adoptable
+ * on a machine you are already working on; `"home"` is the stronger claim and
+ * keeps its honest price. `true` still means what it meant, so a config written
+ * before this reads the same.
+ *
+ * Rejected: linking the real keychain into the isolated home to get the best of
+ * both. Measured against a throwaway keychain - a confined role reads **every**
+ * item in it, including one added without `-A`, because a macOS ACL is per
+ * application and `security` is the application. That trades one hole for a
+ * larger one: the login keychain is every password you have.
+ */
+export function readIsolate(v) {
+  if (v === true || v === "home") return "home";
+  if (v === "credentials") return "credentials";
+  // Anything else is off, including a misspelling. A permission tool must not
+  // read a word it does not know as a stronger setting than the reader meant.
+  return false;
+}
+
 export function loadConfig(path) {
   const parsed = parseToml(readFileSync(path, "utf8"));
   // Read only what the file actually declared. The parser refuses the names
@@ -243,12 +283,10 @@ export function loadConfig(path) {
     root: dirname(path), path, keyDirs,
     allowedDomains: own(own(parsed, "network"), "allow") ?? [],
     runtimeWrites: runtimeWrites === undefined ? undefined : asArray(runtimeWrites, "runtime.writes"),
-    // `[runtime] isolate = true` gives each role its own HOME and TMPDIR
-    // instead of the real ones. Off by default because turning it on makes
-    // every CLI in the box see an empty home — which means logging in again,
-    // and a permission tool that silently signs you out is a permission tool
-    // people uninstall. See srt.js.
-    isolate: own(runtime, "isolate") === true,
+    // `[runtime] isolate` — how much of your home a role stops reaching. See
+    // srt.js for what each level emits, and readIsolate() below for why there
+    // are two of them.
+    isolate: readIsolate(own(runtime, "isolate")),
     redact: own(runtime, "redact"),
     scanIgnore: asArray(own(own(parsed, "scan"), "ignore"), "scan.ignore"),
     roles: {},

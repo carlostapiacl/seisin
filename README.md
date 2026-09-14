@@ -589,8 +589,38 @@ discover:
 - **The home directory itself is never granted.** Only those named subdirectories. A grant that
   reached `~` would hand over the shell profile, the ssh config, and every dotfile with a token
   in it. There is a test that fails if that ever changes.
+- **Reading your home is a different question, and by default it is open.** None of the above
+  stops a role from *reading* `~/.ssh`, `~/.aws/credentials`, `~/.npmrc` or
+  `~/.config/gh/hosts.yml`. That is the deliberate trade in the table above — an agent that
+  cannot read the machine cannot work — and `seisin check` now says it on every run rather than
+  leaving you to find out.
 
 Set `writes = []` to opt out and find out why it is there.
+
+### Closing your credentials, without signing the agent out
+
+```toml
+[runtime]
+isolate = "credentials"   # ~/.ssh, ~/.aws, ~/.npmrc, ~/.config and the rest go dark
+```
+
+Measured, on the same machine, same policy, same command:
+
+| | `~/.ssh` `~/.aws` `~/.npmrc` `~/.config/gh` | `~/.claude` | `claude -p` |
+|---|---|---|---|
+| default | open | open | **OK** |
+| `isolate = "credentials"` | **closed** | open | **OK** |
+| `isolate = "home"` | **closed** | closed | `Not logged in` |
+
+`"home"` also gives each role its own `HOME`, `TMPDIR` and XDG directories, so one role cannot
+read the session another's CLI just wrote. It is the stronger claim and it has a real price:
+**every CLI in the box sees an empty home and asks you to log in again.** That is not this
+sandbox being strict — on macOS the agent's credential is in the login keychain, the keychain is
+found through `$HOME`, and `HOME=/empty claude -p` reproduces the same message with no sandbox
+involved at all.
+
+Which of the two you want is your threat model, so neither is a default. `"credentials"` is the
+one you can turn on today on a machine you are already working on.
 
 ## What it is not
 
