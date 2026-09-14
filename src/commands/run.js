@@ -343,9 +343,14 @@ export async function run(config, argv) {
     // Say what was dropped rather than only what was kept. A filter nobody can
     // see is indistinguishable from a monitor that is not working, and this one
     // drops the majority of what the kernel says on a busy run.
+    // Only when something was actually recorded. A run where every refusal was
+    // filtered out has nothing to contextualise, and `0 recorded, 1 outside the
+    // policy's paths` is a line that answers a question nobody asked — the
+    // counts exist to explain a filter, not to announce that one ran.
     const { attributed, foreign } = denials.stats;
-    if (attributed || foreign || offPolicy || walks)
-      err(`${C.dim}seisin: ${attributed - offPolicy - walks} kernel denial(s) recorded` +
+    const recorded = attributed - offPolicy - walks;
+    if (recorded > 0)
+      err(`${C.dim}seisin: ${recorded} kernel denial(s) recorded` +
           `${walks ? `, ${walks} directory scan(s)` : ""}` +
           `${offPolicy ? `, ${offPolicy} outside the policy's paths` : ""}` +
           `${foreign ? `, ${foreign} from other sandboxes` : ""}${C.off}\n`);
