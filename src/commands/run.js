@@ -192,7 +192,11 @@ export async function run(config, argv) {
    * `XDG_CACHE_HOME` directly would otherwise still land in the real one, and
    * that failure is silent: the run works and the isolation does not.
    */
-  if (config.isolate) {
+  // Only the `home` level moves HOME. `credentials` closes the places
+  // credentials live and leaves the home where it is — which is what keeps the
+  // agent logged in, since on macOS its credential is in the login keychain and
+  // the keychain is found through HOME.
+  if (config.isolate === "home" || config.isolate === true) {
     const home = roleHome(config, role);
     for (const d of [home, join(home, ".config"), join(home, ".local", "share"),
                      join(home, ".local", "state"), join(home, ".cache"), join(home, "tmp")])
