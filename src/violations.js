@@ -307,6 +307,24 @@ export function scopeOf(settings, root) {
 export function watchDenials(onDeny, { pid = null, argv = null, platform = process.platform, spawnFn = spawn, treeFn = processTree } = {}) {
   const stats = { attributed: 0, foreign: 0, unattributed: 0 };
 
+  /**
+   * Unavailable is a watcher that does nothing, NOT a different shape.
+   *
+   * This returned an object without `attributeTo`, and `seisin run` calls that
+   * unconditionally — so on Linux, where this branch is always taken, every
+   * single run died with `denials.attributeTo is not a function` before the
+   * agent started. The tool did not degrade on the platform it cannot watch;
+   * **it stopped working there.**
+   *
+   * It went unnoticed for a day because the suite could not see it either: the
+   * fourteen tests that run real commands decided whether the runtime was
+   * present with `command -v srt`, which misses the bundled one, so they
+   * skipped and the run came back green. Two defects covering for each other,
+   * and it took running the suite on the other platform to part them.
+   *
+   * So the contract is the object, not the flag. Everything a caller may invoke
+   * exists at both ends; `available` says whether it will find anything.
+   */
   if (platform !== "darwin")
     return {
       available: false,
@@ -314,7 +332,8 @@ export function watchDenials(onDeny, { pid = null, argv = null, platform = proce
         ? "kernel denials are not readable from outside the runtime on Linux — see docs/upstream/cli-violations.md"
         : `no kernel denial stream on ${platform}`,
       stats,
-      close() {},
+      attributeTo() {},
+      close: () => Promise.resolve(stats),
     };
 
   let suffix = null;               // learned once, exact from then on

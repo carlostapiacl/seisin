@@ -18,7 +18,7 @@ import { secretsOf, redactor } from "../redact.js";
 import { STATE_DIR } from "../layout.js";
 import { C, err } from "../render.js";
 import { pending, record, requestsPath } from "../requests.js";
-import { ownersOf } from "../owners.js";
+import { ownersOf, explain } from "../owners.js";
 import { append, logPath } from "../log.js";
 import { renderQueue } from "./requests.js";
 import { watchDenials, inScope, scopeOf, reachedForContent } from "../violations.js";
@@ -160,6 +160,27 @@ export async function run(config, argv) {
 
     if (entry.action !== "read" && entry.action !== "write") return;
     if (typeof entry.target !== "string" || !entry.target.trim()) return;
+
+    /**
+     * The policy has to actually refuse it, or it does not belong in a queue.
+     *
+     * Nothing checked. A process inside the box could file a request for a path
+     * its own role already owns, and the queue would print *first refused on
+     * …* about something that was never refused — a sentence placed in front of
+     * a person for approval, describing an event that did not happen.
+     *
+     * Same treatment as `owners` one branch up: the claim is recomputed here
+     * rather than believed. It is the policy answering a question about itself,
+     * which is arithmetic, and it is the parent asking — the one process the
+     * confined side cannot reach.
+     *
+     * This does not require the agent to have *tried*. Asking for a permission
+     * before reaching for it is a reasonable thing to do, and the wording says
+     * "asked" rather than "refused" for exactly that case. What it rules out is
+     * a request for something that is not refused at all.
+     */
+    if (explain(config, role, entry.action, entry.target).allowed) return;
+
     record(requestsPath(config.root), {
       role,
       action: entry.action,
@@ -299,8 +320,12 @@ export async function run(config, argv) {
     });
   }, { argv: cmd });
 
-  if (!denials.available)
-    err(`${C.dim}seisin: kernel denials not recorded — ${denials.reason}${C.off}\n`);
+  // Deliberately NOT announced here. On Linux this branch is taken every time,
+  // so saying it per run puts a line the reader cannot act on in front of every
+  // command they type — and a notice that appears five hundred times is one
+  // nobody reads the five hundred and first. It is a standing property of the
+  // platform, so it belongs with the other standing limits, in `seisin check`.
+  void denials.available;
 
   const child = spawn(srt, ["--settings", file, "--", ...cmd], {
     stdio: outStream ? ["inherit", "pipe", "pipe"] : "inherit",

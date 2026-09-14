@@ -47,6 +47,17 @@ export function inspect(config, only = null, where = config.path) {
  * looking at the policy, not afterwards.
  */
 const LIMITS = [
+  ...(process.platform === "darwin" ? [] : [{
+    kind: "kernel-denials-unreadable",
+    headline: "refusals by the kernel are not recorded on this platform",
+    detail:
+      "on macOS `seisin run` reads them out of the system log, so a denial the hook never " +
+      "saw still lands in `seisin log` with its owner and still queues a request. There is no " +
+      "equivalent to read here — bubblewrap does not log refusals, and the runtime's substitute " +
+      "is not reachable from outside it. The boundary holds exactly as well; what you lose is " +
+      "seeing it work. Run `seisin wire` so the hook records what it can. The ask is upstream: " +
+      "github.com/carlostapiaolguin3-stack/seisin/blob/main/docs/upstream/cli-violations.md",
+  }]),
   {
     kind: "keys-only-what-you-declared",
     headline: "key isolation covers the directory you declared, and nothing else",

@@ -75,7 +75,7 @@ const TOOLS = [
   {
     name: "seisin_requests",
     description:
-      "Permissions agents were refused and are waiting on a human for, with how many " +
+      "Permissions agents asked for and cannot have yet, waiting on a human, with how many " +
       "times each was asked. A refusal files one of these automatically, so this is where " +
       "to look after being denied rather than retrying. Read-only — approving is not " +
       "available here, by design.",

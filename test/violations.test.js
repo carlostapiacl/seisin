@@ -285,3 +285,21 @@ test("a recursive search reaching a closed door is not a read attempt", async ()
   // Not on disk any more: keep the line rather than filter it on a guess.
   assert.ok(reachedForContent(file, () => { throw new Error("ENOENT"); }));
 });
+
+test("an unavailable watcher is the same shape, not a different one", () => {
+  // It was not, and `seisin run` calls attributeTo unconditionally — so every
+  // run on Linux died with `denials.attributeTo is not a function` before the
+  // agent started. Not a degraded instrument: a broken tool, on the platform
+  // that cannot have the instrument at all.
+  //
+  // Asserted for every platform that takes this branch, because the next one
+  // added will take it too.
+  for (const platform of ["linux", "win32", "freebsd"]) {
+    const w = watchDenials(() => {}, { platform });
+    assert.equal(w.available, false);
+    assert.equal(typeof w.attributeTo, "function", `${platform}: attributeTo`);
+    assert.equal(typeof w.close, "function", `${platform}: close`);
+    assert.doesNotThrow(() => w.attributeTo(1234));
+    assert.ok(w.close({ drain: 0 }) instanceof Promise, `${platform}: close resolves`);
+  }
+});

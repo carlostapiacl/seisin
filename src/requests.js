@@ -1,5 +1,20 @@
 /**
- * The queue of permissions an agent was refused and would like.
+ * The queue of permissions an agent asked for and cannot have yet.
+ *
+ * ── Two words, kept apart on purpose ──
+ * **Refused** is what the boundary does. **Declined** is what a person does to
+ * a request. They used to be one word in one command: an entry read `first
+ * refused on src/api/x.ts` and `seisin deny` answered `refused frontend ✕
+ * src/api/**`. One means the kernel said no, the other means you did, and a
+ * reader had nothing to tell them apart by.
+ *
+ * The entry says **asked** now, because refused was not always true. Asking for
+ * a permission before reaching for it is reasonable, and nothing required a
+ * denial to have happened first — so the queue could print a sentence about an
+ * event that never occurred, in front of a person about to approve something.
+ * `seisin run` drops any request the policy does not actually refuse; what is
+ * left is "you cannot have this, and you asked", which holds whether the agent
+ * tried or simply asked.
  *
  * A denial already contains everything a request needs — the hook knows the
  * role, the path and the owner — so the refusal leaves something behind that a
@@ -64,7 +79,8 @@ function write(file, entry) {
   }
 }
 
-/** Records that a role was refused something. Safe to call on every denial. */
+/** Records that a role asked for something the policy denies it. Safe to call
+ *  on every denial; `seisin run` drops anything the policy does not refuse. */
 export function record(file, { role, action, target, owners }) {
   return write(file, { kind: "asked", key: keyOf({ role, action, target }), role, action, target, owners: owners ?? [] });
 }

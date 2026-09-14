@@ -33,7 +33,7 @@ export function renderQueue(queue) {
     const owners = r.owners.length ? ` ${C.dim}(owned by ${r.owners.join(", ")})${C.off}` : ` ${C.dim}(unowned)${C.off}`;
     const times = r.times > 1 ? ` ${C.dim}· asked ${r.times}×${C.off}` : "";
     lines.push(`    ${C.b}#${i + 1}${C.off}  ${r.role} wants ${r.action} on ${C.b}${r.grant}${C.off}${owners}${times}\n`);
-    lines.push(`        ${C.dim}first refused on ${r.target}${C.off}\n`);
+    lines.push(`        ${C.dim}first asked over ${r.target}${C.off}\n`);
     const note = handoffNote(r.handoff);
     if (note) lines.push(`        ${C.yellow}${note}${C.off}\n`);
   });
@@ -102,7 +102,7 @@ export function deny(config, argv = []) {
 
   settle(requestsPath(config.root), req.key, "denied", reason);
   out(
-    `\n  ${C.yellow}refused${C.off}  ${req.role} ✕ ${req.grant}\n` +
+    `\n  ${C.yellow}declined${C.off}  ${req.role} ✕ ${req.grant}\n` +
     `  ${C.dim}${reason || "no reason recorded"}${C.off}\n\n`
   );
   return { request: req, reason };

@@ -87,7 +87,14 @@ test("the socket limit only constrains the level that has a home", () => {
   // A role home too deep for the runtime's socket is refused by name rather
   // than left to fail as EINVAL. That check belongs to `home`; `credentials`
   // creates no home, so no role name can be too long for it.
-  const long = "a-role-name-far-too-long-for-a-unix-socket-path-to-hold";
+  //
+  // The name has to be absurd rather than merely long, and Linux is why: the
+  // budget is 104 bytes minus tmpdir(), which is ~49 on macOS and 4 on Linux.
+  // A 55-character name overflows one and fits the other comfortably, so the
+  // first version of this passed on the machine it was written on and failed
+  // in Docker on Debian — asserting a platform's arithmetic while claiming to
+  // assert a level's behaviour. This length has no room to fit anywhere.
+  const long = "a-role-name-far-too-long-for-a-unix-socket-path-to-hold".repeat(4);
   const cfg = (level) => ({ ...policy(level), roles: { [long]: { name: long, writes: ["src/**"], keys: [] } } });
   assert.doesNotThrow(() => settingsFor(cfg("credentials"), long));
   assert.throws(() => settingsFor(cfg("home"), long), /isolate/);
