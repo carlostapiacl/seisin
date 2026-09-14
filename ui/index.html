@@ -153,6 +153,12 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
 .ev .who{font-size:11px;color:var(--mid)}
 .ev .who em{font-style:normal;color:var(--blue);font-weight:600}
 .ev .when{font-size:11px;color:var(--dim);flex:0 0 auto;font-variant-numeric:tabular-nums}
+/* Which writer saw it. The hook reports an attempt and can be talked around; the kernel
+   reports a refusal and cannot. When the two disagree about a run the reader needs to know
+   which line carries more weight, so the one that does is the one that is marked — a small
+   word in the margin, not a column. Lines without the field render exactly as before. */
+.ev .src{font:10px/1.6 var(--mono);color:var(--dim);flex:0 0 auto;padding:0 5px;
+  border:1px solid var(--line2);border-radius:4px;letter-spacing:.02em;cursor:default}
 
 .foot{font-size:11px;color:var(--dim);line-height:1.7;border-top:1px solid var(--line);padding-top:14px}
 .foot b{color:var(--mid);font-weight:600}
@@ -361,7 +367,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     {t:"21:04:12", kind:"deny",  role:"frontend", act:"read",  target:".secrets/database-url.txt", owners:["backend"]},
     {t:"21:02:58", kind:"deny",  role:"docs",     act:"write", target:"src/api/orders.ts",         owners:["backend"]},
     {t:"20:58:31", kind:"allow", role:"backend",  act:"write", target:"migrations/014_stock.sql",  owners:[]},
-    {t:"20:51:07", kind:"deny",  role:"frontend", act:"write", target:"scripts/deploy.sh",         owners:[]},
+    {t:"20:51:07", kind:"deny",  role:"frontend", act:"write", target:"scripts/deploy.sh",         owners:[], source:"kernel"},
     {t:"20:47:44", kind:"admin", role:"you",      act:"unsandboxed", target:"scratch",             owners:[]}
   ];
 
@@ -641,8 +647,14 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
             : '<div class="who">no role owns this path</div>';
         }
       }
+      // Only the kernel's own lines get the mark. A hook line and an older line look the
+      // same as they always did — the absence is the default, not a third state.
+      var src=e.source==="kernel"
+        ? '<span class="src" title="Recorded from the kernel: what the OS actually refused, '+
+          'whether or not the hook saw the attempt. This line cannot be talked around.">kernel</span>'
+        : "";
       d.innerHTML="<b>"+label+'</b><span class="body"><span class="what">'+line+"</span>"+who+
-                  '</span><span class="when">'+esc(e.t)+"</span>";
+                  "</span>"+src+'<span class="when">'+esc(e.t)+"</span>";
       c.appendChild(d);
     });
   }
@@ -870,7 +882,10 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       role: e.role,
       act: e.action,
       target: e.target,
-      owners: e.owners || []
+      owners: e.owners || [],
+      // Which writer produced it. Absent on hook lines and on every line from before the
+      // kernel could speak, and absent is what the renderer treats as "the hook".
+      source: e.source
     }));
   }
 
