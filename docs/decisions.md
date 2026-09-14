@@ -436,6 +436,38 @@ how a binary file is recognised while looking for secrets — so only its spelli
 changed, from the byte to `\u0000`. Same value, same test, and the file has a
 diff again.
 
+## A request is addressed by what it is, not by where it sits
+
+`seisin grant <n>` and `deny <n>` took a position in the pending list, and the
+comment above them said it was "stable while you read it". That is false exactly
+where it matters.
+
+The queue is filled by agents that are still running. On a live repository it
+grew and shrank between one command and the next, and `deny 1` settled a
+different request than the one printed as `#1` seconds earlier — a real one,
+from a role doing real work, closed by a command aimed at a test. Twice in one
+session, by someone who had just written the tool.
+
+It is time-of-check-to-time-of-use in the one command whose entire job is
+deciding a permission. Every argument for this project — that a boundary should
+name what it refused, that nothing is taken at its word — is worth nothing if
+approving the wrong thing is one race away.
+
+A number still works, because reading a list and typing a number is how anyone
+will use it. But each entry now prints an id — `<role>:<action>:<path>` — that
+does not move when the queue does, and an argument that is not a number is
+matched against it. **An ambiguous match is refused rather than resolved**, for
+the same reason the rest of this file refuses rather than guesses: choosing for
+you is the failure being fixed.
+
+**What it does not fix, and is worth knowing.** A settled request does not
+reopen. A later `asked` for the same key raises its counter and leaves the state
+alone, so a mistaken `deny` cannot be undone by the agent asking again — the
+file is append-only and nothing rewrites a line. That is correct for evidence
+and wrong for recovery, and it is unresolved: the honest repair today is to
+grant the permission on its merits, which is a decision about the policy rather
+than an undo.
+
 ## Still open
 
 - ~~**The queue says "refused" and means "asked for".**~~ **Settled 2026-09-14**,

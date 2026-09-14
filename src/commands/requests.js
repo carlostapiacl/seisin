@@ -10,12 +10,45 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { pending, settle, applyGrant, requestsPath } from "../requests.js";
 import { C, out } from "../render.js";
 
-/** Requests are addressed by position in the pending list — stable while you read it. */
+/**
+ * Which request you meant — by position, or by the identity it carries.
+ *
+ * "Stable while you read it" was the old claim and it is false exactly where it
+ * matters. The queue is filled by agents that are still running: on a live
+ * repository it grew and shrank between a listing and the next command, and
+ * `deny 1` settled a different request than the one printed as #1 seconds
+ * earlier. That is time-of-check-to-time-of-use in the one command whose whole
+ * job is deciding a permission, and it happened twice in one session.
+ *
+ * A position is still accepted, because reading a list and typing a number is
+ * how anyone will use this. An argument that is not a number is matched against
+ * the request's own id — `<role>:<action>:<path>` — which does not move when
+ * the queue does. `seisin requests` prints it under each entry.
+ *
+ * An ambiguous match is refused rather than resolved. Choosing for you is the
+ * failure being fixed.
+ */
 function pick(config, n) {
   const queue = pending(requestsPath(config.root));
-  const req = queue[Number(n) - 1];
-  if (!req) throw new Error(queue.length ? `no request #${n} — there are ${queue.length}` : "no pending requests");
-  return req;
+  if (!queue.length) throw new Error("no pending requests");
+
+  const arg = String(n).trim();
+  if (/^\d+$/.test(arg)) {
+    const req = queue[Number(arg) - 1];
+    if (!req) throw new Error(`no request #${arg} — there are ${queue.length}`);
+    return req;
+  }
+
+  const hits = queue.filter((r) => r.key === arg || r.key.startsWith(arg));
+  if (hits.length === 1) return hits[0];
+  if (!hits.length)
+    throw new Error(
+      `no pending request matches "${arg}".\n` +
+      "  Use its number, or the id printed under it by `seisin requests`.");
+  throw new Error(
+    `"${arg}" matches ${hits.length} pending requests:\n` +
+    hits.slice(0, 5).map((r) => `    ${r.key}`).join("\n") +
+    "\n  Name one exactly. Choosing for you is the mistake this avoids.");
 }
 
 export function requests(config) {
@@ -34,6 +67,9 @@ export function renderQueue(queue) {
     const times = r.times > 1 ? ` ${C.dim}· asked ${r.times}×${C.off}` : "";
     lines.push(`    ${C.b}#${i + 1}${C.off}  ${r.role} wants ${r.action} on ${C.b}${r.grant}${C.off}${owners}${times}\n`);
     lines.push(`        ${C.dim}first asked over ${r.target}${C.off}\n`);
+      // The stable way to name it: a number is a position in a queue that agents
+      // are still writing to, and this does not move when the queue does.
+      lines.push(`        ${C.dim}id ${r.key}${C.off}\n`);
     const note = handoffNote(r.handoff);
     if (note) lines.push(`        ${C.yellow}${note}${C.off}\n`);
   });
