@@ -48,8 +48,12 @@ test("a file granted alone: its siblings are outside the grant, and check says s
   try {
     const w = find(policy(root, ["src/**", "data/base.sqlite"]), "siblings-uncovered");
     assert.ok(w, "a literal file grant went unmentioned");
-    assert.match(w.headline, /dev: 1 of 2 granted path\(s\) name a file/);
-    assert.match(w.headline, /data\/base\.sqlite/);
+    // One warning for the whole policy, with the count leading and the role
+    // named as an example. Per-role lines read fine on this fixture and took a
+    // real 30-role policy from 30 lines of `check` to 297.
+    assert.match(w.headline, /1 role\(s\) grant individual files rather than folders/);
+    assert.match(w.headline, /dev \(1 of 2\)/);
+    assert.match(w.detail, /seisin check <role>/, "and points at where the paths are");
     // The file is named; no program is. The rule is about the grant's shape,
     // and the moment it knows about databases it has to know about everything
     // else.
@@ -112,9 +116,10 @@ test("several named files in one folder: check counts them against the folder, a
   try {
     const w = find(policy(root, ["src/a.py", "src/b.py"]), "enumerated-territory");
     assert.ok(w, "an enumerated folder went unmentioned");
-    assert.match(w.headline, /dev names 2 of the 4 files in src\//);
+    assert.match(w.headline, /1 territory\(ies\) list some files of a folder/);
+    assert.match(w.headline, /dev names 2 of 4 in src\//);
     // The unnamed ones are listed, so the reader decides — the check does not.
-    assert.match(w.detail, /not named: README\.md c\.py/);
+    assert.match(w.detail, /README\.md c\.py/);
     // And it is an observation, not a verdict: nothing in it says "missing".
     assert.doesNotMatch(w.headline + w.detail, /missing|forgot|stale/i);
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -160,11 +165,14 @@ test("only regular files directly in the folder count: not subfolders, not links
 test("two folders are two counts, and the repo root is called by name", () => {
   const root = repo(["a.txt", "b.txt", "c.txt", "lib/x.js", "lib/y.js", "lib/z.js"]);
   try {
+    // Two folders, one warning, both counted in it — and the repo root is
+    // called by name rather than printed as an empty path.
     const ws = inspect(policy(root, ["a.txt", "b.txt", "lib/x.js", "lib/y.js"]), null, "x")
       .warnings.filter((w) => w.kind === "enumerated-territory");
-    assert.equal(ws.length, 2);
-    assert.ok(ws.some((w) => /2 of the 3 files in the repo root/.test(w.headline)));
-    assert.ok(ws.some((w) => /2 of the 3 files in lib\//.test(w.headline)));
+    assert.equal(ws.length, 1);
+    assert.match(ws[0].headline, /2 territory\(ies\)/);
+    assert.match(ws[0].headline, /2 of 3 in the repo root/);
+    assert.match(ws[0].headline, /2 of 3 in lib\//);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -173,7 +181,7 @@ test("a long list of unnamed files is cut, and says by how much", () => {
   const root = repo(files);
   try {
     const w = find(policy(root, [files[0], files[1]]), "enumerated-territory");
-    assert.match(w.headline, /2 of the 12 files/);
+    assert.match(w.headline, /2 of 12 in src\//);
     assert.match(w.detail, /… and 2 more/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
