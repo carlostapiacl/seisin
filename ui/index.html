@@ -382,6 +382,14 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
 
   function drawCfg(){
     var r=ROLES.filter(function(x){return x.name===sel;})[0];
+    // Belt and braces. Whatever leaves `sel` pointing at a role that is not there, one panel
+    // going blank must not blank the ones drawn after it: the throw here was swallowing two.
+    if(!r){
+      document.getElementById("cfg-title").textContent=".seisin/\u2026.json";
+      document.getElementById("cfg").textContent =
+        ROLES.length ? "pick a role above" : "no roles in this policy";
+      return;
+    }
     document.getElementById("cfg-title").textContent=".seisin/"+r.name+".json";
     var L=[];
     L.push('<span class="c">// seisin run '+esc(r.name)+' -- claude -p "…"</span>');
@@ -600,6 +608,13 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
     LOG = fromServer(s.log);
     REQS = s.requests || [];
     ONDISK = s.toml || null;
+    // The demo selection does not survive the live load. `sel` starts at "frontend", a role
+    // from the example policy, and a real repo has no reason to have one. `drawCfg` then
+    // reads `.name` off `undefined` and throws — which takes down everything `draw` renders
+    // after it, so the generated-settings box, the activity list AND the seisin.toml box all
+    // come up blank at once while the data behind them is fine. One stale default, three
+    // empty panels, and no error anywhere the reader can see.
+    if (!ROLES.some(function(r){ return r.name === sel; })) sel = (ROLES[0] || {}).name || "";
     label.textContent = s.config.replace(/^.*\//, "") + " · live";
     label.style.color = "var(--green)";
     // The footer used to claim this page never touches your repo. It reads it
