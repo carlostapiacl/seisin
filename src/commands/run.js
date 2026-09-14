@@ -21,8 +21,19 @@ import { pending, record, requestsPath } from "../requests.js";
 import { ownersOf } from "../owners.js";
 import { append, logPath } from "../log.js";
 import { renderQueue } from "./requests.js";
+import { watchDenials, inScope, scopeOf } from "../violations.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * The ceiling on waiting for the kernel's last word when a run ends.
+ *
+ * A ceiling, not a delay: the drain resolves as soon as `log stream` stops
+ * talking, which on a run with nothing pending is immediate. The number only
+ * matters on a machine under enough load that the stream is behind, and there
+ * a quarter second is cheaper than a denial that never made it into the record.
+ */
+const DRAIN_MS = 250;
 
 /**
  * The bundled runtime first, a global one second, and nothing third.
@@ -221,10 +232,75 @@ export async function run(config, argv) {
   // and eats anything resembling one of its flags: `claude --settings`,
   // `claude -c`, `claude --debug`. Found by passing --settings to claude and
   // watching the sandbox reject it as its own malformed config.
+  /**
+   * The kernel's own refusals, alongside the hook's.
+   *
+   * Started BEFORE the spawn, and that ordering is the whole difference between
+   * this working and this recording nothing. `log stream` is a separate process
+   * with its own startup; a `sh -c` that gets refused is over in single-digit
+   * milliseconds. Started after the spawn, the first version of this caught
+   * zero denials on exactly the short commands an agent runs most.
+   *
+   * Attribution still needs the child's pid, so it is handed over the moment
+   * there is one — `attributeTo` below — and anything that arrived in between is
+   * held and re-examined rather than credited to this role on faith.
+   *
+   * These lines go through the same `append()` the spool does, with `owners`
+   * recomputed here exactly as they are for a hook line. The rule that nothing
+   * is taken at its word still applies; what changes is who is claiming. The
+   * hook is the process being recorded, and the kernel is the thing that
+   * actually refused — so when the two disagree, this is the one that is right.
+   */
+  const scope = scopeOf(settings, config.root);
+  const keyDirs = (config.keyDirs ?? []).map((d) => (d.startsWith("/") ? d : join(config.root, d)));
+  let offPolicy = 0;                  // refused, but about nothing the policy names
+  const denials = watchDenials((d) => {
+    if (!inScope(d.path, scope)) { offPolicy++; return; }
+    // Relative inside the repo, absolute outside it. A role can be refused at
+    // ~/.ssh under `isolate`, and "../../../.ssh/id_rsa" would be a worse
+    // answer to "what was refused" than the path itself.
+    const rel = d.path.startsWith(config.root + "/") ? d.path.slice(config.root.length + 1) : d.path;
+
+    /**
+     * A refusal the hook never saw still leaves a request behind.
+     *
+     * Without this the two halves of the record disagree in the worst
+     * direction: `review` would show a role stopped repeatedly on a directory
+     * while the queue held nothing to approve, so the one refusal a person most
+     * needed to see — the one that escaped the hook — would be the one with no
+     * way to act on it.
+     *
+     * There is no double counting to avoid. When the hook catches something it
+     * denies the tool call outright and the command never runs, so the kernel
+     * never sees it. These are the ones that got past it, which is the whole
+     * reason this exists. Inside the repo only: `~/.ssh` is refused on purpose
+     * under `isolate` and is not a territory anyone is meant to ask for.
+     */
+    if (rel !== d.path)
+      record(requestsPath(config.root), { role, action: d.action, target: rel, owners: ownersOf(config, rel) });
+
+    append(logPath(config.root), {
+      at: new Date().toISOString(),
+      role,
+      tool: "kernel",
+      source: "kernel",
+      action: d.action,
+      kind: keyDirs.some((k) => d.path === k || d.path.startsWith(k + "/")) ? "key" : "file",
+      target: rel,
+      verdict: "denied",
+      owners: ownersOf(config, rel),
+      reason: d.operation,
+    });
+  }, { argv: cmd });
+
+  if (!denials.available)
+    err(`${C.dim}seisin: kernel denials not recorded — ${denials.reason}${C.off}\n`);
+
   const child = spawn(srt, ["--settings", file, "--", ...cmd], {
     stdio: outStream ? ["inherit", "pipe", "pipe"] : "inherit",
     env,
   });
+  denials.attributeTo(child.pid);
   if (outStream) { child.stdout.pipe(outStream); child.stderr.pipe(errStream); }
 
   // The exit code is the child's, and the output has to be all the way out
@@ -239,7 +315,7 @@ export async function run(config, argv) {
   //
   // Subscribe first, end second, and keep a real timer (not unref'd, or it
   // cannot save anything) as the floor.
-  child.on("exit", (code, signal) => {
+  child.on("exit", async (code, signal) => {
     const status = signal ? 1 : code ?? 0;
     // The notice rides on what you are already looking at. A queue nobody opens
     // is not human-in-the-loop, and this is the terminal that just showed you
@@ -249,8 +325,23 @@ export async function run(config, argv) {
     // agent's last turn may still be in flight, and reporting a queue that is
     // one entry behind is how a request goes unnoticed for a day.
     audit.close();
+    // Same reason, one layer further out: the kernel writes its line through a
+    // separate process, so the last refusal of a run can still be in flight
+    // here. This is the only wait the mechanism adds and it is per run — it
+    // returns as soon as the stream goes quiet, so a run that was refused
+    // nothing pays a tick.
+    await denials.close({ drain: DRAIN_MS });
     // The run made this directory, so the run removes it.
     try { rmSync(dirname(sockPath), { recursive: true, force: true }); } catch {}
+
+    // Say what was dropped rather than only what was kept. A filter nobody can
+    // see is indistinguishable from a monitor that is not working, and this one
+    // drops the majority of what the kernel says on a busy run.
+    const { attributed, foreign } = denials.stats;
+    if (attributed || foreign || offPolicy)
+      err(`${C.dim}seisin: ${attributed - offPolicy} kernel denial(s) recorded` +
+          `${offPolicy ? `, ${offPolicy} outside the policy's paths` : ""}` +
+          `${foreign ? `, ${foreign} from other sandboxes` : ""}${C.off}\n`);
 
     const queue = pending(requestsPath(config.root));
     if (queue.length) err(renderQueue(queue));

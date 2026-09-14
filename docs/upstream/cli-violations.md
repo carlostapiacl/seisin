@@ -12,20 +12,28 @@ Verified against **0.0.76**.
 
 ## The issue, as posted
 
-> **Title:** `cli`: sandbox violations are collected but never reach a caller that runs the binary
+> **Title:** `cli`: filesystem violations are never collected, and collected ones never reach a caller that runs the binary
 
 ````markdown
 ## Summary
 
-Violations are recorded and attributed, including network denies, but only a
-caller that embeds the library can read them. `dist/cli.js` imports
-`SandboxManager` and never touches them — no flag, no annotation, no file.
+A caller that runs `srt` sees no violations at all, and the two halves fail for
+different reasons.
+
+**Network denies** are recorded and attributed, and simply never read.
+`dist/cli.js` imports `SandboxManager` and never touches the store — no flag, no
+annotation, no file. `grep -c violation dist/cli.js` → 0.
+
+**Filesystem denies** are not even recorded on this path. `initialize()` takes
+`enableLogMonitor = false` and `cli.js:189` omits the argument, so neither
+`startMacOSSandboxLogMonitor` nor `startLinuxSandboxViolationMonitor` is ever
+constructed. The child gets `Operation not permitted` on its stderr; nothing
+upstream of it learns a path was refused.
 
 Library caller: `SandboxViolationStore` (exported from `dist/index.d.ts`) with
 `getViolations` / `getViolationsForCommand` / `subscribe`, plus
-`SandboxManager.annotateStderrWithSandboxFailures()`.
-
-CLI caller: nothing. `grep -c violation dist/cli.js` → 0.
+`SandboxManager.annotateStderrWithSandboxFailures()` — and, for the filesystem
+half, `initialize(config, undefined, true)`.
 
 ## What is already collected
 
@@ -39,10 +47,49 @@ function recordOutboundDeny(host, port, reason, encodedCommand) {
 
 Host, port, reason and the command that reached for it.
 
+## What is NOT collected on this path
+
+Filesystem denies, and not because they are unrecordable — because the
+collectors never start.
+
+```js
+// sandbox-manager.js
+async function initialize(runtimeConfig, sandboxAskCallback, enableLogMonitor = false) {
+  ...
+  if (enableLogMonitor && getPlatform() === 'macos')  startMacOSSandboxLogMonitor(...)
+  if (enableLogMonitor && getPlatform() === 'linux')  startLinuxSandboxViolationMonitor(...)
+}
+
+// cli.js:189
+await SandboxManager.initialize(runtimeConfig);   // third argument omitted -> false
+```
+
+So on the CLI path the store holds proxy violations only. The seatbelt log
+monitor and the seccomp observer — the two producers that see a refused write —
+are never constructed, and `getViolationsForCommand` would return nothing for
+them no matter who called it.
+
+The data itself is there for the taking. `log stream` on macOS carries the deny
+with its path, its operation and the runtime's own `CMD64_…_END_…_SBX`
+attribution tag already attached:
+
+```
+Sandbox: bash(54251) deny(1) file-write-create /path/it/was/refused.txt
+CMD64_ZWNobyBub3BlID4gL3ByaXZhdGUvdG1wL2NsYXVkZS01MDEv…_END__wg5uw9adw_SBX
+```
+
+Measured 2026-09-14 on macOS 15 (Darwin 24.6.0), 0.0.76, against a config whose
+`allowWrite` held one directory and a write aimed one directory over. The child
+saw `Operation not permitted` and nothing else; the kernel had already written
+the line above.
+
 ## Ask
 
-Either of these, smallest first:
+Three, smallest first. **The first two do nothing for filesystem denies on their
+own** — without the third the store is empty of them:
 
+- Pass `enableLogMonitor: true` from `cli.js`, or expose it as a flag. This is
+  the one that matters; the collectors exist and are simply not switched on.
 - `--violations <path>`: append each `line` as it is recorded.
 - Or apply `annotateStderrWithSandboxFailures` on the CLI path — the behaviour
   embedders already get, no new surface.
@@ -77,3 +124,16 @@ Verified by reading `dist/`, not by inference: `recordOutboundDeny` →
 exported in `dist/index.d.ts`, and the only consumer at
 `sandbox-manager.js:1793` (`annotateStderrWithSandboxFailures`), which the CLI
 never calls.
+
+**Amended 2026-09-14, and the amendment is the same lesson a second time.** The
+draft above was written from the network path, where the violation really is
+recorded and merely unread — so the ask was "three lines so it leaves the
+process". For filesystem denies that ask is not enough and would have been
+answered with a patch that changed nothing: `enableLogMonitor` defaults to
+`false` and `cli.js` omits the argument, so there is nothing in the store to
+leave the process. Asking for the reader before the writer is how a whole issue
+gets closed as "already works for me".
+
+The correction cuts the other way from the first one. That time the ask was too
+big — they had built it. This time it was too small — they had built it and left
+it switched off on this path.

@@ -82,7 +82,12 @@ export function renderEntry(e) {
     : `${C.green}allowed${C.off}`;
   const owners =
     e.owners?.length && e.verdict === "denied" ? `  ${C.dim}→ ${e.owners.join(", ")}${C.off}` : "";
-  return `  ${C.dim}${(e.at ?? "").slice(11, 19)}${C.off}  ${mark}  ${C.b}${e.role}${C.off} ${e.action} ${e.target}${owners}\n`;
+  // Which writer saw this. The hook reports an attempt and can be talked
+  // around; the kernel reports a refusal and cannot. When the two disagree
+  // about a run, a reader needs to know which line is which without going to
+  // the file — so the one that carries more weight is the one that is marked.
+  const from = e.source === "kernel" ? `  ${C.dim}[kernel]${C.off}` : "";
+  return `  ${C.dim}${(e.at ?? "").slice(11, 19)}${C.off}  ${mark}  ${C.b}${e.role}${C.off} ${e.action} ${e.target}${owners}${from}\n`;
 }
 
 /* ── the scan ─────────────────────────────────────────────────────────── */
