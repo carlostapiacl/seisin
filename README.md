@@ -12,6 +12,8 @@
 
 A **permission layer**, not a sandbox — it sits on top of one. The isolation comes from the OS; what seisin adds is the part an OS cannot know: which role a path belongs to, and therefore who to ask next.
 
+*Two outside reviews went looking for ways past the boundary. [What they found, what broke, and what is still open →](docs/what-it-has-been-put-through.md)*
+
 ![seisin denying a write outside a role's territory, then naming the owner](docs/img/demo.gif)
 
 ```
