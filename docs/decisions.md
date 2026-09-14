@@ -194,13 +194,38 @@ more helpful.
 - **A role still holds its keys in plaintext, and it need not.** `keys` names a
   file the role reads, so the value is in the agent's context from the first
   read — and from there it can leave by any allowed domain. The enforcement
-  runtime already implements the alternative: `credentials` with `mode: "mask"`
-  hands the process a sentinel and substitutes the real bytes at egress, only
-  toward the declared `injectHosts`. Measured on 0.0.76: the process sees
-  `fake_value_…`, the authorized host receives the real value, and **a host that
-  is allowed by the network policy but not declared for that credential receives
-  the sentinel**. It is declarable from the settings file, so seisin could emit
-  it without embedding the library.
+  runtime already implements the alternative: `credentials.envVars` with
+  `mode: "mask"` hands the process a sentinel and substitutes the real bytes at
+  egress, only toward the declared `injectHosts`. Re-measured on 0.0.76 against
+  the `srt` binary on 2026-09-14, with a toy token and two reflecting hosts: the
+  process sees `fake_value_…`, the host named in `injectHosts` receives the real
+  value, and **a host that is allowed by the network policy but not declared for
+  that credential receives the sentinel**. It is declarable from the settings
+  file, so seisin could emit it without embedding the library.
+
+  **The field name is load-bearing, and the wrong one fails in a way that looks
+  like the feature is absent.** It is `credentials.envVars`; `credentials.env` is
+  rejected as an unrecognized key, and `credentials.files` — the shape that looks
+  closest to what `keys` already is — makes the file unreadable on macOS rather
+  than masking it, so `cat` returns `Operation not permitted` and no sentinel ever
+  appears. Both of those read as "masking does not work". Neither is a measurement
+  of masking.
+
+  **What it costs, which the paragraph above does not price.** `mode: "mask"` does
+  not load on its own: the runtime refuses the config unless
+  `network.tlsTerminate` is set, or `credentials.allowPlaintextInject` opts out.
+  `tlsTerminate` is marked experimental and it is TLS MITM — the runtime
+  terminates the role's HTTPS with a CA of its own and re-originates it, which is
+  the only way it can see a header well enough to substitute one. That is not a
+  field to fill in. It is reading all of the role's encrypted traffic, and it
+  arrives as a condition of using the feature rather than as a choice.
+
+  The opt-out is not one. Measured the same day: with `allowPlaintextInject` and
+  no `tlsTerminate`, an HTTPS request to the host named in `injectHosts` carries
+  the **sentinel**, not the real value — nothing can substitute inside a TLS
+  session it cannot read. So over HTTPS, which is all the traffic that matters,
+  the plaintext escape is `mode: "deny"` with extra steps: the role loses the
+  secret and loses the capability too. Adopting masking means adopting the MITM.
 
   Not done, and the reason is that it is not a new field. Masking works for
   environment variables; on macOS the file form makes the file unreadable
@@ -209,6 +234,13 @@ more helpful.
   to a variable with declared destinations — and that is a config break, not an
   option. The env-var form is the one to build: it behaves the same on both
   platforms, where a file-only path would be Linux-only and untested.
+
+  And the config break is now the smaller half of the decision. The trade is:
+  a role stops holding its tokens, and in exchange every role that holds one runs
+  its HTTPS through an interception layer this project does not own, described by
+  its own authors as experimental. Whoever weighs that should weigh it against
+  what masking actually buys — which is the next paragraph, and it is less than
+  it looks.
 
   **It closes half of a hole, and the half it does not close is the larger
   one.** Masking protects the credentials this policy declares. It does nothing
