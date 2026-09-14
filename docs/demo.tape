@@ -10,10 +10,11 @@
 #   - vhs wants DOUBLE quotes outside and single inside. It cannot escape them.
 #   - bash does not expand aliases outside interactive mode, so `seisin` has to
 #     be a real executable on PATH. An alias looks identical and does nothing.
-#   - the request queue is filled by the HOOK, not by `run`. A plain `sh -c`
-#     never triggers PreToolUse, so a GIF without a real agent cannot show
-#     grant/deny without staging it. It shows `whose` instead, which is what
-#     that user actually gets.
+#   - the request queue used to be filled by the HOOK alone, so a plain `sh -c`
+#     showed a bare refusal and the GIF had to fall back to `whose`. Since
+#     2026-09-14 `run` reads the kernel's own denials, so the queue fills with
+#     no agent and no hook involved — which is why the recording can show the
+#     block and the request together, as a real user now sees them.
 
 # vhs 0.12 on this machine captures frames but fails to encode, silently, with
 # exit 0. So it emits frames and ffmpeg does the last step — see the command at
@@ -34,9 +35,14 @@ Type "export PS1='$ ' PATH=$PWD/.bin:$PATH" Enter
 Type "clear" Enter
 Show
 
+# The policy first, because the two scenes after it are meaningless without it.
+# `seisin check` was here and stopped fitting: it prints the map AND every
+# standing limit, which is right for a command you read before trusting the tool
+# and wrong for the opening frame of a recording — the map scrolled off the top
+# behind a wall of caveats. The file is three lines and says the same thing.
 Sleep 800ms
-Type "seisin check" Sleep 400ms Enter
-Sleep 3200ms
+Type "cat seisin.toml" Sleep 400ms Enter
+Sleep 3000ms
 Type "clear" Enter
 Sleep 400ms
 
