@@ -97,7 +97,7 @@ fixtures:
 | it can write anything inside its own territory | including staging an exfiltration, or destroying its own uncommitted work with `rm` |
 | `base64` defeats the redaction | only the literal value is masked, and only on stdout and stderr |
 | an allowed domain is an allowed channel | if the agent's own API is reachable, so is everything that goes through it |
-| the hook is text-based and evadable | on purpose. What escapes it goes **unexplained, not unblocked** — but attribution is not a control |
+| the hook is text-based and evadable | on purpose — what escapes it goes **unblocked by nothing**: the kernel still refuses. On macOS it is no longer unexplained either, because [the kernel's own refusals are recorded](#seeing-what-happened); on Linux it is. Either way, attribution is not a control |
 
 And three things that outweigh all of the above:
 
@@ -448,17 +448,43 @@ available from inside the box is *append one line*: no seek, no truncate, no unl
 hostile agent can still do is send lines, so it can add noise to its own history. What it can
 no longer do is change what is already there.
 
-**The log exists because of the hook, and the hook has to be installed.**
-`seisin wire` writes the `PreToolUse` entry into this repo's
-`.claude/settings.json` — the project's, never your machine's. Skip it and the
-boundary still holds exactly as well; you just cannot see it work, and `log`,
-`watch`, `requests`, `grant` and `review` are all empty rather than broken.
-`seisin check` says so until you run it.
+**Two writers, and they see different things.**
 
-That log is also what makes the sandbox legible at all. When the kernel refuses a write, the
-only thing that surfaces is `Operation not permitted` on the child's stderr: no path, no
-reason, nothing to read afterwards. Correct for an enforcer, useless as an instrument. The
-hook runs one layer up and sees the attempt before it happens.
+The **hook** reports the attempt before it happens, which is how an allowed action
+gets recorded at all. It has to be installed: `seisin wire` writes the
+`PreToolUse` entry into this repo's `.claude/settings.json` — the project's,
+never your machine's. It is also text-based and evadable, on purpose.
+
+The **kernel** reports what it actually refused. On macOS every Seatbelt denial
+lands in the system log with its operation, its absolute path and the runtime's
+own attribution tag, and `seisin run` reads that stream for the duration of the
+run. Nothing to install, nothing to evade — and it catches exactly what the hook
+missed:
+
+```
+$ seisin run frontend -- sh -c 'echo // fix >> src/api/orders.ts'
+  sh: src/api/orders.ts: Operation not permitted
+  seisin: 1 kernel denial(s) recorded
+
+  1 pending request(s)
+    #1  frontend wants write on src/api/** (owned by backend)
+        first refused on src/api/orders.ts
+```
+
+That is with no hook installed. Before this, the same run left `Operation not
+permitted` on the terminal and an empty log — which is how four real defects in
+production each cost a night to find: every one of them looked like a file that
+had quietly stopped growing.
+
+Skip `wire` and the boundary holds exactly as well, denials are still recorded
+and still queue a request; what you lose is the record of what was *allowed*,
+which is what `init --from-observations` is built out of. `seisin check` says so
+until you run it.
+
+**On Linux only the hook writes.** bubblewrap does not log refusals and the
+runtime's substitute is not readable from outside it, so `seisin run` says so
+once and records nothing from the kernel. [The ask is
+upstream](docs/upstream/cli-violations.md).
 
 ## How it holds
 

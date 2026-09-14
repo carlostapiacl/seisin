@@ -180,6 +180,118 @@ There is a test for the absence, not only for the presence. A decision that is
 only a paragraph gets undone by the next person who thinks the sentence could be
 more helpful.
 
+## The kernel gets to speak, and it is an instrument rather than a control
+
+The hook reports the attempt before it happens, and it is allowed to be
+imperfect — what escapes it goes *unexplained, not unblocked*. That sentence is
+the split this whole tool rests on, and for a while it hid a consequence nobody
+had priced: **the log only ever held what the hook understood.** Everything else
+left no trace at all, because a kernel refusal surfaces as a bare `Operation not
+permitted` on the child's stderr, with no path, no operation and no owner.
+
+The measurement that forced this. In production, wrapping two cells of an agent
+team: the team's own hook had recorded 48,050 actions and 1,210 blocks, while
+seisin's log held **one** entry. Four defects found while wrapping the first
+cell all presented identically — a file that stopped growing — and diagnosing
+them took a night, because nothing anywhere named the path that had been
+refused. A tool whose line is *"when it blocks, it tells you whose it was"* was
+delivering that in `explain`, which you have to go and ask, and not at the
+moment of the block, which is when it is worth anything.
+
+macOS already writes the missing line. Every Seatbelt denial lands in the system
+log with the operation, the absolute path, and the runtime's own attribution tag
+attached. `seisin run` now reads that stream and records what it finds, so a
+refusal the hook never saw becomes a line with an owner and a request in the
+queue — the same two things a refusal the hook *did* see produces.
+
+**It does not touch the boundary, and that is what makes it allowed.** By the
+time a line exists here the kernel has already refused. Nothing in this path can
+widen a grant, narrow one, or change an outcome; the run behaves identically
+with the monitor off. So "refusing rather than widening" is not in tension with
+it — observing cost nothing to observe, which is the only reason it was built at
+all. Had reading these required opening anything, the answer would have been no.
+
+### Not through the runtime, and why the ask upstream is still open
+
+The runtime collects exactly these events — `startMacOSSandboxLogMonitor` — but
+`initialize()` takes `enableLogMonitor = false` and `dist/cli.js` omits the
+argument, so on the `srt` path the collector is never constructed. Not "collected
+and unread": **never collected.** That distinction is the difference between an
+upstream patch that would have fixed this and one that would have changed
+nothing, and it is why [the filed ask](upstream/cli-violations.md) was rewritten
+rather than sent as drafted.
+
+Embedding the library instead of spawning the binary would give us the flag. It
+was rejected: `seisin run` spawning `srt` is what keeps the enforcement someone
+else's job and this tool's failure modes small, and importing a research-preview
+sandbox manager into the parent process to read a log is a large change of shape
+for a small gain.
+
+### Two anchors for attribution, because each one alone is wrong
+
+A denial has to be proven to belong to *this* run before it is written under this
+role's name. Crediting another sandbox's refusal to a role would be inventing a
+fact about somebody's work, which is the one thing this tool exists not to do.
+
+- **The process tree.** Exact while the process is alive, and worthless once it
+  has exited — which, for the short commands that get refused most, is before
+  the line arrives. Measured: attribution by tree alone recorded *nothing* for a
+  one-line `sh -c`.
+- **The runtime's command tag.** Survives the process, and depends on the
+  runtime's quoting staying recognisable. Read by parsing the tag back into an
+  argument list rather than by re-generating the quoting, because any correct
+  quoting of the same arguments parses to the same list — so this keeps working
+  through a change that re-implementing `quote()` would not survive.
+
+Either one is enough, and whichever answers first hands over the per-`srt`
+session suffix; from there attribution is one string comparison, exact against
+every other sandbox on the machine. When neither can answer, the denial is
+**held and re-examined, then dropped** — counted in a number the run prints, never
+guessed at. Verified with two runs of two repos side by side: each log held its
+own refusal and neither held the other's.
+
+### The stream starts before the child, and that ordering is the feature
+
+The first version started the monitor after the spawn, since that is when the
+pid exists. It recorded zero denials, because `log stream` has its own startup
+and a refused `sh -c` is over in single-digit milliseconds. So the stream starts
+first and the pid is handed over afterwards, with anything that arrives in the
+gap held rather than credited on faith.
+
+Cost, since the constraint was explicit — this runs alongside a hook that fires
+on **every** tool call, tens of thousands of times in one cell's history:
+**nothing is added to that path at all.** The monitor is a sibling process and
+the hook never touches it, so the number that mattered for `whose` — 166 ms,
+which is why it lives only on the denial path — has no equivalent here.
+
+What it does cost, measured rather than reasoned about: **128 ms per run**, from
+683 ms to 811 ms over eight runs of the same refused command with and without the
+monitor. That is the stream's own startup plus the drain at exit, and it is paid
+once per `seisin run` — a unit that lasts as long as an agent session, not as
+long as a tool call. The drain is capped at 250 ms and settles 60 ms after the
+stream goes quiet; the measured lag between a refusal and its line arriving was
+under a millisecond, with the line landing before `srt` had finished exiting, so
+the 60 ms is a floor against scheduling noise rather than an estimate of the lag.
+
+### What is not recorded, said out loud
+
+The kernel refuses plenty that is not a territory question: `/dev/tty` on every
+command a CLI runs, dtrace helpers, font caches. A denial is recorded when it
+lands inside the repo or inside a path the role's own settings named; everything
+else is counted and the count is printed when the run ends. Filtering that
+nobody can see is indistinguishable from an instrument that is not working.
+
+### Linux gets a sentence, not a shim
+
+There is no equivalent stream to read. bubblewrap does not log refusals; the
+runtime synthesises them by observing write-intent syscalls through its own
+`apply-seccomp` stub, reporting over a socket it creates, reading paths out of
+the traced process's memory — its own comment calls those events
+attacker-controlled and racy. That is not attachable from outside and not worth
+reimplementing. On Linux the watcher reports itself unavailable with the reason,
+`seisin run` says so once, and the boundary is unchanged. **Claims are made per
+platform here or they are not made.**
+
 ## Still open
 
 - **The queue says "refused" and means "asked for".** An agent can file a

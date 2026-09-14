@@ -179,16 +179,25 @@ function warningsFor(config, roles) {
     });
   }
 
-  // Without the hook nothing writes the log, and everything that reads it —
-  // log, watch, requests, grant, review — is empty rather than broken, which is
-  // indistinguishable from "nothing was ever denied". Plenty was.
+  // Without the hook, half the record is missing rather than all of it: on macOS
+  // `seisin run` reads the kernel's own refusals, so denials still land and
+  // still queue a request. What goes unrecorded is everything the kernel
+  // allowed — which is the half `init --from-observations` is built out of, and
+  // the half that tells "nothing was denied" apart from "nobody was watching".
   if (!wired(config.root))
     warnings.push({
       kind: "hook-not-wired",
-      headline: "nothing is recording: the agent has not been told to run the hook",
+      headline: "only denials are being recorded: the agent has not been told to run the hook",
       detail:
-        "the boundary holds either way — but log, watch, requests, grant and review all " +
-        "read a record that nobody is writing. Run `seisin wire` once in this repo.",
+        process.platform === "darwin"
+          ? "the boundary holds either way, and refusals are still logged and still queue a " +
+            "request — `seisin run` reads them from the kernel. What is missing is every " +
+            "action that was allowed, so `review` cannot tell you which grants are dead and " +
+            "`init --from-observations` has nothing to build from. Run `seisin wire` once in " +
+            "this repo."
+          : "the boundary holds either way — but on this platform the kernel's refusals are " +
+            "not readable either, so log, watch, requests, grant and review all read a record " +
+            "that nobody is writing. Run `seisin wire` once in this repo.",
     });
 
   // A territory that leaves the repo is supported — a role can own its handover
