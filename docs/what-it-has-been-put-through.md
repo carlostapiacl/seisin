@@ -6,14 +6,14 @@
 
 ## The suite
 
-**224 tests** (2026-09-14), on macOS and in CI on Node 18/20/22 at every push; the Linux run in the table below predates the last 76
-([workflow](../.github/workflows/test.yml)).
+**225 tests** (2026-09-14), on macOS and on Linux under bubblewrap, and in CI on
+Node 18/20/22 at every push ([workflow](../.github/workflows/test.yml)).
 
-Fourteen of them are not unit tests: they run real commands through the real
+Eighteen of them are not unit tests: they run real commands through the real
 sandbox and check what the kernel did — and they skip themselves when `srt` is
-not installed, so on a machine without it the suite reports 138 passing and 14
+not installed, so on a machine without it the suite reports 207 passing and 18
 skipped rather than failing. That distinction matters enough that CI **fails if
-those fourteen skip** — `srt` missing makes them skip themselves, and
+those eighteen skip** — `srt` missing makes them skip themselves, and
 a green run that quietly tested nothing looks exactly like a real one.
 
 ```
@@ -25,6 +25,16 @@ a green run that quietly tested nothing looks exactly like a real one.
 ✔ reading another role's code still works
 ✔ the boundary survives a grandchild process
 ✔ an absolute path does not walk around the rule
+✔ the child's exit code comes back out
+✔ output still arrives in full when it is redacted
+✔ check exits clean on a valid config
+✔ explain exits 1 when it denies, so it composes in a script
+✔ the agent's own flags are not eaten by the sandbox
+✔ CR-1 · a missing boundary refuses to run, and the child never starts
+✔ CR-2 · ownership does not depend on which role is asking
+✔ CR-3 · the confined process can ask whose it is
+✔ seisin refuses to run inside seisin, by name
+✔ an isolated role starts, and loses the credentials the ordinary mode leaves open
 ```
 
 ### Where each claim was actually run
