@@ -457,7 +457,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       }
       // Below the threshold there is nothing to summarise and a fold would only hide what
       // already fits. Above it, the folder counts ARE the reading: "this role writes 43
-      // files under equipo/" is the fact, and the forty-three names are the footnote.
+      // files under src/" is the fact, and the forty-three names are the footnote.
       if(r.writes.length<=FOLD_AT||OPEN[r.name]){
         r.writes.forEach(function(p,i){ t2.appendChild(tagFor(p,i)); });
         if(r.writes.length>FOLD_AT){
