@@ -8,9 +8,16 @@ Verified against **0.0.76**.
 
 [repo]: https://github.com/anthropics/sandbox-runtime
 
+**Status · not filed yet.** The text below is written and verified; it goes up
+in the next few days. The one that *is* filed is the other ask,
+[denyUnlink](denyUnlink.md) — [issue #545][545], open since 2026-09-13 with no
+response. Until this one has a number, the README says drafted, not filed.
+
+[545]: https://github.com/anthropics/sandbox-runtime/issues/545
+
 ---
 
-## The issue, as posted
+## The issue, as drafted
 
 > **Title:** `cli`: filesystem violations are never collected, and collected ones never reach a caller that runs the binary
 

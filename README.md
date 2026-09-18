@@ -31,7 +31,7 @@ $ seisin run frontend -- sh -c 'echo // fix >> src/api/orders.ts'
 
 **Whose it was, at the moment it was refused.** Every other permission layer in this space answers *yes* or *no*. Answering **"no, and it belongs to `backend`"** turns a block into a handoff — and one a person can approve in a command, rather than a line somebody has to remember to go and read.
 
-The kernel is what refuses; the name comes from the policy. That first line is all the boundary itself can say — no path, no reason, nothing to read afterwards — so seisin reads the refusal out of the kernel's own log and answers the question it leaves open. On Linux only the hook can do that; [the ask is upstream](docs/upstream/cli-violations.md).
+The kernel is what refuses; the name comes from the policy. That first line is all the boundary itself can say — no path, no reason, nothing to read afterwards — so seisin reads the refusal out of the kernel's own log and answers the question it leaves open. On Linux only the hook can do that; [the ask is drafted for upstream](docs/upstream/cli-violations.md).
 
 The agent can ask directly too, from inside the box:
 
@@ -54,7 +54,7 @@ seisin run frontend -- claude -p "…"   # run an agent inside its own territory
 
 On Linux, [three system packages first](#install). Everything below is why it works and where it does not.
 
-**Contents** · [Why this exists](#why-this-exists) · [What it is *not* for](#what-it-is-for-and-what-it-is-not-for) · [Install](#install) · [Configure](#configure) · [Agents it runs](#which-agents-it-has-been-run-with) · [Requests](#when-it-says-no-it-leaves-a-request-behind) · [MCP](#ask-your-own-assistant) · [Why not a container](#why-not-a-container) · [How it holds](#how-it-holds) · [Secrets](#how-it-protects-secrets) · [Decisions](docs/decisions.md) · [What it survived](docs/what-it-has-been-put-through.md) · [Status](#status)
+**Contents** · [Why this exists](#why-this-exists) · [What it is *not* for](#what-it-is-for-and-what-it-is-not-for) · [Install](#install) · [Configure](#configure) · [Day one](#what-will-look-like-a-bug-on-the-first-day) · [Agents it runs](#which-agents-it-has-been-run-with) · [Requests](#when-it-says-no-it-leaves-a-request-behind) · [MCP](#ask-your-own-assistant) · [Why not a container](#why-not-a-container) · [How it holds](#how-it-holds) · [Secrets](#how-it-protects-secrets) · [Decisions](docs/decisions.md) · [What it survived](docs/what-it-has-been-put-through.md) · [Status](#status)
 
 ---
 
@@ -195,6 +195,61 @@ extra host should say so on its own line: a domain in the global list is reachab
 role, including the ones whose whole job is to have nothing to reach.
 
 `seisin init` will propose this from whatever your repo already says: `.claude/agents/`, then `CODEOWNERS`, then a blank start. It **proposes** — a generated policy you did not read is not a policy.
+
+## What will look like a bug on the first day
+
+Four shapes that a correct policy still produces, and that a reader reads as breakage. All
+four come out of one production window — four agent cells, ~370 confined turns over three
+days, 1,409 kernel refusals — where none of them was the boundary misbehaving. They are here
+because every one of them cost someone an afternoon before it cost this paragraph.
+
+**1 · Granting a file does not grant its neighbours.** The kernel grants exactly the path you
+wrote. Anything a tool creates *beside* it — a database journal, a lock file, the temporary
+file of an atomic write — is a sibling, and a sibling is outside the grant. The failure then
+arrives in the tool's own words rather than as a permission error, which is why it survives a
+policy review: the policy looks right because it *is* right about the file you named.
+
+`seisin check` says so before you hit it:
+
+```
+N role(s) grant individual files rather than folders: reviewer (3 of 11)
+```
+
+Grant the folder where the tool needs neighbours. `seisin check <role>` names the paths.
+
+**The Claude Code case is worth stating outright**, because it is the agent most people will
+point this at first: `Write` and `Edit` do not write the file you named. They write
+`<name>.tmp.<pid>.<random>` next to it and rename over the target. So a grant on a literal
+file path is both correct and useless — `seisin explain` answers *allowed* about the
+destination, the kernel answers `Operation not permitted` about the temporary, and neither is
+lying. Grant the directory.
+
+**2 · `.git/index.lock`, in a repo the role does not own.** In that window this single
+filename was **1,071 of the 1,409 refusals** — three quarters of everything the kernel said no
+to. A role runs `git status`, git tries to refresh the index of a checkout that belongs to
+another role, and the lock write is refused.
+
+It is noise, not a wall, and the distinction is measurable: inside the box
+`git status --short --branch` and `git log` still exit 0. Git cannot refresh its index cache
+and carries on without it. If a role genuinely needs to commit, give it **its own worktree**
+rather than a share of the main index — two agents staging into one index corrupt each other
+regardless of who is allowed to write it.
+
+**3 · Worktrees are two paths for one repo.** A policy names the canonical checkout; the
+process is running in a linked worktree somewhere else entirely, and to the kernel that is a
+different place. seisin resolves the pair rather than making you write both — `seisin whose`
+and `seisin explain` answer the same thing from either side, and say which checkout they are
+talking about. Worth knowing it is handled, because the symptom when a tool does *not* handle
+it is a role denied inside its own territory.
+
+**4 · SQLite reports a refused write as `attempt to write a readonly database`** — see
+[below](#which-agents-it-has-been-run-with); it is the one that sends you to debug the
+database instead of the policy, and the reason `seisin wire` exists.
+
+Where these stand: the sibling case is a `check` warning instead of a surprise, the worktree
+case is resolved in the tool, the SQLite case is named by the hook, and the git one is
+friction that gets logged rather than silenced — a boundary that hides what it refused is the
+thing this project exists to argue against.
 
 ## Which agents it has been run with
 
@@ -497,8 +552,8 @@ until you run it.
 
 **On Linux only the hook writes.** bubblewrap does not log refusals and the
 runtime's substitute is not readable from outside it, so `seisin run` says so
-once and records nothing from the kernel. [The ask is
-upstream](docs/upstream/cli-violations.md).
+once and records nothing from the kernel. [The ask is drafted for
+upstream](docs/upstream/cli-violations.md) — written and verified, not filed yet.
 
 ## How it holds
 
@@ -568,6 +623,17 @@ env  = ["BUILD_ID"]            # everything else in the environment is dropped
 ```
 
 **If your agent runs hooks of its own, they need a line here too.** Whatever a hook reads to learn which role it is gets dropped with everything else, and the symptom is two layers disagreeing about one file — your hook refusing a write that seisin just allowed, and the lower one is the one that is right — until the variable is named in `env`.
+
+**What this bought, measured rather than argued.** Over the same production window — four
+agent cells, ~370 confined turns, three days — **every refused read was a read of something
+the policy had declared a key.** 148 of them, no exceptions, from five different roles, and
+not one was doing anything unusual: they were running searches that swept a repository root.
+That is how a key gets read without anyone deciding it should, and it is the whole case for
+declaring the key directory rather than trusting the instruction not to look.
+
+Refused *writes* were a different story, and both halves are worth reading: those were
+ordinary collisions between roles, the boundary keeping two agents out of each other's work.
+It is the reads where the policy was the only thing there.
 
 **Two things this deliberately does not claim.** Redaction masks a literal value on the way
 through the launcher — a key written straight to a file never passes through it, and neither
@@ -713,7 +779,7 @@ already done:
 | | |
 |---|---|
 | **Windows** | the runtime has a backend. seisin has never been pointed at it, and no CI runner covers it |
-| **Deleting inside your own territory** | not covered, and not coverable here — [the ask is upstream](docs/upstream/denyUnlink.md), with the measurement behind it and [a demo](docs/demo/) |
+| **Deleting inside your own territory** | not covered, and not coverable here — the ask is upstream as [issue #545](https://github.com/anthropics/sandbox-runtime/issues/545), open and unanswered since 2026-09-13, [with the measurement behind it](docs/upstream/denyUnlink.md) and [a demo](docs/demo/) |
 | **`init` heuristics** | it reads `.claude/agents/` then `CODEOWNERS`. Every other convention is a guess nobody has made yet |
 
 Issues and pull requests welcome. If you are reporting something that got past

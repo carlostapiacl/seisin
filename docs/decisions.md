@@ -552,3 +552,27 @@ than an undo.
   about `~/.ssh`, `~/.aws` or `~/.npmrc`, which are ordinary readable files to
   every role unless `isolate` is on — see the section above. Whoever weighs
   these should weigh them together.
+
+## No second config format, for anybody
+
+seisin reads one file with one shape. The pull to add a second is constant and always
+reasonable in the moment: a team already declares who owns what — in a CODEOWNERS, in an
+agent manifest, in whatever their orchestrator reads — and asking them to restate it is
+asking them to keep two truths in sync.
+
+The answer is that they translate it, outside this repo, and `seisin.toml` stays generated
+rather than hand-kept. A translator is thirty lines against a format its author already
+understands; a second first-class format is a parser, a precedence rule between the two, and
+a new way for the policy to disagree with itself — in the one file whose job is to be the
+thing everybody agrees on.
+
+This was tested rather than assumed. A team running several agent cells generates their
+policy from what their own configs already say, on their side, and the generator knows
+things seisin has no business knowing: how many cells there are, where each one's records
+live, which roles share a name across cells. An adapter shipped here could not have known
+any of it, and shipping one anyway would have made this repo responsible for a format it
+does not own.
+
+`seisin init` sits on the other side of the same line: it *proposes* from `.claude/agents/`
+and `CODEOWNERS` and then gets out of the way. It reads those formats once, to write ours.
+It does not keep reading them.
