@@ -6,6 +6,20 @@ history; what changed for someone who installs it is here.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## Unreleased
+
+- **`git status` in a repo you do not own stops filing permission requests.** The sandbox
+  now sets `GIT_OPTIONAL_LOCKS=0`, which turns off the index refresh that `status` and
+  `diff` perform as a courtesy — and it is that refresh, not the read, that takes
+  `.git/index.lock`. Measured on a live portfolio before the change: of the last 60
+  refusals **58 were `.git/index.lock`**, and most carried no owner at all, so not one of
+  them was a territory question. A human approving those is arbitrating a mutex.
+
+  This **removes the need for a grant rather than widening one** — the boundary does not
+  move. Writing git still works: `add`, `commit` and `checkout -b` take the locks they
+  require, verified against a real repo, not read from the manual. A role that wants the
+  old behaviour names `GIT_OPTIONAL_LOCKS` in its `env` and sets it in the parent.
+
 ## 0.1.0 — 2026-09-17
 
 First published version. What it is at this point:

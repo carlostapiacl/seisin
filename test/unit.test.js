@@ -11,7 +11,13 @@ import { covers, ownersOf, keyHolders, explain } from "../src/owners.js";
 import { realpathSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildEnv } from "../src/env.js";
+import { buildEnv, DEFAULTS as ENV_DEFAULTS } from "../src/env.js";
+
+/** The names that crossed FROM THE PARENT, which is what these tests are about.
+ *  `buildEnv` also SETS a couple of variables the parent never had (see
+ *  `DEFAULTS` in env.js); asserting on the raw key set would make every test
+ *  here fail the next time one is added, for a reason none of them is testing. */
+const forwarded = (env) => Object.keys(env).filter((k) => !(k in ENV_DEFAULTS)).sort();
 import { redactor } from "../src/redact.js";
 import { scan } from "../src/scan.js";
 import { targetsOf, decide } from "../src/hook.js";
@@ -159,14 +165,42 @@ test("the built environment drops what the policy did not name", () => {
   // is not a file.
   const parent = { PATH: "/bin", HOME: "/h", MY_API_TOKEN: "tok", RANDOM_THING: "x" };
   const { env, dropped } = buildEnv(parent, cfg.roles.frontend);
-  assert.deepEqual(Object.keys(env).sort(), ["HOME", "PATH"]);
+  assert.deepEqual(forwarded(env), ["HOME", "PATH"]);
   assert.ok(dropped.includes("MY_API_TOKEN"));
 });
 
 test("a role can name the one variable it needs, and only that one", () => {
   const parent = { PATH: "/bin", BUILD_ID: "42", OTHER: "no" };
   const role = { ...cfg.roles.frontend, env: ["BUILD_ID"] };
-  assert.deepEqual(Object.keys(buildEnv(parent, role).env).sort(), ["BUILD_ID", "PATH"]);
+  assert.deepEqual(forwarded(buildEnv(parent, role).env), ["BUILD_ID", "PATH"]);
+});
+
+test("git's optional locks are off, so reading a repo you do not own is not a request", () => {
+  // The measurement this exists for: of the last 60 refusals in a real
+  // portfolio, 58 were `.git/index.lock`, most of them with no owner at all.
+  // `git status` refreshes the index as a courtesy and the refresh takes the
+  // lock, so a role that only reads a repo trips the boundary doing nothing.
+  // The parent does NOT have the variable — it is set, not forwarded, which is
+  // the whole difference between this and BASE.
+  const { env } = buildEnv({ PATH: "/bin" }, cfg.roles.frontend);
+  assert.equal(env.GIT_OPTIONAL_LOCKS, "0");
+});
+
+test("a role that wants git's locks back can have them", () => {
+  // The escape hatch has to work, or the default is a decision nobody can undo.
+  // Naming it is not enough on its own: the parent has to carry the value, same
+  // as every other variable a role names.
+  const role = { ...cfg.roles.frontend, env: ["GIT_OPTIONAL_LOCKS"] };
+  const { env } = buildEnv({ PATH: "/bin", GIT_OPTIONAL_LOCKS: "1" }, role);
+  assert.equal(env.GIT_OPTIONAL_LOCKS, "1");
+});
+
+test("a default is not a way in: the parent cannot overwrite one it was not granted", () => {
+  // Control in the other direction. Without this, seeding defaults would be a
+  // second, quieter channel for the parent environment to cross — which is the
+  // exact thing buildEnv exists to close.
+  const { env } = buildEnv({ PATH: "/bin", GIT_OPTIONAL_LOCKS: "1" }, cfg.roles.frontend);
+  assert.equal(env.GIT_OPTIONAL_LOCKS, "0");
 });
 
 test("naming a credential explicitly works; sweeping one up does not", () => {
