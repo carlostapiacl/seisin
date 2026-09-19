@@ -29,6 +29,37 @@ export const BASE = [
 ];
 
 /**
+ * Set for the child whether or not the parent has them.
+ *
+ * `BASE` is an allowlist: it decides what *crosses*, so a variable the parent
+ * never set cannot reach the child through it. These are the ones the sandbox
+ * needs **set**, not forwarded.
+ *
+ * `GIT_OPTIONAL_LOCKS=0` is the whole list, and it is here because of what the
+ * denial log looks like without it. Measured on a real portfolio: of the last
+ * 60 refusals, **58 were `.git/index.lock`** — 97% — and most carried no owner
+ * at all, so not one of them was a territory question. `git status` and
+ * `git diff` refresh the index as a courtesy, refreshing it takes the lock, and
+ * a role reading a repo it does not own trips the boundary while doing nothing
+ * but looking. The human approving those is arbitrating a mutex.
+ *
+ * Git's own switch turns that courtesy off, and only that. Measured here rather
+ * than read from the manual: with the variable set, `status` leaves `.git/index`
+ * untouched (same mtime across a forced refresh), while `add`, `commit` and
+ * `checkout -b` still take the locks they require and still work — the commit
+ * contains the staged file.
+ *
+ * So this **removes the need for a grant** instead of widening one. The
+ * boundary does not move; the noise against it stops. That distinction is the
+ * point: the alternative on the table was declaring git's machinery as
+ * territory in every role, which is more policy describing less confinement.
+ *
+ * A role that wants the old behaviour names `GIT_OPTIONAL_LOCKS` in its `env`
+ * and sets it in the parent — the loop below then overwrites this.
+ */
+export const DEFAULTS = { GIT_OPTIONAL_LOCKS: "0" };
+
+/**
  * Names that must never ride along, even if a role asks for them by pattern.
  *
  * A role can name a variable explicitly and get it — that is the point of the
@@ -47,7 +78,10 @@ const NEVER = /(^|_)(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|AUTH|SESSION|CO
  */
 export function buildEnv(parent, role, extra = []) {
   const wanted = new Set([...BASE, ...extra, ...(role.env ?? [])]);
-  const env = {};
+  // Seeded, not merged afterwards: the loop below must be able to overwrite a
+  // default when the role named it and the parent carries it. Merging the other
+  // way round would make the opt-out silently do nothing.
+  const env = { ...DEFAULTS };
   const dropped = [];
 
   for (const [name, value] of Object.entries(parent)) {

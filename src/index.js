@@ -23,7 +23,7 @@ export { covers, ownersOf, keyHolders, explain } from "./owners.js";
 
 /** A policy, resolved into sandbox settings and a child environment. */
 export { settingsFor, RUNTIME_WRITES, expand } from "./srt.js";
-export { buildEnv, BASE as BASE_ENV } from "./env.js";
+export { buildEnv, BASE as BASE_ENV, DEFAULTS as DEFAULT_ENV } from "./env.js";
 
 /** The report `check` prints, without the printing. */
 export { inspect, sharedPaths } from "./inspect.js";
