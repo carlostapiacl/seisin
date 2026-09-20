@@ -31,7 +31,7 @@ $ seisin run frontend -- sh -c 'echo // fix >> src/api/orders.ts'
 
 **Whose it was, at the moment it was refused.** Every other permission layer in this space answers *yes* or *no*. Answering **"no, and it belongs to `backend`"** turns a block into a handoff — and one a person can approve in a command, rather than a line somebody has to remember to go and read.
 
-The kernel is what refuses; the name comes from the policy. That first line is all the boundary itself can say — no path, no reason, nothing to read afterwards — so seisin reads the refusal out of the kernel's own log and answers the question it leaves open. On Linux only the hook can do that; [the ask is drafted for upstream](docs/upstream/cli-violations.md).
+The kernel is what refuses; the name comes from the policy. That first line is all the boundary itself can say — no path, no reason, nothing to read afterwards — so seisin reads the refusal out of the kernel's own log and answers the question it leaves open. On Linux only the hook can do that; [the ask is upstream](docs/upstream/cli-violations.md) as [issue #582](https://github.com/anthropics/sandbox-runtime/issues/582).
 
 The agent can ask directly too, from inside the box:
 
@@ -552,8 +552,11 @@ until you run it.
 
 **On Linux only the hook writes.** bubblewrap does not log refusals and the
 runtime's substitute is not readable from outside it, so `seisin run` says so
-once and records nothing from the kernel. [The ask is drafted for
-upstream](docs/upstream/cli-violations.md) — written and verified, not filed yet.
+once and records nothing from the kernel. [The ask is
+upstream](docs/upstream/cli-violations.md) as [issue #582][582], filed 2026-09-20
+against 0.0.77, open and unanswered.
+
+[582]: https://github.com/anthropics/sandbox-runtime/issues/582
 
 ## How it holds
 
@@ -762,13 +765,14 @@ This space already has good work, and seisin is not the first thing here:
 
 ## Status
 
-`0.1.0`, 225 tests, of which **18 need `@anthropic-ai/sandbox-runtime` installed**
+`0.1.1`, 228 tests, of which **18 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 those eighteen skipped on Linux for a day, behind a runtime check that looked for the global
 install and missed the bundled one, and hid a defect that broke `seisin run` on that platform
-entirely. **225/225 on macOS 15 and on Debian 12.15 with bubblewrap 0.8.0**, nothing skipped on
-either, plus Node 18/20/22 in CI.
+entirely. **228/228 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
+either, Node 18/20/22 in CI at every push — and 225/225 the same way on Debian 12.15
+with bubblewrap 0.8.0, the last time the suite was run in Docker.
 [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run).
 The config format may still move before `1.0` — if it does, `seisin check` will
 tell you what changed.

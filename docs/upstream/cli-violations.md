@@ -4,20 +4,23 @@ Issue for [anthropics/sandbox-runtime][repo]. Split out of
 [denyUnlink.md](denyUnlink.md) on 2026-09-13 — different ask, different answer,
 no platform debate, and it was diluting the other one.
 
-Verified against **0.0.76**.
+Verified against **0.0.76**, re-verified against **0.0.77** on 2026-09-20.
 
 [repo]: https://github.com/anthropics/sandbox-runtime
 
-**Status · not filed yet.** The text below is written and verified; it goes up
-in the next few days. The one that *is* filed is the other ask,
-[denyUnlink](denyUnlink.md) — [issue #545][545], open since 2026-09-13 with no
-response. Until this one has a number, the README says drafted, not filed.
+**Filed 2026-09-20 as [anthropics/sandbox-runtime#582][582].** Re-verified
+against **0.0.77** on the day it went up — both call sites unchanged from 0.0.76,
+only the line number in `dist/cli.js` moved (189 → 335), and the filed text cites
+the current one. The other ask, [denyUnlink](denyUnlink.md) — [issue #545][545] —
+has been open since 2026-09-13 with no response.
+
+[582]: https://github.com/anthropics/sandbox-runtime/issues/582
 
 [545]: https://github.com/anthropics/sandbox-runtime/issues/545
 
 ---
 
-## The issue, as drafted
+## The issue, as filed
 
 > **Title:** `cli`: filesystem violations are never collected, and collected ones never reach a caller that runs the binary
 
@@ -32,7 +35,7 @@ different reasons.
 annotation, no file. `grep -c violation dist/cli.js` → 0.
 
 **Filesystem denies** are not even recorded on this path. `initialize()` takes
-`enableLogMonitor = false` and `cli.js:189` omits the argument, so neither
+`enableLogMonitor = false` and `cli.js:335` omits the argument, so neither
 `startMacOSSandboxLogMonitor` nor `startLinuxSandboxViolationMonitor` is ever
 constructed. The child gets `Operation not permitted` on its stderr; nothing
 upstream of it learns a path was refused.
@@ -67,7 +70,7 @@ async function initialize(runtimeConfig, sandboxAskCallback, enableLogMonitor = 
   if (enableLogMonitor && getPlatform() === 'linux')  startLinuxSandboxViolationMonitor(...)
 }
 
-// cli.js:189
+// cli.js:335 (0.0.77)
 await SandboxManager.initialize(runtimeConfig);   // third argument omitted -> false
 ```
 

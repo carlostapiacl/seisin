@@ -6,7 +6,7 @@ history; what changed for someone who installs it is here.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
-## Unreleased
+## 0.1.1 — 2026-09-20
 
 - **`git status` in a repo you do not own stops filing permission requests.** The sandbox
   now sets `GIT_OPTIONAL_LOCKS=0`, which turns off the index refresh that `status` and
