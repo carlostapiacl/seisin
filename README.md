@@ -614,7 +614,7 @@ because a security tool that lists only its wins is not one.
 | a key riding in the environment | the launcher | the child's environment is **built, not inherited**. Measured before this existed: 93 variables crossed into every turn, a planted token among them |
 | spilling a key the role does hold | the launcher | the value is masked on stdout and stderr, including when it lands split across two buffers |
 | sending it somewhere | the kernel | egress is allow-only. `curl` to a domain you did not list gets nothing |
-| **a key stored outside the declared directories** | **nothing** | `seisin scan` finds them so you know what is not covered |
+| **a key stored outside the declared directories** | **nothing** | `seisin scan` finds them so you know what is not covered — or keep it in a vault and name it by [reference](#a-key-can-be-a-reference-instead-of-a-file) instead of by path |
 
 ```toml
 [keys]
@@ -624,6 +624,61 @@ dir = [".secrets", "config/credentials"]   # one directory or several
 keys = ["netlify-token.txt"]   # everything else in those directories is denied
 env  = ["BUILD_ID"]            # everything else in the environment is dropped
 ```
+
+### A key can be a reference instead of a file
+
+A path only reaches a secret that is already on your disk in the clear. Most secrets that
+are looked after at all are not: they are in a keychain, in 1Password, in Bitwarden, in
+`sops`. So a key may also be a **reference with a scheme**, resolved by a provider you
+declare in the same file:
+
+```toml
+[keys.providers.keychain]
+command = ["security", "find-generic-password", "-w", "-s", "{ref}"]
+mode    = "env"                       # how every key of this provider is delivered
+
+[keys.providers.op]
+command = ["op", "read", "{ref}"]
+
+[roles.frontend]
+keys      = ["keychain://netlify-token", "netlify-token.txt"]   # both forms coexist
+key_mode  = "env"                     # per role, and it wins over the provider's
+```
+
+A provider is **a command with a placeholder**, on purpose: adding Vault or `sops` is three
+lines of TOML and no code. The value arrives as `NETLIFY_TOKEN` — last segment, uppercased —
+or under a name you give it: `keys = ["NETLIFY_AUTH_TOKEN=keychain://netlify-token"]`.
+
+| | |
+|---|---|
+| **`mode = "env"`** | resolved and passed as a variable |
+| **`mode = "scratch"`** | written to a file in the run's scratch space, removed when the turn ends; the path arrives as `NETLIFY_TOKEN_FILE` |
+| **`mode = "inject"`** | the agent never sees the value — **not implemented**, and refused by name rather than left looking available. It needs the runtime's credential masking, which does not load without terminating that role's TLS with a CA of seisin's own. That is MITM over all of the role's traffic, and it is a decision to take deliberately |
+
+There is **no default mode**. A reference with none declared anywhere is an error, because
+the answers differ in what the agent can walk away with and picking one for you is picking
+how much a leak costs you.
+
+**Four rules, each of which is the feature rather than a precaution around it:**
+
+- **The value never enters the `.toml`, the log or the console.** What is written, recorded
+  and approved is the reference. That is what makes a key policy reviewable in a diff.
+- **An unknown scheme is refused, not ignored.** `keys = ["vault://x"]` with no
+  `[keys.providers.vault]` is a configuration error, never a key that quietly never arrives.
+- **The parent runs the provider, never the confined process.** The provider command holds
+  the vault's own credential; running it inside the box would put that credential in there
+  too, which is the thing this is for.
+- **A provider that fails does not degrade.** Not to empty, not to a file of the same name,
+  not to a skipped key. The run stops and says so.
+
+`seisin check` validates all of this **without resolving anything** — the scheme, the
+provider, the mode, and whether the provider's command is even on `PATH` — so a broken
+policy is visible without asking anyone's keychain for a password.
+
+**And what it does not do, in the same breath:** this resolves the secret **at rest**, not
+in the agent's context. The value still reaches the process and the agent can still read it.
+The secret stops living on your disk and the policy holds a reference you can review — a
+strict improvement — but "the agent never sees it" is `inject`, and `inject` is not built.
 
 **If your agent runs hooks of its own, they need a line here too.** Whatever a hook reads to learn which role it is gets dropped with everything else, and the symptom is two layers disagreeing about one file — your hook refusing a write that seisin just allowed, and the lower one is the one that is right — until the variable is named in `env`.
 
@@ -765,12 +820,12 @@ This space already has good work, and seisin is not the first thing here:
 
 ## Status
 
-`0.1.1`, 228 tests, of which **18 need `@anthropic-ai/sandbox-runtime` installed**
+`0.1.1`, 257 tests, of which **18 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 those eighteen skipped on Linux for a day, behind a runtime check that looked for the global
 install and missed the bundled one, and hid a defect that broke `seisin run` on that platform
-entirely. **228/228 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
+entirely. **257/257 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
 either, Node 18/20/22 in CI at every push — and 225/225 the same way on Debian 12.15
 with bubblewrap 0.8.0, the last time the suite was run in Docker.
 [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run).

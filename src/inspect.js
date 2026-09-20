@@ -8,9 +8,10 @@
  * does — each one is a way the policy silently does not hold — so they belong
  * where they can be exercised directly.
  */
-import { resolve, dirname, basename, relative } from "node:path";
-import { realpathSync, lstatSync, readdirSync } from "node:fs";
+import { resolve, dirname, basename, relative, join, delimiter } from "node:path";
+import { realpathSync, lstatSync, readdirSync, existsSync } from "node:fs";
 import { ownersOf } from "./owners.js";
+import { entriesOf } from "./keys.js";
 import { wired } from "./commands/wire.js";
 import { RUNTIME_WRITES, CREDENTIAL_HOMES, expand, settingsFor } from "./srt.js";
 
@@ -147,6 +148,13 @@ function homeReachWarning(config) {
 
 
 /** Every way this policy does not hold, each with what to do about it. */
+/** Is this a command the shell would find? Walks PATH; asks no shell. */
+function onPath(cmd) {
+  if (cmd.includes("/")) return existsSync(cmd);
+  const dirs = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
+  return dirs.some((d) => existsSync(join(d, cmd)));
+}
+
 function warningsFor(config, roles) {
   const warnings = [];
 
@@ -400,12 +408,46 @@ function warningsFor(config, roles) {
       });
   }
 
-  if (config.keyDirs.length === 0 && Object.values(config.roles).some((r) => r.keys.length))
+  // Only a key that is a PATH needs a key directory. A config whose secrets all
+  // live in a vault has no `[keys] dir` and nothing wrong with it, and warning
+  // there would be the tool insisting on the arrangement it was built for.
+  if (config.keyDirs.length === 0 &&
+      Object.values(config.roles).some((r) => entriesOf(r).some((k) => k.kind === "file")))
     warnings.push({
       kind: "keys-unscoped",
       headline: "keys are listed but [keys] dir is unset — nothing will be scoped",
       detail: null,
     });
+
+  /**
+   * A provider whose command is not on PATH.
+   *
+   * This is the half of validating references that can be done without
+   * resolving one — which is the whole requirement: a broken policy has to be
+   * visible in `check`, not on the first run, and certainly not by asking
+   * somebody's keychain for a password to find out. The scheme and the
+   * provider are checked when the config loads, so by the time we are here
+   * they exist; what is left is whether the command does.
+   *
+   * A warning and not an error: the binary can legitimately be missing on the
+   * machine reading the policy and present on the one that runs it, which is
+   * every CI checkout.
+   */
+  const used = new Set();
+  for (const r of Object.values(config.roles))
+    for (const k of entriesOf(r)) if (k.kind === "ref") used.add(k.scheme);
+  for (const scheme of [...used].sort()) {
+    const provider = config.keyProviders?.[scheme];
+    if (!provider || onPath(provider.command[0])) continue;
+    warnings.push({
+      kind: "provider-missing",
+      headline: `the ${scheme} provider runs "${provider.command[0]}", which is not on PATH`,
+      detail:
+        "every key of that scheme will stop the run rather than resolve. Nothing is " +
+        "substituted for a key that did not resolve, so this fails closed — but it fails " +
+        "at the start of a turn, not here.",
+    });
+  }
 
   return warnings;
 }

@@ -16,6 +16,7 @@
 import { join, dirname } from "node:path";
 import { STATE_DIR, CONFIG_NAME } from "./layout.js";
 import { homedir, tmpdir } from "node:os";
+import { entriesOf } from "./keys.js";
 import { realpathSync, lstatSync } from "node:fs";
 import { createHash } from "node:crypto";
 
@@ -283,7 +284,17 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
     denyRead.push(realOrSelf(roleHomeRoot(config)));
     allowRead.push(realOrSelf(home));
   }
-  for (const key of role.keys) {
+  /**
+   * Only a key that IS a file becomes a read grant.
+   *
+   * A reference has no path, so there is nothing here to allow: it is resolved
+   * by the parent before the sandbox starts and handed over as an environment
+   * variable or as a scratch file. See keys.js. Filtering here rather than
+   * upstream keeps the two kinds from having to know about each other — the
+   * settings this function emits are still, entirely, about the filesystem.
+   */
+  for (const entry of entriesOf(role).filter((e) => e.kind === "file")) {
+    const key = entry.raw;
     const path = key.includes("/") ? abs(key) : abs(join(dirs[0] ?? ".", key));
     // A key has to live in a declared key directory. Without this check a
     // slash in the name made the path relative to the repo root instead, so

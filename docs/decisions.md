@@ -496,9 +496,15 @@ than an undo.
   add lines to its own history.
 - **No resource limits.** CPU, memory, PIDs and disk are unbounded. The boundary
   is about what an agent can reach, not how much of it there is.
-- **A role still holds its keys in plaintext, and it need not.** `keys` names a
-  file the role reads, so the value is in the agent's context from the first
-  read — and from there it can leave by any allowed domain. The enforcement
+- **A role still holds its keys in plaintext in its CONTEXT, and now need not
+  hold them in plaintext AT REST.** ~~`keys` names a file the role reads~~ — a
+  key may now be a reference (`keychain://netlify-token`) resolved by a
+  provider the parent runs before the sandbox starts, so the secret need not
+  live on disk in the clear and the policy holds something reviewable instead
+  of a path. What did **not** change is the half this entry was really about:
+  the value still reaches the process, so it is in the agent's context from the
+  first read — and from there it can leave by any allowed domain. The
+  enforcement
   runtime already implements the alternative: `credentials.envVars` with
   `mode: "mask"` hands the process a sentinel and substitutes the real bytes at
   egress, only toward the declared `injectHosts`. Re-measured on 0.0.76 against

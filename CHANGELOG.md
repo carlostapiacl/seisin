@@ -6,6 +6,38 @@ history; what changed for someone who installs it is here.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## Unreleased
+
+- **A key can be a reference instead of a file.** `keys = ["keychain://netlify-token"]`,
+  resolved by a provider declared in the same file — a command with a `{ref}` placeholder, so
+  adding 1Password, Bitwarden, `sops` or Vault is TOML and not code. Path keys are unchanged
+  and the two forms coexist in one list.
+
+  The parent resolves, never the confined process: the provider command holds the vault's own
+  credential, and running it inside the box would put that credential in there too. An unknown
+  scheme is **refused**, not ignored. A provider that fails **does not degrade** — not to
+  empty, not to the file of the same name, not to a skipped key.
+
+  **What it does not do:** it resolves the secret *at rest*, not in the agent's context. The
+  value still reaches the process. That is `inject`, and `inject` is declarable but refused by
+  name, because the runtime only masks a credential when the role's TLS is terminated with a CA
+  of seisin's own — MITM over all of that role's traffic.
+
+- **How a key is delivered is declared beside the permission.** `key_mode` on the role, `mode`
+  on the provider, role wins. `env` passes the value as a variable; `scratch` writes it to a
+  file in the run's scratch space, hands over the path as `<NAME>_FILE`, and removes it when
+  the turn ends. There is **no default** — a reference with no mode is an error, because the
+  two answers differ in what the agent can walk away with.
+
+  It is called `scratch` and not `file` deliberately: the runtime has a `credentials.files`
+  that takes paths and, on macOS, makes them unreadable instead of masking — failing as though
+  the feature did not exist. Two names that close together, one of which fails silently, is a
+  trap with a date on it.
+
+- **`seisin check` validates references without resolving them** — the scheme, the provider,
+  the mode, and whether the provider's command is on `PATH`. A broken key policy is visible
+  without asking anyone's keychain for a password.
+
 ## 0.1.1 — 2026-09-20
 
 - **`git status` in a repo you do not own stops filing permission requests.** The sandbox
