@@ -1,6 +1,6 @@
 {
   "name": "seisin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A permission layer for AI coding agents: role-scoped folders and keys, enforced by the OS, and when it blocks it tells you whose file it was.",
   "keywords": [
     "ai-agents",
