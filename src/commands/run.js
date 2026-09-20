@@ -13,6 +13,7 @@ import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { settingsFor, roleHome } from "../srt.js";
 import { buildEnv } from "../env.js";
+import { resolveKeys } from "../keys.js";
 import { spool, spoolPath, SOCK_ENV } from "../spool.js";
 import { secretsOf, redactor } from "../redact.js";
 import { STATE_DIR } from "../layout.js";
@@ -203,6 +204,36 @@ export async function run(config, argv) {
   env[SOCK_ENV] = sockPath;
 
   /**
+   * Reference keys: resolved here, by the parent, before anything is spawned.
+   *
+   * The ordering is the security property, not a convenience. The provider
+   * command holds the vault's own credential — the keychain prompt, the
+   * 1Password session — and running it inside the box would mean putting that
+   * credential in there too, which is the thing this feature exists to avoid.
+   * The confined side cannot reach the parent; the parent can reach the vault;
+   * so the parent resolves and hands over the result.
+   *
+   * A failure here stops the run. Not an empty value, not the file of the same
+   * name, not a skipped key: a role that starts without a credential it
+   * declared fails later, somewhere else, looking like something it is not.
+   */
+  const resolved = resolveKeys(config, config.roles[role]);
+  const scratchKeys = join(dirname(sockPath), "keys");
+  if (resolved.some((r) => r.mode === "scratch")) mkdirSync(scratchKeys, { recursive: true, mode: 0o700 });
+  for (const { entry, mode, value } of resolved) {
+    if (mode === "env") { env[entry.name] = value; continue; }
+    // `scratch`: the value lands in the per-run directory this process already
+    // makes for the spool and already removes on exit, so its lifetime is the
+    // turn's by construction rather than by a cleanup somebody has to remember.
+    // The variable carries the PATH, which is the convention every tool that
+    // wants a secret from a file already reads (`_FILE`), and it means the
+    // value itself is not in the environment of a process that may print it.
+    const file = join(scratchKeys, entry.name);
+    writeFileSync(file, value, { mode: 0o600 });
+    env[`${entry.name}_FILE`] = file;
+  }
+
+  /**
    * Isolated mode: point the toolchain at a home of this role's own.
    *
    * Granting `~/.claude` to every role is what made "its own folders" only
@@ -247,7 +278,15 @@ export async function run(config, argv) {
   const canRedact = wantRedact && !process.stdout.isTTY;
   if (wantRedact && !canRedact) err(`${C.dim}seisin: redaction off — interactive terminal${C.off}\n`);
 
-  const secrets = canRedact ? secretsOf(settings, readFileSync) : [];
+  // Resolved references are masked alongside the key files. They never touched
+  // the disk under a path `secretsOf` could find, so without this the one kind
+  // of key that is supposed to be better looked after would be the one kind
+  // that sails through the redactor into a log.
+  const secrets = canRedact
+    ? [...secretsOf(settings, readFileSync), ...resolved.map((r) => r.value)]
+        .filter((v) => v.length >= 8)
+        .sort((a, b) => b.length - a.length)
+    : [];
   const outStream = secrets.length ? redactor(secrets) : null;
   const errStream = secrets.length ? redactor(secrets) : null;
   if (outStream) { outStream.pipe(process.stdout); errStream.pipe(process.stderr); }

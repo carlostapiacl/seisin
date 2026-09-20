@@ -1,0 +1,253 @@
+/**
+ * Keys that are references rather than files.
+ *
+ * Until this existed a key was a path: `keys = ["netlify-token.txt"]` named a
+ * file inside a declared `[keys] dir`, and the whole mechanism was the
+ * filesystem's — resolve it, check it lands inside the directory, add it to
+ * `allowRead`. That works and it stays. What it cannot do is reach a secret
+ * that has no path, which is where most secrets that are looked after at all
+ * actually live: a keychain, 1Password, Bitwarden, sops, Vault.
+ *
+ * So a key may also be a **reference with a scheme**, resolved by a provider
+ * declared in the same file:
+ *
+ *   [keys.providers.keychain]
+ *   command = ["security", "find-generic-password", "-w", "-s", "{ref}"]
+ *
+ *   [roles.frontend]
+ *   keys = ["keychain://netlify-token", "netlify-token.txt"]
+ *
+ * A provider is a command with a placeholder, deliberately. Adding Bitwarden or
+ * `sops` is then three lines of TOML and no code — which is what makes this one
+ * integration instead of one per vault, and what keeps seisin from aging with
+ * somebody else's CLI.
+ *
+ * ## What this does not do
+ *
+ * It resolves the secret **at rest**, not in the agent's context. The value
+ * still reaches the process and the agent can still read it. That is a strict
+ * improvement over a plaintext file — the secret stops living on disk, the
+ * policy holds a reviewable reference instead of a path, and every resolution
+ * is logged without its value — but it is not "the agent never sees it". That
+ * is `inject`, it costs terminating the role's TLS with a CA of your own, and
+ * it is not built. `modeOf` refuses it by name rather than letting it read as
+ * available.
+ *
+ * ## Why the value is never written down
+ *
+ * The reference is what gets committed, diffed and approved; the value is what
+ * gets handed to one process and forgotten. Keeping them apart is the point of
+ * the feature, not a precaution around it — a log that carries the secret is a
+ * second plaintext copy with worse access control than the first.
+ */
+import { spawnSync } from "node:child_process";
+
+/**
+ * `scheme://rest`, and nothing cleverer.
+ *
+ * The scheme is matched the way a URL scheme is, so a Windows path (`C:\…`) and
+ * a relative path with a colon in it do not read as references. `rest` is the
+ * whole remainder including any slashes, because `op://vault/item/field` is one
+ * reference and not three.
+ */
+const RE_REF = /^([a-z][a-z0-9+.\-]*):\/\/(.+)$/;
+
+/** `NAME=` in front of a reference: the environment variable to deliver it as. */
+const RE_NAMED = /^([A-Za-z_][A-Za-z0-9_]*)=(.+)$/;
+
+/**
+ * The name a reference arrives under when nobody said.
+ *
+ * Derived rather than required, because `keys = ["keychain://netlify-token"]`
+ * is the spelling in front of everyone and making it illegal buys nothing. The
+ * derivation is deliberately dull — last segment, uppercased, anything that is
+ * not a letter or a digit becomes `_` — and `seisin check` prints the result,
+ * so a name that surprises somebody is visible before a run rather than after.
+ */
+export function defaultName(ref) {
+  const last = ref.split("/").filter(Boolean).pop() ?? ref;
+  const name = last.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "").toUpperCase();
+  // A reference of punctuation only would otherwise derive the empty string and
+  // produce an unsettable variable. It is not reachable from a sane vault name;
+  // it is here because an unnamed failure at spawn time is worse than a refusal.
+  return /^[A-Za-z_]/.test(name) ? name : `KEY_${name}`;
+}
+
+/**
+ * One entry of `keys = [...]`, read.
+ *
+ * Returns `{ kind: "file", raw }` for a path — which is everything that was
+ * valid before this module existed, unchanged — or
+ * `{ kind: "ref", scheme, ref, name, raw }` for a reference.
+ *
+ * It does not decide whether the scheme is *known*: that needs the config, and
+ * separating the two is what lets `check` report every unknown scheme in a file
+ * at once instead of dying on the first.
+ */
+export function parseKey(entry) {
+  if (typeof entry !== "string") throw new Error(`keys: expected a string, got ${typeof entry}`);
+  const named = RE_NAMED.exec(entry);
+  const body = named ? named[2] : entry;
+  const m = RE_REF.exec(body);
+  if (!m) {
+    // `NAME=path` is refused rather than read as a file called `NAME=path`.
+    // A name in front of a path means the writer expected delivery by
+    // environment, and a path key is delivered by being readable — so the
+    // spelling asks for something that will not happen, silently.
+    if (named)
+      throw new Error(
+        `keys = "${entry}": "${named[1]}=" names an environment variable, but ` +
+        `"${body}" is a path, not a reference.\n` +
+        `  A path key is delivered by being readable, so there is no variable to name. ` +
+        `Drop the prefix, or point it at a provider: "${named[1]}=keychain://${named[2]}".`);
+    return { kind: "file", raw: entry };
+  }
+  const [, scheme, ref] = m;
+  return { kind: "ref", scheme, ref, name: named ? named[1] : defaultName(ref), raw: entry };
+}
+
+/**
+ * A role's key entries, however the role object was built.
+ *
+ * `loadConfig` fills `keyEntries`; a role assembled by hand — a test, or an
+ * embedder holding seisin as a library — has only `keys`, and that shape
+ * shipped, so it keeps working. One helper rather than the same fallback
+ * written in three files, because the day they disagree is the day a key is
+ * scoped in one place and not in another.
+ */
+export function entriesOf(role) {
+  return role.keyEntries ?? (role.keys ?? []).map(parseKey);
+}
+
+/**
+ * The three ways a resolved value can reach a role.
+ *
+ * The middle one is called `scratch` and not `file`, which looks like a
+ * cosmetic choice and is not. The runtime has a field named
+ * `credentials.files`, it is the one that looks like seisin's `keys` (both take
+ * paths), and on macOS it does **not** mask — it makes the file unreadable, so
+ * a `cat` returns `Operation not permitted` and the reader concludes the
+ * feature is broken rather than misused. That mistake has already been made
+ * once here and cost a measurement that got written up as a finding about the
+ * runtime. A mode called `file` sitting ten centimetres from a runtime field
+ * called `files` that fails that way is a trap with a date on it.
+ *
+ * `scratch` also says what actually happens: the value lands in scratch space
+ * for the turn and is removed after it, which `file` does not say at all.
+ */
+export const MODES = ["env", "scratch", "inject"];
+
+/**
+ * How a role receives its reference keys, and where that is written.
+ *
+ * Per role (`key_mode`) or per provider (`mode`), role first. It is not a
+ * per-key setting, and that is a limit of the config language rather than a
+ * judgement: the parser covers `[table]` headers and `key = value` pairs, so a
+ * mode attached to one entry of an array has nowhere to live without inline
+ * tables — and growing the parser to hold one field is the trade this repo has
+ * already decided against out loud.
+ *
+ * The important half survives that limit. The encargo's argument for declaring
+ * the mode beside the permission is that a reader of `seisin.toml` can say
+ * "this role sees the value" without opening any code, and a per-role setting
+ * answers exactly that question.
+ *
+ * There is no silent default. A reference with no mode anywhere is an error,
+ * because the two available answers differ in what the agent can walk away
+ * with, and picking one for somebody is picking how much a leak costs them.
+ */
+export function modeOf(config, role, entry) {
+  const provider = config.keyProviders?.[entry.scheme];
+  const mode = role.keyMode ?? provider?.mode ?? null;
+  if (mode === null)
+    throw new Error(
+      `roles.${role.name}: key "${entry.raw}" has no delivery mode.\n` +
+      `  Declare one beside the permission — [roles.${role.name}] key_mode = "env" — or ` +
+      `for every key of that provider: [keys.providers.${entry.scheme}] mode = "env".\n` +
+      `  "env" passes the value as ${entry.name}; "scratch" writes it to a file inside the ` +
+      `role's scratch space, grants that one path, and removes it when the turn ends.`);
+  if (mode === "inject")
+    throw new Error(
+      `roles.${role.name}: key_mode = "inject" is not implemented.\n` +
+      `  It is the one mode where the agent never sees the value, and it is not free: the ` +
+      `runtime only masks a credential when the role's TLS is terminated with a CA of ` +
+      `seisin's own — MITM over all of that role's traffic, not just the host holding the ` +
+      `secret. That is a decision to take deliberately, so it is refused rather than ` +
+      `half-available.\n` +
+      `  Use "env" or "file" today. See docs/decisions.md.`);
+  if (!MODES.includes(mode))
+    throw new Error(
+      `roles.${role.name}: key_mode = "${mode}" is not a delivery mode. Known: ${MODES.join(", ")}.` +
+      // The one wrong answer worth naming, because it is the word everybody
+      // reaches for and it is one letter from a runtime field that fails
+      // silently. Guessing costs a debugging session; saying so costs a line.
+      (mode === "file"
+        ? `\n  "file" is not one of them on purpose — the runtime has a "credentials.files" that ` +
+          `takes paths and, on macOS, makes them unreadable instead of masking. The mode that ` +
+          `hands a role a file is "scratch".`
+        : ""));
+  return mode;
+}
+
+/**
+ * Run a provider and hand back what it printed.
+ *
+ * Three properties, each of which was a requirement before it was code:
+ *
+ *   - **The parent runs it, never the confined process.** Same reason `owners`
+ *     recomputes instead of believing what it is told: the inside of the box
+ *     cannot be allowed to reach the thing that decides what the box contains.
+ *     A provider command spawned from within the sandbox would need the vault's
+ *     own credential in there with it, which is the problem this feature exists
+ *     to remove.
+ *   - **A failure is a failure.** Not empty, not the file of the same name, not
+ *     a skipped key. The house rule is already written twice: a check that
+ *     cannot measure and says ok lies more than one that says no. A role that
+ *     starts without the credential it declared fails later, further away, and
+ *     looking like something else.
+ *   - **The value is not in the error.** `stderr` from the provider is passed
+ *     through because it is how `op` says "not signed in", but `stdout` never
+ *     is — a provider that prints the secret and then exits non-zero would
+ *     otherwise put it in the terminal and the log.
+ */
+export function resolveRef(entry, provider, { run = spawnSync } = {}) {
+  const argv = provider.command.map((part) => part.replaceAll("{ref}", entry.ref));
+  const r = run(argv[0], argv.slice(1), { encoding: "utf8" });
+  if (r.error)
+    throw new Error(
+      `key "${entry.raw}": could not run the ${entry.scheme} provider (${argv[0]}): ${r.error.message}`);
+  if (r.status !== 0) {
+    const said = (r.stderr ?? "").trim().split("\n").slice(0, 3).join("\n    ");
+    throw new Error(
+      `key "${entry.raw}": the ${entry.scheme} provider exited ${r.status ?? "on a signal"}.` +
+      (said ? `\n    ${said}` : "") +
+      `\n  Nothing is substituted for a key that did not resolve — the run stops here rather ` +
+      `than starting a role without a credential it declared.`);
+  }
+  // One trailing newline is the shell's, not the secret's: `security -w` and
+  // `op read` both add one, and a token with a newline welded to it fails
+  // authentication in a way that looks like a wrong token.
+  const value = (r.stdout ?? "").replace(/\r?\n$/, "");
+  if (value === "")
+    throw new Error(
+      `key "${entry.raw}": the ${entry.scheme} provider succeeded and printed nothing.\n` +
+      `  An empty credential is not a credential. Check the reference — most providers exit 0 ` +
+      `for a name they do not have.`);
+  return value;
+}
+
+/**
+ * Every reference a role declares, resolved, as `{ entry, mode, value }`.
+ *
+ * Validation of schemes and modes happens over the whole list before the first
+ * provider runs. A config with three bad references should say so once, and it
+ * should say so without asking anyone's keychain for a password first.
+ */
+export function resolveKeys(config, role, opts = {}) {
+  const refs = role.keyEntries.filter((e) => e.kind === "ref");
+  const plan = refs.map((entry) => ({ entry, mode: modeOf(config, role, entry) }));
+  return plan.map((p) => ({
+    ...p,
+    value: resolveRef(p.entry, config.keyProviders[p.entry.scheme], opts),
+  }));
+}

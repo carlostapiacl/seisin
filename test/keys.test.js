@@ -1,0 +1,297 @@
+/**
+ * Keys that are references, and how they are delivered.
+ *
+ * No provider is ever really spawned here: `resolveRef` takes its runner, so
+ * these exercise the decisions — what is a reference, what is refused, what
+ * reaches the child — without a keychain prompt in the middle of the suite.
+ * The one thing a fake runner cannot check is that the parent is the one
+ * spawning, and that is asserted structurally instead: `settingsFor` never
+ * sees a reference at all.
+ */
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { parseKey, defaultName, modeOf, resolveRef, resolveKeys, entriesOf, MODES } from "../src/keys.js";
+import { loadConfig } from "../src/config.js";
+import { settingsFor } from "../src/srt.js";
+import { inspect } from "../src/inspect.js";
+
+/** A repo with a seisin.toml in it, and a .secrets to hold path-keys. */
+function repo(toml) {
+  const dir = mkdtempSync(join(tmpdir(), "seisin-keys-"));
+  mkdirSync(join(dir, ".secrets"), { recursive: true });
+  writeFileSync(join(dir, ".secrets", "netlify-token.txt"), "nfp_aaaaaaaaaaaaaaaa\n");
+  writeFileSync(join(dir, "seisin.toml"), toml);
+  return dir;
+}
+
+/** A provider runner that answers from a table instead of a vault. */
+const fake = (answers, { status = 0, stderr = "" } = {}) => (cmd, args) => {
+  const ref = args.join(" ");
+  return { status, stdout: answers[ref] ?? answers["*"] ?? "", stderr, error: undefined };
+};
+
+// ── what an entry IS ────────────────────────────────────────────────────────
+
+test("a path is still a path, which is the whole backwards-compatibility story", () => {
+  const e = parseKey("netlify-token.txt");
+  assert.equal(e.kind, "file");
+  assert.equal(e.raw, "netlify-token.txt");
+});
+
+test("a scheme makes it a reference, and the rest is one reference and not three", () => {
+  const e = parseKey("op://vault/item/field");
+  assert.equal(e.kind, "ref");
+  assert.equal(e.scheme, "op");
+  assert.equal(e.ref, "vault/item/field");
+});
+
+test("a Windows path and a relative path with a colon do not read as references", () => {
+  assert.equal(parseKey("C:\\secrets\\token.txt").kind, "file");
+  assert.equal(parseKey("./weird:name.txt").kind, "file");
+});
+
+test("the derived name is the last segment, and it is printable before a run", () => {
+  assert.equal(defaultName("netlify-token"), "NETLIFY_TOKEN");
+  assert.equal(defaultName("vault/item/field"), "FIELD");
+  assert.equal(parseKey("keychain://netlify-token").name, "NETLIFY_TOKEN");
+});
+
+test("a derivation that would produce an unsettable variable gets a prefix instead", () => {
+  // Not reachable from a sane vault name. It is here because a failure at
+  // spawn time, on a name nobody wrote, is the worst place to find this out.
+  assert.match(defaultName("123"), /^KEY_/);
+  assert.match(defaultName("--"), /^KEY_/);
+});
+
+test("NAME= in front says which variable, so nothing has to be guessed", () => {
+  const e = parseKey("NETLIFY_AUTH_TOKEN=keychain://netlify-token");
+  assert.equal(e.name, "NETLIFY_AUTH_TOKEN");
+  assert.equal(e.ref, "netlify-token");
+});
+
+test("NAME= in front of a PATH is refused, because it asks for something that will not happen", () => {
+  assert.throws(() => parseKey("TOKEN=netlify-token.txt"), /is a path, not a reference/);
+});
+
+// ── what the config refuses ─────────────────────────────────────────────────
+
+test("an unknown scheme is refused, not ignored", () => {
+  // The alternative — a key that quietly never arrives — is a policy that
+  // reads as protecting something it is not.
+  const dir = repo(`[keys]\ndir = [".secrets"]\n\n[roles.frontend]\nkeys = ["vault://x"]\n`);
+  assert.throws(() => loadConfig(join(dir, "seisin.toml")), /no \[keys.providers.vault\] is declared/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("the refusal names the providers that DO exist, so the typo is visible", () => {
+  const dir = repo(
+    `[keys.providers.keychain]\ncommand = ["security", "-w", "{ref}"]\n\n` +
+    `[roles.frontend]\nkeys = ["keychan://x"]\n`);
+  assert.throws(() => loadConfig(join(dir, "seisin.toml")), /Declared providers: keychain/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("a provider with no {ref} is refused: every key would resolve to the same value", () => {
+  const dir = repo(`[keys.providers.op]\ncommand = ["op", "read"]\n\n[roles.frontend]\nkeys = []\n`);
+  assert.throws(() => loadConfig(join(dir, "seisin.toml")), /no \{ref\}/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("a provider without a command is refused", () => {
+  const dir = repo(`[keys.providers.op]\nmode = "env"\n\n[roles.frontend]\nkeys = []\n`);
+  assert.throws(() => loadConfig(join(dir, "seisin.toml")), /needs a command/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("references need no [keys] dir — a config whose secrets are all in a vault is fine", () => {
+  const dir = mkdtempSync(join(tmpdir(), "seisin-keys-"));
+  writeFileSync(join(dir, "seisin.toml"),
+    `[keys.providers.keychain]\ncommand = ["security", "{ref}"]\nmode = "env"\n\n` +
+    `[roles.frontend]\nwrites = ["src/**"]\nkeys = ["keychain://t"]\n`);
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  assert.equal(cfg.roles.frontend.keyEntries[0].kind, "ref");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("a PATH key with no [keys] dir is still refused, which was the rule before", () => {
+  const dir = mkdtempSync(join(tmpdir(), "seisin-keys-"));
+  writeFileSync(join(dir, "seisin.toml"), `[roles.frontend]\nkeys = ["token.txt"]\n`);
+  assert.throws(() => loadConfig(join(dir, "seisin.toml")), /\[keys\] dir is not set/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+// ── delivery mode ───────────────────────────────────────────────────────────
+
+const cfgWith = (roleLine, providerLine = 'command = ["security", "{ref}"]') => {
+  const dir = repo(
+    `[keys]\ndir = [".secrets"]\n\n[keys.providers.keychain]\n${providerLine}\n\n` +
+    `[roles.frontend]\nwrites = ["src/**"]\n${roleLine}\n`);
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  return { cfg, dir };
+};
+
+test("a reference with no mode anywhere is an error, because the two answers differ", () => {
+  const { cfg, dir } = cfgWith('keys = ["keychain://t"]');
+  assert.throws(() => modeOf(cfg, cfg.roles.frontend, cfg.roles.frontend.keyEntries[0]),
+    /has no delivery mode/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("the provider can carry the default, and the role overrides it", () => {
+  const a = cfgWith('keys = ["keychain://t"]', 'command = ["security", "{ref}"]\nmode = "env"');
+  assert.equal(modeOf(a.cfg, a.cfg.roles.frontend, a.cfg.roles.frontend.keyEntries[0]), "env");
+  const b = cfgWith('keys = ["keychain://t"]\nkey_mode = "scratch"',
+    'command = ["security", "{ref}"]\nmode = "env"');
+  assert.equal(modeOf(b.cfg, b.cfg.roles.frontend, b.cfg.roles.frontend.keyEntries[0]), "scratch");
+  rmSync(a.dir, { recursive: true, force: true });
+  rmSync(b.dir, { recursive: true, force: true });
+});
+
+test("inject is refused by name, and the refusal says what it would cost", () => {
+  // Not "not supported": the mode where the agent never sees the value is the
+  // one people will reach for, and it is not free. Refused rather than
+  // half-available, with the price in the message and not in a doc.
+  const { cfg, dir } = cfgWith('keys = ["keychain://t"]\nkey_mode = "inject"');
+  assert.throws(() => modeOf(cfg, cfg.roles.frontend, cfg.roles.frontend.keyEntries[0]),
+    /not implemented[\s\S]*TLS[\s\S]*MITM/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('"file" is not a mode, and the error says why, because it is the word everybody reaches for', () => {
+  // The runtime has a `credentials.files` that takes paths and, on macOS,
+  // makes them unreadable instead of masking — so a mode called `file` next to
+  // it is a trap. Guessing costs a debugging session; the message costs a line.
+  assert.ok(!MODES.includes("file"));
+  const dir = repo(
+    `[keys]\ndir = [".secrets"]\n\n[keys.providers.keychain]\ncommand = ["security", "{ref}"]\n\n` +
+    `[roles.frontend]\nkeys = ["keychain://t"]\nkey_mode = "file"\n`);
+  assert.throws(() => loadConfig(join(dir, "seisin.toml")), /is not a delivery mode/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+// ── resolving ───────────────────────────────────────────────────────────────
+
+const refOf = (raw) => parseKey(raw);
+const provider = { name: "keychain", command: ["security", "find", "-s", "{ref}"], mode: "env" };
+
+test("{ref} is substituted wherever it appears, and the value comes back", () => {
+  let seen;
+  const run = (cmd, args) => { seen = [cmd, ...args]; return { status: 0, stdout: "s3cr3t-value\n" }; };
+  const v = resolveRef(refOf("keychain://netlify-token"), provider, { run });
+  assert.deepEqual(seen, ["security", "find", "-s", "netlify-token"]);
+  assert.equal(v, "s3cr3t-value");
+});
+
+test("exactly one trailing newline is the shell's, and it is dropped", () => {
+  // A token with a newline welded to it fails authentication in a way that
+  // looks like a wrong token.
+  assert.equal(resolveRef(refOf("keychain://t"), provider,
+    { run: () => ({ status: 0, stdout: "abc\n" }) }), "abc");
+  // Two is not the shell's, so the second is the value's and stays.
+  assert.equal(resolveRef(refOf("keychain://t"), provider,
+    { run: () => ({ status: 0, stdout: "abc\n\n" }) }), "abc\n");
+});
+
+test("a provider that fails stops the run — it does not degrade to anything", () => {
+  assert.throws(() => resolveRef(refOf("keychain://t"), provider,
+    { run: () => ({ status: 1, stdout: "", stderr: "not signed in" }) }),
+    /exited 1[\s\S]*not signed in/);
+});
+
+test("a provider that succeeds and prints nothing is a failure, not an empty key", () => {
+  assert.throws(() => resolveRef(refOf("keychain://t"), provider,
+    { run: () => ({ status: 0, stdout: "" }) }), /printed nothing/);
+});
+
+test("a provider that cannot be started says so, naming the binary", () => {
+  assert.throws(() => resolveRef(refOf("keychain://t"), provider,
+    { run: () => ({ error: new Error("spawn ENOENT") }) }), /could not run the keychain provider \(security\)/);
+});
+
+test("what the provider printed on stdout never reaches the error message", () => {
+  // A provider that prints the secret and then exits non-zero would otherwise
+  // put it in the terminal and in the log — a second plaintext copy with worse
+  // access control than the first.
+  let msg = "";
+  try {
+    resolveRef(refOf("keychain://t"), provider,
+      { run: () => ({ status: 2, stdout: "SUPER-SECRET-VALUE", stderr: "auth required" }) });
+  } catch (e) { msg = e.message; }
+  assert.ok(msg.includes("auth required"));
+  assert.ok(!msg.includes("SUPER-SECRET-VALUE"));
+});
+
+test("every mode is checked before any provider runs", () => {
+  // A config with a bad second key should say so without asking anyone's
+  // keychain for a password to find out about the first.
+  const dir = repo(
+    `[keys]\ndir = [".secrets"]\n\n[keys.providers.keychain]\ncommand = ["security", "{ref}"]\nmode = "env"\n\n` +
+    `[keys.providers.op]\ncommand = ["op", "read", "{ref}"]\n\n` +
+    `[roles.frontend]\nkeys = ["keychain://a", "op://b"]\n`);
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  let ran = 0;
+  assert.throws(() => resolveKeys(cfg, cfg.roles.frontend, { run: () => { ran++; return { status: 0, stdout: "x" }; } }),
+    /has no delivery mode/);
+  assert.equal(ran, 0, "no provider should have been spawned");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("resolveKeys ignores path keys — they are the filesystem's problem, not a provider's", () => {
+  const dir = repo(
+    `[keys]\ndir = [".secrets"]\n\n[keys.providers.keychain]\ncommand = ["security", "{ref}"]\nmode = "env"\n\n` +
+    `[roles.frontend]\nkeys = ["netlify-token.txt", "keychain://a"]\n`);
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  const got = resolveKeys(cfg, cfg.roles.frontend, { run: fake({ a: "value-a" }) });
+  assert.equal(got.length, 1);
+  assert.equal(got[0].entry.scheme, "keychain");
+  assert.equal(got[0].value, "value-a");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+// ── what reaches the kernel ─────────────────────────────────────────────────
+
+test("a reference never becomes a read grant, because there is no path to grant", () => {
+  const dir = repo(
+    `[keys]\ndir = [".secrets"]\n\n[keys.providers.keychain]\ncommand = ["security", "{ref}"]\nmode = "env"\n\n` +
+    `[roles.frontend]\nwrites = ["src/**"]\nkeys = ["keychain://netlify-token", "netlify-token.txt"]\n`);
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  const s = settingsFor(cfg, "frontend");
+  const reads = s.filesystem.allowRead.join(" ");
+  assert.ok(reads.includes("netlify-token.txt"), "the path key is still granted");
+  assert.ok(!reads.includes("keychain"), "the reference is not a path and is not in the settings");
+  assert.equal(s.filesystem.allowRead.length, 1);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("a role object built by hand, with only `keys`, still works", () => {
+  // The shape that shipped. An embedder holding seisin as a library has it.
+  assert.deepEqual(entriesOf({ keys: ["a.txt"] }).map((e) => e.kind), ["file"]);
+  assert.deepEqual(entriesOf({ keys: [] }), []);
+  assert.deepEqual(entriesOf({}), []);
+});
+
+// ── what check can say without resolving anything ───────────────────────────
+
+test("check warns when a provider's command is not on PATH, and asks nobody for a password", () => {
+  const dir = repo(
+    `[keys]\ndir = [".secrets"]\n\n[keys.providers.vault]\ncommand = ["definitely-not-installed-xyz", "{ref}"]\nmode = "env"\n\n` +
+    `[roles.frontend]\nwrites = ["src/**"]\nkeys = ["vault://t"]\n`);
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  const w = inspect(cfg, null, "seisin.toml").warnings;
+  assert.ok(w.some((x) => x.kind === "provider-missing"));
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("a config with only references does not get told its [keys] dir is missing", () => {
+  const dir = mkdtempSync(join(tmpdir(), "seisin-keys-"));
+  writeFileSync(join(dir, "seisin.toml"),
+    `[keys.providers.keychain]\ncommand = ["sh", "{ref}"]\nmode = "env"\n\n` +
+    `[roles.frontend]\nwrites = ["src/**"]\nkeys = ["keychain://t"]\n`);
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  const w = inspect(cfg, null, "seisin.toml").warnings;
+  assert.ok(!w.some((x) => x.kind === "keys-unscoped"));
+  rmSync(dir, { recursive: true, force: true });
+});

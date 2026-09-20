@@ -11,6 +11,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { CONFIG_NAME } from "./layout.js";
+import { parseKey, MODES } from "./keys.js";
 
 export { CONFIG_NAME } from "./layout.js";
 
@@ -273,6 +274,7 @@ export function loadConfig(path) {
   // is how a tool gets kept out.
   const keyDir = own(own(parsed, "keys"), "dir");
   const keyDirs = keyDir === undefined ? [] : asArray(keyDir, "keys.dir");
+  const keyProviders = readProviders(own(own(parsed, "keys"), "providers"), path);
   // `undefined` means "use the defaults"; an explicit empty array means "none".
   // The difference matters: one is a user who has not thought about it, the
   // other is a user who has.
@@ -280,7 +282,7 @@ export function loadConfig(path) {
   const runtimeWrites = own(runtime, "writes");
 
   const out = {
-    root: dirname(path), path, keyDirs,
+    root: dirname(path), path, keyDirs, keyProviders,
     allowedDomains: own(own(parsed, "network"), "allow") ?? [],
     runtimeWrites: runtimeWrites === undefined ? undefined : asArray(runtimeWrites, "runtime.writes"),
     // `[runtime] isolate` — how much of your home a role stops reaching. See
@@ -296,15 +298,91 @@ export function loadConfig(path) {
     const r = own(roles, name);
     const writes = asArray(own(r, "writes"), `roles.${name}.writes`);
     const keys = asArray(own(r, "keys"), `roles.${name}.keys`);
-    if (keys.length && keyDirs.length === 0)
+    // Read once, here, so every consumer sees the same answer about what an
+    // entry is. `keys` itself stays the array of strings that was written: it
+    // is what `render`, `serve` and `init` print, and the whole point of a
+    // reference is that the written form is the reviewable one.
+    const keyEntries = keys.map((k) => {
+      try {
+        return parseKey(k);
+      } catch (e) {
+        throw new Error(`${path}: roles.${name}: ${e.message}`);
+      }
+    });
+    // Only a path needs somewhere to live. A reference does not, and demanding
+    // `[keys] dir` from a config whose secrets are all in a vault would be the
+    // tool insisting on the arrangement it was built for.
+    if (keyEntries.some((k) => k.kind === "file") && keyDirs.length === 0)
       throw new Error(`${path}: roles.${name} lists keys, but [keys] dir is not set`);
+    /**
+     * An unknown scheme is refused, not ignored.
+     *
+     * Same rule as everywhere else here: a `keys = ["vault://x"]` with no
+     * `[keys.providers.vault]` is a configuration error, and the alternative —
+     * treating it as a filename, or as a key that quietly never arrives — is a
+     * policy that reads as protecting something it is not.
+     */
+    for (const k of keyEntries) {
+      if (k.kind !== "ref" || own(keyProviders, k.scheme)) continue;
+      const known = Object.keys(keyProviders);
+      throw new Error(
+        `${path}: roles.${name}: key "${k.raw}" uses the "${k.scheme}" scheme, and no ` +
+        `[keys.providers.${k.scheme}] is declared.\n` +
+        `  ${known.length ? `Declared providers: ${known.join(", ")}.` : "No providers are declared."}\n` +
+        `  A provider is a command with a placeholder:\n` +
+        `    [keys.providers.${k.scheme}]\n` +
+        `    command = ["your-cli", "read", "{ref}"]`);
+    }
+    const keyMode = own(r, "key_mode");
+    if (keyMode !== undefined && !MODES.includes(keyMode))
+      throw new Error(
+        `${path}: roles.${name}: key_mode = "${keyMode}" is not a delivery mode. ` +
+        `Known: ${MODES.join(", ")}.`);
     out.roles[name] = {
       name,
       writes,
       keys,
+      keyEntries,
+      keyMode: keyMode ?? null,
       env: asArray(own(r, "env"), `roles.${name}.env`),
       network: own(r, "network") === undefined ? null : asArray(own(r, "network"), `roles.${name}.network`),
     };
+  }
+  return out;
+}
+
+/**
+ * `[keys.providers.<name>]` — the commands that turn a reference into a value.
+ *
+ * Validated here and not at resolution time, because the whole argument for
+ * references is that a broken policy should be visible in `seisin check`,
+ * without asking anybody's keychain for a password to find out.
+ *
+ * `{ref}` is required. A command without it resolves every reference to the
+ * same thing, which is the kind of mistake that looks like it works: the first
+ * key comes back, so does the second, and they are both the first one.
+ */
+function readProviders(table, path) {
+  const out = Object.create(null);
+  if (table === undefined) return out;
+  for (const name of Object.keys(table)) {
+    const p = own(table, name);
+    const command = own(p, "command");
+    if (!Array.isArray(command) || command.length === 0 || command.some((c) => typeof c !== "string"))
+      throw new Error(
+        `${path}: [keys.providers.${name}] needs a command, as an array of strings.\n` +
+        `  e.g. command = ["security", "find-generic-password", "-w", "-s", "{ref}"]`);
+    if (!command.some((c) => c.includes("{ref}")))
+      throw new Error(
+        `${path}: [keys.providers.${name}] has no {ref} in its command, so every key of this ` +
+        `provider would resolve to the same value.\n` +
+        `  Put {ref} where the reference goes: command = [${command.map((c) => `"${c}"`).join(", ")}, "{ref}"]`);
+    const mode = own(p, "mode");
+    if (mode !== undefined && !MODES.includes(mode))
+      throw new Error(
+        `${path}: [keys.providers.${name}] mode = "${mode}" is not a delivery mode. ` +
+        `Known: ${MODES.join(", ")}.`);
+    out[name] = { name, command, mode: mode ?? null };
   }
   return out;
 }
