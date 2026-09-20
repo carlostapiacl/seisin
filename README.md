@@ -699,6 +699,48 @@ does one the agent base64'd first. It narrows a careless print; it is not a cont
 boundary. And to mask a value seisin must read it, so a role's own keys pass through this
 process in memory. `[runtime] redact = false` turns that off.
 
+## When the boundary is right and the agent cannot hear it
+
+seisin answers *whose is this* at the moment of the refusal — once, mid-turn — and then the
+sentence is gone. Nothing carries it forward, so the agent tries again.
+
+Measured on a real team: of **345 blocks, 88 (25%) were a repeat of something that same role
+had already been refused.** One role spent 37 calls on two walls, hitting one of them nineteen
+times. Every refusal was correct. Not one was a false positive. It still cost thirty-seven
+calls, because *correct* and *heard* are different properties and only the first was being
+measured.
+
+So a refusal now carries its own history:
+
+```
+deploy/x.yml belongs to infra. It is not dev's to change — hand it over rather than
+working around it. You have been refused this 3 times now; it is not going to work on
+the fourth try. Already queued for a person to answer…
+```
+
+And the standing list is a command:
+
+```
+$ seisin walls dev
+WALLS — you have already been refused these, and the policy still refuses them.
+Do not retry; the reason is where the other way in is.
+  19× write ../equipo/.git/index.lock
+      ../equipo/.git/index.lock belongs to plataforma-dev
+  6× read ~/.npmrc
+      no role declares ~/.npmrc — add it under a [roles.<name>] keys list
+  (23 of your calls went into retrying these.)
+```
+
+**A wall is recomputed against the policy, not read out of the log.** If the role would be
+allowed today, it is not a wall — whatever happened yesterday. The obvious implementation is a
+time window, on the argument that an old wall may have been granted since; the window is a
+proxy for the question, and seisin has the policy right there, so it asks the question. A grant
+makes its wall disappear on the next turn instead of when a window expires. Same move as
+`owners` and the request queue: recompute rather than believe.
+
+Silent on the first refusal, by design. A counter that reads `1×` every time is noise on the
+turn where the sentence is already doing its job.
+
 ## Scratch space, and what it costs
 
 Territory alone is correct and unusable. An agent writes session state under its own config
@@ -820,12 +862,12 @@ This space already has good work, and seisin is not the first thing here:
 
 ## Status
 
-`0.1.1`, 257 tests, of which **18 need `@anthropic-ai/sandbox-runtime` installed**
+`0.1.1`, 272 tests, of which **18 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 those eighteen skipped on Linux for a day, behind a runtime check that looked for the global
 install and missed the bundled one, and hid a defect that broke `seisin run` on that platform
-entirely. **257/257 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
+entirely. **272/272 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
 either, Node 18/20/22 in CI at every push — and 225/225 the same way on Debian 12.15
 with bubblewrap 0.8.0, the last time the suite was run in Docker.
 [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run).

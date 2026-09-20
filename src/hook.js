@@ -18,6 +18,7 @@
  */
 import { explain, normalize } from "./owners.js";
 import { append, logPath } from "./log.js";
+import { timesHit } from "./walls.js";
 import { record, requestsPath } from "./requests.js";
 
 /** Tools whose input names a file directly. */
@@ -118,6 +119,12 @@ function kindOf(config, path) {
  */
 const QUEUED = "Already queued for a person to answer — retrying or waiting will not move it.";
 
+/** 4 -> "fourth". Past a handful the numeral reads better than the word. */
+function ordinal(n) {
+  const words = ["", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
+  return words[n] ?? `${n}th`;
+}
+
 /**
  * Decides and records one tool call.
  *
@@ -164,7 +171,12 @@ export function decide(config, role, event, { observe = false, now = append, ask
     if (!observe && !v.allowed)
       ask(queue, { role, action: kind === "key" ? "read" : t.action, target: rel, owners: v.owners ?? [] });
 
-    verdicts.push({ ...v, target: rel, kind });
+    // The action as it was RECORDED, not as the tool named it: a read of a key
+    // is logged as "read" and a write is "write", and the counter below looks
+    // the entry up by that pair. Carrying the tool's word here instead would
+    // make every lookup miss, silently — the refusal would simply never
+    // mention that it had been given before.
+    verdicts.push({ ...v, target: rel, kind, action: kind === "key" ? "read" : t.action });
   }
 
   if (observe) return { decision: null, logged: verdicts.length };
@@ -172,6 +184,25 @@ export function decide(config, role, event, { observe = false, now = append, ask
   const denied = verdicts.find((v) => !v.allowed);
   if (!denied) return { decision: null, logged: verdicts.length };
   const wasRead = denied.kind === "key";
+
+  /**
+   * How many times this exact refusal has already been handed to this role.
+   *
+   * The sentence below is correct every time and that has not been enough:
+   * measured on a real team, 25% of all blocks were a repeat of something the
+   * same role had already been refused, one of them nineteen times. Correct
+   * and *heard* are different properties, and only the first was being
+   * measured. So the refusal carries its own history: the second time, it says
+   * it is the second time.
+   *
+   * Counted from the log that was just written, so the count includes this
+   * attempt. Silent on the first — a counter that says "1×" on every first
+   * refusal is noise on the turn where the sentence is already doing its job.
+   */
+  const before = timesHit(logPath(config.root), role, denied.action, denied.target);
+  const again = before > 1
+    ? ` You have been refused this ${before} times now; it is not going to work on the ${ordinal(before + 1)} try.`
+    : "";
 
   // The hook advises; it does not enforce. Returning `deny` here stops the call
   // early and — the part that matters — hands the agent a sentence it can act
@@ -189,7 +220,7 @@ export function decide(config, role, event, { observe = false, now = append, ask
           ? wasRead
             ? `${denied.target} is declared for ${denied.owners.join(", ")}, not ${role}. Ask for what you need from it rather than reading the key.`
             : `${denied.target} belongs to ${denied.owners.join(", ")}. It is not ${role}'s to change — hand it over rather than working around it.`
-          : `${denied.reason} (seisin)`) + " " + QUEUED,
+          : `${denied.reason} (seisin)`) + again + " " + QUEUED,
     },
   };
 }
