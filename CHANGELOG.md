@@ -8,6 +8,17 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **A refusal remembers that it has been given before.** From the second time a role is refused
+  the same thing, the sentence says so: *"you have been refused this 3 times now; it is not
+  going to work on the fourth try."* Measured on a real team, **88 of 345 blocks (25%) were a
+  repeat** — one role hit the same wall nineteen times. Every refusal was correct; none was a
+  false positive; it still cost the calls, because correct and heard are different properties.
+
+  **`seisin walls <role>`** prints the standing list with what retrying cost. A wall is
+  **recomputed against the current policy**, not read out of the log: if the role would be
+  allowed today it is not a wall, so a grant clears it on the next turn rather than when a time
+  window expires. Silent on the first refusal — a counter reading `1×` every time is noise.
+
 - **A key can be a reference instead of a file.** `keys = ["keychain://netlify-token"]`,
   resolved by a provider declared in the same file — a command with a `{ref}` placeholder, so
   adding 1Password, Bitwarden, `sops` or Vault is TOML and not code. Path keys are unchanged
