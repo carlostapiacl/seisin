@@ -246,6 +246,12 @@ filename was **1,071 of the 1,409 denials** — three quarters of everything the
 to. A role runs `git status`, git tries to refresh the index of a checkout that belongs to
 another role, and the lock write is denied.
 
+Measured again six days later on the same deployment, with thirty-two times the volume:
+**1,080 of 1,422**, the same three quarters, and by then it was one filename across eight
+paths. Two windows, one shape — [the second one is in the field
+notes](docs/field-notes.md#1--three-quarters-of-everything-the-kernel-refused-was-one-lock-file),
+with what it cost and what removed it.
+
 It is noise, not a wall, and the distinction is measurable: inside the box
 `git status --short --branch` and `git log` still exit 0. Git cannot refresh its index cache
 and carries on without it. If a role genuinely needs to commit, give it **its own worktree**
@@ -1066,12 +1072,12 @@ measured](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run
 
 ## Status
 
-`0.2.0`, 312 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
+`0.2.0`, 315 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 those eighteen skipped on Linux for a day, behind a runtime check that looked for the global
 install and missed the bundled one, and hid a defect that broke `seisin run` on that platform
-entirely. **312/312 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
+entirely. **315/315 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
 either, Node 18/20/22 in CI at every push — and 225/225 the same way on Debian 12.15
 with bubblewrap 0.8.0, the last time the suite was run in Docker.
 [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),
