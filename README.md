@@ -762,7 +762,7 @@ parent executes them, so a role that could rewrite one would decide what runs ou
 | | |
 |---|---|
 | **`mode = "env"`** | resolved and passed as a variable |
-| **`mode = "scratch"`** | written to a file in the run's scratch space, removed when the turn ends; the path arrives as `NETLIFY_TOKEN_FILE` |
+| **`mode = "scratch"`** | written to a file in the run's scratch space, removed when the turn ends. The path arrives **both** as `NETLIFY_TOKEN` and as `NETLIFY_TOKEN_FILE` — `_FILE` is the Docker-secrets convention, while `KUBECONFIG` and `GOOGLE_APPLICATION_CREDENTIALS` already expect a path in the plain name. Neither holds the value |
 | **`mode = "inject"`** | the agent never sees the value — **not implemented**, and refused by name rather than left looking available. It needs the runtime's credential masking, which does not load without terminating that role's TLS with a CA of seisin's own. That is MITM over all of the role's traffic, and it is a decision to take deliberately |
 
 There is **no default mode**. A reference with none declared anywhere is an error, because
@@ -1066,12 +1066,12 @@ measured](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run
 
 ## Status
 
-`0.1.1`, 311 tests, of which **25 need `@anthropic-ai/sandbox-runtime` installed**
+`0.1.1`, 312 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 those eighteen skipped on Linux for a day, behind a runtime check that looked for the global
 install and missed the bundled one, and hid a defect that broke `seisin run` on that platform
-entirely. **311/311 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
+entirely. **312/312 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
 either, Node 18/20/22 in CI at every push — and 225/225 the same way on Debian 12.15
 with bubblewrap 0.8.0, the last time the suite was run in Docker.
 [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),
