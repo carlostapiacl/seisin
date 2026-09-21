@@ -554,8 +554,10 @@ not authenticate.
 
 **What seisin should do.** Not invent a protocol: this is upstream-shaped. The runtime wires
 a `ProxyCommand` around a tool it documents as unable to authenticate to its own proxy, and
-either the helper should change or the variable should not be set. That is the third ask,
-and it is not written yet.
+either the helper should change or the variable should not be set. That ask is
+[written and verified](upstream/ssh-proxycommand.md) against 0.0.76 and 0.0.77 — **not
+filed**, because two earlier ones are open and unanswered and a third in ten days starts to
+read as volume rather than signal. The text is ready; filing is a decision.
 
 **What to do today.** Use an HTTPS remote for git — it passes. Run SSH deploys outside the
 confined turn. Both of those were already true; what changed is that the reason is now the
