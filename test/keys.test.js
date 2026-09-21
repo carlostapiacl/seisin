@@ -422,7 +422,23 @@ test("a fragment takes ONE key out of a file that holds several, and only that o
 test("a fragment naming a key the file does not have is an error, not an empty value", () => {
   const dir = fileRepo(POLICY + `keys = ["Z=file://.secrets/all.env#Z"]\n`, { "all.env": "A=1\n" });
   const cfg = loadConfig(join(dir, "seisin.toml"));
-  assert.throws(() => resolveKeys(cfg, cfg.roles.dev), /has no Z=/);
+  assert.throws(() => resolveKeys(cfg, cfg.roles.dev), /has NAME=value lines, but no Z=/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("a fragment pointed at a document says so, instead of hunting for a typo", () => {
+  // Found in the field: the only real credential declaration in the deployment
+  // turned out to be a 146-line Markdown runbook with the passwords in a
+  // table. "the file has no TOKEN=" sends somebody looking for a typo in a
+  // file where the answer is that the secrets are in prose.
+  //
+  // The fix is the message, not a parser. A generic tool does not learn to
+  // read one user's file, and that file is not a format.
+  const dir = fileRepo(POLICY + `keys = ["T=file://.secrets/runbook.md#T"]\n`,
+    { "runbook.md": "# QA users\n\n| Alias | Password |\n|---|---|\n| QA | hunter2 |\n" });
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  assert.throws(() => resolveKeys(cfg, cfg.roles.dev),
+    /nothing in that file looks like NAME=value[\s\S]*move the secret out of the document/);
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -483,5 +499,51 @@ test("and once a key directory is declared, the warning goes away", () => {
   writeFileSync(join(dir, "seisin.toml"), `[keys]\ndir = [".secrets"]\n\n[roles.dev]\nwrites = ["src/**"]\n`);
   const cfg = loadConfig(join(dir, "seisin.toml"));
   assert.ok(!inspect(cfg, null, "x").warnings.some((w) => w.kind === "no-key-floor"));
+  rmSync(dir, { recursive: true, force: true });
+});
+
+// ── JSON, because it is a format ───────────────────────────────────────────
+
+test("a fragment reads one value out of a JSON file", () => {
+  // The shape a cloud CLI writes: a service-account key, a credentials.json.
+  const dir = fileRepo(POLICY + `keys = ["K=file://.secrets/sa.json#private_key"]\n`,
+    { "sa.json": JSON.stringify({ type: "service_account", private_key: "abc-123-key" }) });
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  assert.equal(resolveKeys(cfg, cfg.roles.dev)[0].value, "abc-123-key");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("a dotted fragment reaches a nested one, and a literal dot wins over it", () => {
+  const dir = fileRepo(POLICY + `keys = ["K=file://.secrets/c.json#a.b"]\n`,
+    { "c.json": JSON.stringify({ "a.b": "literal", a: { b: "nested" } }) });
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  assert.equal(resolveKeys(cfg, cfg.roles.dev)[0].value, "literal", "the real key beats the path");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("an object is not a credential and is refused, not stringified", () => {
+  // Returning it would put `[object Object]` in a variable and call it a token.
+  const dir = fileRepo(POLICY + `keys = ["K=file://.secrets/c.json#creds"]\n`,
+    { "c.json": JSON.stringify({ creds: { token: "x" } }) });
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  assert.throws(() => resolveKeys(cfg, cfg.roles.dev), /is an object, not a value/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("the format is sniffed from the content, because the name lied", () => {
+  // The file that motivated all of this was JSON-shaped data in a `.txt`, and
+  // the one before it was `.env`. The extension is a hint; the content is the
+  // fact.
+  const dir = fileRepo(POLICY + `keys = ["K=file://.secrets/creds.txt#tok"]\n`,
+    { "creds.txt": '{"tok": "from-json-in-a-txt"}' });
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  assert.equal(resolveKeys(cfg, cfg.roles.dev)[0].value, "from-json-in-a-txt");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("a JSON array at the top level is not an object, so it reads as env and says so", () => {
+  const dir = fileRepo(POLICY + `keys = ["K=file://.secrets/a.json#x"]\n`, { "a.json": '["a","b"]' });
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  assert.throws(() => resolveKeys(cfg, cfg.roles.dev), /nothing in that file looks like NAME=value/);
   rmSync(dir, { recursive: true, force: true });
 });

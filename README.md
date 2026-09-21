@@ -691,8 +691,19 @@ keys = [
 
 No provider to declare. The path resolves against the policy file's directory — not the
 current one, because a key that resolves differently depending on where you were standing
-works in your shell and fails in the agent's. `export` and surrounding quotes come off. A
-fragment naming a key the file does not have is an error, never an empty value.
+works in your shell and fails in the agent's.
+
+A fragment reads one value out of **an env file or a JSON object**, whichever the file turns
+out to be — sniffed from the content, because the name lies often enough to matter. In an env
+file, `export` and surrounding quotes come off; in JSON, `#a.b` reaches a nested key and a
+literal `a.b` beats that reading. An object or an array is not a credential and is refused
+rather than stringified. A fragment naming something the file does not have is an error,
+never an empty value.
+
+**Those two formats, and no more.** A secret sitting inside a document — a runbook, a table,
+a page of notes — is not reachable by a fragment and should not be: extracting from prose is
+guessing, and a tool that guesses at credentials hands over the wrong one instead of failing.
+The error says so, and says the fix is to move the secret out of the document.
 
 **This is the thing `keys = ["all.env"]` cannot do.** A file grant is a file grant: that form
 hands the role every variable in the file and lets it read them. `file://…#ONE` hands over one
@@ -921,8 +932,17 @@ proxy for the question, and seisin has the policy right there, so it asks the qu
 makes its wall disappear on the next turn instead of when a window expires. Same move as
 `owners` and the request queue: recompute rather than believe.
 
-Silent on the first refusal, by design. A counter that reads `1×` every time is noise on the
+Silent on the first denial, by design. A counter that reads `1×` every time is noise on the
 turn where the sentence is already doing its job.
+
+**Whether it makes an agent stop is not demonstrated, and will not be for a while.** The
+obvious way to check is to compare repeats before and after — but the repeats were 86% one
+lock file, and the release before this one deleted that wall outright with
+`GIT_OPTIONAL_LOCKS=0`. Repeats did fall, by a lot, and **the fall is the wall going away,
+not the sentence landing**: both shipped within days of each other and the bigger cause is the
+other one. Isolating this needs a forward test — walls per role, rounds with the hook wired
+and no git locks in the way — not the history. Measured in the field and written up rather
+than smoothed over, because the alternative is a claim the numbers do not carry.
 
 ## Scratch space, and what it costs
 
@@ -1072,12 +1092,12 @@ measured](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run
 
 ## Status
 
-`0.2.0`, 315 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
+`0.2.0`, 321 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 those eighteen skipped on Linux for a day, behind a runtime check that looked for the global
 install and missed the bundled one, and hid a defect that broke `seisin run` on that platform
-entirely. **315/315 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
+entirely. **321/321 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
 either, Node 18/20/22 in CI at every push — and 225/225 the same way on Debian 12.15
 with bubblewrap 0.8.0, the last time the suite was run in Docker.
 [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),

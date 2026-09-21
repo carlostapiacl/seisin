@@ -8,6 +8,28 @@ changed rather than failing on the old spelling.
 
 ## 0.2.0 — 2026-09-21
 
+- **`file://…#NAME` reads a JSON object as well as an env file**, sniffed from the content
+  because the name lies: the file that prompted this was JSON-shaped data in a `.txt`. `#a.b`
+  reaches a nested key, a literal `a.b` beats that reading, and an object or array is refused
+  rather than stringified into a variable that says `[object Object]` and is called a token.
+
+  **Those two, and no more.** A secret inside a document — a runbook, a table, a page of notes
+  — is not reachable by a fragment and should not be. Extracting from prose is guessing, and a
+  tool that guesses at credentials hands over the wrong one instead of failing. The error now
+  distinguishes *"this file has no `TOKEN=`"* from *"nothing in this file looks like
+  `NAME=value`"*, and the second says the fix is to move the secret out of the document.
+
+- **The "no delivery mode" error no longer sends you into a second error.** It offered
+  `[keys.providers.file] mode = "env"` as an alternative to `key_mode`, and that is refused —
+  a built-in scheme cannot be redefined. Found in the field, on the first wall somebody hit
+  trying the feature.
+
+- **The counter's effect is not claimed.** `denied N times` ships; whether it makes an agent
+  stop is not shown and will not be for a while, because 86% of the repeats it would reduce
+  were one lock file that the previous release deleted outright. Both landed days apart and
+  the larger cause ate the other's test case. Said in the README and in the field notes rather
+  than smoothed over.
+
 - **A policy with no credential floor, in a repo that has credentials, is now warned about.**
   `[keys] dir` is what produces `denyRead`; without it the emitted settings deny no reads at
   all, so every role reads every secret in the repository — and nothing said so. Verified

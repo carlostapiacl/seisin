@@ -142,6 +142,18 @@ export function parseKey(entry) {
  */
 export const BUILTIN = new Set(["file"]);
 
+/** The file as a JSON object, or null if it is not one. */
+function parseJsonObject(text) {
+  const t = text.trim();
+  if (!t.startsWith("{")) return null;
+  try {
+    const v = JSON.parse(t);
+    return v && typeof v === "object" && !Array.isArray(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 /** One trailing newline is the editor's, not the secret's. */
 const unterminate = (v) => v.replace(/\r?\n$/, "");
 
@@ -153,14 +165,71 @@ const unterminate = (v) => v.replace(/\r?\n$/, "");
  * alone. This is not a shell parser and should never become one — a config
  * language that grows an interpreter is how a permission tool gets a CVE.
  */
+/**
+ * One value out of a JSON object.
+ *
+ * JSON is here and Markdown is not, and the line between them is not effort:
+ * **JSON is a format, a runbook is a document.** A service-account key, a
+ * `credentials.json`, anything a cloud CLI writes — those have one shape, so
+ * reading them is a rule. A table of passwords inside a page of prose has no
+ * shape; extracting from it would be guessing, and a credential tool that
+ * guesses hands over the wrong secret rather than failing.
+ *
+ * The literal key first, then a dotted path, because a key that contains a dot
+ * is real and should win over a reading of it as a path.
+ *
+ * Only scalars. An object or an array is not a credential, and returning one
+ * stringified would put `[object Object]` in an environment variable and call
+ * it a token.
+ */
+function fromJson(obj, key, ref) {
+  let v = Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined;
+  if (v === undefined && key.includes(".")) {
+    v = key.split(".").reduce((o, k) => (o && typeof o === "object" ? o[k] : undefined), obj);
+  }
+  if (v === undefined) {
+    const top = Object.keys(obj).slice(0, 8).join(", ");
+    throw new Error(
+      `key "${ref}": that JSON has no ${key}.\n` +
+      `  Top-level names: ${top}${Object.keys(obj).length > 8 ? ", …" : ""}.\n` +
+      `  A nested one is reached with dots: "#credentials.token".`);
+  }
+  if (v === null || typeof v === "object")
+    throw new Error(
+      `key "${ref}": ${key} is ${v === null ? "null" : Array.isArray(v) ? "an array" : "an object"}, ` +
+      `not a value.\n  A credential is a string or a number. Point the fragment at one, or drop ` +
+      `the fragment to hand over the whole file.`);
+  return String(v);
+}
+
 function fromDotEnv(text, key, ref) {
+  let sawAny = false;
   for (const line of text.split(/\r?\n/)) {
     const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
-    if (!m || m[1] !== key) continue;
+    if (!m) continue;
+    sawAny = true;
+    if (m[1] !== key) continue;
     return m[2].trim().replace(/^(['"])(.*)\1$/, "$2");
   }
+  /**
+   * Two different failures, and telling them apart is the whole message.
+   *
+   * "this file has no `TOKEN=`" is a typo in the reference. "this file has no
+   * `NAME=` lines at all" is a person pointing a fragment at something that is
+   * not an env file — and in the field that was a 146-line Markdown runbook
+   * with the credentials in a table, which no extractor is going to read.
+   * Saying "has no TOKEN=" about that sends somebody hunting for a typo in a
+   * file where the answer is that the secrets are in prose.
+   */
+  if (!sawAny)
+    throw new Error(
+      `key "${ref}": nothing in that file looks like NAME=value, so there is no ${key} to take.\n` +
+      `  A fragment reads one line out of an env file. If the secret lives inside a document ` +
+      `— a runbook, a table, a note — seisin cannot reach it, and the fix is to move the ` +
+      `secret out of the document rather than to teach a parser about it.\n` +
+      `  Without the "#${key}", file:// hands over the whole file as the value.`);
   throw new Error(
-    `key "${ref}": the file has no ${key}=.\n` +
+    `key "${ref}": the file has NAME=value lines, but no ${key}=.\n` +
     `  A name that is not there is not an empty value — nothing is substituted for a key ` +
     `that did not resolve.`);
 }
@@ -185,7 +254,16 @@ export function readFileRef(entry, root = ".") {
       `key "${entry.raw}": cannot read ${full} (${e.code ?? e.message}).\n` +
       `  The path is resolved against the policy file's directory, not the current one.`);
   }
-  const value = key === null ? unterminate(text) : fromDotEnv(text, key, entry.raw);
+  let value;
+  if (key === null) {
+    value = unterminate(text);
+  } else {
+    // Sniffed, not taken from the extension. The file that motivated this was
+    // named `.txt` and the one before it `.env`; the name is a hint and the
+    // content is the fact.
+    const asJson = parseJsonObject(text);
+    value = asJson ? fromJson(asJson, key, entry.raw) : fromDotEnv(text, key, entry.raw);
+  }
   if (value === "")
     throw new Error(`key "${entry.raw}": ${full} is empty. An empty credential is not a credential.`);
   return value;
@@ -301,13 +379,21 @@ export const MODES = ["env", "scratch", "inject"];
 export function modeOf(config, role, entry) {
   const provider = config.keyProviders?.[entry.scheme];
   const mode = role.keyMode ?? provider?.mode ?? null;
-  if (mode === null)
+  if (mode === null) {
+    // A built-in scheme has no `[keys.providers.…]` table to put a default in —
+    // declaring one is refused, because a scheme cannot mean two things. So
+    // offering it here sent the first person who tried the feature from this
+    // error straight into another one. Found in the field, on the first wall.
+    const second = BUILTIN.has(entry.scheme)
+      ? ""
+      : ` Or set one for every key of that provider: ` +
+        `[keys.providers.${entry.scheme}] mode = "env".`;
     throw new Error(
       `roles.${role.name}: key "${entry.raw}" has no delivery mode.\n` +
-      `  Declare one beside the permission — [roles.${role.name}] key_mode = "env" — or ` +
-      `for every key of that provider: [keys.providers.${entry.scheme}] mode = "env".\n` +
+      `  Declare one beside the permission: [roles.${role.name}] key_mode = "env".${second}\n` +
       `  "env" passes the value as ${entry.name}; "scratch" writes it to a file inside the ` +
       `role's scratch space, grants that one path, and removes it when the turn ends.`);
+  }
   if (mode === "inject")
     throw new Error(
       `roles.${role.name}: key_mode = "inject" is not implemented.\n` +
