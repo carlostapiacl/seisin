@@ -16,9 +16,16 @@
 #     no agent and no hook involved — which is why the recording can show the
 #     block and the request together, as a real user now sees them.
 
-# vhs 0.12 on this machine captures frames but fails to encode, silently, with
-# exit 0. So it emits frames and ffmpeg does the last step — see the command at
-# the bottom of this file.
+# vhs 0.12 captures frames but fails to encode, silently, with exit 0. So it
+# emits frames and ffmpeg does the last step — see the command at the bottom.
+#
+# Two more things, found regenerating this on 2026-09-21:
+#
+#   - vhs wants to CREATE the frames directory. Pre-creating it, or reusing a
+#     path it has failed on before, gets you a clean run and zero frames.
+#     Delete the whole output directory before recording.
+#   - vhs does not use the ffmpeg on your PATH, so a shim that patches flags
+#     for a newer ffmpeg does nothing. The encode below is yours to run.
 # vhs needs an absolute path here — a relative one silently writes nowhere.
 Output "/tmp/seisin-demo/frames/"
 
