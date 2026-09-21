@@ -840,6 +840,15 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     else
       lede += "<span class=\"q\">No one kind of thing dominates, which is what a real boundary " +
               "question looks like rather than a tooling one.</span>";
+    /* The half a grep cannot do, because it needs the policy: how many of these
+       are on paths nobody claims. Those are the ones no grant resolves until a
+       person decides who owns them — a decision, not a count. Added after a
+       field review pointed out that the percentage above was the console
+       reading the log back to somebody who had already read it. */
+    if (f.unowned)
+      lede += " <b>" + f.unowned + "</b> of the " + (f.distinct || f.causes.length).toLocaleString() +
+              " are on paths <b>no role owns</b> \u2014 a grant cannot settle those until " +
+              "somebody claims them.";
     document.getElementById("ca-lede").innerHTML = lede;
     var win = document.getElementById("dn-window");
     if (win) win.textContent = f.total.toLocaleString() + " denials \u00b7 " +

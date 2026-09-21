@@ -8,6 +8,19 @@ changed rather than failing on the old spelling.
 
 ## 0.2.0 — 2026-09-21
 
+- **The console's headline says something the log does not contain.** It led with *"74% of
+  the denials is one name"*, and a field review applied this project's own test to it: did
+  the number tell you anything you did not know? For somebody who reads the raw log, no —
+  they had already counted it, and the console was reading the log back to them. It now also
+  says how many causes are on paths **no role owns**, which needs the policy and which no
+  grant settles until a person decides who owns them. On the deployment that prompted it:
+  28 of 159.
+
+- **The missing-key-floor warning reads content, not just names.** It looked for `.env`,
+  `*.pem` and friends, so a credential in `notas.txt` produced nothing. Root-level small
+  files are now checked against the same shapes `seisin scan` uses — root only, first hit
+  only, because the full walk is `scan`'s job and this runs on every `check`.
+
 - **`file://…#NAME` reads a JSON object as well as an env file**, sniffed from the content
   because the name lies: the file that prompted this was JSON-shaped data in a `.txt`. `#a.b`
   reaches a nested key, a literal `a.b` beats that reading, and an object or array is refused

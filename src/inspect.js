@@ -9,9 +9,10 @@
  * where they can be exercised directly.
  */
 import { resolve, dirname, basename, relative, join, delimiter } from "node:path";
-import { realpathSync, lstatSync, readdirSync, existsSync } from "node:fs";
+import { realpathSync, lstatSync, readdirSync, existsSync, readFileSync, statSync } from "node:fs";
 import { ownersOf } from "./owners.js";
 import { entriesOf } from "./keys.js";
+import { SHAPES } from "./scan.js";
 import { wired } from "./commands/wire.js";
 import { RUNTIME_WRITES, CREDENTIAL_HOMES, expand, settingsFor } from "./srt.js";
 
@@ -183,15 +184,39 @@ function homeReachWarning(config) {
 const CREDENTIAL_NAMES = /^(\.env(\..+)?|\.secrets|secrets|\.netrc|.*\.(pem|key|p12|pfx))$/i;
 
 function credentialish(root) {
+  let entries;
   try {
-    return readdirSync(root, { withFileTypes: true })
-      .filter((e) => CREDENTIAL_NAMES.test(e.name))
-      .map((e) => e.name)
-      .sort()
-      .slice(0, 4);
+    entries = readdirSync(root, { withFileTypes: true });
   } catch {
     return [];
   }
+  const found = new Set(entries.filter((e) => CREDENTIAL_NAMES.test(e.name)).map((e) => e.name));
+
+  /**
+   * And the ones whose name gives nothing away.
+   *
+   * The name test misses `credentials.txt`, `tokens.conf`, `config.local` —
+   * which a field review found by writing a test file this did not catch, and
+   * then blaming the test. The test was fine; the detector was name-only.
+   *
+   * So the root's small text files are also read, with the same shapes
+   * `seisin scan` uses. Root only, small only, and it stops at the first hit
+   * per file: this runs on every `check` and the full walk is `scan`'s job.
+   */
+  const CERTAIN = SHAPES.filter(([c]) => c === "certain").map(([, , re]) => re);
+  for (const e of entries) {
+    if (found.size >= 4) break;
+    if (!e.isFile() || found.has(e.name)) continue;
+    try {
+      const p = join(root, e.name);
+      if (statSync(p).size > 64 * 1024) continue;
+      const text = readFileSync(p, "utf8");
+      if (CERTAIN.some((re) => re.test(text))) found.add(e.name);
+    } catch {
+      /* unreadable, or not text: not our business here */
+    }
+  }
+  return [...found].sort().slice(0, 4);
 }
 
 /** Is this a command the shell would find? Walks PATH; asks no shell. */

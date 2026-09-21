@@ -547,3 +547,25 @@ test("a JSON array at the top level is not an object, so it reads as env and say
   assert.throws(() => resolveKeys(cfg, cfg.roles.dev), /nothing in that file looks like NAME=value/);
   rmSync(dir, { recursive: true, force: true });
 });
+
+test("a credential in a file whose name gives nothing away is still caught", () => {
+  // The name test misses `credentials.txt`, `tokens.conf`, `config.local`.
+  // Found in the field by writing a test file this did not catch — the test
+  // was fine, the detector was name-only.
+  const dir = mkdtempSync(join(tmpdir(), "seisin-floor-"));
+  writeFileSync(join(dir, "notas.txt"), "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
+  writeFileSync(join(dir, "seisin.toml"), `[roles.dev]\nwrites = ["src/**"]\n`);
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  const w = inspect(cfg, null, "x").warnings.find((x) => x.kind === "no-key-floor");
+  assert.ok(w && w.headline.includes("notas.txt"));
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("and ordinary prose in the root is still not a credential", () => {
+  const dir = mkdtempSync(join(tmpdir(), "seisin-floor-"));
+  writeFileSync(join(dir, "NOTES.md"), "# how we deploy\n\nRun the thing, then the other thing.\n");
+  writeFileSync(join(dir, "seisin.toml"), `[roles.dev]\nwrites = ["src/**"]\n`);
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  assert.ok(!inspect(cfg, null, "x").warnings.some((x) => x.kind === "no-key-floor"));
+  rmSync(dir, { recursive: true, force: true });
+});

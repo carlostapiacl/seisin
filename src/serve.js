@@ -98,8 +98,26 @@ export function causesOf(cfg, entries) {
       where: f.where.sort((a, b) => b.times - a.times).slice(0, 20),
     }));
 
+  /**
+   * What a `grep` over the log cannot tell you.
+   *
+   * The headline used to be "74% of it is one name", and a field review
+   * applied this project's own test to it: *did the number tell you something
+   * you did not know?* For somebody who reads the raw log, no — they had
+   * already counted that. The console was repeating the log back.
+   *
+   * These two are different, because they need the **policy** and the log does
+   * not contain it. `unowned` is the count of causes on paths no role claims:
+   * no grant resolves those until somebody decides who owns them, which is a
+   * decision rather than a number. `settled` is friction that has since been
+   * granted — real yesterday, noise today.
+   */
+  const live = [...by.values()];
+  const unowned = live.filter((g) => !(g.owners ?? []).length).length;
+
   return {
     total,
+    unowned,
     // The real number of distinct causes, not the length of the list below.
     // The page says "over N distinct paths" and the list is capped at twelve,
     // so taking N from the list reported the cap as if it were the count —
