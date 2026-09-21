@@ -12,3 +12,8 @@ test/req-*/
 
 # npm pack output — a build artifact, not source
 *.tgz
+
+# The site reuses docs/img rather than keeping a second copy of the GIFs —
+# two copies of a binary drift the moment one is regenerated. The workflow
+# copies them in at build time; `site/README.md` says how to preview locally.
+site/img/

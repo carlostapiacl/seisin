@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>seisin</title>
+<meta name="description" content="Give each AI agent its own folders and its own keys. The kernel enforces it, and when it blocks something it tells you whose file it was.">
+<link rel="icon" href="favicon.svg">
+<meta property="og:title" content="seisin">
+<meta property="og:description" content="The kernel says no. seisin says whose.">
+<meta property="og:type" content="website">
+<style>
+:root{
+  --bg:#fbfaf8; --panel:#fff; --ink:#18181b; --dim:#6b6b76; --line:#e5e3df;
+  --accent:#1f6feb; --deny:#c2410c; --deny-bg:#fff2ec; --own:#15803d; --own-bg:#eefaf1;
+  --code-bg:#faf9f7; --term-bg:#1c1b1a; --term-ink:#e8e6e3; --radius:14px;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#111113; --panel:#18181b; --ink:#ececee; --dim:#9a9aa4; --line:#2a2a2f;
+    --accent:#6aa4ff; --deny:#ff9a6a; --deny-bg:#2b1a12; --own:#7ddc9d; --own-bg:#132318;
+    --code-bg:#151517; --term-bg:#0d0d0e; --term-ink:#e8e6e3;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#111113; --panel:#18181b; --ink:#ececee; --dim:#9a9aa4; --line:#2a2a2f;
+  --accent:#6aa4ff; --deny:#ff9a6a; --deny-bg:#2b1a12; --own:#7ddc9d; --own-bg:#132318;
+  --code-bg:#151517; --term-bg:#0d0d0e; --term-ink:#e8e6e3;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:var(--sans); font-size:17px; line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:860px; margin:0 auto; padding:0 16px}
+a{color:var(--accent)}
+h1,h2,h3{line-height:1.2; letter-spacing:-.02em; margin:0}
+h2{font-size:1.6rem; margin:0 0 .4rem}
+h3{font-size:1.05rem; margin:0 0 .3rem}
+p{margin:.7rem 0}
+code{font-family:var(--mono); font-size:.88em}
+.dim{color:var(--dim)}
+.small{font-size:.9rem}
+
+/* hero */
+header{padding:64px 0 34px; border-bottom:1px solid var(--line)}
+.name{font-family:var(--mono); font-size:2.6rem; font-weight:600; letter-spacing:-.04em}
+.defn{color:var(--dim); font-size:1rem; margin:.3rem 0 1.4rem; max-width:52ch}
+.defn em{color:var(--ink)}
+.lede{font-size:1.28rem; line-height:1.45; max-width:30ch; font-weight:500; margin:0 0 .2rem}
+.sub{max-width:62ch; color:var(--dim); margin:.8rem 0 1.5rem}
+.badges{display:flex; flex-wrap:wrap; gap:6px; margin:0 0 20px}
+.badges img{height:20px}
+.cta{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
+.btn{
+  display:inline-block; padding:9px 16px; border-radius:9px; text-decoration:none;
+  font-size:.93rem; font-weight:500; border:1px solid var(--line); color:var(--ink);
+  background:var(--panel);
+}
+.btn.primary{background:var(--ink); color:var(--bg); border-color:var(--ink)}
+.btn:hover{border-color:var(--accent)}
+
+/* terminal */
+.term{
+  background:var(--term-bg); color:var(--term-ink); border-radius:var(--radius);
+  padding:16px 18px; font-family:var(--mono); font-size:.82rem; line-height:1.7;
+  overflow-x:auto; margin:14px 0; border:1px solid transparent;
+  /* The lines are the content: collapsing them turns a transcript into a paragraph. */
+  white-space:pre;
+}
+@media (max-width:720px){ .term{font-size:.72rem; padding:13px 14px} }
+.term .p{color:#8a8a92}
+.term .cmd{color:#fff}
+.term .no{color:#ff9a6a}
+.term .yes{color:#7ddc9d}
+.term .note{color:#8a8a92}
+
+section{padding:52px 0; border-bottom:1px solid var(--line)}
+.kicker{
+  font-family:var(--mono); font-size:.72rem; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--dim); margin:0 0 12px;
+}
+figure{margin:22px 0 0}
+figure img{
+  width:100%; height:auto; display:block; border-radius:var(--radius);
+  border:1px solid var(--line); background:var(--term-bg);
+}
+figcaption{color:var(--dim); font-size:.86rem; margin-top:9px}
+
+/* steps */
+ol.steps{list-style:none; counter-reset:s; padding:0; margin:22px 0 0}
+ol.steps li{
+  counter-increment:s; position:relative; padding:0 0 0 46px; margin:0 0 20px;
+}
+ol.steps li::before{
+  content:counter(s); position:absolute; left:0; top:1px;
+  width:28px; height:28px; border-radius:50%; background:var(--panel);
+  border:1px solid var(--line); color:var(--dim);
+  font-family:var(--mono); font-size:.8rem; display:grid; place-items:center;
+}
+ol.steps code{
+  display:inline-block; background:var(--code-bg); border:1px solid var(--line);
+  padding:3px 9px; border-radius:7px; margin-bottom:3px;
+}
+ol.steps .why{color:var(--dim); font-size:.93rem; display:block}
+
+/* cards */
+.cards{display:grid; gap:14px; grid-template-columns:repeat(3,1fr); margin-top:22px}
+.card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:18px}
+.card .who{font-family:var(--mono); font-size:.72rem; color:var(--dim); letter-spacing:.08em; text-transform:uppercase}
+.card p{margin:.4rem 0 0; font-size:.93rem; color:var(--dim)}
+.card code{color:var(--ink)}
+
+/* two-up */
+.two{display:grid; gap:18px; grid-template-columns:1fr 1fr; margin-top:22px; align-items:start}
+pre{
+  background:var(--code-bg); border:1px solid var(--line); border-radius:var(--radius);
+  padding:16px; overflow-x:auto; margin:0; font-size:.82rem; line-height:1.65;
+}
+pre code{font-family:var(--mono)}
+.k{color:var(--accent)} .s{color:var(--own)} .c{color:var(--dim)}
+
+dl.reads{margin:0}
+dl.reads dt{font-family:var(--mono); font-size:.82rem; color:var(--ink); margin-top:13px}
+dl.reads dt:first-child{margin-top:0}
+dl.reads dd{margin:.15rem 0 0; color:var(--dim); font-size:.92rem}
+
+/* callout */
+.note-box{
+  background:var(--deny-bg); border:1px solid var(--line); border-left:3px solid var(--deny);
+  border-radius:10px; padding:14px 16px; margin:22px 0 0; font-size:.94rem;
+}
+.note-box strong{color:var(--deny)}
+.ok-box{
+  background:var(--own-bg); border:1px solid var(--line); border-left:3px solid var(--own);
+  border-radius:10px; padding:14px 16px; margin:22px 0 0; font-size:.94rem;
+}
+
+ul.plain{padding-left:1.1rem; color:var(--dim)}
+ul.plain li{margin:.35rem 0}
+ul.plain b{color:var(--ink); font-weight:600}
+
+footer{padding:40px 0 64px; color:var(--dim); font-size:.9rem}
+footer a{margin-right:16px; display:inline-block}
+.links{margin-bottom:18px}
+
+/* On a phone the diagram would scale down to illegible, so it scrolls instead. */
+.flow-wrap{overflow-x:auto; margin:22px 0 0; -webkit-overflow-scrolling:touch}
+svg.flow{width:100%; height:auto; display:block}
+svg.flow text{font-family:var(--sans); font-size:12px; fill:var(--ink)}
+svg.flow text.sm{font-size:10.5px; fill:var(--dim)}
+svg.flow rect{fill:var(--panel); stroke:var(--line)}
+svg.flow path,svg.flow line{stroke:var(--line); fill:none}
+
+@media (max-width:720px){
+  body{font-size:16px}
+  .cards,.two{grid-template-columns:1fr}
+  svg.flow{min-width:640px}
+  .name{font-size:2.1rem}
+  .lede{font-size:1.15rem; max-width:none}
+  header{padding:44px 0 28px}
+  section{padding:40px 0}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="name">seisin</div>
+    <p class="defn"><em>seisin</em> <span class="dim">(n.)</span> — the legal possession of a piece of land. Not who owns it on paper: who holds it now.</p>
+
+    <p class="lede">Give each AI agent its own folders and its own keys.</p>
+    <p class="sub">The kernel enforces it. When it blocks something, seisin tells you <b>whose</b> file it was — which turns a dead end into a handoff.</p>
+
+    <div class="badges">
+      <a href="https://www.npmjs.com/package/seisin"><img src="https://img.shields.io/npm/v/seisin?color=222" alt="npm version"></a>
+      <a href="https://github.com/carlostapiaolguin3-stack/seisin/actions/workflows/test.yml"><img src="https://github.com/carlostapiaolguin3-stack/seisin/actions/workflows/test.yml/badge.svg" alt="tests"></a>
+      <img src="https://img.shields.io/badge/license-MIT-222" alt="MIT">
+      <img src="https://img.shields.io/badge/node-%E2%89%A518-222" alt="node 18+">
+      <img src="https://img.shields.io/badge/dependencies-1-222" alt="one dependency">
+    </div>
+
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/carlostapiaolguin3-stack/seisin">GitHub</a>
+      <a class="btn" href="https://www.npmjs.com/package/seisin">npm</a>
+      <a class="btn" href="https://github.com/carlostapiaolguin3-stack/seisin#readme">Read the README</a>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <p class="kicker">What you see</p>
+    <h2>The kernel says no. seisin says whose.</h2>
+    <p class="dim">Every other permission layer in this space answers <i>yes</i> or <i>no</i>. Answering <b>“no, and it belongs to <code>backend</code>”</b> is the part an operating system cannot know.</p>
+
+    <figure>
+      <img src="img/demo.gif" alt="A terminal: an agent running as the frontend role tries to write a file under src/api, the kernel refuses it, and seisin prints that the path belongs to backend and queues a request.">
+      <figcaption>An agent running as <code>frontend</code> reaches into <code>src/api/</code>. The kernel refuses; seisin names the owner and leaves a request behind.</figcaption>
+    </figure>
+
+    <div class="term"><span class="p">$</span> <span class="cmd">seisin run frontend -- sh -c 'echo // fix &gt;&gt; src/api/orders.ts'</span>
+  <span class="no">sh: src/api/orders.ts: Operation not permitted</span>
+  seisin: 1 kernel denial(s) recorded
+
+  1 pending request(s)
+
+    <span class="yes">#1  frontend wants write on src/api/** (owned by backend)</span>
+        first asked over src/api/orders.ts
+
+    <span class="note">seisin grant &lt;n&gt; [--reason "…"]   ·   seisin decline &lt;n&gt; [--reason "…"]</span></div>
+
+    <p class="small dim">The agent can ask before it reaches, too — <code>seisin whose src/api/orders.ts</code> answers from inside the box.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="kicker">The loop</p>
+    <h2>Denied → whose → a person decides</h2>
+    <p class="dim">Nothing is approved by an agent, and nothing is approved through the MCP server. Granting happens in a terminal or in the console, by a person.</p>
+
+    <div class="flow-wrap">
+    <svg class="flow" viewBox="0 0 840 250" role="img" aria-label="Flow diagram: an agent running as a role writes a path; the kernel denies it; seisin reads the refusal and looks up the policy, producing both the owner's name and a queued request; a person grants or declines, editing seisin.toml, which produces the settings the kernel enforces.">
+      <defs>
+        <marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+          <path d="M0 0 L8 4 L0 8 z" fill="currentColor" stroke="none" style="color:var(--dim)"/>
+        </marker>
+      </defs>
+
+      <rect x="4" y="88" width="132" height="54" rx="9"/>
+      <text x="70" y="110" text-anchor="middle">agent</text>
+      <text x="70" y="126" text-anchor="middle" class="sm">running as a role</text>
+
+      <path d="M138 115 H196" marker-end="url(#a)"/>
+      <text x="167" y="106" text-anchor="middle" class="sm">writes</text>
+
+      <rect x="198" y="88" width="120" height="54" rx="9" style="stroke:var(--deny)"/>
+      <text x="258" y="110" text-anchor="middle">the kernel</text>
+      <text x="258" y="126" text-anchor="middle" class="sm">Seatbelt · bubblewrap</text>
+
+      <path d="M320 115 H378" marker-end="url(#a)"/>
+      <text x="349" y="106" text-anchor="middle" class="sm" style="fill:var(--deny)">denied</text>
+
+      <rect x="380" y="88" width="132" height="54" rx="9"/>
+      <text x="446" y="110" text-anchor="middle">seisin</text>
+      <text x="446" y="126" text-anchor="middle" class="sm">reads the refusal</text>
+
+      <path d="M514 104 L570 62" marker-end="url(#a)"/>
+      <path d="M514 126 L570 168" marker-end="url(#a)"/>
+
+      <rect x="572" y="36" width="150" height="50" rx="9" style="stroke:var(--own)"/>
+      <text x="647" y="57" text-anchor="middle">whose it was</text>
+      <text x="647" y="73" text-anchor="middle" class="sm">belongs to backend</text>
+
+      <rect x="572" y="144" width="150" height="50" rx="9"/>
+      <text x="647" y="165" text-anchor="middle">a request</text>
+      <text x="647" y="181" text-anchor="middle" class="sm">queued, waiting</text>
+
+      <path d="M647 196 V222 H302" marker-end="url(#a)"/>
+      <rect x="150" y="198" width="148" height="46" rx="9" style="stroke:var(--accent)"/>
+      <text x="224" y="218" text-anchor="middle">a person</text>
+      <text x="224" y="233" text-anchor="middle" class="sm">grants or declines</text>
+
+      <path d="M224 198 V172 H258 V146" marker-end="url(#a)"/>
+      <text x="272" y="176" text-anchor="start" class="sm">edits seisin.toml → settings</text>
+    </svg>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="kicker">How you use it</p>
+    <h2>Sixty seconds</h2>
+
+    <ol class="steps">
+      <li><code>npm install -g seisin</code><span class="why">On Linux, three system packages first — the README lists them.</span></li>
+      <li><code>seisin init</code><span class="why">Proposes a policy from what your repo already says: <code>.claude/agents/</code>, then <code>CODEOWNERS</code>, then a blank start. It <b>proposes</b> — a generated policy you did not read is not a policy.</span></li>
+      <li><code>seisin check</code><span class="why">The map, and every way it does not hold. Read it before you trust it.</span></li>
+      <li><code>seisin wire</code><span class="why">Lets the agent record what it does, so a refusal can be explained afterwards.</span></li>
+      <li><code>seisin run frontend -- claude -p "…"</code><span class="why">Runs the agent inside its own territory. Anything not listed is denied — there is no permissive default.</span></li>
+    </ol>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="kicker">The policy</p>
+    <h2>One file, at the root of your repo</h2>
+
+    <div class="two">
+<pre><code><span class="c">[keys]</span>
+dir = <span class="s">".secrets"</span>
+
+<span class="c">[network]</span>
+allow = [<span class="s">"github.com"</span>, <span class="s">"*.github.com"</span>]
+
+<span class="c">[roles.frontend]</span>
+writes = [<span class="s">"src/web/**"</span>, <span class="s">"public/**"</span>]
+keys   = [<span class="s">"netlify-token.txt"</span>]
+
+<span class="c">[roles.backend]</span>
+writes  = [<span class="s">"src/api/**"</span>, <span class="s">"migrations/**"</span>]
+keys    = [<span class="s">"database-url.txt"</span>]
+network = [<span class="s">"api.stripe.com"</span>]</code></pre>
+
+      <dl class="reads">
+        <dt>writes</dt>
+        <dd>The role’s <b>territory</b>. A path is in exactly one role’s territory, or in several — and overlap is allowed and reported.</dd>
+        <dt>keys</dt>
+        <dd>What the role may <b>hold</b>. Either a file under the declared key directory, or a <code>scheme://</code> reference a provider resolves outside the sandbox — the role gets the value, never the file.</dd>
+        <dt>network</dt>
+        <dd>Per-role, and it <b>replaces</b> the global list rather than adding to it: a domain in <code>[network]</code> is reachable by every role, including the ones whose job is to reach nothing.</dd>
+      </dl>
+    </div>
+
+    <div class="note-box">
+      <strong>HTTP(S) works; SSH does not.</strong> The allow list is enforced by proxies the runtime starts. One of them is a SOCKS5 proxy that could carry SSH, but the chain breaks at its last link: it requires authentication and the <code>ProxyCommand</code> the runtime wires up cannot send any. Use an HTTPS remote for git, and run SSH deploys outside the confined turn.
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="kicker">Three ways in</p>
+    <h2>They all say the same thing</h2>
+    <p class="dim">A change to what any of them says lands in all three. That is a rule of the repo, and a test holds one half of it.</p>
+
+    <div class="cards">
+      <div class="card">
+        <div class="who">CLI</div>
+        <h3>What a person types</h3>
+        <p>And what every agent runs under. <code>run</code>, <code>check</code>, <code>whose</code>, <code>walls</code>, <code>grant</code>, <code>decline</code>.</p>
+      </div>
+      <div class="card">
+        <div class="who">Console</div>
+        <h3>For deciding</h3>
+        <p><code>seisin ui</code> — opens on what is waiting on a person, not on a dashboard.</p>
+      </div>
+      <div class="card">
+        <div class="who">MCP server</div>
+        <h3>For asking</h3>
+        <p>An agent asking about its own situation. <b>Read-only by design</b> — granting is never a tool call.</p>
+      </div>
+    </div>
+
+    <figure>
+      <img src="img/console.gif" alt="The seisin console: a row of counters across the top, a queue of requests waiting on a person, the day's denials grouped by cause, the walls a role keeps hitting, and the policy behind them.">
+      <figcaption>The console opens on what needs a decision. Then: the day’s denials grouped by <b>cause</b>, the <b>walls</b> a role keeps hitting, and the policy behind them.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="kicker">The honest parts</p>
+    <h2>What it is not</h2>
+    <ul class="plain">
+      <li><b>Not a sandbox.</b> It sits on top of one. The isolation comes from the OS, via <code>@anthropic-ai/sandbox-runtime</code>; what seisin adds is which role a path belongs to, and therefore who to ask next.</li>
+      <li><b>Not an orchestrator.</b> It does not route work, schedule agents or decide who does what.</li>
+      <li><b>Not a defence against a hostile agent.</b> Tampering with the log is closed; a hostile agent can still add lines to its own history.</li>
+    </ul>
+
+    <div class="ok-box">
+      Two outside reviews went looking for ways past the boundary, and what running four cells of agents behind it actually cost — including the numbers that did not survive a re-check — is published too.
+      <a href="https://github.com/carlostapiaolguin3-stack/seisin/blob/main/docs/what-it-has-been-put-through.md">What it has been put through →</a>
+      <a href="https://github.com/carlostapiaolguin3-stack/seisin/blob/main/docs/field-notes.md">Field notes →</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="links">
+      <a href="https://github.com/carlostapiaolguin3-stack/seisin#readme">README</a>
+      <a href="https://github.com/carlostapiaolguin3-stack/seisin/blob/main/docs/first-day.md">Day one</a>
+      <a href="https://github.com/carlostapiaolguin3-stack/seisin/blob/main/docs/keys.md">Keys</a>
+      <a href="https://github.com/carlostapiaolguin3-stack/seisin/blob/main/docs/agents.md">Agents</a>
+      <a href="https://github.com/carlostapiaolguin3-stack/seisin/blob/main/docs/glossary.md">Glossary</a>
+      <a href="https://github.com/carlostapiaolguin3-stack/seisin/blob/main/docs/decisions.md">Decisions</a>
+      <a href="https://github.com/carlostapiaolguin3-stack/seisin/blob/main/CONTRIBUTING.md">Contributing</a>
+    </div>
+    <p>MIT. Built by <a href="https://github.com/carlostapiaolguin3-stack">carlostapiaolguin3-stack</a>. The kernel does the enforcing; this only explains it.</p>
+  </div>
+</footer>
+
+</body>
+</html>
