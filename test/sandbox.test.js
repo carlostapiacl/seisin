@@ -311,3 +311,23 @@ test("a provider that fails stops the run, and the command never happens", { ski
   assert.ok(!existsSync(join(dir, "src", "the-child-ran.txt")), "the child ran without its credential");
   rmSync(dir, { recursive: true, force: true });
 });
+
+test("a role cannot rewrite the script its own provider runs, even inside its territory", { skip }, () => {
+  // The escalation this closes: the parent executes the provider command,
+  // unsandboxed. A role that could rewrite that file would decide what runs
+  // outside the box — which is not a wider boundary, it is no boundary, and it
+  // arrives disguised as an ordinary file in somebody's territory.
+  const dir = refRepo(
+    `[network]\nallow = []\n\n[keys.providers.p]\ncommand = ["./bin/open.sh", "{ref}"]\nmode = "env"\n\n` +
+    `[roles.dev]\nwrites = ["bin/**"]\nkeys = ["T=p://${SECRET}"]\n`);
+  mkdirSync(join(dir, "bin"), { recursive: true });
+  writeFileSync(join(dir, "bin", "open.sh"), `#!/bin/sh\nprintf %s ${SECRET}\n`, { mode: 0o755 });
+
+  // The premise: bin/ really is this role's, or the refusal below proves nothing.
+  assert.equal(runIn(dir, "dev", "echo x > bin/sibling.txt").status, 0);
+  // The point: the one file in it that the parent executes is not.
+  assert.notEqual(runIn(dir, "dev", "echo tampered > bin/open.sh").status, 0);
+  assert.ok(readFileSync(join(dir, "bin", "open.sh"), "utf8").includes(SECRET),
+    "the provider script was rewritten from inside the sandbox");
+  rmSync(dir, { recursive: true, force: true });
+});

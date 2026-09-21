@@ -175,6 +175,17 @@ function readValue(value, lineNo) {
 
       const end = body.indexOf('"', i + 1);
       if (end === -1) bad("unterminated string inside the array");
+      // A backslash before the closing quote means somebody wrote `\"` and
+      // expected an escape. There are none — the quote just ended the string,
+      // and the error they get otherwise is about a missing comma somewhere in
+      // the middle of a shell pipeline, which names the symptom and hides the
+      // cause. Measured while writing the docs: every attempt at a one-line
+      // provider command landed here.
+      if (body[end - 1] === "\\")
+        bad(`there are no escapes in this format, so the \\" in ` +
+            `${JSON.stringify(body.slice(i, Math.min(end + 2, i + 40)))} ended the string early.\n` +
+            `  A value cannot contain a double quote. If this is a shell command, put it in a ` +
+            `script and name the script instead — which is also how it stops being unreadable.`);
       items.push(body.slice(i + 1, end));
       i = end + 1;
       expectItem = false;                 // a trailing comma is fine; a trailing item is not

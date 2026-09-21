@@ -352,3 +352,36 @@ test("check lists the provider commands, because they are the part that executes
   assert.deepEqual(report.providers, [{ name: "k", command: ["some-cli", "read", "{ref}"], mode: "env" }]);
   rmSync(dir, { recursive: true, force: true });
 });
+
+// ── the provider command is code, so it gets the policy file's treatment ────
+
+test("a provider script inside the repo is denied to every role, like seisin.toml is", () => {
+  const dir = repo(
+    `[keys]\ndir = [".secrets"]\n\n[keys.providers.p]\ncommand = ["./bin/open.sh", "{ref}"]\nmode = "env"\n\n` +
+    `[roles.dev]\nwrites = ["bin/**"]\nkeys = ["T=p://x"]\n`);
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  const denied = settingsFor(cfg, "dev").filesystem.denyWrite;
+  assert.ok(denied.some((p) => p.endsWith("/bin/open.sh")), "the executed script is writable");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("a provider found on PATH is not denied — that is a machine, not a repo", () => {
+  // Denying "wherever gpg happens to live" would be a rule about somebody's
+  // installation. The repo has nothing to say about it.
+  const dir = repo(
+    `[keys]\ndir = [".secrets"]\n\n[keys.providers.p]\ncommand = ["security", "{ref}"]\nmode = "env"\n\n` +
+    `[roles.dev]\nwrites = ["src/**"]\nkeys = ["T=p://x"]\n`);
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  assert.ok(!settingsFor(cfg, "dev").filesystem.denyWrite.some((p) => p.endsWith("security")));
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('an escaped quote names its own cause, not "missing comma"', () => {
+  // Every attempt at a one-line shell provider lands here, and the error used
+  // to point at a spot in the middle of the pipeline.
+  const dir = mkdtempSync(join(tmpdir(), "seisin-keys-"));
+  writeFileSync(join(dir, "seisin.toml"),
+    `[keys.providers.g]\ncommand = ["sh", "-c", "gpg --passphrase \\"$(x)\\" -d {ref}"]\n\n[roles.dev]\nkeys = []\n`);
+  assert.throws(() => loadConfig(join(dir, "seisin.toml")), /there are no escapes in this format/);
+  rmSync(dir, { recursive: true, force: true });
+});

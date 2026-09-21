@@ -683,6 +683,32 @@ provider commands**, because of the next paragraph.
 > saying out loud precisely because the rest of this tool invites the opposite assumption.
 > `seisin check` runs nothing and lists them; read it first on a config you did not write.
 
+**A provider that is a script in your repo is denied to every role**, the same way
+`seisin.toml` is. The parent executes it, so a role that could rewrite it would decide what
+runs outside the box — not a wider boundary, no boundary, arriving disguised as an ordinary
+file in somebody's territory. A provider found on `PATH` (`security`, `op`, `gpg`) is left
+alone: that is a machine, not a repo.
+
+**The config format has no escapes, so a command cannot contain a `"`.** Put a shell
+pipeline in a script and name the script — which is also how it stops being unreadable, and
+is why the examples below are scripts:
+
+```sh
+#!/bin/sh
+# the file is encrypted; its password lives in the keychain. Nothing in the clear on disk.
+gpg --batch --quiet --passphrase "$(security find-generic-password -w -s master)" -d "$1"
+```
+
+```sh
+#!/bin/sh
+# one key out of a key=value file: ref is "<file>#<KEY>"
+f=${1%%#*}; k=${1#*#}
+sed -n "s/^$k=//p" "$f" | head -1
+```
+
+Measured with both: the role receives the one value, does **not** receive the other keys in
+the same file, and cannot read the file.
+
 **A key's name may not collide with one the child already needs.** `keys =
 ["keychain://path"]` would arrive as `PATH`, and `SEISIN_ROLE` is how the hook inside the
 box learns which role it is — a policy that could set it could tell the hook it is somebody
@@ -875,12 +901,12 @@ This space already has good work, and seisin is not the first thing here:
 
 ## Status
 
-`0.1.1`, 281 tests, of which **23 need `@anthropic-ai/sandbox-runtime` installed**
+`0.1.1`, 285 tests, of which **24 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 those eighteen skipped on Linux for a day, behind a runtime check that looked for the global
 install and missed the bundled one, and hid a defect that broke `seisin run` on that platform
-entirely. **281/281 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
+entirely. **285/285 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
 either, Node 18/20/22 in CI at every push — and 225/225 the same way on Debian 12.15
 with bubblewrap 0.8.0, the last time the suite was run in Docker.
 [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run).

@@ -8,6 +8,20 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **A provider script inside the repo is denied to every role**, exactly as `seisin.toml` is.
+  The parent executes the provider command, unsandboxed — so a role that could rewrite
+  `bin/open-vault.sh` would decide what runs outside the box. Verified against the kernel: the
+  owning role writes its siblings and is refused that one file. A command found on `PATH`
+  (`security`, `op`, `gpg`) is left alone; that is a machine, not a repo.
+
+  Found by writing the documentation, which is the part worth saying: every worked example
+  ended up being a script, because the config format has no escapes and a one-line shell
+  pipeline cannot be spelled. The shape this protects is the shape the tool pushes you into.
+
+- **An escaped quote says so.** `command = ["sh", "-c", "… \"$(…)\" …"]` used to fail with
+  `missing comma` pointing into the middle of a pipeline. It now names the cause and the way
+  out — put it in a script.
+
 - **A key's delivered name cannot collide with one the child already needs.** Found reviewing
   the feature above as a stranger would install it: `keys = ["keychain://path"]` derived `PATH`,
   overwrote it with the secret, and the sandbox died with `env: node: No such file or directory`
