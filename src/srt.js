@@ -384,9 +384,45 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
         // Connecting is `network-outbound` and both of those are
         // `file-write-unlink`, so denying them leaves the first working.
         ...(spool ? [spool, dirname(spool)] : []),
+        /**
+         * Whatever the key providers execute.
+         *
+         * `seisin.toml` is denied because a role that can rewrite the policy
+         * has no policy. A provider command is the same thing one level out:
+         * the parent runs it, unsandboxed, as you — so a role that can rewrite
+         * `bin/open-vault.sh` decides what runs outside the box. That is not a
+         * wider boundary, it is no boundary, and it arrives disguised as an
+         * ordinary file in somebody's territory.
+         *
+         * Found by writing the documentation: every worked example ended up
+         * using a script, because the config language has no escapes and a
+         * one-line shell pipeline cannot be spelled. So the shape this protects
+         * is not a corner case — it is the shape the tool pushes you into.
+         *
+         * Only a command that resolves to a path. A bare name like `security`
+         * or `op` is found on PATH, which is not this policy's to reason about.
+         */
+        ...providerPaths(config),
       ],
     },
   };
+}
+
+/**
+ * The provider executables that live at a path, absolute.
+ *
+ * A command with no separator (`security`, `op`, `gpg`) is resolved by the OS
+ * from PATH and is deliberately left alone: denying "wherever gpg happens to
+ * be" would mean writing a rule about a machine rather than about a repo.
+ */
+export function providerPaths(config) {
+  const out = [];
+  for (const p of Object.values(config.keyProviders ?? {})) {
+    const cmd = p.command?.[0];
+    if (!cmd || !cmd.includes("/")) continue;
+    out.push(cmd.startsWith("/") ? cmd : join(config.root ?? ".", cmd));
+  }
+  return [...new Set(out)];
 }
 
 /**
