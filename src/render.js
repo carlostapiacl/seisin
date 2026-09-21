@@ -42,6 +42,13 @@ export function renderReport(report) {
     lines.push(`  ${" ".repeat(width)}  ${C.green}keys${C.off}   ${keys}\n\n`);
   }
 
+  if (report.providers?.length) {
+    lines.push(`  ${C.b}key providers${C.off} ${C.dim}— seisin runs these itself, outside the sandbox, as you${C.off}\n`);
+    for (const p of report.providers)
+      lines.push(`  ${C.green}${p.name}${C.off}  ${p.command.join(" ")}${p.mode ? `  ${C.dim}(${p.mode})${C.off}` : ""}\n`);
+    lines.push("\n");
+  }
+
   for (const w of report.warnings) {
     lines.push(`  ${C.yellow}${w.headline}${C.off}\n`);
     if (w.detail) lines.push(`  ${C.dim}${w.detail}${C.off}\n`);

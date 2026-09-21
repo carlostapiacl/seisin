@@ -41,6 +41,8 @@
  * second plaintext copy with worse access control than the first.
  */
 import { spawnSync } from "node:child_process";
+import { BASE, DEFAULTS } from "./env.js";
+import { SOCK_ENV } from "./spool.js";
 
 /**
  * `scheme://rest`, and nothing cleverer.
@@ -104,6 +106,63 @@ export function parseKey(entry) {
   }
   const [, scheme, ref] = m;
   return { kind: "ref", scheme, ref, name: named ? named[1] : defaultName(ref), raw: entry };
+}
+
+/**
+ * Variable names a key may not take, and why each group is here.
+ *
+ * A key delivered by `env` is written into the child's environment after it is
+ * built, so whatever it is called, it wins. That is fine until the name is one
+ * of these:
+ *
+ *   - **What seisin itself injects.** `SEISIN_ROLE` is how the hook inside the
+ *     box learns which role it is. A key called that would let a policy tell
+ *     the hook it is somebody else — privilege confusion written in the one
+ *     file that is supposed to prevent it. Same for the config path and the
+ *     audit socket.
+ *   - **What the child needs to be a child.** `keys = ["keychain://path"]`
+ *     derives `PATH`, and the measured result is the sandbox failing with
+ *     `env: node: No such file or directory` — a config mistake that reads
+ *     exactly like a broken installation. `HOME`, `TMPDIR` and the TLS
+ *     variables are the same shape, and `NODE_EXTRA_CA_CERTS` is worse than
+ *     cosmetic.
+ *
+ * Refused when the policy loads rather than when it runs, so `seisin check`
+ * catches it and nobody debugs it from inside a sandbox.
+ */
+export const RESERVED_ENV = new Set([
+  "SEISIN_ROLE", "SEISIN_CONFIG", SOCK_ENV,
+  ...BASE, ...Object.keys(DEFAULTS),
+]);
+
+/**
+ * Every delivered name a role's keys would claim — the variable, and for
+ * `scratch` the `_FILE` that carries the path.
+ *
+ * Checked as a set because two keys resolving to one name is the other half of
+ * the same failure: `keys = ["T=a://x", "T=b://y"]` used to deliver the second
+ * and drop the first, in silence, in a credential list. Measured before this
+ * existed; the run printed `T=b` and said nothing about `a://x`.
+ */
+export function checkNames(role) {
+  const taken = new Map();
+  for (const e of role.keyEntries ?? []) {
+    if (e.kind !== "ref") continue;
+    for (const name of [e.name, `${e.name}_FILE`]) {
+      if (RESERVED_ENV.has(name))
+        throw new Error(
+          `roles.${role.name}: key "${e.raw}" would arrive as ${name}, which seisin or the ` +
+          `child already needs.\n` +
+          `  Give it a name of its own: keys = ["MY_${name}=${e.scheme}://${e.ref}"].`);
+      const first = taken.get(name);
+      if (first !== undefined)
+        throw new Error(
+          `roles.${role.name}: "${first}" and "${e.raw}" both arrive as ${name}. ` +
+          `One would silently replace the other.\n` +
+          `  Name at least one of them: keys = ["SOMETHING_ELSE=${e.scheme}://${e.ref}"].`);
+      taken.set(name, e.raw);
+    }
+  }
 }
 
 /**

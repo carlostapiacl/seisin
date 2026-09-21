@@ -25,6 +25,18 @@ export { covers, ownersOf, keyHolders, explain } from "./owners.js";
 export { settingsFor, RUNTIME_WRITES, expand } from "./srt.js";
 export { buildEnv, BASE as BASE_ENV, DEFAULTS as DEFAULT_ENV } from "./env.js";
 
+/**
+ * Keys that are references, and how a resolved value reaches a role.
+ *
+ * `parseKey` and `MODES` are here because reading somebody's policy means
+ * knowing whether an entry is a path or a reference; `resolveRef` is not,
+ * because resolving is something seisin does and not something you ask it.
+ */
+export { parseKey, defaultName, entriesOf, MODES, RESERVED_ENV } from "./keys.js";
+
+/** What a role keeps being refused, recomputed against the policy as it stands. */
+export { walls, wasted, MIN_HITS } from "./walls.js";
+
 /** The report `check` prints, without the printing. */
 export { inspect, sharedPaths } from "./inspect.js";
 
