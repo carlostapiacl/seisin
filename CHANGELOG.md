@@ -8,6 +8,30 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **Every KPI is a link to its own page.** The console had five numbers on one screen and they
+  pointed at two; now *waiting on you*, *unsandboxed*, *denied*, *one cause* and *spent
+  retrying* each open the detail of exactly that number. A number you cannot click is
+  decoration.
+
+  **Denied, by name** is the new one worth having: `index.lock` — 1,081 denials, 74%, across
+  eight paths and six roles, with every path and its count. That is the cut that says whether a
+  day was a tooling problem or a territory one, and by path alone it reads backwards.
+  **Walls** lists it per role with what retrying cost.
+
+  The row itself sits outside the views, so the same five numbers are on every screen. Four of
+  the five it replaces were constants — 31 roles, 31 sandboxed, 0 unsandboxed, 31 with no keys
+  — and the only live one was last and the same size. Emphasis is now conditional: at zero a
+  card goes quiet and says so in words.
+
+- **A view that throws no longer takes the rest of the page with it.** Found while building the
+  above: one renderer kept a reference to a box that had moved to its own page, threw on its
+  first line, and every number on the screen rendered as `0` — including the ones that had
+  nothing to do with it. A console whose KPIs read zero because of a typo is worse than one
+  that is down, because zero is a plausible answer.
+
+- **The console serves `/?anything`.** It matched `req.url` exactly, so any query string got a
+  404 on the one page it has.
+
 - **One word per actor, and there is a glossary now.** The tool's product is the sentence you
   read when something is stopped, and it had four words for one event — `block`, `denial`,
   `refusal`, `deny` — with `deny` naming both what the boundary does and what a person does

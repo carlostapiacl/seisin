@@ -124,10 +124,21 @@ button:focus-visible,a:focus-visible,select:focus-visible{outline:2px solid var(
 .bar .num{text-align:right;font-variant-numeric:tabular-nums;font-size:12px;color:var(--fg)}
 .bar .num s{display:block;color:var(--mid);font-size:11px;text-decoration:none;margin-top:2px}
 .bar.cold .p,.bar.cold .num{color:var(--mid)}
-.stuck{margin-top:18px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--mid)}
-.stuck b{color:var(--fg);font-weight:600}
-.stuck ul{margin:8px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:5px}
-.stuck code{font-family:var(--mono);color:var(--fg)}
+.fam{padding:14px 0;border-top:1px solid var(--line)}
+.fam:first-child{border-top:0;padding-top:0}
+.fam-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.fam-h code{font-family:var(--mono);font-size:13px;color:var(--fg);font-weight:600}
+.fam-h .num{font-variant-numeric:tabular-nums;font-size:13px;color:var(--fg);white-space:nowrap}
+.fam-h .num s{color:var(--mid);text-decoration:none;font-size:11px;margin-left:4px}
+.fam .t{height:5px;border-radius:3px;background:var(--line);overflow:hidden;margin:8px 0 6px}
+.fam .f{display:block;height:100%;border-radius:3px;background:var(--blue)}
+.fam .who{font-size:11px;color:var(--mid)}
+.places{margin:8px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+.places li{display:flex;gap:12px;justify-content:space-between;align-items:baseline;
+  font-family:var(--mono);font-size:11px;color:var(--mid)}
+.places li span{overflow-wrap:anywhere}
+.places li em{font-family:inherit;font-style:normal;color:var(--dim)}
+.places li b{color:var(--fg);font-variant-numeric:tabular-nums;white-space:nowrap}
 
 .box{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .box>header{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;
@@ -285,6 +296,8 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     <div class="list">
       <div class="cap">Policy</div>
       <a class="on" href="#requests" id="nav-req" aria-current="page"><i>⚖</i>Waiting on you<span class="pin" id="req-pin"></span></a>
+      <a href="#denied"><i>⊘</i>Denied<span class="pin" id="dn-pin"></span></a>
+      <a href="#walls"><i>▦</i>Walls<span class="pin" id="wl-pin"></span></a>
       <a href="#policy"><i>⚷</i>Roles<span class="pin" id="pin"></span></a>
       <a href="#activity"><i>◷</i>Activity</a>
       <a href="#configfile"><i>⚙</i>Config file</a>
@@ -322,11 +335,11 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
         <h2>waiting on you</h2><div class="n" id="c-wait">0</div><div class="s" id="c-wait-s">nothing to decide</div></a>
       <a class="card kpi" href="#policy" id="k-open">
         <h2>unsandboxed</h2><div class="n" id="c-off">0</div><div class="s" id="c-off-s">none are open</div></a>
-      <a class="card kpi" href="#requests" id="k-ref">
+      <a class="card kpi" href="#denied" id="k-ref">
         <h2>denied</h2><div class="n" id="c-blocks">0</div><div class="s" id="c-blocks-s">in this window</div></a>
-      <a class="card kpi" href="#requests" id="k-conc">
+      <a class="card kpi" href="#causes" id="k-conc">
         <h2>one cause</h2><div class="n" id="c-conc">—</div><div class="s" id="c-conc-s">of all denials</div></a>
-      <a class="card kpi" href="#requests" id="k-retry">
+      <a class="card kpi" href="#walls" id="k-retry">
         <h2>spent retrying</h2><div class="n" id="c-retry">0</div><div class="s" id="c-retry-s">calls on known walls</div></a>
     </div>
 
@@ -365,28 +378,61 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     </div>
     </section>
 
+    <!-- One view per KPI. A number you can click is the top of a path; a number
+         you cannot is decoration, and the five up there all pointed at two
+         pages. Each of these is the detail of exactly one of them. -->
+
     <section data-view="requests" hidden>
       <div class="box" id="requests">
         <header>
-          <h2>Waiting on you</h2>
-          <span class="note">what an agent asked for and cannot have yet — approving happens here or in the terminal, never through MCP</span>
+          <h2>Pending decisions</h2>
+          <span class="note">granting edits seisin.toml · here or in the terminal, never through MCP</span>
         </header>
         <div id="reqs"></div>
       </div>
+    </section>
 
-      <!-- Grouped by WHAT was denied, never by who asked. Per role it is the same list a
-           hundred times: measured on one deployment, 1,080 of 1,422 denials were a single
-           lock file across six repositories. Per role that is six hundred identical rows;
-           grouped, it is one sentence and it is almost never a territory dispute. -->
-      <div class="box" id="causes-box" hidden>
+    <!-- KPI: denied. Grouped by WHAT was denied, never by who asked — per role
+         it is the same list a hundred times over. -->
+    <section data-view="denied" hidden>
+      <div class="box">
         <header>
-          <h2>Where the day went</h2>
-          <span class="note">every denial in the window, grouped by what was denied</span>
+          <h2>Denied, by path</h2>
+          <span class="note" id="dn-window"></span>
         </header>
         <div class="pad">
           <p class="lede" id="ca-lede"></p>
           <div class="bars" id="ca-bars"></div>
-          <div class="stuck" id="ca-stuck" hidden></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- KPI: one cause. The same denials one level coarser — by the name at the
+         end of the path. This is the cut that says whether a day was a tooling
+         problem or a territory one, and by path alone it reads backwards. -->
+    <section data-view="causes" hidden>
+      <div class="box">
+        <header>
+          <h2>Denied, by name</h2>
+          <span class="note">the same denials, grouped one level coarser</span>
+        </header>
+        <div class="pad">
+          <p class="lede" id="fa-lede"></p>
+          <div id="fa-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- KPI: spent retrying. -->
+    <section data-view="walls" hidden>
+      <div class="box">
+        <header>
+          <h2>Walls</h2>
+          <span class="note">denied twice or more, and the policy still denies it</span>
+        </header>
+        <div class="pad">
+          <p class="lede" id="wl-lede"></p>
+          <div id="wl-list"></div>
         </div>
       </div>
     </section>
@@ -763,11 +809,13 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
    * infer from twelve bars.
    */
   function drawCauses(){
-    var box = document.getElementById("causes-box");
     var f = CAUSES;
-    if (!f || !f.total) { box.hidden = true; return; }
-    box.hidden = false;
-
+    var lede = document.getElementById("ca-lede");
+    if (!f || !f.total) {
+      if (lede) lede.textContent = "Nothing was denied in this window.";
+      var bars = document.getElementById("ca-bars"); if (bars) bars.innerHTML = "";
+      return;
+    }
     var top = f.causes[0];
     var fam = (f.families || [])[0];
     var famShare = fam ? Math.round(fam.share * 100) : 0;
@@ -793,6 +841,9 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       lede += "<span class=\"q\">No one kind of thing dominates, which is what a real boundary " +
               "question looks like rather than a tooling one.</span>";
     document.getElementById("ca-lede").innerHTML = lede;
+    var win = document.getElementById("dn-window");
+    if (win) win.textContent = f.total.toLocaleString() + " denials \u00b7 " +
+      (f.distinct || f.causes.length).toLocaleString() + " distinct paths";
 
     var max = top.times || 1;
     document.getElementById("ca-bars").innerHTML = f.causes.map(function(c){
@@ -813,23 +864,69 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       '</div>';
     }).join("");
 
-    // Who is stuck, which is a different question from what is blocked: a role
-    // can be denied a hundred times by one path it does not need, or twice by
-    // the one it does.
-    var stuck = Object.keys(WALLS || {}).map(function(r){
-      var w = WALLS[r], spent = w.reduce(function(n,x){return n + x.times - 1;}, 0);
-      return { role: r, n: w.length, spent: spent };
-    }).filter(function(x){ return x.spent > 0; }).sort(function(a,b){ return b.spent - a.spent; });
-    var el = document.getElementById("ca-stuck");
-    if (!stuck.length) { el.hidden = true; return; }
-    el.hidden = false;
-    el.innerHTML = '<b>Retried anyway.</b> A denial is said once, mid-turn, and nothing carries ' +
-      'it forward — so it gets tried again. These roles are still hitting walls they have ' +
-      'already been denied:<ul>' +
-      stuck.slice(0, 6).map(function(x){
-        return '<li><code>' + esc(x.role) + '</code> · ' + x.n + ' wall' + (x.n === 1 ? '' : 's') +
-               ' · <b>' + x.spent + '</b> call' + (x.spent === 1 ? '' : 's') + ' spent retrying</li>';
-      }).join("") + '</ul>';
+  }
+
+  /** Denied, by name — the cut that says what kind of day it was. */
+  function drawFamilies(){
+    var f = CAUSES; if (!f) return;
+    var fams = f.families || [];
+    var top = fams[0];
+    document.getElementById("fa-lede").innerHTML = !top ? "Nothing was denied in this window."
+      : "<b>" + Math.round(top.share * 100) + "%</b> of " + f.total.toLocaleString() +
+        " denials is <code>" + esc(top.name) + "</code>, across <b>" + top.paths + "</b> path" +
+        (top.paths === 1 ? "" : "s") + "." +
+        (top.share >= 0.4 && top.paths > 1
+          ? ' <span class="q">One name at that scale is usually mechanical. Fixing the tool ' +
+            'removes the denials; granting the paths only hides them.</span>'
+          : ' <span class="q">No single name dominates \u2014 these are separate questions, ' +
+            'not one problem.</span>');
+
+    document.getElementById("fa-list").innerHTML = fams.map(function(x){
+      var w = Math.max(2, Math.round((x.times / (top.times || 1)) * 100));
+      return '<div class="fam">' +
+        '<div class="fam-h"><code>' + esc(x.name) + '</code>' +
+          '<span class="num">' + x.times.toLocaleString() + ' <s>' + (x.share*100).toFixed(1) + '%</s></span></div>' +
+        '<div class="t"><span class="f" style="width:' + w + '%"></span></div>' +
+        '<div class="who">' + x.paths + ' path' + (x.paths===1?'':'s') + ' \u00b7 ' +
+          x.roles.length + ' role' + (x.roles.length===1?'':'s') + ': ' + esc(x.roles.join(", ")) + '</div>' +
+        '<ul class="places">' + x.where.map(function(p){
+          return '<li><span>' + esc(p.target) + '</span><b>' + p.times.toLocaleString() + '</b></li>';
+        }).join("") + '</ul></div>';
+    }).join("");
+  }
+
+  /** Walls — per role, what it keeps hitting and what that cost. */
+  function drawWalls(){
+    var rows = Object.keys(WALLS || {}).map(function(r){
+      var w = WALLS[r];
+      return { role: r, walls: w, spent: w.reduce(function(n,x){ return n + x.times - 1; }, 0) };
+    }).sort(function(a,b){ return b.spent - a.spent; });
+    var total = rows.reduce(function(n,x){ return n + x.spent; }, 0);
+
+    document.getElementById("wl-lede").innerHTML = !rows.length
+      ? "No role is repeating a denial it has already been given."
+      : "<b>" + total.toLocaleString() + "</b> call" + (total===1?"":"s") + " across <b>" +
+        rows.length + "</b> role" + (rows.length===1?"":"s") +
+        ' went into retrying something already denied. <span class="q">A denial is said once, ' +
+        'mid-turn. Nothing carries it forward, so it gets tried again.</span>';
+
+    document.getElementById("wl-list").innerHTML = rows.map(function(x){
+      return '<div class="fam">' +
+        '<div class="fam-h"><code>' + esc(x.role) + '</code>' +
+          '<span class="num">' + x.spent.toLocaleString() + ' <s>calls retried</s></span></div>' +
+        '<ul class="places">' + x.walls.map(function(w){
+          return '<li><span>' + esc(w.action) + ' ' + esc(w.target) + '<br>' +
+            '<em>' + esc(w.reason) + '</em></span><b>' + w.times + '\u00d7</b></li>';
+        }).join("") + '</ul></div>';
+    }).join("");
+  }
+
+  /** A count beside a nav item, or nothing. Zero is not news. */
+  function pill(id, n){
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = n ? (n > 999 ? Math.round(n/1000) + "k" : String(n)) : "";
+    el.hidden = !n;
   }
 
   /**
@@ -840,22 +937,21 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
    * five read 31, 31, 0 and 31 every single day — and the one that moved was
    * last and the same size as the rest.
    *
-   * Emphasis is conditional, never constant. `waiting` and `unsandboxed` go
-   * loud only when they are not zero, because an indicator that shouts at rest
-   * is one people stop seeing. At zero they go quiet and say so in words, which
-   * is information too: "nothing to decide" is a state, not an empty slot.
+   * Emphasis is conditional, never constant. At zero they go quiet and say so
+   * in words, because "nothing to decide" is a state and an indicator that
+   * shouts at rest is one people stop seeing.
+   *
+   * Every value is read from the globals rather than passed in, so any refresh
+   * can call it — the queue refreshes on its own, and passing the role counts
+   * in once left the row stale on the number that moves most.
    */
   function drawKpis(){
-    var f = CAUSES || { total: 0, families: [], distinct: 0 };
+    var f = CAUSES || { total: 0, families: [], distinct: 0, causes: [] };
     var waiting = REQS.length;
     var retry = Object.keys(WALLS || {}).reduce(function(n, r){
       return n + WALLS[r].reduce(function(m, w){ return m + w.times - 1; }, 0);
     }, 0);
     var fam = f.families && f.families[0];
-    // Read from the globals rather than taken as arguments, so any refresh can
-    // call it. The queue refreshes on its own every few seconds; passing the
-    // role counts in would have left the row stale on exactly the number that
-    // moves most.
     var off = (ROLES || []).filter(function(r){ return !r.sandbox; }).length;
 
     function set(id, cls, value, sub){
@@ -868,25 +964,23 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     }
 
     set("k-wait", waiting ? "live" : "calm", waiting,
-        waiting ? (waiting === 1 ? "decision, in the terminal or here" : "decisions, in the terminal or here")
-                : "nothing to decide");
-    // Zero here is the good state and it is the usual one, so it stays quiet.
-    // Anything above zero is a role the OS is not confining at all, which is
-    // the only number on this row that is an emergency.
+        waiting ? (waiting === 1 ? "decision" : "decisions") : "nothing to decide");
+    // The only number here that is an emergency, and it is almost always zero.
     set("k-open", off ? "alarm" : "calm", off,
         off ? (off === 1 ? "role nothing is enforcing" : "roles nothing is enforcing") : "every role confined");
     set("k-ref", f.total ? "live" : "calm", f.total.toLocaleString(),
-        f.total ? f.distinct.toLocaleString() + " distinct paths" : "nothing was denied");
-    // The shape, not the size. 74% on one name is a tooling problem; the same
-    // volume spread thin is a territory question. One number, two meanings,
-    // so the caption carries the name.
+        f.total ? (f.distinct || f.causes.length).toLocaleString() + " distinct paths" : "nothing was denied");
+    // The shape, not the size: one name at 74% is a tooling problem, the same
+    // volume spread thin is a territory question, so the caption carries the name.
     set("k-conc", fam && fam.share >= 0.4 ? "live" : "calm",
         fam ? Math.round(fam.share * 100) + "%" : "\u2014",
         fam ? "is " + fam.name : "of all denials");
-    // The cost of the denial that was not heard. It is the only number here
-    // that is money rather than state.
+    // The only one that is money rather than state.
     set("k-retry", retry ? "live" : "calm", retry.toLocaleString(),
         retry ? "calls on walls already denied" : "nothing retried");
+
+    pill("dn-pin", f.total);
+    pill("wl-pin", Object.keys(WALLS || {}).length);
   }
 
   function drawReqs(){
@@ -903,10 +997,8 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       // when Requests was a page of its own — a heading with nothing under it
       // reads as broken. At the top of the front page it is 180px of nothing
       // standing between you and the only content there is.
-      host.innerHTML = '<p class="blank quiet">Nothing waiting on you. ' +
-        '<span>An agent lands here when the policy denies it a path and it asks for the path ' +
-        'rather than working around it. Approving is the one action in this console that ' +
-        'writes to your policy \u2014 it edits <code>seisin.toml</code> in place, with your reason.</span></p>';
+      host.innerHTML = '<p class="blank quiet">No pending decisions. ' +
+        '<span>Agents land here when they ask for a path the policy denies them.</span></p>';
       return;
     }
 
@@ -961,7 +1053,19 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     }
   }
 
-  function draw(){drawRows();drawCfg();drawToml();drawLog();drawReqs();drawCauses();}
+  /**
+ * One view failing must not take the others down.
+ *
+ * Measured the hard way: `drawCauses` kept a reference to a box that had moved
+ * to its own page, threw on the first line, and every number on the screen —
+ * including the five that have nothing to do with it — rendered as zero. A
+ * console whose KPIs read zero because of a typo is worse than one that is
+ * down, because zero is a plausible answer.
+ */
+function draw(){
+  [drawRows, drawCfg, drawToml, drawLog, drawReqs, drawCauses, drawFamilies, drawWalls]
+    .forEach(function(f){ try { f(); } catch (e) { console.error("seisin: " + f.name + " failed", e); } });
+}
 
   /**
    * The page works two ways on purpose.
@@ -1039,7 +1143,13 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     policy:     {view:"roles",    title:"Roles",
                  sub:"Which folders each agent writes, which keys it may read, and whether it runs sandboxed."},
     requests:   {view:"requests", title:"Waiting on you",
-                 sub:"What an agent asked for and cannot have yet \u2014 and what the rest of the window was spent being denied."},
+                 sub:"Permissions an agent asked for and cannot have. Granting one edits your policy."},
+    denied:     {view:"denied",   title:"Denied",
+                 sub:"Every denial in the window, grouped by the path it was about."},
+    causes:     {view:"causes",   title:"Causes",
+                 sub:"The same denials by name, which is the cut that says what kind of day it was."},
+    walls:      {view:"walls",    title:"Walls",
+                 sub:"What each role keeps being denied, and what retrying it cost."},
     activity:   {view:"activity", title:"Activity",
                  sub:"Every decision the runtime made, newest last, each with the role that owns the path."},
     configfile: {view:"config",   title:"Config file",
