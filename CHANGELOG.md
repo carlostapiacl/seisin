@@ -8,6 +8,15 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **`scratch` announces its path under both conventions.** It set `<NAME>_FILE`, which is the
+  Docker-secrets shape — and a large family of tools already expects a path in the plain
+  variable: `KUBECONFIG`, `GOOGLE_APPLICATION_CREDENTIALS`, `AWS_SHARED_CREDENTIALS_FILE`. For
+  those, `KUBECONFIG_FILE` is a name nothing reads.
+
+  Found by running `kubectl` against it instead of reasoning about it: the file was there, was
+  correct, was parsed — and the variable it had been announced under was one kubectl has never
+  heard of. Both are set now, both hold the path, and in this mode neither holds the value.
+
 - **An agent that sandboxes itself is named before it starts.** `codex` confines every command
   it runs with its own Seatbelt profile, and the OS will not apply a second one to a process
   that already has one. Inside `seisin run` that is

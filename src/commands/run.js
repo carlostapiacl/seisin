@@ -231,6 +231,24 @@ export async function run(config, argv) {
     // value itself is not in the environment of a process that may print it.
     const file = join(scratchKeys, entry.name);
     writeFileSync(file, value, { mode: 0o600 });
+    /**
+     * Both names, because the world has two conventions and neither is ours.
+     *
+     * `<NAME>_FILE` is the Docker-secrets shape, read by tools that normally
+     * take the value in `<NAME>`. But a large family of tools already expects
+     * a PATH in the plain variable — `KUBECONFIG`,
+     * `GOOGLE_APPLICATION_CREDENTIALS`, `AWS_SHARED_CREDENTIALS_FILE` — and
+     * for those, `KUBECONFIG_FILE` is a name nothing reads.
+     *
+     * Found by running `kubectl` against it rather than reasoning about it:
+     * the file was there and correct, and the variable it was announced under
+     * was one kubectl has never heard of.
+     *
+     * Setting both costs nothing and leaks nothing: in `scratch` mode the
+     * value is deliberately not in the environment, so both variables hold a
+     * path and neither holds a secret.
+     */
+    env[entry.name] = file;
     env[`${entry.name}_FILE`] = file;
   }
 

@@ -299,6 +299,24 @@ test("scratch hands the role a readable file, and the turn takes it away", { ski
   rmSync(dir, { recursive: true, force: true });
 });
 
+test("scratch announces the path under BOTH conventions, because the world has two", { skip }, () => {
+  // `<NAME>_FILE` is the Docker-secrets shape. But `KUBECONFIG`,
+  // `GOOGLE_APPLICATION_CREDENTIALS` and friends already expect a path in the
+  // plain variable, and for those `KUBECONFIG_FILE` is a name nothing reads.
+  // Found by running kubectl against it: the file was right and the variable
+  // it was announced under was one kubectl has never heard of.
+  const dir = refRepo(
+    `[network]\nallow = []\n\n[keys.providers.p]\ncommand = ["printf", "%s", "{ref}"]\nmode = "scratch"\n\n` +
+    `[roles.dev]\nwrites = ["src/**"]\nkeys = ["T=p://${SECRET}"]\n`);
+  const r = runIn(dir, "dev", 'printf "plain=%s file=%s" "$T" "$T_FILE"');
+  const m = /plain=(\S+) file=(\S+)/.exec(r.stdout);
+  assert.ok(m, "both variables are set");
+  assert.equal(m[1], m[2], "both name the same path");
+  // And neither holds the value — in scratch mode the secret is in the file.
+  assert.ok(!r.stdout.includes(SECRET), "a path, not the secret");
+  rmSync(dir, { recursive: true, force: true });
+});
+
 test("a provider that fails stops the run, and the command never happens", { skip: false }, () => {
   // No sandbox needed: it fails before the spawn. That is the claim — "nothing
   // is substituted for a key that did not resolve" is worth nothing if the
