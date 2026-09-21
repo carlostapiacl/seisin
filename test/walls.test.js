@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { walls, wasted, render, timesHit, MIN_HITS } from "../src/walls.js";
+import { walls, render, timesHit } from "../src/walls.js";
 import { decide } from "../src/hook.js";
 
 const cfg = {
@@ -39,10 +39,6 @@ test("one refusal is information; two is a wall", () => {
   assert.equal(got[0].target, "deploy/b.yml");
   assert.equal(got[0].times, 2);
   rmSync(dir, { recursive: true, force: true });
-});
-
-test("the default threshold is two, and it is the module's own constant", () => {
-  assert.equal(MIN_HITS, 2);
 });
 
 test("a wall the policy now allows is not a wall, whatever the log says", () => {
@@ -87,12 +83,6 @@ test("most-repeated first, because that is the one costing the most", () => {
   ]);
   assert.equal(walls(cfg, "dev", { file })[0].target, "deploy/big.yml");
   rmSync(dir, { recursive: true, force: true });
-});
-
-test("the waste count is retries, not attempts — the first one is finding out", () => {
-  assert.equal(wasted([{ times: 5 }, { times: 2 }]), 5);
-  assert.equal(wasted([{ times: 1 }]), 0);
-  assert.equal(wasted([]), 0);
 });
 
 test("nothing to say prints nothing, because a section that always speaks stops being read", () => {

@@ -11,7 +11,7 @@
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -215,4 +215,99 @@ test("an isolated role starts, and loses the credentials the ordinary mode leave
   assert.notEqual(run("test -r ~/.ssh").status, 0, "~/.ssh sigue legible bajo isolate");
 
   rmSync(iso, { recursive: true, force: true });
+});
+
+/* ── keys that are references, through the real kernel ──────────────────────
+ *
+ * The unit tests for this hand `resolveRef` a fake runner, which is right for
+ * asking what the code decides and useless for asking what actually happens.
+ * These five run real commands: the provider is a real process, the boundary
+ * is the real kernel, and the value is a real string that either shows up
+ * somewhere it should not or does not.
+ */
+
+/** A repo whose policy resolves a key from a command instead of a file. */
+function refRepo(toml) {
+  const dir = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), ".sandbox-box", "refs-"));
+  mkdirSync(join(dir, "src"), { recursive: true });
+  writeFileSync(join(dir, "seisin.toml"), toml);
+  return dir;
+}
+
+const runIn = (cwd, role, line) =>
+  spawnSync(process.execPath, [CLI, "run", role, "--", "sh", "-c", line], { cwd, encoding: "utf8" });
+
+const SECRET = "valor-de-prueba-9c1f4b7e";
+
+test("a reference resolves and the value reaches the child through the real sandbox", { skip }, () => {
+  const dir = refRepo(
+    `[network]\nallow = []\n\n[keys.providers.p]\ncommand = ["printf", "%s", "{ref}"]\nmode = "env"\n\n` +
+    `[roles.dev]\nwrites = ["src/**"]\nkeys = ["T=p://${SECRET}"]\n`);
+  // Its LENGTH, not the value: the redactor masks the value on the way out, so
+  // asserting on the value here would pass for the wrong reason the day the
+  // masking broke. The length survives redaction and still proves arrival.
+  const r = runIn(dir, "dev", 'printf "len=%s" "${#T}"');
+  assert.match(r.stdout, new RegExp(`len=${SECRET.length}`));
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("the resolved value is in no file seisin wrote — not the settings, not the log", { skip }, () => {
+  // The promise is that what gets recorded is the REFERENCE. This is the test
+  // that would catch it not being true, and it is the one worth having.
+  const dir = refRepo(
+    `[network]\nallow = []\n\n[keys.providers.p]\ncommand = ["printf", "%s", "{ref}"]\nmode = "env"\n\n` +
+    `[roles.dev]\nwrites = ["src/**"]\nkeys = ["T=p://${SECRET}"]\n`);
+  runIn(dir, "dev", 'echo "$T" > src/leak.txt');       // the agent itself may spill it; that is its business
+  for (const f of ["dev.json", "log.jsonl", "requests.jsonl"]) {
+    const p = join(dir, ".seisin", f);
+    if (!existsSync(p)) continue;
+    assert.ok(!readFileSync(p, "utf8").includes(SECRET), `${f} contains the resolved value`);
+  }
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("the provider runs OUTSIDE the box — it writes where the role cannot", { skip }, () => {
+  // The security property, asserted structurally instead of described. The
+  // provider touches a path outside the role's territory: confined as `dev`
+  // that write is refused, so the file existing proves the parent ran it.
+  const dir = refRepo(
+    `[network]\nallow = []\n\n[keys.providers.p]\n` +
+    `command = ["sh", "-c", "touch outside-territory.marker; printf %s {ref}"]\nmode = "env"\n\n` +
+    `[roles.dev]\nwrites = ["src/**"]\nkeys = ["T=p://${SECRET}"]\n`);
+  // First: prove the role really cannot write there, or the assertion below
+  // proves nothing. A test whose premise is untested is decoration.
+  assert.notEqual(runIn(dir, "dev", "touch outside-territory.marker").status, 0);
+  rmSync(join(dir, "outside-territory.marker"), { force: true });
+  const r = runIn(dir, "dev", 'printf "len=%s" "${#T}"');
+  assert.equal(r.status, 0);
+  assert.ok(existsSync(join(dir, "outside-territory.marker")),
+    "the provider's write landed, so it was not confined as the role");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("scratch hands the role a readable file, and the turn takes it away", { skip }, () => {
+  const dir = refRepo(
+    `[network]\nallow = []\n\n[keys.providers.p]\ncommand = ["printf", "%s", "{ref}"]\nmode = "scratch"\n\n` +
+    `[roles.dev]\nwrites = ["src/**"]\nkeys = ["T=p://${SECRET}"]\n`);
+  // Inside: the file is there, the role may read it, and the bytes are right.
+  const r = runIn(dir, "dev", 'printf "len=%s path=%s" "$(wc -c < "$T_FILE" | tr -d " ")" "$T_FILE"');
+  assert.match(r.stdout, new RegExp(`len=${SECRET.length}\\b`));
+  const path = /path=(\S+)/.exec(r.stdout)?.[1];
+  assert.ok(path, "the role was told where its key is");
+  // After: gone. Not "should be" — checked from out here, where the cleanup ran.
+  assert.ok(!existsSync(path), "the scratch key outlived its turn");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("a provider that fails stops the run, and the command never happens", { skip: false }, () => {
+  // No sandbox needed: it fails before the spawn. That is the claim — "nothing
+  // is substituted for a key that did not resolve" is worth nothing if the
+  // child ran anyway, and the observable proof is a file that is not there.
+  const dir = refRepo(
+    `[network]\nallow = []\n\n[keys.providers.p]\ncommand = ["false", "{ref}"]\nmode = "env"\n\n` +
+    `[roles.dev]\nwrites = ["src/**"]\nkeys = ["T=p://nope"]\n`);
+  const r = runIn(dir, "dev", "touch src/the-child-ran.txt");
+  assert.notEqual(r.status, 0, "the run reported success on a key that never resolved");
+  assert.ok(!existsSync(join(dir, "src", "the-child-ran.txt")), "the child ran without its credential");
+  rmSync(dir, { recursive: true, force: true });
 });
