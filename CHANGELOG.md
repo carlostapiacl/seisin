@@ -8,6 +8,22 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **An agent that sandboxes itself is named before it starts.** `codex` confines every command
+  it runs with its own Seatbelt profile, and the OS will not apply a second one to a process
+  that already has one. Inside `seisin run` that is
+  `sandbox-exec: sandbox_apply: Operation not permitted` — a message that names neither seisin,
+  nor the agent, nor the fix.
+
+  Worse, it does not fail at the start: the agent launches, reads, thinks, and dies on the
+  first command it tries to confine, so the operator sees a turn that did nothing, which looks
+  exactly like an agent with nothing to do. Re-measured while adding this: exit 71, and the
+  inner command produced no output at all.
+
+  A short **closed** list — codex on by default, gemini only with `-s` — checked before the
+  spawn. It warns only when the agent's own sandbox is actually on, and it says the flag rather
+  than passing it: handing somebody a bypass flag they did not write is the quiet widening this
+  tool exists to refuse.
+
 - **Every KPI is a link to its own page.** The console had five numbers on one screen and they
   pointed at two; now *waiting on you*, *unsandboxed*, *denied*, *one cause* and *spent
   retrying* each open the detail of exactly that number. A number you cannot click is

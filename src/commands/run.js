@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { settingsFor, roleHome } from "../srt.js";
 import { buildEnv } from "../env.js";
 import { resolveKeys } from "../keys.js";
+import { nestedSandboxWarning } from "../nested.js";
 import { spool, spoolPath, SOCK_ENV } from "../spool.js";
 import { secretsOf, redactor } from "../redact.js";
 import { STATE_DIR } from "../layout.js";
@@ -365,6 +366,16 @@ export async function run(config, argv) {
   // nobody reads the five hundred and first. It is a standing property of the
   // platform, so it belongs with the other standing limits, in `seisin check`.
   void denials.available;
+
+  /**
+   * An agent that sandboxes itself has to be told about, before it starts.
+   *
+   * Said here and not by `check`, because `check` never sees the command. And
+   * said rather than fixed: passing somebody's bypass flag for them is exactly
+   * the kind of quiet widening this tool exists to refuse.
+   */
+  const nested = nestedSandboxWarning(cmd);
+  if (nested) err(`${C.yellow}seisin: ${nested}${C.off}\n`);
 
   const child = spawn(srt, ["--settings", file, "--", ...cmd], {
     stdio: outStream ? ["inherit", "pipe", "pipe"] : "inherit",
