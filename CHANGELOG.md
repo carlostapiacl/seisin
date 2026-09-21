@@ -19,6 +19,10 @@ changed rather than failing on the old spelling.
   own source names it: *"BSD `nc -X 5`, the stock macOS ssh ProxyCommand. Such a connection
   is NEVER tunnelled."*
 
+  The ask that would close it is [written and verified](docs/upstream/ssh-proxycommand.md)
+  against both versions, and deliberately **not filed**: two earlier asks are open and
+  unanswered, and a third in ten days reads as volume rather than signal.
+
   Measured three ways, and the differences are the diagnosis: `curl https://…` returns 200;
   bare `ssh` cannot resolve the hostname because it never looks at a proxy; `git ls-remote`
   over SSH reaches the proxy and dies at the handshake. Use an HTTPS remote, run SSH deploys

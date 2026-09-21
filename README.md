@@ -662,6 +662,7 @@ already done:
 | **Windows** | the runtime has a backend. seisin has never been pointed at it, and no CI runner covers it |
 | **Deleting inside your own territory** | not covered, and not coverable here — the ask is upstream as [issue #545](https://github.com/anthropics/sandbox-runtime/issues/545), open and unanswered since 2026-09-13, [with the measurement behind it](docs/upstream/denyUnlink.md) and [a demo](docs/demo/) |
 | **`init` heuristics** | it reads `.claude/agents/` then `CODEOWNERS`. Every other convention is a guess nobody has made yet |
+| **SSH inside a turn** | the transport exists — the runtime's SOCKS proxy filters by `(port, host)` — and the `ProxyCommand` it wires up cannot authenticate to it, so `git` over SSH dies at the handshake. [The ask](docs/upstream/ssh-proxycommand.md) is written and verified, not filed. Use an HTTPS remote |
 
 Every word above has one meaning, listed in [the glossary](docs/glossary.md) — the boundary
 **denies**, a person **declines**, seisin **refuses** a config it cannot enforce. A tool whose
