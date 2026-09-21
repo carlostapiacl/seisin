@@ -18,6 +18,25 @@ visible to the maintainer and to you, and nobody else until there is a fix to ta
 - Anything that makes `seisin run` start **without** the kernel boundary actually applied.
   A sandbox that silently did not start is the worst failure this tool has, because a green
   run and an unconfined one look identical from outside.
+- **A confined process reaching a key provider's value, command or script.** A provider is
+  executed by the parent, outside the sandbox — so a way for the inside to influence what
+  runs, or to read a resolved value it was not granted, is a bypass.
+- **A resolved key's value appearing anywhere it is written down** — the log, the queue, the
+  emitted settings, the console. The promise is that what gets recorded is the reference.
+
+## The one surface worth understanding before you look
+
+`[keys.providers] command` is the only thing in a `seisin.toml` that **executes**. Everything
+else describes a boundary; this runs, in the parent, unsandboxed, with your privileges — it
+has to, because it holds the vault's credential and the confined side must not reach it.
+
+The consequence is that **a `seisin.toml` arriving with a repository you cloned is code you
+are about to run**, the same trust already extended to a `Makefile` or a `package.json`
+script. `seisin check` executes nothing and prints those commands; read it first on a config
+you did not write. A script named by a provider is denied to every role, the way the policy
+file is, so the inside cannot rewrite what the outside executes.
+
+That is a documented property, not a vulnerability. A way **around** it is one.
 
 ## What does not
 
