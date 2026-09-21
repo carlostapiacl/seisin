@@ -65,6 +65,19 @@ There is a counter in CI that fails if the test totals printed in the README and
 `docs/what-it-has-been-put-through.md` stop matching reality. If it fails on your PR, update
 the numbers; that is what it is for.
 
+## Words
+
+A term that reaches the CLI, the console, the log or the README arrives with its line in
+[docs/glossary.md](docs/glossary.md), or it does not arrive.
+
+This is not tidiness. What this project adds over a sandbox is the sentence you read when
+something is stopped, and a tool whose product is a sentence cannot afford four words for one
+event. It had four — `block`, `denial`, `refusal` and `deny` — and the fix cost a rename of a
+published command, which is what the rule is here to prevent next time.
+
+The three verbs are taken and each belongs to one actor: the **boundary denies**, a **person
+declines**, **seisin refuses** a configuration it will not accept.
+
 ## The config language
 
 `seisin.toml` is parsed by a deliberate subset of TOML: `[table]` headers and
@@ -86,7 +99,7 @@ document people actually use — several comments in the source point at it.
 ## What is out of scope
 
 - **Being a sandbox.** The OS is the sandbox. seisin writes its settings and explains its
-  refusals. See [What it is not](README.md#what-it-is-not).
+  denials. See [What it is not](README.md#what-it-is-not).
 - **Storing secrets.** A provider *resolves* a reference; a vault keeps it. Rotation, backup
   and recovery are a different product.
 - **Wiring in a specific vault.** A provider is a command, which is what keeps this from

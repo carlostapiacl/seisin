@@ -186,10 +186,10 @@ export function decide(config, role, event, { observe = false, now = append, ask
   const wasRead = denied.kind === "key";
 
   /**
-   * How many times this exact refusal has already been handed to this role.
+   * How many times this exact denial has already been handed to this role.
    *
    * The sentence below is correct every time and that has not been enough:
-   * measured on a real team, 25% of all blocks were a repeat of something the
+   * measured on a real team, 25% of all denials were a repeat of something the
    * same role had already been refused, one of them nineteen times. Correct
    * and *heard* are different properties, and only the first was being
    * measured. So the refusal carries its own history: the second time, it says
@@ -201,7 +201,7 @@ export function decide(config, role, event, { observe = false, now = append, ask
    */
   const before = timesHit(logPath(config.root), role, denied.action, denied.target);
   const again = before > 1
-    ? ` You have been refused this ${before} times now; it is not going to work on the ${ordinal(before + 1)} try.`
+    ? ` You have been denied this ${before} times now; it is not going to work on the ${ordinal(before + 1)} try.`
     : "";
 
   // The hook advises; it does not enforce. Returning `deny` here stops the call

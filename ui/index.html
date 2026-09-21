@@ -94,6 +94,17 @@ button:focus-visible,a:focus-visible,select:focus-visible{outline:2px solid var(
 .card .n{font-size:28px;font-weight:600;line-height:1;margin-top:12px;font-variant-numeric:tabular-nums;min-width:2.2ch}
 .card .s{font-size:11px;color:var(--mid);margin-top:5px;min-height:16px}
 .card.g .n{color:var(--green)} .card.a .n{color:var(--amber)} .card.b .n{color:var(--blue)}
+.card.kpi{text-decoration:none;color:inherit;transition:border-color .12s,transform .12s}
+.card.kpi:hover{border-color:var(--line2)}
+.card.kpi:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+/* Only when it is not zero. An indicator that shouts at rest is one people
+   learn to ignore, and these two are the ones that mean "do something". */
+.card.kpi.live{border-left-color:var(--blue)} .card.kpi.live .n{color:var(--blue)}
+.card.kpi.alarm{border-left-color:var(--amber)} .card.kpi.alarm .n{color:var(--amber)}
+.card.kpi.calm .n{color:var(--dim)}
+/* Left border follows the state too. A card that is amber at zero has cried
+   wolf before you read the number. */
+.card.kpi{border-left-color:var(--line2)}
 
 /* The shape of the day. A hundred identical rows is not a reading, so each cause gets a
    bar proportional to the others and the eye does the arithmetic. */
@@ -177,7 +188,7 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
 .ev .who em{font-style:normal;color:var(--blue);font-weight:600}
 .ev .when{font-size:11px;color:var(--dim);flex:0 0 auto;font-variant-numeric:tabular-nums}
 /* Which writer saw it. The hook reports an attempt and can be talked around; the kernel
-   reports a refusal and cannot. When the two disagree about a run the reader needs to know
+   reports a denial and cannot. When the two disagree about a run the reader needs to know
    which line carries more weight, so the one that does is the one that is marked — a small
    word in the margin, not a column. Lines without the field render exactly as before. */
 .ev .src{font:10px/1.6 var(--mono);color:var(--dim);flex:0 0 auto;padding:0 5px;
@@ -295,14 +306,31 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       <button class="btn warn" id="kill" type="button">Unsandbox everything</button>
     </div>
 
-    <section data-view="roles">
-    <div class="cards">
-      <div class="card"><h2>roles</h2><div class="n" id="c-roles">0</div><div class="s">declared in seisin.toml</div></div>
-      <div class="card g"><h2>sandboxed</h2><div class="n" id="c-on">0</div><div class="s">enforced by the OS</div></div>
-      <div class="card a"><h2>unsandboxed</h2><div class="n" id="c-off">0</div><div class="s" id="c-off-s">nothing enforces these</div></div>
-      <div class="card"><h2>no keys</h2><div class="n" id="c-nokeys">0</div><div class="s">declare none</div></div>
-      <div class="card b"><h2>blocks today</h2><div class="n" id="c-blocks">0</div><div class="s">asked outside territory</div></div>
+    <!-- OUTSIDE the views, so the same five numbers are on every screen.
+         They used to live inside Roles, which meant the only live one —
+         denials — was invisible from the three other pages, and four of the
+         five were constants: 31 roles, 31 sandboxed, 0 unsandboxed, 31 with no
+         keys. A number that reads the same every day is not an indicator, it
+         is a caption, and putting it beside a live one teaches people to stop
+         reading the row.
+
+         Each one is a link to the screen that explains it. A number you cannot
+         act on is decoration; a number that takes you to the thing it counts
+         is the top of a path. -->
+    <div class="cards" id="kpis">
+      <a class="card kpi" href="#requests" id="k-wait">
+        <h2>waiting on you</h2><div class="n" id="c-wait">0</div><div class="s" id="c-wait-s">nothing to decide</div></a>
+      <a class="card kpi" href="#policy" id="k-open">
+        <h2>unsandboxed</h2><div class="n" id="c-off">0</div><div class="s" id="c-off-s">none are open</div></a>
+      <a class="card kpi" href="#requests" id="k-ref">
+        <h2>denied</h2><div class="n" id="c-blocks">0</div><div class="s" id="c-blocks-s">in this window</div></a>
+      <a class="card kpi" href="#requests" id="k-conc">
+        <h2>one cause</h2><div class="n" id="c-conc">—</div><div class="s" id="c-conc-s">of all denials</div></a>
+      <a class="card kpi" href="#requests" id="k-retry">
+        <h2>spent retrying</h2><div class="n" id="c-retry">0</div><div class="s" id="c-retry-s">calls on known walls</div></a>
     </div>
+
+    <section data-view="roles">
 
     <div class="box">
       <header id="policy">
@@ -346,19 +374,19 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
         <div id="reqs"></div>
       </div>
 
-      <!-- Grouped by WHAT was refused, never by who asked. Per role it is the same list a
-           hundred times: measured on one deployment, 1,080 of 1,422 refusals were a single
+      <!-- Grouped by WHAT was denied, never by who asked. Per role it is the same list a
+           hundred times: measured on one deployment, 1,080 of 1,422 denials were a single
            lock file across six repositories. Per role that is six hundred identical rows;
            grouped, it is one sentence and it is almost never a territory dispute. -->
-      <div class="box" id="friction-box" hidden>
+      <div class="box" id="causes-box" hidden>
         <header>
           <h2>Where the day went</h2>
-          <span class="note">every refusal in the window, grouped by what was refused</span>
+          <span class="note">every denial in the window, grouped by what was denied</span>
         </header>
         <div class="pad">
-          <p class="lede" id="fr-lede"></p>
-          <div class="bars" id="fr-bars"></div>
-          <div class="stuck" id="fr-stuck" hidden></div>
+          <p class="lede" id="ca-lede"></p>
+          <div class="bars" id="ca-bars"></div>
+          <div class="stuck" id="ca-stuck" hidden></div>
         </div>
       </div>
     </section>
@@ -567,12 +595,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
 
     var on=0,off=0,nok=0,bl=0;
     ROLES.forEach(function(r){r.sandbox?on++:off++; if(!r.keys.length)nok++; bl+=r.blocks;});
-    document.getElementById("c-roles").textContent=ROLES.length;
-    document.getElementById("c-on").textContent=on;
-    document.getElementById("c-off").textContent=off;
-    document.getElementById("c-off-s").textContent=off?"nothing enforces these":"none are open";
-    document.getElementById("c-nokeys").textContent=nok;
-    document.getElementById("c-blocks").textContent=bl;
+    drawKpis();
     var pin=document.getElementById("pin");
     if(off){pin.textContent=off;pin.hidden=false;}else{pin.hidden=true;}
     var k=document.getElementById("kill");
@@ -691,7 +714,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       // Only the kernel's own lines get the mark. A hook line and an older line look the
       // same as they always did — the absence is the default, not a third state.
       var src=e.source==="kernel"
-        ? '<span class="src" title="Recorded from the kernel: what the OS actually refused, '+
+        ? '<span class="src" title="Recorded from the kernel: what the OS actually denied, '+
           'whether or not the hook saw the attempt. This line cannot be talked around.">kernel</span>'
         : "";
       d.innerHTML="<b>"+label+'</b><span class="body"><span class="what">'+line+"</span>"+who+
@@ -720,8 +743,8 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
 
   var REQS = [];
   var ONDISK = null;   // the file on disk, when there is one
-  var FRICTION = null; // this window's refusals, grouped by what was refused
-  var WALLS = {};      // per role, what it keeps being refused and still would be
+  var CAUSES = null;   // this window's denials, grouped by what was denied
+  var WALLS = {};      // per role, what it keeps being denied and still would be
 
   /**
    * The queue, as something a person acts on.
@@ -734,21 +757,21 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
    *
    * The reading comes first and the bars second, because the number that
    * matters is almost never "how many" — it is "how much of it is one thing".
-   * A day where three quarters of the refusals are a single lock file is a
+   * A day where three quarters of the denials are a single lock file is a
    * day where nobody disputed any territory, and that sentence is the whole
    * value of grouping. It is written out rather than left for the reader to
    * infer from twelve bars.
    */
-  function drawFriction(){
-    var box = document.getElementById("friction-box");
-    var f = FRICTION;
+  function drawCauses(){
+    var box = document.getElementById("causes-box");
+    var f = CAUSES;
     if (!f || !f.total) { box.hidden = true; return; }
     box.hidden = false;
 
     var top = f.causes[0];
     var fam = (f.families || [])[0];
     var famShare = fam ? Math.round(fam.share * 100) : 0;
-    var lede = "<b>" + f.total.toLocaleString() + "</b> refusal" + (f.total === 1 ? "" : "s") +
+    var lede = "<b>" + f.total.toLocaleString() + "</b> denial" + (f.total === 1 ? "" : "s") +
       " in this window, over <b>" + (f.distinct || f.causes.length).toLocaleString() +
       "</b> distinct path" + ((f.distinct || f.causes.length) === 1 ? "" : "s") + ". ";
     // The reading has to be taken at the level of the NAME, not the path, or it comes out
@@ -769,12 +792,12 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     else
       lede += "<span class=\"q\">No one kind of thing dominates, which is what a real boundary " +
               "question looks like rather than a tooling one.</span>";
-    document.getElementById("fr-lede").innerHTML = lede;
+    document.getElementById("ca-lede").innerHTML = lede;
 
     var max = top.times || 1;
-    document.getElementById("fr-bars").innerHTML = f.causes.map(function(c){
+    document.getElementById("ca-bars").innerHTML = f.causes.map(function(c){
       var w = Math.max(2, Math.round((c.times / max) * 100));
-      // A cause the policy no longer refuses is history, not friction. It is
+      // A cause the policy no longer denies is history, not live. It is
       // shown, greyed, rather than dropped: it explains a number somebody may
       // remember from yesterday instead of silently changing it.
       var cold = c.stillRefused === 0;
@@ -791,22 +814,79 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     }).join("");
 
     // Who is stuck, which is a different question from what is blocked: a role
-    // can be refused a hundred times by one path it does not need, or twice by
+    // can be denied a hundred times by one path it does not need, or twice by
     // the one it does.
     var stuck = Object.keys(WALLS || {}).map(function(r){
       var w = WALLS[r], spent = w.reduce(function(n,x){return n + x.times - 1;}, 0);
       return { role: r, n: w.length, spent: spent };
     }).filter(function(x){ return x.spent > 0; }).sort(function(a,b){ return b.spent - a.spent; });
-    var el = document.getElementById("fr-stuck");
+    var el = document.getElementById("ca-stuck");
     if (!stuck.length) { el.hidden = true; return; }
     el.hidden = false;
-    el.innerHTML = '<b>Retried anyway.</b> A refusal is told once, mid-turn, and nothing carries ' +
+    el.innerHTML = '<b>Retried anyway.</b> A denial is said once, mid-turn, and nothing carries ' +
       'it forward — so it gets tried again. These roles are still hitting walls they have ' +
-      'already been refused:<ul>' +
+      'already been denied:<ul>' +
       stuck.slice(0, 6).map(function(x){
         return '<li><code>' + esc(x.role) + '</code> · ' + x.n + ' wall' + (x.n === 1 ? '' : 's') +
                ' · <b>' + x.spent + '</b> call' + (x.spent === 1 ? '' : 's') + ' spent retrying</li>';
       }).join("") + '</ul>';
+  }
+
+  /**
+   * The five numbers, on every screen.
+   *
+   * Chosen by one rule: a KPI has to be something that can change and that you
+   * would do something about. The row this replaces failed both — four of its
+   * five read 31, 31, 0 and 31 every single day — and the one that moved was
+   * last and the same size as the rest.
+   *
+   * Emphasis is conditional, never constant. `waiting` and `unsandboxed` go
+   * loud only when they are not zero, because an indicator that shouts at rest
+   * is one people stop seeing. At zero they go quiet and say so in words, which
+   * is information too: "nothing to decide" is a state, not an empty slot.
+   */
+  function drawKpis(){
+    var f = CAUSES || { total: 0, families: [], distinct: 0 };
+    var waiting = REQS.length;
+    var retry = Object.keys(WALLS || {}).reduce(function(n, r){
+      return n + WALLS[r].reduce(function(m, w){ return m + w.times - 1; }, 0);
+    }, 0);
+    var fam = f.families && f.families[0];
+    // Read from the globals rather than taken as arguments, so any refresh can
+    // call it. The queue refreshes on its own every few seconds; passing the
+    // role counts in would have left the row stale on exactly the number that
+    // moves most.
+    var off = (ROLES || []).filter(function(r){ return !r.sandbox; }).length;
+
+    function set(id, cls, value, sub){
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove("live","alarm","calm");
+      if (cls) el.classList.add(cls);
+      el.querySelector(".n").textContent = value;
+      el.querySelector(".s").textContent = sub;
+    }
+
+    set("k-wait", waiting ? "live" : "calm", waiting,
+        waiting ? (waiting === 1 ? "decision, in the terminal or here" : "decisions, in the terminal or here")
+                : "nothing to decide");
+    // Zero here is the good state and it is the usual one, so it stays quiet.
+    // Anything above zero is a role the OS is not confining at all, which is
+    // the only number on this row that is an emergency.
+    set("k-open", off ? "alarm" : "calm", off,
+        off ? (off === 1 ? "role nothing is enforcing" : "roles nothing is enforcing") : "every role confined");
+    set("k-ref", f.total ? "live" : "calm", f.total.toLocaleString(),
+        f.total ? f.distinct.toLocaleString() + " distinct paths" : "nothing was denied");
+    // The shape, not the size. 74% on one name is a tooling problem; the same
+    // volume spread thin is a territory question. One number, two meanings,
+    // so the caption carries the name.
+    set("k-conc", fam && fam.share >= 0.4 ? "live" : "calm",
+        fam ? Math.round(fam.share * 100) + "%" : "\u2014",
+        fam ? "is " + fam.name : "of all denials");
+    // The cost of the denial that was not heard. It is the only number here
+    // that is money rather than state.
+    set("k-retry", retry ? "live" : "calm", retry.toLocaleString(),
+        retry ? "calls on walls already denied" : "nothing retried");
   }
 
   function drawReqs(){
@@ -870,7 +950,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
         body: JSON.stringify({ number: n, decision: btn.dataset.d, reason: why })
       });
       var out = await r.json();
-      if (!r.ok) throw new Error(out.error || "refused");
+      if (!r.ok) throw new Error(out.error || "denied");
       // Re-read rather than patch: the grant rewrote seisin.toml, so the
       // territory on screen is stale too, not just the queue.
       await reload();
@@ -881,7 +961,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     }
   }
 
-  function draw(){drawRows();drawCfg();drawToml();drawLog();drawReqs();drawFriction();}
+  function draw(){drawRows();drawCfg();drawToml();drawLog();drawReqs();drawCauses();}
 
   /**
    * The page works two ways on purpose.
@@ -918,7 +998,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     }));
     LOG = fromServer(s.log);
     REQS = s.requests || [];
-    FRICTION = s.friction || null;
+    CAUSES = s.causes || null;
     WALLS = s.walls || {};
     ONDISK = s.toml || null;
     // The demo selection does not survive the live load. `sel` starts at "frontend", a role
@@ -959,7 +1039,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     policy:     {view:"roles",    title:"Roles",
                  sub:"Which folders each agent writes, which keys it may read, and whether it runs sandboxed."},
     requests:   {view:"requests", title:"Waiting on you",
-                 sub:"What an agent asked for and cannot have yet \u2014 and what the rest of the window was spent being refused."},
+                 sub:"What an agent asked for and cannot have yet \u2014 and what the rest of the window was spent being denied."},
     activity:   {view:"activity", title:"Activity",
                  sub:"Every decision the runtime made, newest last, each with the role that owns the path."},
     configfile: {view:"config",   title:"Config file",
@@ -1037,7 +1117,7 @@ function route(){ return (location.hash || "#requests").slice(1); }
       // the same way the log does: by polling. Re-rendered only when it changed,
       // so a reason someone is halfway through typing is not wiped every 2s.
       var fresh = JSON.stringify(s.requests || []);
-      if (fresh !== JSON.stringify(REQS)) { REQS = JSON.parse(fresh); drawReqs(); }
+      if (fresh !== JSON.stringify(REQS)) { REQS = JSON.parse(fresh); drawReqs(); drawKpis(); }
       // Only the counters that come from the log are refreshed. Whatever the
       // reader has been editing on screen stays put — a page that resets your
       // work every two seconds is worse than one that does not update.

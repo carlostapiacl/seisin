@@ -73,7 +73,7 @@ export function renderQueue(queue) {
     const note = handoffNote(r.handoff);
     if (note) lines.push(`        ${C.yellow}${note}${C.off}\n`);
   });
-  lines.push(`\n    ${C.dim}seisin grant <n> [--reason "…"]   ·   seisin deny <n> [--reason "…"]${C.off}\n\n`);
+  lines.push(`\n    ${C.dim}seisin grant <n> [--reason "…"]   ·   seisin decline <n> [--reason "…"]${C.off}\n\n`);
   return lines.join("");
 }
 

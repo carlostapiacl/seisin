@@ -4,7 +4,7 @@
  * seisin answers *whose is this* at the moment of the refusal, once, in the
  * middle of a turn, and then the sentence is gone. Nothing carries it forward,
  * so the agent tries again — and the measurement that made this module exist
- * says how often: of 345 blocks on a real team, **88 (25%) were a repeat of
+ * says how often: of 345 denials on a real team, **88 (25%) were a repeat of
  * something that same role had already been refused**. One role spent 37 calls
  * on two walls, hitting the same one nineteen times.
  *
@@ -41,7 +41,7 @@ import { explain } from "./owners.js";
 export const MIN_HITS = 2;
 
 /**
- * What `role` keeps being refused, most-repeated first.
+ * What `role` keeps being denied, most-repeated first.
  *
  * Each entry is `{ action, target, times, reason, owners, firstAt, lastAt }`.
  * The grain is action+target and it is deliberately not collapsed to a
@@ -91,7 +91,7 @@ export function walls(config, role, { file, min = MIN_HITS, since = null, limit 
 const TAIL_BYTES = 4 * 1024 * 1024;
 
 /**
- * How many times this exact refusal is already in the recent log for this role.
+ * How many times this exact denial is already in the recent log for this role.
  *
  * Deliberately NOT the same question as `walls()`: no policy recomputation, no
  * threshold. The hook calls this while deciding, and the only thing it needs is
@@ -155,7 +155,7 @@ export function wasted(list) {
 export function render(list) {
   if (!list.length) return "";
   const lines = [
-    "WALLS — you have already been refused these, and the policy still refuses them.",
+    "WALLS — you have already been denied these, and the policy still denies them.",
     "Do not retry; the reason is where the other way in is.",
   ];
   for (const w of list) {
