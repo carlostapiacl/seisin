@@ -6,7 +6,7 @@ history; what changed for someone who installs it is here.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
-## Unreleased
+## 0.2.0 — 2026-09-21
 
 - **`scratch` announces its path under both conventions.** It set `<NAME>_FILE`, which is the
   Docker-secrets shape — and a large family of tools already expects a path in the plain
@@ -77,6 +77,13 @@ changed rather than failing on the old spelling.
   [docs/glossary.md](docs/glossary.md) is new and is the point — every term drifted because
   there was nowhere for a new one to collide. `CONTRIBUTING.md` now says a term reaches the
   CLI, the console, the log or the README with its line in the glossary or it does not arrive.
+
+- ⚠️ **For embedders: `loadConfig().roles[x].writes` now includes the sidecar expansion.** A
+  role declaring `["data/x.sqlite", "src/**"]` comes back with five entries, not two. That is
+  deliberate — the grant and the sentence have to agree, so `ownersOf` and `explain` see them
+  too — but a caller that renders `writes` as "what the user typed" wants the new
+  **`writesDeclared`**, which is the unexpanded list. Nothing else on the public surface
+  changed shape; the rest of this release is additive.
 
 - **A SQLite database is declared once, not four times.** `writes = ["x.sqlite"]` now also
   grants `-wal`, `-shm` and `-journal`. Measured on one real policy: **744 of 1,248 write
