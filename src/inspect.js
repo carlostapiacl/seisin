@@ -29,6 +29,17 @@ export function inspect(config, only = null, where = config.path) {
   return {
     where,
     roles: roles.map((r) => ({ name: r.name, writes: r.writes, keys: r.keys })),
+    /**
+     * The provider commands this config would run, listed because they are the
+     * one thing in a `seisin.toml` that **executes**, and it executes in the
+     * parent, unsandboxed, as you. Everything else in the file only describes a
+     * boundary. `check` runs nothing, so this is where you see them first — and
+     * seeing them first is the whole point when the file came with a repo you
+     * cloned rather than one you wrote.
+     */
+    providers: Object.values(config.keyProviders ?? {}).map((p) => ({
+      name: p.name, command: p.command, mode: p.mode,
+    })),
     shared: sharedPaths(config, roles),
     warnings: warningsFor(config, roles),
     limits: LIMITS,

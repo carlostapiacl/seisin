@@ -8,6 +8,22 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **A key's delivered name cannot collide with one the child already needs.** Found reviewing
+  the feature above as a stranger would install it: `keys = ["keychain://path"]` derived `PATH`,
+  overwrote it with the secret, and the sandbox died with `env: node: No such file or directory`
+  — a config mistake shaped exactly like a broken installation. Worse, `SEISIN_ROLE` is how the
+  hook inside the box learns which role it is, and a key could set it. Both refused when the
+  config loads, along with one name claimed by two keys, which used to deliver the second and
+  drop the first in silence.
+
+- **`seisin check` prints the provider commands**, because `[keys.providers] command` is the one
+  thing in a `seisin.toml` that *executes* — in the parent, unsandboxed, as you. A config that
+  arrived with a cloned repository is code you are about to run. Now named in the README and in
+  `docs/decisions.md`, and `check` still runs nothing.
+
+- **The refusal counter reads the tail of the log, not all of it.** It runs inside the hook, and
+  the log never rotates: 3 ms at 372 KB, 300 ms at 37 MB, on every refusal forever.
+
 - **A refusal remembers that it has been given before.** From the second time a role is refused
   the same thing, the sentence says so: *"you have been refused this 3 times now; it is not
   going to work on the fourth try."* Measured on a real team, **88 of 345 blocks (25%) were a

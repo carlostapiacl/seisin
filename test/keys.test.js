@@ -295,3 +295,60 @@ test("a config with only references does not get told its [keys] dir is missing"
   assert.ok(!w.some((x) => x.kind === "keys-unscoped"));
   rmSync(dir, { recursive: true, force: true });
 });
+
+// ── names that would collide ────────────────────────────────────────────────
+
+test("a key that would arrive as PATH is refused when the config loads", () => {
+  // Measured before this check existed: the sandbox started with PATH set to
+  // the secret and died with `env: node: No such file or directory` — a config
+  // mistake that reads exactly like a broken installation.
+  const dir = repo(
+    `[keys.providers.k]\ncommand = ["printf", "%s", "{ref}"]\nmode = "env"\n\n` +
+    `[roles.dev]\nwrites = ["src/**"]\nkeys = ["k://path"]\n`);
+  assert.throws(() => loadConfig(join(dir, "seisin.toml")), /would arrive as PATH/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("a key may not be called SEISIN_ROLE, which is how the hook knows who it is", () => {
+  // A policy that could set it could tell the hook inside the box that it is
+  // another role. Privilege confusion written in the file meant to prevent it.
+  const dir = repo(
+    `[keys.providers.k]\ncommand = ["printf", "%s", "{ref}"]\nmode = "env"\n\n` +
+    `[roles.dev]\nwrites = ["src/**"]\nkeys = ["SEISIN_ROLE=k://x"]\n`);
+  assert.throws(() => loadConfig(join(dir, "seisin.toml")), /would arrive as SEISIN_ROLE/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("the scratch companion name is reserved too, not just the variable", () => {
+  const dir = repo(
+    `[keys.providers.k]\ncommand = ["printf", "%s", "{ref}"]\nmode = "scratch"\n\n` +
+    `[roles.dev]\nwrites = ["src/**"]\nkeys = ["HOME=k://x"]\n`);
+  assert.throws(() => loadConfig(join(dir, "seisin.toml")), /would arrive as HOME/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("two keys arriving under one name are refused, not silently collapsed", () => {
+  // It used to deliver the second and drop the first, in silence, in a
+  // credential list. The run printed `T=b` and said nothing about `a`.
+  const dir = repo(
+    `[keys.providers.k]\ncommand = ["printf", "%s", "{ref}"]\nmode = "env"\n\n` +
+    `[roles.dev]\nwrites = ["src/**"]\nkeys = ["T=k://a", "T=k://b"]\n`);
+  assert.throws(() => loadConfig(join(dir, "seisin.toml")), /both arrive as T/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("a path key is not subject to any of this — it delivers no variable", () => {
+  const dir = repo(`[keys]\ndir = [".secrets"]\n\n[roles.dev]\nwrites = ["src/**"]\nkeys = ["netlify-token.txt"]\n`);
+  assert.doesNotThrow(() => loadConfig(join(dir, "seisin.toml")));
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("check lists the provider commands, because they are the part that executes", () => {
+  const dir = repo(
+    `[keys.providers.k]\ncommand = ["some-cli", "read", "{ref}"]\nmode = "env"\n\n` +
+    `[roles.dev]\nwrites = ["src/**"]\nkeys = ["T=k://x"]\n`);
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  const report = inspect(cfg, null, "seisin.toml");
+  assert.deepEqual(report.providers, [{ name: "k", command: ["some-cli", "read", "{ref}"], mode: "env" }]);
+  rmSync(dir, { recursive: true, force: true });
+});

@@ -11,7 +11,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { CONFIG_NAME } from "./layout.js";
-import { parseKey, MODES } from "./keys.js";
+import { parseKey, MODES, checkNames } from "./keys.js";
 
 export { CONFIG_NAME } from "./layout.js";
 
@@ -333,6 +333,7 @@ export function loadConfig(path) {
         `    [keys.providers.${k.scheme}]\n` +
         `    command = ["your-cli", "read", "{ref}"]`);
     }
+    checkNames({ name, keyEntries });
     const keyMode = own(r, "key_mode");
     if (keyMode !== undefined && !MODES.includes(keyMode))
       throw new Error(

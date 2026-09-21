@@ -496,6 +496,14 @@ than an undo.
   add lines to its own history.
 - **No resource limits.** CPU, memory, PIDs and disk are unbounded. The boundary
   is about what an agent can reach, not how much of it there is.
+- **A key provider is code, and it runs as you.** `[keys.providers.x] command`
+  is executed by the parent, outside the sandbox, before the child starts — it
+  has to be, because it holds the vault's own credential and the confined side
+  must not. The consequence is that a `seisin.toml` arriving with a cloned
+  repository is code you are about to run. That is the trust already extended
+  to a `Makefile`, and it is named here because everything else in the file is
+  a description rather than an instruction, so the assumption runs the other
+  way. `seisin check` executes nothing and prints the commands.
 - **A role still holds its keys in plaintext in its CONTEXT, and now need not
   hold them in plaintext AT REST.** ~~`keys` names a file the role reads~~ — a
   key may now be a reference (`keychain://netlify-token`) resolved by a

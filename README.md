@@ -673,7 +673,20 @@ how much a leak costs you.
 
 `seisin check` validates all of this **without resolving anything** — the scheme, the
 provider, the mode, and whether the provider's command is even on `PATH` — so a broken
-policy is visible without asking anyone's keychain for a password.
+policy is visible without asking anyone's keychain for a password. It also **prints the
+provider commands**, because of the next paragraph.
+
+> ⚠️ **A provider command is the one thing in a `seisin.toml` that executes.** Everything
+> else in the file describes a boundary; this runs, in the parent, unsandboxed, as you. So
+> a `seisin.toml` that came with a repository you cloned is code you are about to run —
+> the same trust you already extend to a `Makefile` or a `package.json` script, and worth
+> saying out loud precisely because the rest of this tool invites the opposite assumption.
+> `seisin check` runs nothing and lists them; read it first on a config you did not write.
+
+**A key's name may not collide with one the child already needs.** `keys =
+["keychain://path"]` would arrive as `PATH`, and `SEISIN_ROLE` is how the hook inside the
+box learns which role it is — a policy that could set it could tell the hook it is somebody
+else. Both are refused when the config loads, as is one name claimed by two keys.
 
 **And what it does not do, in the same breath:** this resolves the secret **at rest**, not
 in the agent's context. The value still reaches the process and the agent can still read it.
@@ -862,12 +875,12 @@ This space already has good work, and seisin is not the first thing here:
 
 ## Status
 
-`0.1.1`, 272 tests, of which **18 need `@anthropic-ai/sandbox-runtime` installed**
+`0.1.1`, 278 tests, of which **18 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 those eighteen skipped on Linux for a day, behind a runtime check that looked for the global
 install and missed the bundled one, and hid a defect that broke `seisin run` on that platform
-entirely. **272/272 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
+entirely. **278/278 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
 either, Node 18/20/22 in CI at every push — and 225/225 the same way on Debian 12.15
 with bubblewrap 0.8.0, the last time the suite was run in Docker.
 [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run).
