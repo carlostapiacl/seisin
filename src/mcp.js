@@ -32,6 +32,8 @@ import { explain, ownersOf } from "./owners.js";
 import { settingsFor } from "./srt.js";
 import { pending, requestsPath, grantFor } from "./requests.js";
 import { read, logPath } from "./log.js";
+import { causesOf } from "./serve.js";
+import { walls, wasted } from "./walls.js";
 
 /**
  * Versions this server will agree to.
@@ -94,12 +96,34 @@ const TOOLS = [
     },
   },
   {
+    name: "seisin_causes",
+    description:
+      "Denials grouped by what was denied — by path, and one level coarser by the name at " +
+      "the end of it — with how many are on paths no role owns. This is the question " +
+      "`seisin_activity` cannot answer: the raw log has the events, this has them counted " +
+      "against the policy as it stands, so a cause that has been granted since stops " +
+      "counting. Reach for it before proposing a change: a day that is three quarters one " +
+      "filename is a tooling problem, and the same volume spread across unrelated paths is " +
+      "a question about who owns what. Read-only.",
+    inputSchema: { type: "object", properties: { limit: { type: "number" } } },
+  },
+  {
+    name: "seisin_walls",
+    description:
+      "What a role keeps being denied AND would still be denied today, with the calls it " +
+      "spent retrying. Recomputed against the policy rather than read out of the log, so " +
+      "something granted since is not listed. Use it to find out whether an agent is stuck " +
+      "rather than slow. Omit `role` for every role that has one. Read-only.",
+    inputSchema: { type: "object", properties: { role: { type: "string" } } },
+  },
+  {
     name: "seisin_draft_grant",
     description:
       "Draft the change a pending request would make, as text, plus the command a person " +
       "runs to apply it. Reach for this after a refusal: the denial is already in " +
       "seisin_requests, and this turns it into a concrete proposal someone can approve. " +
-      "Writes nothing: the approval is a human action in another channel.",
+      "Read-only, and it is the tool where that matters most: the name says grant and it " +
+      "does not grant. The approval is a human action in another channel.",
     inputSchema: {
       type: "object",
       properties: { number: { type: "number", description: "position in seisin_requests" } },
@@ -164,6 +188,40 @@ const HANDLERS = {
         ? "Approving is not available through MCP. Tell the operator to run: seisin grant <number>"
         : "nothing waiting",
     };
+  },
+
+  /**
+   * The same arithmetic the console's front page does.
+   *
+   * It lives here as well as there because the two readers are different and
+   * neither can do the other's work: a person opens the console, an agent
+   * calls this. Giving the agent only `seisin_activity` hands it the raw log
+   * and asks it to re-derive the grouping — without the policy, which is the
+   * half that makes the grouping mean anything.
+   */
+  seisin_causes({ limit }) {
+    const cfg = config();
+    const c = causesOf(cfg, read(logPath(cfg.root), { limit: 4000 }));
+    return {
+      total: c.total,
+      distinct: c.distinct,
+      unowned: c.unowned,
+      families: c.families,
+      causes: typeof limit === "number" ? c.causes.slice(0, limit) : c.causes,
+    };
+  },
+
+  seisin_walls({ role }) {
+    const cfg = config();
+    const file = logPath(cfg.root);
+    const names = role ? [role] : Object.keys(cfg.roles);
+    if (role && !cfg.roles[role]) throw new Error(`unknown role "${role}"`);
+    const out = {};
+    for (const r of names) {
+      const w = walls(cfg, r, { file });
+      if (w.length) out[r] = { walls: w, spentRetrying: wasted(w) };
+    }
+    return { roles: out, spentRetrying: Object.values(out).reduce((n, x) => n + x.spentRetrying, 0) };
   },
 
   seisin_activity({ role, verdict, limit }) {

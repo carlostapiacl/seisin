@@ -8,6 +8,22 @@ changed rather than failing on the old spelling.
 
 ## 0.2.0 — 2026-09-21
 
+- **The MCP server exposes what it had only been computing for the console.** `seisin_causes`
+  returns the window grouped by path and by name, with how many causes are on paths no role
+  owns; `seisin_walls` returns what a role keeps being denied and would still be denied
+  today, with the calls it spent retrying. Both recompute against the policy.
+
+  Until now an assistant got `seisin_activity` — the raw log — and had to re-derive the
+  grouping without the policy, which is the half that makes the grouping mean anything. A
+  person opens the console; an agent calls these; neither can do the other's work.
+
+- **`seisin_draft_grant` now says it is read-only**, which it always was. Found by a test
+  asserting every tool says so: that one did not, and it is the one where it matters, because
+  the name says grant and it does not grant.
+
+- **The console's Refuse button says Decline**, which is the word a person's action has had
+  since earlier in this release. Found while re-recording the GIF.
+
 - **The console's headline says something the log does not contain.** It led with *"74% of
   the denials is one name"*, and a field review applied this project's own test to it: did
   the number tell you anything you did not know? For somebody who reads the raw log, no —
