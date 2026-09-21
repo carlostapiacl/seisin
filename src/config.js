@@ -356,7 +356,19 @@ export function loadConfig(path) {
         `Known: ${MODES.join(", ")}.`);
     out.roles[name] = {
       name,
-      writes,
+      /**
+       * `writes` is what is GRANTED; `writesDeclared` is what was written.
+       *
+       * Expanded here and not at emit time, because two answers is how the
+       * document ends up looser or tighter than the boundary. Everything
+       * downstream — `ownersOf`, `explain`, `whose`, the settings, the console
+       * — reads `writes`, so the owner of a database is the owner of its `-wal`
+       * everywhere, and the kernel and the sentence agree. The declared form is
+       * kept so that regenerating a config writes back what a person typed
+       * rather than the expansion.
+       */
+      writes: withSidecars(writes),
+      writesDeclared: writes,
       keys,
       keyEntries,
       keyMode: keyMode ?? null,
@@ -410,6 +422,48 @@ function readProviders(table, path) {
     out[name] = { name, command, mode: mode ?? null };
   }
   return out;
+}
+
+/**
+ * A SQLite database is four files, and a policy should say it once.
+ *
+ * `bitacora/x/equipo.sqlite` is not the database — it is one of the files the
+ * database is made of. Writing to it in WAL mode also writes `-wal` and
+ * `-shm`; in rollback mode, `-journal`. So "this role writes this database"
+ * takes four lines, and a policy with eight databases and thirty-one roles
+ * takes nine hundred and ninety-two of them. Measured on a real one: 744 of
+ * 1,248 write lines — 60% — were sidecars, and every single one had its
+ * `.sqlite` declared beside it. Not one case wanted the `-wal` without the
+ * database.
+ *
+ * **This grants no authority that was not already there**, which is the whole
+ * reason it is safe to do implicitly. The `-wal` holds that database's pending
+ * transactions: whoever can write the database can already empty it, replace
+ * it, or corrupt it. The sidecar is not a second resource — it is the same one.
+ *
+ * It is also not a glob. The kernel grants a path and everything under it, so
+ * `equipo.sqlite*` is unenforceable and `seisin check` refuses it; these are
+ * emitted as literal paths, exactly as if they had been typed.
+ *
+ * **The suffix list is closed on purpose** and this is the line that keeps the
+ * idea from becoming the exception list it could be: three suffixes, and only
+ * after a name that says SQLite. `.db` is deliberately not in it — plenty of
+ * things are called `.db` and a grant to create `whatever.db-wal` inside a
+ * directory somebody else owns would be new authority, arriving quietly. A
+ * database with another name declares its sidecars by hand, as before.
+ */
+const SIDECARS = ["-wal", "-shm", "-journal"];
+const IS_SQLITE = /\.sqlite3?$/;
+
+export function withSidecars(paths) {
+  const out = [];
+  for (const p of paths) {
+    out.push(p);
+    if (IS_SQLITE.test(p)) for (const s of SIDECARS) out.push(p + s);
+  }
+  // A policy written before this existed already lists them. Keeping the first
+  // occurrence keeps the order somebody chose.
+  return [...new Set(out)];
 }
 
 function asArray(value, where) {

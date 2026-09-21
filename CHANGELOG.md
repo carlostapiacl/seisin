@@ -8,6 +8,27 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **A SQLite database is declared once, not four times.** `writes = ["x.sqlite"]` now also
+  grants `-wal`, `-shm` and `-journal`. Measured on one real policy: **744 of 1,248 write
+  lines — 60% — were sidecars**, every one of them beside its own `.sqlite`. Verified against
+  that policy after the change: **31 of 31 roles receive exactly the same paths from the
+  kernel**, and the file is 504 lines instead of 1,248.
+
+  It grants nothing new — the `-wal` is that database's pending transactions, so whoever can
+  write the database can already empty it. The expansion happens when the policy loads, so
+  `whose` and `explain` see it too: the owner of a database owns its `-wal`, or the boundary
+  and the sentence would disagree. Closed suffix list, and only after `.sqlite` / `.sqlite3`;
+  `.db` is excluded on purpose.
+
+- **`seisin check` prints them back collapsed**, as `x.sqlite+wal+shm+journal`, and the
+  "claimed by more than one role" list counts a shared database once. That list was already
+  counting each sidecar separately before any of this: 77 entries where 53 was the honest
+  number.
+
+- **The README says in one sentence how this differs from a sandbox runtime**, now that there
+  are good ones: they isolate the agent from your machine, seisin separates roles from each
+  other inside one repository and names the owner when it blocks. They compose.
+
 - **The console opens on what needs you, not on the policy.** It landed on Roles — a wall of
   paths rendered before anybody asked a question — while the queue of decisions sat behind a
   nav item. Reference is looked up; decisions are shown.

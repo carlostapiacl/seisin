@@ -30,13 +30,39 @@ export const err = (s) => process.stderr.write(s);
 
 /* ── the map ──────────────────────────────────────────────────────────── */
 
+/**
+ * A database's sidecars, shown as the database.
+ *
+ * `writes` carries the expansion because the grant and the sentence have to
+ * agree — see config.js. Printing all four is then honest and unreadable: on a
+ * real policy it turned eight databases into thirty-two rows of the same name
+ * with three suffixes, which is what the expansion existed to remove.
+ *
+ * So the list is collapsed back for DISPLAY only, and only where the base is
+ * present, and it says the sidecars are there rather than hiding them. A
+ * sidecar declared without its database still prints on its own line — that is
+ * unusual enough to be worth seeing.
+ */
+const SIDECAR_RE = /-(wal|shm|journal)$/;
+
+export function collapseSidecars(paths) {
+  const have = new Set(paths);
+  const out = [];
+  for (const p of paths) {
+    const base = p.replace(SIDECAR_RE, "");
+    if (SIDECAR_RE.test(p) && have.has(base)) continue;      // shown on its base
+    out.push(SIDECAR_RE.test(p) || !have.has(p + "-wal") ? p : `${p}${C.dim}+wal+shm+journal${C.off}`);
+  }
+  return out;
+}
+
 /** The `check` report, as text. Takes the object `inspect()` returns. */
 export function renderReport(report) {
   const lines = [`\n${C.b}${report.where}${C.off}\n\n`];
   const width = Math.max(...report.roles.map((r) => r.name.length), 4);
 
   for (const r of report.roles) {
-    const writes = r.writes.join(" ") || `${C.dim}nothing${C.off}`;
+    const writes = collapseSidecars(r.writes).join(" ") || `${C.dim}nothing${C.off}`;
     const keys = r.keys.length ? r.keys.join(" ") : `${C.dim}none${C.off}`;
     lines.push(`  ${C.b}${r.name.padEnd(width)}${C.off}  ${C.blue}writes${C.off} ${writes}\n`);
     lines.push(`  ${" ".repeat(width)}  ${C.green}keys${C.off}   ${keys}\n\n`);
