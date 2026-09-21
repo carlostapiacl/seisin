@@ -23,7 +23,7 @@ A **permission layer**, not a sandbox — it sits on top of one. The isolation c
 
 **Living with it** · [What will look like a bug on the first day](#what-will-look-like-a-bug-on-the-first-day) · [Which agents it has been run with](#which-agents-it-has-been-run-with) · [Where the first policy comes from](#where-the-first-policy-comes-from) · [When it says no, it leaves a request behind](#when-it-says-no-it-leaves-a-request-behind) · [When the boundary is right and the agent cannot hear it](#when-the-boundary-is-right-and-the-agent-cannot-hear-it) · [Scratch space, and what it costs](#scratch-space-and-what-it-costs)
 
-**Secrets** · [How it protects secrets](#how-it-protects-secrets) · [A key can be a reference instead of a file](#a-key-can-be-a-reference-instead-of-a-file) · [The provider contract](#the-provider-contract) · [Recipes](#recipes)
+**Secrets** · [How it protects secrets](#how-it-protects-secrets) · [A database is four files](#a-database-is-four-files-and-you-declare-it-once) · [A key can be a reference instead of a file](#a-key-can-be-a-reference-instead-of-a-file) · [The provider contract](#the-provider-contract) · [Recipes](#recipes)
 
 **Looking at it** · [What the log says about the policy](#what-the-log-says-about-the-policy) · [Seeing what happened](#seeing-what-happened) · [Ask your own assistant](#ask-your-own-assistant)
 
@@ -823,6 +823,34 @@ in the agent's context. The value still reaches the process and the agent can st
 The secret stops living on your disk and the policy holds a reference you can review — a
 strict improvement — but "the agent never sees it" is `inject`, and `inject` is not built.
 
+### A database is four files, and you declare it once
+
+`bitacora/team.sqlite` is not a database — it is one of the files a database is made of.
+Writing to it also writes `-wal` and `-shm`, or `-journal`, so *"this role writes this
+database"* used to take four lines. Measured on one real policy: **744 of 1,248 write lines,
+60%, were sidecars**, and every single one had its `.sqlite` declared beside it.
+
+Now the database is enough:
+
+```toml
+[roles.dev]
+writes = ["bitacora/team.sqlite"]     # -wal, -shm and -journal come with it
+```
+
+**It grants nothing that was not already granted**, which is why it is safe to do without
+asking: the `-wal` holds that database's pending transactions, so whoever can write the
+database can already empty it. The sidecar is not a second resource, it is the same one.
+
+The expansion is visible to `whose` and `explain`, not just to the kernel — the owner of a
+database is the owner of its `-wal` everywhere, or the boundary and the sentence would
+disagree. `seisin check` prints it back collapsed, because four lines of one name is what
+this removed.
+
+**The suffix list is closed on purpose:** `-wal`, `-shm`, `-journal`, and only after a name
+ending in `.sqlite` or `.sqlite3`. `.db` is not included — plenty of things are called that,
+and a grant to create `whatever.db-wal` inside somebody else's directory would be new
+authority arriving quietly. A database with another name declares its sidecars by hand.
+
 **If your agent runs hooks of its own, they need a line here too.** Whatever a hook reads to learn which role it is gets dropped with everything else, and the symptom is two layers disagreeing about one file — your hook refusing a write that seisin just allowed, and the lower one is the one that is right — until the variable is named in `env`.
 
 **What this bought, measured rather than argued.** Over the same production window — four
@@ -1001,16 +1029,39 @@ This space already has good work, and seisin is not the first thing here:
 - [`anthropics/sandbox-runtime`](https://github.com/anthropics/sandbox-runtime) — the enforcement. seisin is a thin thing on top of a serious one.
 - [`kornysietsma/claude-code-permissions-hook`](https://github.com/kornysietsma/claude-code-permissions-hook) — granular `PreToolUse` rules, one global policy.
 - [`XuebinMa/agent-guard`](https://github.com/XuebinMa/agent-guard) — a permission-enforcement SDK, also one global policy.
+- [`NVIDIA/OpenShell`](https://github.com/NVIDIA/openshell) — a runtime that sandboxes an agent with Landlock and seccomp, under a declarative policy. Serious, and the closest thing here by weight.
+- [`dredozubov/hazmat`](https://github.com/dredozubov/hazmat) — runs the agent as a different system user, with `pf` rules and snapshots.
 - *Directory ownership* is recommended in half the multi-agent write-ups. As far as I could find, nobody enforces it, and nobody names the owner in the refusal. That gap is the reason for this repo.
+
+### One sentence to tell these apart, because the names all sound the same
+
+**OpenShell and hazmat isolate the agent from your machine. seisin separates roles from each
+other inside one repository, and when it blocks something it names the owner.**
+
+Those are different problems and the first one is not the one this solves. If what you want
+is "this agent cannot touch anything outside its box", they do that and OpenShell does it
+with a large organisation behind it. If what you want is "four agents work in the same
+repository and none of them edits another's files — and when one is stopped it is told whose
+those files are", nothing above answers that, which is why this exists.
+
+They compose rather than compete: the agent seisin confines could be running inside one of
+them.
+
+*One detail worth knowing before you compare, read from OpenShell's documentation rather than
+measured here: Landlock is a Linux facility and does not exist on macOS, so OpenShell's macOS
+mode is `best_effort` — its own docs call it "primarily for local macOS/Docker Desktop
+functional demos" — while Linux treats Landlock as a hard requirement. seisin enforces on
+macOS through Seatbelt and on Linux through bubblewrap, and [says where each claim was
+measured](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run).*
 
 ## Status
 
-`0.1.1`, 297 tests, of which **25 need `@anthropic-ai/sandbox-runtime` installed**
+`0.1.1`, 303 tests, of which **25 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 those eighteen skipped on Linux for a day, behind a runtime check that looked for the global
 install and missed the bundled one, and hid a defect that broke `seisin run` on that platform
-entirely. **297/297 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
+entirely. **303/303 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
 either, Node 18/20/22 in CI at every push — and 225/225 the same way on Debian 12.15
 with bubblewrap 0.8.0, the last time the suite was run in Docker.
 [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),

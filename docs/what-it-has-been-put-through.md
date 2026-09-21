@@ -6,12 +6,12 @@
 
 ## The suite
 
-**297 tests** (2026-09-21), on macOS and on Linux under bubblewrap, and in CI on
+**303 tests** (2026-09-21), on macOS and on Linux under bubblewrap, and in CI on
 Node 18/20/22 at every push ([workflow](../.github/workflows/test.yml)).
 
 Twenty-five of them are not unit tests: they run real commands through the real
 sandbox and check what the kernel did — and they skip themselves when `srt` is
-not installed, so on a machine without it the suite reports 272 passing and 25
+not installed, so on a machine without it the suite reports 278 passing and 25
 skipped rather than failing. That distinction matters enough that CI **fails if
 those twenty-five skip** — `srt` missing makes them skip themselves, and
 a green run that quietly tested nothing looks exactly like a real one.
@@ -45,7 +45,7 @@ what has not.
 
 | | macOS 15 · Seatbelt | Linux · bubblewrap |
 |---|---|---|
-| the suite | **297/297, nothing skipped** — 2026-09-21 | **297/297, nothing skipped** — 2026-09-21, `ubuntu-latest` in CI, Node 22, the twenty-five sandbox tests confirmed run. Last full Docker run: 225/225 — 2026-09-14, Debian 12.15, bwrap 0.8.0, `--privileged` (bubblewrap mounts `/proc`) |
+| the suite | **303/303, nothing skipped** — 2026-09-21 | **303/303, nothing skipped** — 2026-09-21, `ubuntu-latest` in CI, Node 22, the twenty-five sandbox tests confirmed run. Last full Docker run: 225/225 — 2026-09-14, Debian 12.15, bwrap 0.8.0, `--privileged` (bubblewrap mounts `/proc`) |
 | CI, every push | Node 18/20/22 | `ubuntu-latest`, Node 18/20/22 |
 | `[runtime] isolate = "home"` (`= true`) | ✅ — and it did not start here at all until the 104-byte socket fix | ✅ — `tmpdir()` is `/tmp`, so the path never came close |
 | `[runtime] isolate = "credentials"` | ✅ — no role home, so the socket limit cannot reach it | ✅ |

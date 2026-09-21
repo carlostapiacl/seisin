@@ -126,7 +126,7 @@ export function renderObserved(config, entries) {
     const declared = config.roles[name];
     const seen = roles.get(name);
 
-    const from = declared ? declared.writes : [];
+    const from = declared ? declared.writesDeclared ?? declared.writes : [];
     const found = seen ? generalise([...seen.writes]).filter((w) => !from.includes(w)) : [];
     const keys = [
       ...(declared ? declared.keys : []),
