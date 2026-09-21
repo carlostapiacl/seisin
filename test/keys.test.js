@@ -448,3 +448,40 @@ test("redefining file:// is refused — one scheme cannot mean two things", () =
   assert.throws(() => loadConfig(join(dir, "seisin.toml")), /built in and cannot be redefined/);
   rmSync(dir, { recursive: true, force: true });
 });
+
+// ── the credential floor, or its absence ───────────────────────────────────
+
+test("a repo with secrets and no [keys] dir is warned — the emitted policy denies no reads", () => {
+  // The dangerous shape is a policy a script generated. Drop the one `[keys]
+  // dir` line and every role reads the credential tree, with a clean `check`.
+  // Verified before this existed: keyDirs [], denyRead [], and not one warning
+  // about it among the four that did fire.
+  const dir = mkdtempSync(join(tmpdir(), "seisin-floor-"));
+  writeFileSync(join(dir, ".env"), "TOKEN=x\n");
+  writeFileSync(join(dir, "seisin.toml"), `[roles.dev]\nwrites = ["src/**"]\n`);
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  assert.deepEqual(settingsFor(cfg, "dev").filesystem.denyRead, [], "this is what it costs");
+  assert.ok(inspect(cfg, null, "x").warnings.some((w) => w.kind === "no-key-floor"));
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("a repo with no secrets in it is not nagged", () => {
+  // The whole reason this is a shallow look and not `scan`: warning a project
+  // that has no credentials is the noise that teaches people to skip warnings.
+  const dir = mkdtempSync(join(tmpdir(), "seisin-floor-"));
+  writeFileSync(join(dir, "README.md"), "# hi\n");
+  writeFileSync(join(dir, "seisin.toml"), `[roles.dev]\nwrites = ["src/**"]\n`);
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  assert.ok(!inspect(cfg, null, "x").warnings.some((w) => w.kind === "no-key-floor"));
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("and once a key directory is declared, the warning goes away", () => {
+  const dir = mkdtempSync(join(tmpdir(), "seisin-floor-"));
+  mkdirSync(join(dir, ".secrets"), { recursive: true });
+  writeFileSync(join(dir, ".env"), "TOKEN=x\n");
+  writeFileSync(join(dir, "seisin.toml"), `[keys]\ndir = [".secrets"]\n\n[roles.dev]\nwrites = ["src/**"]\n`);
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  assert.ok(!inspect(cfg, null, "x").warnings.some((w) => w.kind === "no-key-floor"));
+  rmSync(dir, { recursive: true, force: true });
+});

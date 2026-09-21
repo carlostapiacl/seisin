@@ -8,6 +8,19 @@ changed rather than failing on the old spelling.
 
 ## 0.2.0 — 2026-09-21
 
+- **A policy with no credential floor, in a repo that has credentials, is now warned about.**
+  `[keys] dir` is what produces `denyRead`; without it the emitted settings deny no reads at
+  all, so every role reads every secret in the repository — and nothing said so. Verified
+  before the fix: `keyDirs []`, `denyRead []`, and four warnings fired, none of them this one.
+
+  The dangerous shape is a policy a script generates, which is not hypothetical. A shallow
+  look at the repository root, one `readdir`, conventional names only — a project with no
+  secrets is not nagged, because that is the noise that teaches people to skip warnings.
+
+  Credit: this is `L-01` of an outside code review, which observed that the file path was
+  protected and only the object path was exposed. Checking that turned out to be generous —
+  the file path had the same hole.
+
 - **`scratch` announces its path under both conventions.** It set `<NAME>_FILE`, which is the
   Docker-secrets shape — and a large family of tools already expects a path in the plain
   variable: `KUBECONFIG`, `GOOGLE_APPLICATION_CREDENTIALS`, `AWS_SHARED_CREDENTIALS_FILE`. For
