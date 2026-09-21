@@ -36,7 +36,7 @@ is safe to paste — but **read it first**, because it prints your role names an
 
 ## Fixing a recipe
 
-The [provider recipes](README.md#recipes) are the part of this repository that ages fastest:
+The [provider recipes](docs/keys.md#recipes) are the part of this repository that ages fastest:
 they are other people's CLIs and they change. Three of them were measured on macOS; the rest
 follow each tool's documentation and are marked as such.
 
