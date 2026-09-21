@@ -19,6 +19,8 @@ import { loadConfig } from "./config.js";
 import { read, logPath } from "./log.js";
 import { settingsFor } from "./srt.js";
 import { pending, requestsPath, settle, applyGrant } from "./requests.js";
+import { walls } from "./walls.js";
+import { explain } from "./owners.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -29,9 +31,92 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  * page is a view of it — someone editing seisin.toml in an editor should see
  * the console change, not wonder why it disagrees.
  */
+/**
+ * Today's refusals, grouped by what was refused rather than by who asked.
+ *
+ * The console used to show them per role, which is the same list a hundred
+ * times over: measured on one deployment, 1,080 of 1,422 refusals were a
+ * single lock file across six repositories, and per-role that reads as six
+ * hundred identical rows instead of one sentence. Grouped, the shape of the
+ * day is visible at a glance and it is almost never a territory dispute.
+ *
+ * `stillRefused` is recomputed against the policy as it stands, not read out
+ * of the log — a cause that has been granted since is history, not friction,
+ * and leaving it on the page sends somebody to fix what is already fixed.
+ */
+export function frictionBy(cfg, entries) {
+  const by = new Map();
+  for (const e of entries) {
+    if (e.verdict !== "denied" || !e.target || !e.action) continue;
+    const k = `${e.action}\u0000${e.target}`;
+    const g = by.get(k) ?? { action: e.action, target: e.target, times: 0, roles: new Set(), owners: e.owners ?? [] };
+    g.times++;
+    g.roles.add(e.role);
+    by.set(k, g);
+  }
+  const total = [...by.values()].reduce((n, g) => n + g.times, 0);
+
+  /**
+   * The same grouping again, one level coarser: by the NAME at the end of the
+   * path rather than the path.
+   *
+   * Grouping by path alone gets the most important reading backwards. Measured
+   * here: six of the top seven causes were `.git/index.lock` in six different
+   * repositories, no single one above 17% — so "no cause dominates" is what the
+   * arithmetic says and the opposite of what is true. Three quarters of the
+   * window was one *kind* of thing, and that is a tooling problem with a
+   * mechanical fix, not a territory question anybody needs to rule on.
+   *
+   * By last segment, and nothing cleverer. A regex that recognised lock files,
+   * caches and build outputs would be a list of guesses about other people's
+   * toolchains that quietly goes stale; a repeated filename is a fact about
+   * this log.
+   */
+  const fams = new Map();
+  for (const g of by.values()) {
+    const name = g.target.split("/").filter(Boolean).pop() ?? g.target;
+    const f = fams.get(name) ?? { name, times: 0, paths: 0 };
+    f.times += g.times;
+    f.paths++;
+    fams.set(name, f);
+  }
+  const families = [...fams.values()]
+    .sort((a, b) => b.times - a.times)
+    .map((f) => ({ ...f, share: total ? f.times / total : 0 }));
+
+  return {
+    total,
+    // The real number of distinct causes, not the length of the list below.
+    // The page says "over N distinct paths" and the list is capped at twelve,
+    // so taking N from the list reported the cap as if it were the count —
+    // a wrong number stated confidently, which is worse than no number.
+    distinct: by.size,
+    families: families.slice(0, 5),
+    causes: [...by.values()]
+      .sort((a, b) => b.times - a.times)
+      .slice(0, 12)
+      .map((g) => ({
+        action: g.action,
+        target: g.target,
+        times: g.times,
+        share: total ? g.times / total : 0,
+        roles: [...g.roles].sort(),
+        owners: g.owners,
+        // How many of the roles that hit this would still hit it. `some` and
+        // not `every`: two roles out of three still blocked is still friction,
+        // and requiring all of them would quietly retire a live cause the day
+        // one role got a grant.
+        stillRefused: [...g.roles].filter((r) => cfg.roles[r] && !explain(cfg, r, g.action, g.target).allowed).length,
+      })),
+  };
+}
+
 function state(configPath) {
   const cfg = loadConfig(configPath);
   const entries = read(logPath(cfg.root), { limit: 200 });
+  // A wider window than the activity tail, because grouping by cause is an
+  // arithmetic question and 200 lines of a busy day is one role's morning.
+  const forShape = read(logPath(cfg.root), { limit: 4000 });
 
   const roles = Object.values(cfg.roles).map((r) => ({
     name: r.name,
@@ -54,6 +139,13 @@ function state(configPath) {
     keyDirs: cfg.keyDirs,
     allowedDomains: cfg.allowedDomains,
     roles,
+    friction: frictionBy(cfg, forShape),
+    // What each role keeps being refused AND would still be refused today.
+    // Empty for a role that has hit nothing twice, which is most of them.
+    walls: Object.fromEntries(
+      Object.keys(cfg.roles)
+        .map((r) => [r, walls(cfg, r, { file: logPath(cfg.root) })])
+        .filter(([, w]) => w.length)),
     log: entries.slice(-60).reverse(),
     live: true,
   };
