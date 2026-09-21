@@ -48,11 +48,11 @@ ${C.b}seisin${C.off} — give each agent its own folders and its own keys
   seisin whose <path>                   who owns it — safe to call from inside the box
   seisin scan                           find secrets outside the declared key dirs
   seisin review                         what the log says about the policy
-  seisin walls <role>                   what that role keeps being refused, and what it cost
+  seisin walls <role>                   what that role keeps being denied, and what it cost
   seisin wire                           let the agent record what it does
-  seisin requests                       what the agents asked for and could not do
+  seisin requests                       what the agents asked for and cannot have
   seisin grant <n> [--reason "…"]       approve one, with its provenance
-  seisin deny <n> [--reason "…"]        refuse one, and record why
+  seisin decline <n> [--reason "…"]     turn one down, and record why
   seisin log [--role r] [--verdict denied]
   seisin watch                          follow the log live
   seisin init [--from-observations]     propose a ${CONFIG_NAME} for this repo
@@ -95,6 +95,16 @@ const COMMANDS = {
   walls: () => (wallsCommand(config(), argv).length ? 1 : 0),
   requests: () => (requests(config()).length ? 1 : 0),
   grant: () => void grant(config(), argv),
+  /**
+   * A person DECLINES a request; the boundary DENIES a write. One word each,
+   * because they are opposite events and `deny` used to name both — a queue
+   * entry said `first refused on …` (the kernel) and the answer said
+   * `refused frontend ✕ …` (you).
+   *
+   * `deny` stays and is not documented. Renaming a published command over a
+   * word is not worth breaking somebody's script; teaching the new one is.
+   */
+  decline: () => void deny(config(), argv),
   deny: () => void deny(config(), argv),
   mcp: async () => {
     await serveMcp(version());

@@ -1,5 +1,5 @@
 /**
- * The walls a role keeps hitting, and the refusal that remembers.
+ * The walls a role keeps hitting, and the denial that remembers.
  *
  * The log is written by hand here rather than produced by a run: what is being
  * tested is what the reader concludes from a history, and building the history
@@ -32,7 +32,7 @@ function logWith(entries) {
 
 const denial = (role, target, action = "write") => ({ role, action, target, verdict: "denied" });
 
-test("one refusal is information; two is a wall", () => {
+test("one denial is information; two is a wall", () => {
   const { dir, file } = logWith([denial("dev", "deploy/a.yml"), denial("dev", "deploy/b.yml"), denial("dev", "deploy/b.yml")]);
   const got = walls(cfg, "dev", { file });
   assert.equal(got.length, 1);
@@ -102,7 +102,7 @@ test("an empty or missing log answers nothing and claims nothing", () => {
   assert.deepEqual(walls(cfg, "dev", { file: "/nope/does-not-exist.jsonl" }), []);
 });
 
-// ── the refusal that remembers ──────────────────────────────────────────────
+// ── the denial that remembers ──────────────────────────────────────────────
 
 test("timesHit counts this exact pair and nothing near it", () => {
   const { dir, file } = logWith([
@@ -117,7 +117,7 @@ test("timesHit counts this exact pair and nothing near it", () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("the first refusal does not count at you; the second does", () => {
+test("the first denial does not count at you; the second does", () => {
   const dir = mkdtempSync(join(tmpdir(), "seisin-walls-hook-"));
   mkdirSync(join(dir, ".seisin"), { recursive: true });
   const local = { ...cfg, root: dir };
@@ -126,15 +126,15 @@ test("the first refusal does not count at you; the second does", () => {
 
   const first = decide(local, "dev", event, { ask: noop });
   assert.equal(first.decision, "deny");
-  assert.ok(!/refused this/.test(first.hookSpecificOutput.permissionDecisionReason),
-    "a counter reading 1× on every first refusal is noise");
+  assert.ok(!/denied this/.test(first.hookSpecificOutput.permissionDecisionReason),
+    "a counter reading 1× on every first denial is noise");
 
   const second = decide(local, "dev", event, { ask: noop });
-  assert.match(second.hookSpecificOutput.permissionDecisionReason, /refused this 2 times now/);
+  assert.match(second.hookSpecificOutput.permissionDecisionReason, /denied this 2 times now/);
   assert.match(second.hookSpecificOutput.permissionDecisionReason, /third try/);
 
   const third = decide(local, "dev", event, { ask: noop });
-  assert.match(third.hookSpecificOutput.permissionDecisionReason, /refused this 3 times now/);
+  assert.match(third.hookSpecificOutput.permissionDecisionReason, /denied this 3 times now/);
   rmSync(dir, { recursive: true, force: true });
 });
 

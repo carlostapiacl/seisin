@@ -8,6 +8,27 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **One word per actor, and there is a glossary now.** The tool's product is the sentence you
+  read when something is stopped, and it had four words for one event — `block`, `denial`,
+  `refusal`, `deny` — with `deny` naming both what the boundary does and what a person does
+  about it.
+
+  **The boundary denies. A person declines. seisin refuses a configuration it will not
+  accept.** Three actors that were sharing two verbs now have three.
+
+  `seisin decline <n>` replaces `seisin deny <n>`; the old spelling still works and is no
+  longer documented. Nothing else moved: `verdict: "denied"` stays in the log and in the MCP
+  schema, because that is 1,452 stored lines and a published enum against one line of command
+  dispatch — the earlier attempt at this distinction renamed the expensive side.
+
+  In the console, the panel that groups denials is `causes`, not `friction`: `seisin review`
+  already had a `friction` that counts something narrower, and two screens reporting different
+  numbers under one label is a thing nobody notices until they compare them.
+
+  [docs/glossary.md](docs/glossary.md) is new and is the point — every term drifted because
+  there was nowhere for a new one to collide. `CONTRIBUTING.md` now says a term reaches the
+  CLI, the console, the log or the README with its line in the glossary or it does not arrive.
+
 - **A SQLite database is declared once, not four times.** `writes = ["x.sqlite"]` now also
   grants `-wal`, `-shm` and `-journal`. Measured on one real policy: **744 of 1,248 write
   lines — 60% — were sidecars**, every one of them beside its own `.sqlite`. Verified against

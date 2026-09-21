@@ -366,7 +366,7 @@ reimplementing. On Linux the watcher reports itself unavailable with the reason,
 `seisin run` says so once, and the boundary is unchanged. **Claims are made per
 platform here or they are not made.**
 
-## `review` answers two questions it used to get wrong, and now declines one
+## `review` answers two questions it used to get wrong, and now abstains on one
 
 `review` is arithmetic over the log, and that has not changed. What changed is
 that arithmetic over the wrong input is still arithmetic — it just produces a
@@ -398,7 +398,7 @@ on friction so it composes in CI; a boundary refusing exactly what it was
 configured to refuse must not fail a build, or a correct policy can never go
 green.
 
-### "Never used" declines to answer rather than answer from half a log
+### "Never used" abstains rather than answer from half a log
 
 This is the finding that can make a policy smaller, and therefore the one where
 being wrong deletes a permission somebody needed. It is read off `allowed`
@@ -532,6 +532,17 @@ them is the one people will assume.
   frontend ✕ src/api/**` — *you* said no. Now the boundary **refuses** and a
   person **declines**, which is the distinction this whole tool is built on, and
   it was the one pair of words that blurred it.
+
+  **Revised 2026-09-21, and the revision matters more than the original.** The
+  pair is kept and the words moved: the boundary **denies**, a person
+  **declines**, and *refuse* is now what seisin does to a configuration it will
+  not accept — a third actor that had no verb. The first version renamed the
+  expensive side: `denied` is the value in every log line ever written and an
+  enum in the MCP schema, while the person's command was one line of dispatch.
+  Counted before deciding: 16 places in code, a published schema, 1,452 stored
+  lines — against one. `seisin decline` is the command now; `seisin deny` still
+  works and is no longer documented. Every term is in
+  [the glossary](glossary.md), which did not exist and is why this drifted.
 - **Deleting inside your own territory** is not covered and not coverable here.
   [The ask is upstream](upstream/denyUnlink.md).
 - **Forgery in the audit trail.** Tampering is closed; a hostile agent can still

@@ -32,7 +32,12 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  * the console change, not wonder why it disagrees.
  */
 /**
- * Today's refusals, grouped by what was refused rather than by who asked.
+ * Today's denials, grouped by what was denied rather than by who asked.
+ *
+ * Called `causes` and not `friction`: `seisin review` already has a `friction`
+ * that counts something narrower — repeated denials that are not about keys —
+ * and two screens of one product reporting different numbers under one label
+ * is the kind of thing nobody notices until they are compared.
  *
  * The console used to show them per role, which is the same list a hundred
  * times over: measured on one deployment, 1,080 of 1,422 refusals were a
@@ -44,7 +49,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  * of the log — a cause that has been granted since is history, not friction,
  * and leaving it on the page sends somebody to fix what is already fixed.
  */
-export function frictionBy(cfg, entries) {
+export function causesOf(cfg, entries) {
   const by = new Map();
   for (const e of entries) {
     if (e.verdict !== "denied" || !e.target || !e.action) continue;
@@ -75,14 +80,23 @@ export function frictionBy(cfg, entries) {
   const fams = new Map();
   for (const g of by.values()) {
     const name = g.target.split("/").filter(Boolean).pop() ?? g.target;
-    const f = fams.get(name) ?? { name, times: 0, paths: 0 };
+    const f = fams.get(name) ?? { name, times: 0, paths: 0, where: [], roles: new Set() };
     f.times += g.times;
     f.paths++;
+    // The places, so the console can show what a name is made of instead of
+    // asserting a percentage the reader has to take on faith.
+    f.where.push({ target: g.target, times: g.times });
+    for (const r of g.roles) f.roles.add(r);
     fams.set(name, f);
   }
   const families = [...fams.values()]
     .sort((a, b) => b.times - a.times)
-    .map((f) => ({ ...f, share: total ? f.times / total : 0 }));
+    .map((f) => ({
+      name: f.name, times: f.times, paths: f.paths,
+      share: total ? f.times / total : 0,
+      roles: [...f.roles].sort(),
+      where: f.where.sort((a, b) => b.times - a.times).slice(0, 20),
+    }));
 
   return {
     total,
@@ -91,7 +105,7 @@ export function frictionBy(cfg, entries) {
     // so taking N from the list reported the cap as if it were the count —
     // a wrong number stated confidently, which is worse than no number.
     distinct: by.size,
-    families: families.slice(0, 5),
+    families: families.slice(0, 8),
     causes: [...by.values()]
       .sort((a, b) => b.times - a.times)
       .slice(0, 12)
@@ -139,7 +153,7 @@ function state(configPath) {
     keyDirs: cfg.keyDirs,
     allowedDomains: cfg.allowedDomains,
     roles,
-    friction: frictionBy(cfg, forShape),
+    causes: causesOf(cfg, forShape),
     // What each role keeps being refused AND would still be refused today.
     // Empty for a role that has hit nothing twice, which is most of them.
     walls: Object.fromEntries(
@@ -206,8 +220,18 @@ export function serve(configPath, port = 4178) {
    */
   const token = randomBytes(24).toString("hex");
 
+  /**
+   * The path, without whatever came after `?`.
+   *
+   * `req.url` is the raw request target, so a query string made every route
+   * miss: `http://localhost:4178/?anything` answered 404 on the one page this
+   * server has. Harmless until a launcher appends a parameter or a link is
+   * shared with a suffix on it, and then the console just looks broken.
+   */
+  const pathOf = (u) => (u ?? "/").split("?")[0];
+
   const server = createServer(async (req, res) => {
-    if (req.method === "POST" && req.url === "/api/decide") {
+    if (req.method === "POST" && pathOf(req.url) === "/api/decide") {
       if (req.headers["x-seisin-token"] !== token) {
         res.writeHead(403, { "content-type": "application/json" });
         return res.end(JSON.stringify({ error: "bad or missing token" }));
@@ -225,7 +249,7 @@ export function serve(configPath, port = 4178) {
       res.writeHead(405).end("method not allowed");
       return;
     }
-    if (req.url === "/api/state") {
+    if (pathOf(req.url) === "/api/state") {
       let body;
       try {
         body = JSON.stringify(state(configPath));
@@ -237,7 +261,7 @@ export function serve(configPath, port = 4178) {
       res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
       return res.end(body);
     }
-    if (req.url === "/" || req.url === "/index.html") {
+    if (pathOf(req.url) === "/" || pathOf(req.url) === "/index.html") {
       // Inlined rather than put in the URL: a fragment survives in history, in
       // a screenshot, and in whatever the operator pastes into a chat.
       const html = readFileSync(page, "utf8")

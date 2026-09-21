@@ -29,7 +29,7 @@ A **permission layer**, not a sandbox — it sits on top of one. The isolation c
 
 **The honest parts** · [How it holds](#how-it-holds) · [What it is not](#what-it-is-not) · [Why not a container](#why-not-a-container) · [Prior art](#prior-art) · [Status](#status)
 
-**Deeper** · [What it has been put through](docs/what-it-has-been-put-through.md) · [Field notes](docs/field-notes.md) · [Decisions](docs/decisions.md) · [Permission requests](docs/permission-requests.md) · [Contributing](CONTRIBUTING.md)
+**Deeper** · [Glossary](docs/glossary.md) · [What it has been put through](docs/what-it-has-been-put-through.md) · [Field notes](docs/field-notes.md) · [Decisions](docs/decisions.md) · [Permission requests](docs/permission-requests.md) · [Contributing](CONTRIBUTING.md)
 
 </details>
 
@@ -45,12 +45,12 @@ $ seisin run frontend -- sh -c 'echo // fix >> src/api/orders.ts'
     #1  frontend wants write on src/api/** (owned by backend)
         first asked over src/api/orders.ts
 
-    seisin grant <n> [--reason "…"]   ·   seisin deny <n> [--reason "…"]
+    seisin grant <n> [--reason "…"]   ·   seisin decline <n> [--reason "…"]
 ```
 
-**Whose it was, at the moment it was refused.** Every other permission layer in this space answers *yes* or *no*. Answering **"no, and it belongs to `backend`"** turns a block into a handoff — and one a person can approve in a command, rather than a line somebody has to remember to go and read.
+**Whose it was, at the moment it was denied.** Every other permission layer in this space answers *yes* or *no*. Answering **"no, and it belongs to `backend`"** turns a block into a handoff — and one a person can approve in a command, rather than a line somebody has to remember to go and read.
 
-The kernel is what refuses; the name comes from the policy. That first line is all the boundary itself can say — no path, no reason, nothing to read afterwards — so seisin reads the refusal out of the kernel's own log and answers the question it leaves open. On Linux only the hook can do that; [the ask is upstream](docs/upstream/cli-violations.md) as [issue #582](https://github.com/anthropics/sandbox-runtime/issues/582).
+The kernel is what denies; the name comes from the policy. That first line is all the boundary itself can say — no path, no reason, nothing to read afterwards — so seisin reads the refusal out of the kernel's own log and answers the question it leaves open. On Linux only the hook can do that; [the ask is upstream](docs/upstream/cli-violations.md) as [issue #582](https://github.com/anthropics/sandbox-runtime/issues/582).
 
 The agent can ask directly too, from inside the box:
 
@@ -115,9 +115,9 @@ rather than after.
 
 **It holds against an agent that is wrong.** One that edits the file it was not asked
 about, reads the key meant for another role, or calls an API nobody declared. The kernel
-refuses, and it does not care how the command was spelled — verified against a grandchild
+denies, and it does not care how the command was spelled — verified against a grandchild
 process, an absolute path, a symlink, a `python -c`, and a shell redirect the agent fell
-back to when its own file API was refused.
+back to when its own file API was denied.
 
 **It is not built to hold against an agent that is trying.** Measured, in this repo's own
 fixtures:
@@ -217,7 +217,7 @@ role, including the ones whose whole job is to have nothing to reach.
 
 Four shapes that a correct policy still produces, and that a reader reads as breakage. All
 four come out of one production window — four agent cells, ~370 confined turns over three
-days, 1,409 kernel refusals — where none of them was the boundary misbehaving. They are here
+days, 1,409 kernel denials — where none of them was the boundary misbehaving. They are here
 because every one of them cost someone an afternoon before it cost this paragraph.
 
 **1 · Granting a file does not grant its neighbours.** The kernel grants exactly the path you
@@ -242,9 +242,9 @@ destination, the kernel answers `Operation not permitted` about the temporary, a
 lying. Grant the directory.
 
 **2 · `.git/index.lock`, in a repo the role does not own.** In that window this single
-filename was **1,071 of the 1,409 refusals** — three quarters of everything the kernel said no
+filename was **1,071 of the 1,409 denials** — three quarters of everything the kernel said no
 to. A role runs `git status`, git tries to refresh the index of a checkout that belongs to
-another role, and the lock write is refused.
+another role, and the lock write is denied.
 
 It is noise, not a wall, and the distinction is measurable: inside the box
 `git status --short --branch` and `git log` still exit 0. Git cannot refresh its index cache
@@ -259,13 +259,13 @@ and `seisin explain` answer the same thing from either side, and say which check
 talking about. Worth knowing it is handled, because the symptom when a tool does *not* handle
 it is a role denied inside its own territory.
 
-**4 · SQLite reports a refused write as `attempt to write a readonly database`** — see
+**4 · SQLite reports a denied write as `attempt to write a readonly database`** — see
 [below](#which-agents-it-has-been-run-with); it is the one that sends you to debug the
 database instead of the policy, and the reason `seisin wire` exists.
 
 Where these stand: the sibling case is a `check` warning instead of a surprise, the worktree
 case is resolved in the tool, the SQLite case is named by the hook, and the git one is
-friction that gets logged rather than silenced — a boundary that hides what it refused is the
+friction that gets logged rather than silenced — a boundary that hides what it denied is the
 thing this project exists to argue against.
 
 ## Which agents it has been run with
@@ -276,7 +276,7 @@ actually been exercised:
 
 | agent | version | result |
 |---|---|---|
-| **Claude Code** (`claude -p`) | 2.1.x | Territory and keys enforced; network egress refused an undeclared domain by name |
+| **Claude Code** (`claude -p`) | 2.1.x | Territory and keys enforced; network egress denied an undeclared domain by name |
 | **opencode** (`opencode run`) | **1.18.30** | Same, **on a free model with no API key at all** |
 | **LangGraph** (`python graph.py`) | **1.2.11** | Same, **enforced against the interpreter's own `open()`** — in-process tools, no child command to match |
 | **codex** (`codex exec`) | **0.150.1** | Same, with its own sandbox off — see below. Refused twice: its patch tool, then the shell redirect it fell back to |
@@ -330,9 +330,9 @@ boundary. The XDG directories are in the list now.
 The LangGraph run answers a different question: **an agent framework is not a CLI.** Its tools
 are Python calls inside the same process, so there is no child command for a rule to match and no
 argv to inspect — the write is the interpreter's own `open()`. A six-node graph asked to write into
-another role's territory was refused there, refused again through the shell redirect it fell back
-to, refused the other role's key, and refused an undeclared domain. Run as the other role, the same
-graph gave the mirror image — every territory and key answer flipped, the undeclared domain refused
+another role's territory was denied there, denied again through the shell redirect it fell back
+to, denied the other role's key, and denied an undeclared domain. Run as the other role, the same
+graph gave the mirror image — every territory and key answer flipped, the undeclared domain denied
 for both — and its SQLite checkpointer persisted normally inside whichever territory was its own.
 
 One caveat belongs beside that row rather than after it: **a role is scoped to a process, and a
@@ -340,7 +340,7 @@ graph is one process.** Every node of one graph shares one territory and one set
 territory means per-node subprocess, which is the thing an in-process framework exists to avoid.
 seisin fits a multi-agent framework at the boundary of the whole graph, not between its agents.
 
-And one failure mode worth meeting here rather than at 2am: SQLite reports a refused write as
+And one failure mode worth meeting here rather than at 2am: SQLite reports a denied write as
 `attempt to write a readonly database`, not as a permission error. That reads like a misconfigured
 database, and you will debug the database. The hook names the owner instead — it is the case
 `seisin wire` is for.
@@ -439,10 +439,10 @@ So a denial leaves something you can act on:
     #1  frontend wants write on src/api/** (owned by backend) · asked 3×
         first asked over src/api/orders.ts
 
-    seisin grant 1 --reason "…"   ·   seisin deny 1 --reason "…"
+    seisin grant 1 --reason "…"   ·   seisin decline 1 --reason "…"
 ```
 
-Many refusals in one directory are **one** request, not many — an agent denied
+Many denials in one directory are **one** request, not many — an agent denied
 on `a.ts` and then on `b.ts` is not asking two questions. And the grant records
 where it came from, next to the line it adds:
 
@@ -464,7 +464,7 @@ writes = [
               ▼
       ┌───────┴────────┐
       ▼                ▼
-  seisin grant 1   seisin deny 1
+  seisin grant 1   seisin decline 1
       │                ▼
       │           policy unchanged,
       ▼           the reason recorded
@@ -541,7 +541,7 @@ gets recorded at all. It has to be installed: `seisin wire` writes the
 `PreToolUse` entry into this repo's `.claude/settings.json` — the project's,
 never your machine's. It is also text-based and evadable, on purpose.
 
-The **kernel** reports what it actually refused. On macOS every Seatbelt denial
+The **kernel** reports what it actually denied. On macOS every Seatbelt denial
 lands in the system log with its operation, its absolute path and the runtime's
 own attribution tag, and `seisin run` reads that stream for the duration of the
 run. Nothing to install, nothing to evade — and it catches exactly what the hook
@@ -567,7 +567,7 @@ and still queue a request; what you lose is the record of what was *allowed*,
 which is what `init --from-observations` is built out of. `seisin check` says so
 until you run it.
 
-**On Linux only the hook writes.** bubblewrap does not log refusals and the
+**On Linux only the hook writes.** bubblewrap does not log denials and the
 runtime's substitute is not readable from outside it, so `seisin run` says so
 once and records nothing from the kernel. [The ask is
 upstream](docs/upstream/cli-violations.md) as [issue #582][582], filed 2026-09-20
@@ -581,7 +581,7 @@ against 0.0.77, open and unanswered.
 |---|---|---|
 | your agent's `allow`/`deny` rules | match the command string before it runs | yes — `/bin/rm`, a heredoc, a child process |
 | **seisin** | decides what to ask for, and names the owner | it doesn't enforce, it explains |
-| **sandbox-runtime → Seatbelt / bubblewrap** | the OS refuses the syscall | no |
+| **sandbox-runtime → Seatbelt / bubblewrap** | the OS denies the syscall | no |
 
 ```
    Write tool · Bash `rm -rf` · /bin/rm · python -c "open(…)" · a grandchild
@@ -854,7 +854,7 @@ authority arriving quietly. A database with another name declares its sidecars b
 **If your agent runs hooks of its own, they need a line here too.** Whatever a hook reads to learn which role it is gets dropped with everything else, and the symptom is two layers disagreeing about one file — your hook refusing a write that seisin just allowed, and the lower one is the one that is right — until the variable is named in `env`.
 
 **What this bought, measured rather than argued.** Over the same production window — four
-agent cells, ~370 confined turns, three days — **every refused read was a read of something
+agent cells, ~370 confined turns, three days — **every denied read was a read of something
 the policy had declared a key.** 148 of them, no exceptions, from five different roles, and
 not one was doing anything unusual: they were running searches that swept a repository root.
 That is how a key gets read without anyone deciding it should, and it is the whole case for
@@ -872,20 +872,20 @@ process in memory. `[runtime] redact = false` turns that off.
 
 ## When the boundary is right and the agent cannot hear it
 
-seisin answers *whose is this* at the moment of the refusal — once, mid-turn — and then the
+seisin answers *whose is this* at the moment of the denial — once, mid-turn — and then the
 sentence is gone. Nothing carries it forward, so the agent tries again.
 
-Measured on a real team: of **345 blocks, 88 (25%) were a repeat of something that same role
-had already been refused.** One role spent 37 calls on two walls, hitting one of them nineteen
-times. Every refusal was correct. Not one was a false positive. It still cost thirty-seven
+Measured on a real team: of **345 denials, 88 (25%) were a repeat of something that same role
+had already been denied.** One role spent 37 calls on two walls, hitting one of them nineteen
+times. Every denial was correct. Not one was a false positive. It still cost thirty-seven
 calls, because *correct* and *heard* are different properties and only the first was being
 measured.
 
-So a refusal now carries its own history:
+So a denial now carries its own history:
 
 ```
 deploy/x.yml belongs to infra. It is not dev's to change — hand it over rather than
-working around it. You have been refused this 3 times now; it is not going to work on
+working around it. You have been denied this 3 times now; it is not going to work on
 the fourth try. Already queued for a person to answer…
 ```
 
@@ -1077,6 +1077,10 @@ already done:
 | **Windows** | the runtime has a backend. seisin has never been pointed at it, and no CI runner covers it |
 | **Deleting inside your own territory** | not covered, and not coverable here — the ask is upstream as [issue #545](https://github.com/anthropics/sandbox-runtime/issues/545), open and unanswered since 2026-09-13, [with the measurement behind it](docs/upstream/denyUnlink.md) and [a demo](docs/demo/) |
 | **`init` heuristics** | it reads `.claude/agents/` then `CODEOWNERS`. Every other convention is a guess nobody has made yet |
+
+Every word above has one meaning, listed in [the glossary](docs/glossary.md) — the boundary
+**denies**, a person **declines**, seisin **refuses** a config it cannot enforce. A tool whose
+product is a sentence cannot afford two words for one thing.
 
 Issues and pull requests welcome — [CONTRIBUTING.md](CONTRIBUTING.md) says what is actually
 different about contributing here, which is mostly that a claim has to be downstream of
