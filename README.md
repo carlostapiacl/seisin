@@ -281,6 +281,12 @@ actually been exercised:
 | **LangGraph** (`python graph.py`) | **1.2.11** | Same, **enforced against the interpreter's own `open()`** — in-process tools, no child command to match |
 | **codex** (`codex exec`) | **0.150.1** | Same, with its own sandbox off — see below. Refused twice: its patch tool, then the shell redirect it fell back to |
 
+**seisin now says this before it starts one.** The error you get otherwise —
+`sandbox-exec: sandbox_apply: Operation not permitted` — names neither seisin, nor the agent,
+nor the fix, which in a tool whose claim is that a refusal explains itself is the worst message
+available. It is a short closed list, checked before the spawn, and it only warns about an
+agent whose own sandbox is actually on.
+
 The codex run is the one that needed a flag. **An agent that sandboxes itself has to stop.** `codex` confines each command it runs with its
 own `sandbox-exec` profile, and macOS refuses to apply a second Seatbelt profile to a process
 that already has one — `sandbox_apply: Operation not permitted`, with the most permissive
@@ -1056,12 +1062,12 @@ measured](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run
 
 ## Status
 
-`0.1.1`, 303 tests, of which **25 need `@anthropic-ai/sandbox-runtime` installed**
+`0.1.1`, 311 tests, of which **25 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 those eighteen skipped on Linux for a day, behind a runtime check that looked for the global
 install and missed the bundled one, and hid a defect that broke `seisin run` on that platform
-entirely. **303/303 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
+entirely. **311/311 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
 either, Node 18/20/22 in CI at every push — and 225/225 the same way on Debian 12.15
 with bubblewrap 0.8.0, the last time the suite was run in Docker.
 [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),
