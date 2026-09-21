@@ -88,3 +88,18 @@ test("the MCP exposes causes and walls, not only the raw log", () => {
 test("every MCP tool says it is read-only, because approving never happens here", () => {
   for (const t of TOOLS) assert.match(t.description, /read-only/i, t.name);
 });
+
+test("anything the console derives is reachable over MCP", () => {
+  // The rule in CONTRIBUTING, as a test, because a rule is the version of this
+  // that people forget at 2am. `causes` and `walls` shipped in the console and
+  // not in the server for a day: an assistant got the raw log and had to
+  // re-derive the grouping without the policy.
+  //
+  // Only the DERIVED views. Raw passthrough (`log`, `toml`) is not analysis and
+  // `seisin_activity` already covers the log.
+  const DERIVED = ["causes", "walls"];
+  const names = TOOLS.map((t) => t.name);
+  for (const k of DERIVED)
+    assert.ok(names.includes("seisin_" + k),
+      `the console computes ${k} and no MCP tool exposes it`);
+});

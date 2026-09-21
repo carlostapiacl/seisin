@@ -16,6 +16,12 @@ A **permission layer**, not a sandbox — it sits on top of one. The isolation c
 
 *And what running four cells of agents behind it actually cost — including the numbers that did not survive a re-check. [Field notes →](docs/field-notes.md)*
 
+**Three ways in, and they say the same thing.** The **CLI** is what a person types and what
+every agent runs under. The **console** (`seisin ui`) is for a person deciding something. The
+**MCP server** is for an agent asking about its own situation. A change to what any of them
+says lands in all three — [CONTRIBUTING](CONTRIBUTING.md#three-surfaces-and-a-change-lands-in-all-of-them)
+says why, and a test holds one half of it.
+
 <details>
 <summary><b>Contents</b></summary>
 
@@ -1100,12 +1106,12 @@ measured](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run
 
 ## Status
 
-`0.2.0`, 325 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
+`0.2.0`, 326 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 those eighteen skipped on Linux for a day, behind a runtime check that looked for the global
 install and missed the bundled one, and hid a defect that broke `seisin run` on that platform
-entirely. **325/325 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
+entirely. **326/326 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
 either, Node 18/20/22 in CI at every push — and 225/225 the same way on Debian 12.15
 with bubblewrap 0.8.0, the last time the suite was run in Docker.
 [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),

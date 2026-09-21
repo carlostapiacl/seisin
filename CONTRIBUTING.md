@@ -65,6 +65,29 @@ There is a counter in CI that fails if the test totals printed in the README and
 `docs/what-it-has-been-put-through.md` stop matching reality. If it fails on your PR, update
 the numbers; that is what it is for.
 
+## Three surfaces, and a change lands in all of them
+
+seisin is read through three things, and they are not layers of one another:
+
+| | who reads it | where it lives |
+|---|---|---|
+| **the CLI** | a person at a terminal, and every agent, through `run` and the hook | `src/`, `src/commands/` |
+| **the console** | a person deciding something | `ui/index.html`, served by `src/serve.js` |
+| **the MCP server** | an agent asking about its own situation | `src/mcp.js` |
+
+**A change that touches what any of them say has to land in all three**, or the product
+starts disagreeing with itself. Both halves of that failed on one day and each was found by
+accident rather than by looking:
+
+- `causes` and `walls` were computed for the console and **not exposed over MCP**, so an
+  assistant got the raw log and had to re-derive the grouping without the policy.
+- A person's action was renamed from *refuse* to *decline* everywhere except **a button in
+  the console**, which kept saying `Refuse` until a GIF was re-recorded.
+
+There is a test for the first shape — anything the console derives must have an MCP tool —
+and it exists because a test is the only version of this rule that survives a tired evening.
+The second shape has no test yet; `grep` is what there is.
+
 ## Words
 
 A term that reaches the CLI, the console, the log or the README arrives with its line in

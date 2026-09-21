@@ -8,6 +8,13 @@ changed rather than failing on the old spelling.
 
 ## 0.2.0 — 2026-09-21
 
+- **Written down: seisin is read through three surfaces, and a change lands in all of them.**
+  The CLI, the console and the MCP server are not layers of one another — they have different
+  readers and neither can do the other's work. Both halves of that rule broke on the day it
+  was written: `causes` and `walls` shipped in the console and not over MCP, and a rename from
+  *refuse* to *decline* reached everything except a button. A test now holds the first shape:
+  anything the console derives must have an MCP tool.
+
 - **The MCP server exposes what it had only been computing for the console.** `seisin_causes`
   returns the window grouped by path and by name, with how many causes are on paths no role
   owns; `seisin_walls` returns what a role keeps being denied and would still be denied
