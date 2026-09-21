@@ -10,7 +10,7 @@
  * Measured, twice: the README has it from the original run and the lab
  * reproduced it — exit 71, and the inner command never produced a byte.
  *
- * Two things make this worth a special case in a tool that otherwise has none.
+ * Two things make it a special case in a tool that otherwise has none.
  *
  * **It does not fail at the start.** The agent launches, reads, thinks, and
  * dies on the first command it tries to confine. So the operator sees a turn
@@ -34,10 +34,9 @@
  * way round: off unless asked. Getting this backwards means warning about a
  * thing that is not happening, which trains people to skip the line.
  *
- * `opencode` is deliberately absent. It has been run under seisin and the
+ * `opencode` is absent. It has been run under seisin and the
  * README describes its behaviour, but nothing here has measured whether it
- * confines its own commands — and a closed list is only worth having if
- * everything in it was checked.
+ * confines its own commands, and a closed list holds only what was checked.
  */
 const SELF_SANDBOXING = {
   codex: {

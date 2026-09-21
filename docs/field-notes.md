@@ -25,8 +25,8 @@ against real repositories with real deadlines. Roles run confined by
 [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropics/sandbox-runtime) with a
 policy seisin writes; a hook records what was attempted and names the owner of the path.
 
-The policy in question, to give the numbers a scale: **31 roles, 1,892 path globs, a
-106 KB `seisin.toml`.** Not a demo.
+The policy in question, to give the numbers a scale: 31 roles, 1,892 path globs, a
+106 KB `seisin.toml`. Not a demo.
 
 Two instruments produced what follows, and they are not the same thing:
 
@@ -61,7 +61,7 @@ a mutex.
 
 The fix was not a wider grant. It was `GIT_OPTIONAL_LOCKS=0`, which turns the courtesy off:
 `status` stops touching the index, while `add`, `commit` and `checkout -b` still take the
-locks they need. **It removes the need for the permission instead of widening one** — the
+locks they need. It removes the need for the permission instead of widening one — the
 boundary does not move — and it deletes three quarters of the noise.
 
 > The lesson generalises past git. Before you design a mechanism to handle a flood of
@@ -124,11 +124,11 @@ The 13 is `seisin scan`, which reads content shapes rather than names. The gap b
 methods is the point: names over-count, content under-counts what it is unsure of, and
 neither is the truth on its own.*
 
-The key directories were declared **only so that `seisin scan` would not walk them**. The
+The key directories were declared only so that `seisin scan` would not walk them. The
 mechanism for scoping a secret to one role existed, was documented, and had zero users in
 the deployment that built it.
 
-**The lesson is not "people are careless".** It is that the mechanism asked for a file path,
+The lesson is not "people are careless". It is that the mechanism asked for a file path,
 and the secrets people actually have are either in a vault with no path, or in a `.env`
 holding twelve variables where granting the file grants all twelve. The feature was shaped
 for a situation that does not occur.
@@ -144,12 +144,12 @@ the same policy, it does not reproduce. What does, on that machine, as a median 
 | `seisin --version` — plus loading seisin's modules | 356 ms |
 | `seisin whose <path>` — plus reading and evaluating the 106 KB policy | 536 ms |
 
-So roughly **210 ms of module loading and 180 ms of policy work**, on a laptop that was not
+So roughly 210 ms of module loading and 180 ms of policy work, on a laptop that was not
 idle. The original figure may have come from a quieter machine or a smaller policy — the
 policy has grown since — but I cannot reproduce it, so it does not get to stand.
 
-The conclusion the old number supported does survive, and it is the useful part: **put the
-question on the denial path, not on every call.** At one query per tool call this would be
+The conclusion the old number supported does survive, and it is the useful part: put the
+question on the denial path, not on every call. At one query per tool call this would be
 hours of pure latency across a window; asked only when something was refused, it was 915
 queries over 378 rounds. Whatever the per-call figure is on your machine, that ratio is the
 design.
@@ -165,17 +165,17 @@ The part nobody publishes, which is the part worth reading. These come from the
 deployment's own retrieval and scheduling machinery — **not from seisin** — and they are
 here because they cost real weeks.
 
-- **A better embedding separated worse than the crude thing it replaced.**
+- A better embedding separated worse than the crude thing it replaced.
   `text-embedding-3-small` scored cosine **0.930** between two descriptions that were about
   different services and needed to be distinguished; the existing Jaccard overlap gave
   **0.727** on the same pair. The upgrade was the wrong direction and only measuring said so.
 - **Raising recall lowered the outcome.** Moving BM25 recall from **29.6% to 51.1%** dropped
   end-to-end resolution from **1.96% to 1.22%**. More candidates, worse answers — the metric
   everybody optimises and the metric anybody cares about moving opposite ways.
-- **A scheduling rule fired 33 times out of 33 and masked the rule underneath it**, which
+- A scheduling rule fired 33 times out of 33 and masked the rule underneath it, which
   therefore could never fire at all. It had been in production for weeks looking like it
   worked.
-- **A claim attributed to a published paper was not in that paper.** Caught by extracting
+- A claim attributed to a published paper was not in that paper. Caught by extracting
   the full text and searching it. It had already been cited internally as settled.
 
 Two of these were the result of doing the obviously-better thing. That is the argument for
