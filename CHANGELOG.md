@@ -8,6 +8,28 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **The console opens on what needs you, not on the policy.** It landed on Roles — a wall of
+  paths rendered before anybody asked a question — while the queue of decisions sat behind a
+  nav item. Reference is looked up; decisions are shown.
+
+- **Refusals are grouped by what was refused, not by who asked**, in a new *Where the day
+  went* panel, with a bar per cause and a sentence that says what the shape means. Per role
+  the same list appears a hundred times: on one deployment 1,081 of 1,452 refusals were a
+  single lock file across eight paths.
+
+  **The grouping goes one level coarser than the path, and that changes the answer.** By
+  path, no single cause passed 17% and the page concluded "no cause dominates" — right
+  arithmetic, backwards reading. By name, 74% was one thing. One kind of thing at that scale
+  is a tooling problem with a mechanical fix; the same volume spread across unrelated paths
+  is a territory question that needs a person. The page now says which of the two it is
+  looking at.
+
+  A cause is greyed when the policy no longer refuses it — recomputed, not read out of the
+  log — so a grant retires its row instead of leaving somebody to fix what is fixed.
+
+- **"Retried anyway"** lists the roles still hitting walls they have already been refused,
+  with the calls each one spent retrying.
+
 - **`file://` ships built in**, because a secret in a plain file is the case this exists for
   and making it declare a provider that runs `cat` was a papercut on the only path most people
   take. `keys = ["TOKEN=file://.secrets/netlify.txt"]`, or one variable out of a file that
