@@ -58,7 +58,8 @@ words on purpose: a key is carried, not possessed, which is also what the projec
 reviewed and approved; never the value.
 
 **provider** — the command that turns a reference into a value. Runs in the parent, outside the
-sandbox. `file://` is the one that ships.
+sandbox. `file://` is the one that ships; its fragment reads an env file or a JSON object, and
+nothing else, because those are formats and a document is not.
 
 **scratch** — the temporary space every role can write, because an agent that cannot write a
 temp file cannot work. Also where a `scratch`-mode key lands for the length of a turn.

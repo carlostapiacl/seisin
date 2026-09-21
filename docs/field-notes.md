@@ -90,9 +90,18 @@ Not one of the 345 was a false positive. The boundary was right every single tim
 still cost a quarter of the calls it touched, because **correct** and **heard** are
 different properties and only the first one was being measured.
 
-This is why `seisin walls` and the counter in the refusal exist. It is also the finding I
+This is why `seisin walls` and the counter in the denial exist. It is also the finding I
 would most expect to generalise: every permission layer measures precision and none of them
 measures whether the agent understood.
+
+**And the counter's effect is still unmeasured, for a reason worth copying down.** The test
+would be repeats before and after — but 86% of the repeats in the kernel log were one lock
+file, and the previous release removed that wall entirely. Repeats fell from 684 in a day to
+18; almost all of that is the wall going away. Two improvements landed days apart and the
+larger one ate the other's test case. What is left to measure the sentence against is the
+remaining 24%, spread thin, in cells where the hook is not always wired. So: built, shipped,
+and not yet shown to work — which is a different sentence from the one a changelog usually
+writes.
 
 ## 4 · The cost of not knowing whose it was, in requests
 
