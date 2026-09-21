@@ -1,0 +1,42 @@
+# Publishes site/ to GitHub Pages.
+#
+# site/ and not docs/ on purpose: docs/ is markdown meant to be read on GitHub,
+# and pointing Pages at it would hand those files to Jekyll, which renders them
+# as a second, worse copy of the same pages. site/ is one self-contained page
+# with its own copies of the GIFs, so nothing outside it has to be Pages-shaped.
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; a queued run replaces an older queued run, never a
+# running one — a half-published site is worse than a late one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      # One copy of each GIF lives in docs/img, because two copies of a binary
+      # drift the moment one is regenerated. The site gets them at build time.
+      - run: cp -R docs/img site/img
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
