@@ -468,6 +468,48 @@ and wrong for recovery, and it is unresolved: the honest repair today is to
 grant the permission on its merits, which is a decision about the policy rather
 than an undo.
 
+## A key provider is a command, and `file://` is the only one that ships
+
+A key used to be a path, which reaches a secret that is already lying on your
+disk in the clear and nothing else. The alternative — support 1Password, then
+Bitwarden, then Vault — is the shape where a small tool spends the rest of its
+life tracking other people's CLIs, and where the list of what it supports is
+also the list of what you may use.
+
+So a provider is **a command with a `{ref}` placeholder**, declared in the same
+file as the policy. Adding a vault is three lines of TOML and no code; adding
+one nobody has heard of is the same three lines. There is no plugin API, no
+package to publish, and no version of seisin that "supports" your vault — the
+contract is `argv` in, stdout out, and it is written in the README so somebody
+can meet it without reading this source.
+
+**And then `file://` is built in, which is the exception and needs its reason.**
+Measured on one real deployment: 128 credential files in the clear, 79 of them
+world-readable, and not a single role using the key mechanism at all. That is
+the population this feature is for, and telling them to declare a provider that
+runs `cat` puts a papercut on the only path most of them will ever take. `cat`
+is also worse than it looks: it resolves relative to whatever directory the
+parent happened to be standing in, and it hands back the whole file when the
+file holds twelve variables.
+
+`file://` therefore resolves against the policy's own directory and takes a
+fragment — `file://.secrets/all.env#RESEND_KEY` — and it **grants no read**,
+which is precisely what the path form cannot do. A file grant is a file grant:
+`keys = ["all.env"]` gives the role every variable in that file and lets it open
+it. One value and no read is a different thing, and it is the thing people
+actually want.
+
+It cannot be redefined. A `[keys.providers.file]` that means something else in
+another repo is two policies that read identically and behave differently, which
+is the failure this whole feature exists to remove.
+
+**What this does not resolve is the secret in the agent's context.** Every mode
+that exists today hands the value to the process. `file://` moves the secret off
+disk-in-the-clear only if the thing it reads is itself protected — a `gpg -d`
+provider whose passphrase comes from a keychain does that; `cat` on a plaintext
+file does not, and buys only the scoping. Both are improvements and only one of
+them is the one people will assume.
+
 ## Still open
 
 - ~~**The queue says "refused" and means "asked for".**~~ **Settled 2026-09-14**,

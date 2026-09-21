@@ -8,6 +8,24 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **`file://` ships built in**, because a secret in a plain file is the case this exists for
+  and making it declare a provider that runs `cat` was a papercut on the only path most people
+  take. `keys = ["TOKEN=file://.secrets/netlify.txt"]`, or one variable out of a file that
+  holds a dozen: `"RESEND_KEY=file://.secrets/all.env#RESEND_KEY"`. Paths resolve against the
+  policy's directory, not the current one. `export` and quotes come off. A fragment naming a
+  key the file does not have is an error, never an empty value.
+
+  **It grants no read**, which is the thing `keys = ["all.env"]` cannot do: a file grant is a
+  file grant, so that form hands the role every variable in the file. Verified against the
+  kernel. It is the only builtin and cannot be redefined — one scheme meaning two things in
+  two repos is the failure this feature removes.
+
+- **The provider contract is written down**, so a third party can add one without reading the
+  source: `{ref}` substituted into an `argv` (no shell), exit 0 with the value on stdout,
+  stderr passed through to the human and stdout never, any failure stops the run. With
+  recipes for 1Password, Bitwarden, sops, pass, Vault, AWS and gcloud — marked for which were
+  measured here and which follow the tool's documented CLI.
+
 - **A provider script inside the repo is denied to every role**, exactly as `seisin.toml` is.
   The parent executes the provider command, unsandboxed — so a role that could rewrite
   `bin/open-vault.sh` would decide what runs outside the box. Verified against the kernel: the

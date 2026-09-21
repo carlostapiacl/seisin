@@ -11,7 +11,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { CONFIG_NAME } from "./layout.js";
-import { parseKey, MODES, checkNames } from "./keys.js";
+import { parseKey, MODES, checkNames, BUILTIN } from "./keys.js";
 
 export { CONFIG_NAME } from "./layout.js";
 
@@ -334,7 +334,11 @@ export function loadConfig(path) {
      * policy that reads as protecting something it is not.
      */
     for (const k of keyEntries) {
-      if (k.kind !== "ref" || own(keyProviders, k.scheme)) continue;
+      // `file://` ships with seisin, so it needs no declaration. It is the one
+      // builtin, and the reason is in keys.js: a secret in a plain file is the
+      // case this exists for, and making that case declare a provider that
+      // runs `cat` is a papercut on the only path most people take.
+      if (k.kind !== "ref" || BUILTIN.has(k.scheme) || own(keyProviders, k.scheme)) continue;
       const known = Object.keys(keyProviders);
       throw new Error(
         `${path}: roles.${name}: key "${k.raw}" uses the "${k.scheme}" scheme, and no ` +
@@ -379,6 +383,15 @@ function readProviders(table, path) {
   if (table === undefined) return out;
   for (const name of Object.keys(table)) {
     const p = own(table, name);
+    // Redefining `file://` is refused rather than honoured. Two configs where
+    // the same scheme means different things is the failure this whole feature
+    // is supposed to remove — and it would be invisible, because the policy
+    // reads identically in both.
+    if (BUILTIN.has(name))
+      throw new Error(
+        `${path}: [keys.providers.${name}] — "${name}://" is built in and cannot be redefined.\n` +
+        `  It reads a file, optionally one KEY out of it: "file://.secrets/all.env#TOKEN".\n` +
+        `  For different behaviour, give your provider another name.`);
     const command = own(p, "command");
     if (!Array.isArray(command) || command.length === 0 || command.some((c) => typeof c !== "string"))
       throw new Error(
