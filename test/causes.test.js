@@ -7,6 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { causesOf } from "../src/serve.js";
+import { TOOLS } from "../src/mcp.js";
 
 const cfg = {
   root: "/repo",
@@ -72,4 +73,18 @@ test("an empty log answers nothing and claims nothing", () => {
   const f = causesOf(cfg, []);
   assert.equal(f.total, 0);
   assert.deepEqual(f.causes, []);
+});
+
+// ── the same arithmetic, through MCP ───────────────────────────────────────
+
+test("the MCP exposes causes and walls, not only the raw log", () => {
+  // `seisin_activity` hands an agent the events and asks it to re-derive the
+  // grouping — without the policy, which is the half that makes the grouping
+  // mean anything. A person opens the console; an agent calls these.
+  const names = TOOLS.map((t) => t.name);
+  for (const n of ["seisin_causes", "seisin_walls"]) assert.ok(names.includes(n), n);
+});
+
+test("every MCP tool says it is read-only, because approving never happens here", () => {
+  for (const t of TOOLS) assert.match(t.description, /read-only/i, t.name);
 });

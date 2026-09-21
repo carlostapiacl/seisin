@@ -493,7 +493,7 @@ takes a person in a channel the agent does not have. The public API reflects
 that: `pendingRequests` is exported, the functions that approve are not.
 [The reasoning is written down](docs/permission-requests.md).
 
-![the console: a pending request, a reason, and the territory changing when it is approved](docs/img/console.gif)
+![the console: what is waiting on a decision, the day's denials grouped by cause, the walls a role keeps hitting, and the policy behind them](docs/img/console.gif)
 
 Two places, both human: `seisin grant <n>` in a terminal, or the console, where
 the queue is a panel with a reason field and two buttons. Approving there edits
@@ -515,6 +515,14 @@ There is no daemon and nothing to leave running.
 ```
 
 > *who owns src/api, and what is frontend waiting on?*
+
+Seven tools. Four answer about the policy — `state`, `explain`, `requests`, `draft_grant` —
+and three about what has happened: `activity` is the raw log, and **`causes` and `walls` are
+the two an agent actually wants.** `activity` hands over events and leaves the assistant to
+re-derive the shape without the policy; `causes` returns the day grouped by path and by name
+with how many are on paths nobody owns, and `walls` returns what a role keeps being denied
+*and would still be denied today*. Both are recomputed against the policy, so something
+granted since stops counting — which is the part a log cannot know.
 
 Read-only **by construction** — the server opens nothing for writing, and a test
 asserts that no tool in it mutates anything. It can draft the exact change a
@@ -1092,12 +1100,12 @@ measured](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run
 
 ## Status
 
-`0.2.0`, 323 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
+`0.2.0`, 325 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 those eighteen skipped on Linux for a day, behind a runtime check that looked for the global
 install and missed the bundled one, and hid a defect that broke `seisin run` on that platform
-entirely. **323/323 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
+entirely. **325/325 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
 either, Node 18/20/22 in CI at every push — and 225/225 the same way on Debian 12.15
 with bubblewrap 0.8.0, the last time the suite was run in Docker.
 [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),

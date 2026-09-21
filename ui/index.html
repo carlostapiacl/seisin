@@ -86,7 +86,7 @@ button.btn:hover{background:var(--hover)}
 button.btn.warn{border-color:var(--amber);color:var(--amber)}
 button:focus-visible,a:focus-visible,select:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 
-.cards{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(168px,1fr))}
+.cards{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 .card{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--line2);
   border-radius:8px;padding:14px 16px;min-height:96px;display:flex;flex-direction:column}
 .card.g{border-left-color:var(--green)} .card.a{border-left-color:var(--amber)} .card.b{border-left-color:var(--blue)}
@@ -860,7 +860,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       // A cause the policy no longer denies is history, not live. It is
       // shown, greyed, rather than dropped: it explains a number somebody may
       // remember from yesterday instead of silently changing it.
-      var cold = c.stillRefused === 0;
+      var cold = c.stillDeclined === 0;
       var who = c.roles.length === 1 ? c.roles[0] : c.roles.length + " roles";
       return '<div class="bar' + (cold ? ' cold' : '') + '">' +
         '<div class="lbl"><div class="p">' + esc(c.action) + ' ' + esc(c.target) + '</div>' +
@@ -1023,7 +1023,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
         '<div class="act">' +
           '<input id="why-' + i + '" placeholder="why — this outlives you" aria-label="reason">' +
           '<button class="btn" data-n="' + (i+1) + '" data-d="granted" type="button">Approve</button>' +
-          '<button class="btn warn" data-n="' + (i+1) + '" data-d="denied" type="button">Refuse</button>' +
+          '<button class="btn warn" data-n="' + (i+1) + '" data-d="denied" type="button">Decline</button>' +
         "</div>" +
       "</div>";
     }).join("");
