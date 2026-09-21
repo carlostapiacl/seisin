@@ -17,7 +17,7 @@
  *   [roles.frontend]
  *   keys = ["keychain://netlify-token", "netlify-token.txt"]
  *
- * A provider is a command with a placeholder, deliberately. Adding Bitwarden or
+ * A provider is a command with a placeholder. Adding Bitwarden or
  * `sops` is then three lines of TOML and no code — which is what makes this one
  * integration instead of one per vault, and what keeps seisin from aging with
  * somebody else's CLI.
@@ -36,8 +36,7 @@
  * ## Why the value is never written down
  *
  * The reference is what gets committed, diffed and approved; the value is what
- * gets handed to one process and forgotten. Keeping them apart is the point of
- * the feature, not a precaution around it — a log that carries the secret is a
+ * gets handed to one process and forgotten. A log that carries the secret is a
  * second plaintext copy with worse access control than the first.
  */
 import { spawnSync } from "node:child_process";
@@ -64,7 +63,7 @@ const RE_NAMED = /^([A-Za-z_][A-Za-z0-9_]*)=(.+)$/;
  *
  * Derived rather than required, because `keys = ["keychain://netlify-token"]`
  * is the spelling in front of everyone and making it illegal buys nothing. The
- * derivation is deliberately dull — last segment, uppercased, anything that is
+ * derivation is dull — last segment, uppercased, anything that is
  * not a letter or a digit becomes `_` — and `seisin check` prints the result,
  * so a name that surprises somebody is visible before a run rather than after.
  */
@@ -113,7 +112,7 @@ export function parseKey(entry) {
 /**
  * `file://` — the one provider seisin ships, because it is the common case.
  *
- * Everything else here is deliberately not built in: a provider is a command,
+ * Everything else stays out: a provider is a command,
  * and wiring 1Password or Vault into the package would be choosing for you and
  * ageing with somebody else's CLI. This one is different, and the difference is
  * not convenience.
@@ -315,13 +314,12 @@ export function modeOf(config, role, entry) {
       `  It is the one mode where the agent never sees the value, and it is not free: the ` +
       `runtime only masks a credential when the role's TLS is terminated with a CA of ` +
       `seisin's own — MITM over all of that role's traffic, not just the host holding the ` +
-      `secret. That is a decision to take deliberately, so it is refused rather than ` +
-      `half-available.\n` +
+      `secret. It is refused rather than half-available.\n` +
       `  Use "env" or "file" today. See docs/decisions.md.`);
   if (!MODES.includes(mode))
     throw new Error(
       `roles.${role.name}: key_mode = "${mode}" is not a delivery mode. Known: ${MODES.join(", ")}.` +
-      // The one wrong answer worth naming, because it is the word everybody
+      // The one wrong answer named, because it is the word everybody
       // reaches for and it is one letter from a runtime field that fails
       // silently. Guessing costs a debugging session; saying so costs a line.
       (mode === "file"

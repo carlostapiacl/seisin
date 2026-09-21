@@ -44,9 +44,9 @@ export const MIN_HITS = 2;
  * What `role` keeps being denied, most-repeated first.
  *
  * Each entry is `{ action, target, times, reason, owners, firstAt, lastAt }`.
- * The grain is action+target and it is deliberately not collapsed to a
- * directory: two writes into two different repositories are two walls, and
- * merging them hides which one the agent actually hit.
+ * The grain is action+target, not the directory above it: two writes into two
+ * different repositories are two walls, and merging them hides which one was
+ * hit.
  */
 export function walls(config, role, { file, min = MIN_HITS, since = null, limit = 6 } = {}) {
   const denied = read(file, { role, verdict: "denied", ...(since ? { since } : {}) });
@@ -163,9 +163,8 @@ export function render(list) {
     lines.push(`      ${w.reason}`);
   }
   const n = wasted(list);
-  // Said to the agent, not about it. The number is the point: an agent that
-  // can see what retrying cost has a reason to stop, and one that is only told
-  // "do not retry" has an instruction.
+  // Said to the agent, not about it. One that can see what retrying cost has a
+  // reason to stop; one told "do not retry" has an instruction.
   if (n > 0) lines.push(`  (${n} of your calls went into retrying these.)`);
   return lines.join("\n") + "\n";
 }
