@@ -1053,12 +1053,16 @@ those files are", nothing above answers that, which is why this exists.
 They compose rather than compete: the agent seisin confines could be running inside one of
 them.
 
-*One detail worth knowing before you compare, read from OpenShell's documentation rather than
-measured here: Landlock is a Linux facility and does not exist on macOS, so OpenShell's macOS
-mode is `best_effort` — its own docs call it "primarily for local macOS/Docker Desktop
-functional demos" — while Linux treats Landlock as a hard requirement. seisin enforces on
-macOS through Seatbelt and on Linux through bubblewrap, and [says where each claim was
+*One detail worth knowing before you compare, and it is about placement rather than quality.
+Read from [OpenShell's support matrix][osm] on 2026-09-21, not measured here: macOS is a
+supported platform, and on it "these kernel modules run inside the Docker Desktop Linux VM,
+not on the host kernel". So on a Mac, OpenShell confines an agent inside a Linux VM, and
+seisin confines a process on the host through Seatbelt. Both are kernel enforcement; they are
+not the same kernel, and which one you want depends on whether the thing you are protecting is
+on the host. seisin [says where each of its own claims was
 measured](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run).*
+
+[osm]: https://docs.nvidia.com/openshell/reference/support-matrix
 
 ## Status
 
