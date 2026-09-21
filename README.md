@@ -14,6 +14,25 @@ A **permission layer**, not a sandbox — it sits on top of one. The isolation c
 
 *Two outside reviews went looking for ways past the boundary. [What they found, what broke, and what is still open →](docs/what-it-has-been-put-through.md)*
 
+*And what running four cells of agents behind it actually cost — including the numbers that did not survive a re-check. [Field notes →](docs/field-notes.md)*
+
+<details>
+<summary><b>Contents</b></summary>
+
+**Start here** · [Sixty seconds](#sixty-seconds) · [Why this exists](#why-this-exists) · [What it is for, and what it is not for](#what-it-is-for-and-what-it-is-not-for) · [Install](#install) · [Use](#use) · [Configure](#configure)
+
+**Living with it** · [What will look like a bug on the first day](#what-will-look-like-a-bug-on-the-first-day) · [Which agents it has been run with](#which-agents-it-has-been-run-with) · [Where the first policy comes from](#where-the-first-policy-comes-from) · [When it says no, it leaves a request behind](#when-it-says-no-it-leaves-a-request-behind) · [When the boundary is right and the agent cannot hear it](#when-the-boundary-is-right-and-the-agent-cannot-hear-it) · [Scratch space, and what it costs](#scratch-space-and-what-it-costs)
+
+**Secrets** · [How it protects secrets](#how-it-protects-secrets) · [A key can be a reference instead of a file](#a-key-can-be-a-reference-instead-of-a-file) · [The provider contract](#the-provider-contract) · [Recipes](#recipes)
+
+**Looking at it** · [What the log says about the policy](#what-the-log-says-about-the-policy) · [Seeing what happened](#seeing-what-happened) · [Ask your own assistant](#ask-your-own-assistant)
+
+**The honest parts** · [How it holds](#how-it-holds) · [What it is not](#what-it-is-not) · [Why not a container](#why-not-a-container) · [Prior art](#prior-art) · [Status](#status)
+
+**Deeper** · [What it has been put through](docs/what-it-has-been-put-through.md) · [Field notes](docs/field-notes.md) · [Decisions](docs/decisions.md) · [Permission requests](docs/permission-requests.md) · [Contributing](CONTRIBUTING.md)
+
+</details>
+
 ![seisin denying a write outside a role's territory, then naming the owner](docs/img/demo.gif)
 
 ```
@@ -53,8 +72,6 @@ seisin run frontend -- claude -p "…"   # run an agent inside its own territory
 ```
 
 On Linux, [three system packages first](#install). Everything below is why it works and where it does not.
-
-**Contents** · [Why this exists](#why-this-exists) · [What it is *not* for](#what-it-is-for-and-what-it-is-not-for) · [Install](#install) · [Configure](#configure) · [Day one](#what-will-look-like-a-bug-on-the-first-day) · [Agents it runs](#which-agents-it-has-been-run-with) · [Requests](#when-it-says-no-it-leaves-a-request-behind) · [MCP](#ask-your-own-assistant) · [Why not a container](#why-not-a-container) · [How it holds](#how-it-holds) · [Secrets](#how-it-protects-secrets) · [Decisions](docs/decisions.md) · [What it survived](docs/what-it-has-been-put-through.md) · [Status](#status)
 
 ---
 
@@ -996,7 +1013,8 @@ install and missed the bundled one, and hid a defect that broke `seisin run` on 
 entirely. **291/291 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
 either, Node 18/20/22 in CI at every push — and 225/225 the same way on Debian 12.15
 with bubblewrap 0.8.0, the last time the suite was run in Docker.
-[Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run).
+[Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),
+and [what running agents behind it cost the people using it](docs/field-notes.md).
 The config format may still move before `1.0` — if it does, `seisin check` will
 tell you what changed.
 
@@ -1009,8 +1027,10 @@ already done:
 | **Deleting inside your own territory** | not covered, and not coverable here — the ask is upstream as [issue #545](https://github.com/anthropics/sandbox-runtime/issues/545), open and unanswered since 2026-09-13, [with the measurement behind it](docs/upstream/denyUnlink.md) and [a demo](docs/demo/) |
 | **`init` heuristics** | it reads `.claude/agents/` then `CODEOWNERS`. Every other convention is a guess nobody has made yet |
 
-Issues and pull requests welcome. If you are reporting something that got past
-the boundary, `seisin log --verdict denied` and the `seisin.toml` are the two
+Issues and pull requests welcome — [CONTRIBUTING.md](CONTRIBUTING.md) says what is actually
+different about contributing here, which is mostly that a claim has to be downstream of
+something measured. If you are reporting something that got past the boundary, do it
+[privately](SECURITY.md); `seisin log --verdict denied` and the `seisin.toml` are the two
 things that make it reproducible.
 
 ## The name
