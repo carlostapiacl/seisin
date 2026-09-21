@@ -331,3 +331,21 @@ test("a role cannot rewrite the script its own provider runs, even inside its te
     "the provider script was rewritten from inside the sandbox");
   rmSync(dir, { recursive: true, force: true });
 });
+
+test("file:// hands over the value and still refuses the file, through the real kernel", { skip }, () => {
+  // The property that makes this worth having over `keys = ["all.env"]`: a
+  // file grant is a file grant, so that form gives the role every variable in
+  // it and lets it read them. This gives one value and no read at all.
+  const dir = refRepo(
+    `[network]\nallow = []\n\n[keys]\ndir = [".secrets"]\n\n` +
+    `[roles.dev]\nwrites = ["src/**"]\nkey_mode = "env"\n` +
+    `keys = ["MINE=file://.secrets/all.env#MINE"]\n`);
+  mkdirSync(join(dir, ".secrets"), { recursive: true });
+  writeFileSync(join(dir, ".secrets", "all.env"), `MINE=${SECRET}\nNOT_MINE=otro-valor-distinto\n`);
+
+  const r = runIn(dir, "dev", 'printf "len=%s other=%s" "${#MINE}" "${NOT_MINE:-none}"');
+  assert.match(r.stdout, new RegExp(`len=${SECRET.length}\\b`));
+  assert.match(r.stdout, /other=none/, "the role received a variable it was not given");
+  assert.notEqual(runIn(dir, "dev", "cat .secrets/all.env").status, 0, "the role could read the file");
+  rmSync(dir, { recursive: true, force: true });
+});

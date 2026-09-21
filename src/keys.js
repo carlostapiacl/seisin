@@ -41,6 +41,8 @@
  * second plaintext copy with worse access control than the first.
  */
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { resolve, isAbsolute } from "node:path";
 import { BASE, DEFAULTS } from "./env.js";
 import { SOCK_ENV } from "./spool.js";
 
@@ -106,6 +108,88 @@ export function parseKey(entry) {
   }
   const [, scheme, ref] = m;
   return { kind: "ref", scheme, ref, name: named ? named[1] : defaultName(ref), raw: entry };
+}
+
+/**
+ * `file://` — the one provider seisin ships, because it is the common case.
+ *
+ * Everything else here is deliberately not built in: a provider is a command,
+ * and wiring 1Password or Vault into the package would be choosing for you and
+ * ageing with somebody else's CLI. This one is different, and the difference is
+ * not convenience.
+ *
+ * The secret in a plain file is **the case the tool exists for**. Measured on
+ * one real deployment: 128 credential files in the clear, 79 of them
+ * world-readable, and not one role using the key mechanism at all. Telling
+ * that person "declare a provider that runs `cat`" puts a papercut on the only
+ * path most people will ever take, and `cat` is worse than it looks — it
+ * resolves relative to whatever directory the parent happened to be in, and it
+ * hands back the whole file when the file holds twelve variables.
+ *
+ * So `file://` is native, resolves against the policy's own directory, and
+ * takes a fragment:
+ *
+ *     keys = ["TOKEN=file://.secrets/netlify.txt"]              the whole file
+ *     keys = ["RESEND_KEY=file://.secrets/all.env#RESEND_KEY"]  one key of many
+ *
+ * It grants **no read**. That is the entire point: the role gets the value and
+ * cannot open the file, which is the thing `keys = ["all.env"]` cannot do
+ * because a file grant is a file grant.
+ *
+ * It does not require the file to live under `[keys] dir`. The path form does,
+ * because it opens a read inside a denied directory and has to be bounded. This
+ * opens nothing — it hands over a string — so the same rule would be a
+ * restriction copied for looking like the other one.
+ */
+export const BUILTIN = new Set(["file"]);
+
+/** One trailing newline is the editor's, not the secret's. */
+const unterminate = (v) => v.replace(/\r?\n$/, "");
+
+/**
+ * `KEY=value` out of a file that holds several.
+ *
+ * Deliberately small: `export` is tolerated because half the world's `.env`
+ * files have it, surrounding quotes come off, and everything else is left
+ * alone. This is not a shell parser and should never become one — a config
+ * language that grows an interpreter is how a permission tool gets a CVE.
+ */
+function fromDotEnv(text, key, ref) {
+  for (const line of text.split(/\r?\n/)) {
+    const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
+    if (!m || m[1] !== key) continue;
+    return m[2].trim().replace(/^(['"])(.*)\1$/, "$2");
+  }
+  throw new Error(
+    `key "${ref}": the file has no ${key}=.\n` +
+    `  A name that is not there is not an empty value — nothing is substituted for a key ` +
+    `that did not resolve.`);
+}
+
+/**
+ * Read `file://<path>` or `file://<path>#<KEY>`, relative to the policy.
+ *
+ * Relative to the policy and not to the process: a key that resolves
+ * differently depending on where you were standing when you typed the command
+ * is a key that works in your shell and fails in the agent's.
+ */
+export function readFileRef(entry, root = ".") {
+  const hash = entry.ref.lastIndexOf("#");
+  const path = hash === -1 ? entry.ref : entry.ref.slice(0, hash);
+  const key = hash === -1 ? null : entry.ref.slice(hash + 1);
+  const full = isAbsolute(path) ? path : resolve(root, path);
+  let text;
+  try {
+    text = readFileSync(full, "utf8");
+  } catch (e) {
+    throw new Error(
+      `key "${entry.raw}": cannot read ${full} (${e.code ?? e.message}).\n` +
+      `  The path is resolved against the policy file's directory, not the current one.`);
+  }
+  const value = key === null ? unterminate(text) : fromDotEnv(text, key, entry.raw);
+  if (value === "")
+    throw new Error(`key "${entry.raw}": ${full} is empty. An empty credential is not a credential.`);
+  return value;
 }
 
 /**
@@ -269,7 +353,9 @@ export function modeOf(config, role, entry) {
  *     is — a provider that prints the secret and then exits non-zero would
  *     otherwise put it in the terminal and the log.
  */
-export function resolveRef(entry, provider, { run = spawnSync } = {}) {
+export function resolveRef(entry, provider, { run = spawnSync, root = "." } = {}) {
+  if (provider?.builtin === "file" || (provider === undefined && entry.scheme === "file"))
+    return readFileRef(entry, root);
   const argv = provider.command.map((part) => part.replaceAll("{ref}", entry.ref));
   const r = run(argv[0], argv.slice(1), { encoding: "utf8" });
   if (r.error)
@@ -303,6 +389,7 @@ export function resolveRef(entry, provider, { run = spawnSync } = {}) {
  * should say so without asking anyone's keychain for a password first.
  */
 export function resolveKeys(config, role, opts = {}) {
+  opts = { root: config.root ?? ".", ...opts };
   const refs = role.keyEntries.filter((e) => e.kind === "ref");
   const plan = refs.map((entry) => ({ entry, mode: modeOf(config, role, entry) }));
   return plan.map((p) => ({

@@ -649,6 +649,93 @@ A provider is **a command with a placeholder**, on purpose: adding Vault or `sop
 lines of TOML and no code. The value arrives as `NETLIFY_TOKEN` — last segment, uppercased —
 or under a name you give it: `keys = ["NETLIFY_AUTH_TOKEN=keychain://netlify-token"]`.
 
+#### `file://` ships with it, because a secret in a file is the common case
+
+```toml
+[roles.frontend]
+key_mode = "env"
+keys = [
+  "TOKEN=file://.secrets/netlify.txt",            # the whole file
+  "RESEND_KEY=file://.secrets/all.env#RESEND_KEY" # one KEY out of a file of many
+]
+```
+
+No provider to declare. The path resolves against the policy file's directory — not the
+current one, because a key that resolves differently depending on where you were standing
+works in your shell and fails in the agent's. `export` and surrounding quotes come off. A
+fragment naming a key the file does not have is an error, never an empty value.
+
+**This is the thing `keys = ["all.env"]` cannot do.** A file grant is a file grant: that form
+hands the role every variable in the file and lets it read them. `file://…#ONE` hands over one
+value and grants no read at all. Verified against the kernel.
+
+`file://` is the only built-in and it cannot be redefined — one scheme meaning two things in
+two repos is the failure this feature exists to remove.
+
+#### The provider contract
+
+Anything that can print a secret to stdout is a provider. That is the whole interface, and it
+is stable:
+
+| | |
+|---|---|
+| **input** | your `command`, with every `{ref}` replaced by the text after `://`. No shell: the array is the `argv`, so a reference cannot inject one |
+| **success** | exit `0`, the value on **stdout**. Exactly one trailing newline is stripped |
+| **failure** | any non-zero exit, or empty output. The run stops; nothing is substituted |
+| **diagnostics** | **stderr** is passed through to the human. `stdout` never is, so a provider that prints the secret and then fails does not leak it into the terminal or the log |
+| **where it runs** | the parent, unsandboxed, before the child starts — it holds your vault's credential and the confined side must not reach it |
+| **what it must not do** | prompt on a tty an agent does not have. Cache your session first (`op signin`, `gpg-agent`, an unlocked keychain) |
+
+#### Recipes
+
+Three of these were run against the real thing on macOS 15; the rest follow each tool's
+documented CLI and are **not measured here** — the contract above is what they have to meet.
+
+```toml
+[keys.providers.keychain]   # ✅ measured
+command = ["security", "find-generic-password", "-w", "-s", "{ref}"]
+
+[keys.providers.gpg]        # ✅ measured — see the script note below
+command = ["./bin/open.sh", "{ref}"]
+
+[keys.providers.op]         # 1Password — not measured here
+command = ["op", "read", "{ref}"]
+
+[keys.providers.bw]         # Bitwarden
+command = ["bw", "get", "password", "{ref}"]
+
+[keys.providers.sops]
+command = ["sops", "-d", "--extract", "{ref}", "secrets.enc.yaml"]
+
+[keys.providers.pass]       # the standard unix password manager
+command = ["pass", "show", "{ref}"]
+
+[keys.providers.vault]      # HashiCorp
+command = ["vault", "kv", "get", "-field=value", "{ref}"]
+
+[keys.providers.aws]
+command = ["aws", "secretsmanager", "get-secret-value", "--secret-id", "{ref}", "--query", "SecretString", "--output", "text"]
+
+[keys.providers.gcloud]
+command = ["gcloud", "secrets", "versions", "access", "latest", "--secret={ref}"]
+```
+
+If one of these is wrong, a pull request fixing it is worth more than an issue: the table is
+the part of this that ages.
+
+**Put anything with a pipe or a quote in a script.** The config format has no escapes, so a
+command cannot contain a `"` — and a shell pipeline inside a TOML array is unreadable in a
+diff, which is what this feature exists to fix. A script is also how you compose:
+
+```sh
+#!/bin/sh
+# encrypted file, password in the keychain. Nothing in the clear on disk.
+gpg --batch --quiet --passphrase "$(security find-generic-password -w -s master)" -d "$1"
+```
+
+Scripts named by a provider are **denied to every role**, the same way `seisin.toml` is — the
+parent executes them, so a role that could rewrite one would decide what runs outside the box.
+
 | | |
 |---|---|
 | **`mode = "env"`** | resolved and passed as a variable |
@@ -901,12 +988,12 @@ This space already has good work, and seisin is not the first thing here:
 
 ## Status
 
-`0.1.1`, 285 tests, of which **24 need `@anthropic-ai/sandbox-runtime` installed**
+`0.1.1`, 291 tests, of which **25 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 those eighteen skipped on Linux for a day, behind a runtime check that looked for the global
 install and missed the bundled one, and hid a defect that broke `seisin run` on that platform
-entirely. **285/285 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
+entirely. **291/291 on macOS 15 and on `ubuntu-latest` under bubblewrap**, nothing skipped on
 either, Node 18/20/22 in CI at every push — and 225/225 the same way on Debian 12.15
 with bubblewrap 0.8.0, the last time the suite was run in Docker.
 [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run).

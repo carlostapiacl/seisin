@@ -385,3 +385,66 @@ test('an escaped quote names its own cause, not "missing comma"', () => {
   assert.throws(() => loadConfig(join(dir, "seisin.toml")), /there are no escapes in this format/);
   rmSync(dir, { recursive: true, force: true });
 });
+
+// ── file://, the one provider that ships ────────────────────────────────────
+
+/** A repo whose secrets are plain files, which is how most repos look. */
+function fileRepo(toml, files = {}) {
+  const dir = mkdtempSync(join(tmpdir(), "seisin-file-"));
+  mkdirSync(join(dir, ".secrets"), { recursive: true });
+  for (const [name, body] of Object.entries(files)) writeFileSync(join(dir, ".secrets", name), body);
+  writeFileSync(join(dir, "seisin.toml"), toml);
+  return dir;
+}
+
+const POLICY = `[keys]\ndir = [".secrets"]\n\n[roles.dev]\nwrites = ["src/**"]\nkey_mode = "env"\n`;
+
+test("file:// needs no provider declared — that is the whole point of it being built in", () => {
+  const dir = fileRepo(POLICY + `keys = ["T=file://.secrets/t.txt"]\n`, { "t.txt": "abc-123-value\n" });
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  assert.equal(resolveKeys(cfg, cfg.roles.dev)[0].value, "abc-123-value");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("a fragment takes ONE key out of a file that holds several, and only that one", () => {
+  // The thing `keys = ["all.env"]` cannot do: that grants the file, so the
+  // role gets every variable in it.
+  const dir = fileRepo(POLICY + `keys = ["B=file://.secrets/all.env#B"]\n`,
+    { "all.env": "# note\nA=first-value\nexport B=\"second-value\"\nC=third\n" });
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  const got = resolveKeys(cfg, cfg.roles.dev);
+  assert.equal(got.length, 1);
+  assert.equal(got[0].value, "second-value");            // export and quotes come off
+  assert.equal(got[0].entry.name, "B");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("a fragment naming a key the file does not have is an error, not an empty value", () => {
+  const dir = fileRepo(POLICY + `keys = ["Z=file://.secrets/all.env#Z"]\n`, { "all.env": "A=1\n" });
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  assert.throws(() => resolveKeys(cfg, cfg.roles.dev), /has no Z=/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("the path is relative to the policy, not to where you were standing", () => {
+  // A key that resolves differently depending on the current directory is a
+  // key that works in your shell and fails in the agent's.
+  const dir = fileRepo(POLICY + `keys = ["T=file://.secrets/t.txt"]\n`, { "t.txt": "from-the-policy\n" });
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  const before = process.cwd();
+  process.chdir(tmpdir());
+  try {
+    assert.equal(resolveKeys(cfg, cfg.roles.dev)[0].value, "from-the-policy");
+  } finally {
+    process.chdir(before);
+  }
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("redefining file:// is refused — one scheme cannot mean two things", () => {
+  const dir = fileRepo(
+    `[keys]\ndir = [".secrets"]\n\n[keys.providers.file]\ncommand = ["cat", "{ref}"]\n\n` +
+    `[roles.dev]\nwrites = ["src/**"]\nkeys = []\n`);
+  assert.throws(() => loadConfig(join(dir, "seisin.toml")), /built in and cannot be redefined/);
+  rmSync(dir, { recursive: true, force: true });
+});
