@@ -8,6 +8,28 @@ changed rather than failing on the old spelling.
 
 ## 0.2.0 — 2026-09-21
 
+- **Written down: HTTP(S) works and SSH does not, and the reason is not the one anybody
+  guessed.** A field report found it and called it a design boundary; the first version of
+  the docs agreed and said there is no TCP egress. Reading the runtime settled it: there is.
+  It ships a SOCKS5 proxy, starts it by default, filters it by `(port, host)`, and even sets
+  `GIT_SSH_COMMAND` with a `ProxyCommand` pointing at it.
+
+  It breaks at the last link. That proxy requires SOCKS5 authentication so a denial can be
+  attributed, and the helper in the `ProxyCommand` cannot send credentials — the runtime's
+  own source names it: *"BSD `nc -X 5`, the stock macOS ssh ProxyCommand. Such a connection
+  is NEVER tunnelled."*
+
+  Measured three ways, and the differences are the diagnosis: `curl https://…` returns 200;
+  bare `ssh` cannot resolve the hostname because it never looks at a proxy; `git ls-remote`
+  over SSH reaches the proxy and dies at the handshake. Use an HTTPS remote, run SSH deploys
+  outside the turn, and [the write-up](docs/decisions.md#ssh-does-not-work-and-it-is-not-seisin-that-decided-that)
+  says whose gap it is rather than calling it a decision.
+
+- **The README is 1,151 lines shorter by about a third**, with the long material moved to
+  `docs/` rather than cut: [keys](docs/keys.md), [agents](docs/agents.md),
+  [day one](docs/first-day.md) and [scratch](docs/scratch.md) are their own pages now, and
+  the front page keeps the diagram, the two GIFs and a paragraph pointing at each.
+
 - **Written down: seisin is read through three surfaces, and a change lands in all of them.**
   The CLI, the console and the MCP server are not layers of one another — they have different
   readers and neither can do the other's work. Both halves of that rule broke on the day it

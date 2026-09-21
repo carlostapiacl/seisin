@@ -510,6 +510,57 @@ provider whose passphrase comes from a keychain does that; `cat` on a plaintext
 file does not, and buys only the scoping. Both are improvements and only one of
 them is the one people will assume.
 
+## SSH does not work, and it is not seisin that decided that
+
+**Corrected on 2026-09-21, hours after the first version of this section, which was wrong.**
+It said there is no TCP egress and that not having it was a decision. Both halves are false,
+and the source settled it.
+
+**What is actually there.** The runtime ships a **SOCKS5 proxy**, starts it by default, and
+filters it by `(port, host)` — so arbitrary TCP to a declared host, port 22 included, is
+exactly the shape it already supports. It even wires SSH up for you: every confined turn
+gets
+
+```
+GIT_SSH_COMMAND=ssh -o ControlMaster=no -o ControlPath=none \
+                    -o ProxyCommand='nc -X 5 -x localhost:<port> %h %p'
+```
+
+**Where it breaks.** That proxy requires SOCKS5 username/password auth — deliberately, so a
+denial can be attributed to the command that caused it. And the helper the runtime puts in
+the `ProxyCommand` cannot send credentials. Its own source says so, in as many words:
+
+> *"Consulted for a client that cannot authenticate (it offered no username/password method
+> — e.g. BSD `nc -X 5`, the stock macOS ssh ProxyCommand). Such a connection is **NEVER
+> tunnelled**."*
+
+So the chain is wired end to end and snaps at its own last link.
+
+**Measured, with `github.com` in the role's allow list:**
+
+| | |
+|---|---|
+| `curl https://github.com` | `200` |
+| `ssh -T git@github.com` | `Could not resolve hostname` — bare ssh never looks at the proxy |
+| `git ls-remote git@github.com:…` | `ssh_dispatch_run_fatal: Connection to UNKNOWN port 65535: Broken pipe` — it reaches the proxy and dies at the handshake |
+
+The two failures are different and the difference is the whole diagnosis: the first is a
+client that does not know about the proxy, the second is a client that found it and could
+not authenticate.
+
+**What would fix it** is a `ProxyCommand` helper that speaks SOCKS5 with credentials —
+`ncat --proxy-auth`, or socat. Neither is installed on the machine this was measured on, so
+**the fix is untested and this section does not claim it works.**
+
+**What seisin should do.** Not invent a protocol: this is upstream-shaped. The runtime wires
+a `ProxyCommand` around a tool it documents as unable to authenticate to its own proxy, and
+either the helper should change or the variable should not be set. That is the third ask,
+and it is not written yet.
+
+**What to do today.** Use an HTTPS remote for git — it passes. Run SSH deploys outside the
+confined turn. Both of those were already true; what changed is that the reason is now the
+real one.
+
 ## Still open
 
 - ~~**The queue says "refused" and means "asked for".**~~ **Settled 2026-09-14**,
