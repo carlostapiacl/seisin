@@ -6,6 +6,8 @@
 [![node](https://img.shields.io/badge/node-%E2%89%A518-222)](package.json)
 [![no dependencies](https://img.shields.io/badge/dependencies-1-222)](package.json)
 
+**[The short version, with the demos playing →](https://carlostapiaolguin3-stack.github.io/seisin/)** · this page is the long one.
+
 > **seisin** *(n.)* — the legal possession of a piece of land. Not who owns it on paper: who holds it now.
 
 **Give each AI agent its own folders and its own keys.** The kernel enforces it, and when it blocks something it tells you *whose* file it was.
