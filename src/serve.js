@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
 import { read, logPath } from "./log.js";
 import { settingsFor } from "./srt.js";
-import { pending, requestsPath, settle, applyGrant } from "./requests.js";
+import { pending, requestsPath, settle, applyGrant, refuseIfBarred } from "./requests.js";
 import { walls } from "./walls.js";
 import { explain } from "./owners.js";
 
@@ -205,6 +205,7 @@ function decide(configPath, { number, decision, reason }) {
     // The config is edited as text, so comments and order survive. Written
     // before the queue is settled: if this throws, the request is still open
     // rather than marked done against a file that never changed.
+    refuseIfBarred(cfg, req);
     const { toml, changed } = applyGrant(readFileSync(cfg.path, "utf8"), req, reason);
     if (changed) writeFileSync(cfg.path, toml);
   }
