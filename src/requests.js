@@ -26,6 +26,7 @@
  * rewritten is not evidence. A request that is granted or refused is not
  * deleted — it is followed by a line saying what happened to it.
  */
+import { neverWrites } from "./owners.js";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { STATE_DIR, tomlString } from "./layout.js";
@@ -195,6 +196,26 @@ export function pending(file, { includeSettled = false } = {}) {
  * is the worst possible bug, and it is not exotic: a role with only `keys`
  * declared is an ordinary config.
  */
+/**
+ * Refuses a grant that `never_writes` would cancel, before anything is written.
+ *
+ * A request filed before the subtraction existed can still be in the queue.
+ * Approving it would add the path to `writes` and change nothing — denyWrite
+ * wins — so the person would believe they granted something the kernel still
+ * refuses. The two keys contradict each other, and which one should win is the
+ * decision; seisin will not make it by writing one of them silently.
+ */
+export function refuseIfBarred(config, request) {
+  if (request.action === "read") return;
+  const role = config.roles?.[request.role];
+  const hit = role && neverWrites(role, request.target);
+  if (hit)
+    throw new Error(
+      `${request.target} is under never_writes of ${request.role} ("${hit}"), which wins over ` +
+      `writes. Granting it would change nothing. If the subtraction is wrong, remove that ` +
+      `entry from [roles.${request.role}]; otherwise decline this request.`);
+}
+
 export function applyGrant(toml, request, note = "") {
   const field = request.action === "read" ? "keys" : "writes";
   const header = new RegExp(`^\\[roles\\.${escapeRe(request.role)}\\]\\s*$`, "m");

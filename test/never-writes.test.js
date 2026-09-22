@@ -142,3 +142,14 @@ test("the real sandbox refuses the write, and the rest of the territory still wo
   assert.ok(!existsSync(join(dir, "app", ".git", "index.lock")));
   assert.ok(as("lead", "echo x > app/.git/index.lock"), "the other role lost the file too");
 });
+
+test("a grant that never_writes would cancel is refused, not written", async () => {
+  const { refuseIfBarred } = await import("../src/requests.js");
+  const cfg = loadConfig(join(repoWith(WORKTREE_ROLE), "seisin.toml"));
+  assert.throws(
+    () => refuseIfBarred(cfg, { role: "dev", action: "write", target: "app/.git/index.lock" }),
+    /never_writes of dev.*Granting it would change nothing/);
+  // Anything else goes through as before.
+  assert.doesNotThrow(() => refuseIfBarred(cfg, { role: "dev", action: "write", target: "docs/x.md" }));
+  assert.doesNotThrow(() => refuseIfBarred(cfg, { role: "lead", action: "write", target: "app/.git/index.lock" }));
+});

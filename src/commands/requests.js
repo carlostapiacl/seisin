@@ -7,7 +7,7 @@
  * whole feature rests on — see docs/permission-requests.md.
  */
 import { readFileSync, writeFileSync } from "node:fs";
-import { pending, settle, applyGrant, requestsPath } from "../requests.js";
+import { pending, settle, applyGrant, refuseIfBarred, requestsPath } from "../requests.js";
 import { C, out } from "../render.js";
 
 /**
@@ -118,6 +118,7 @@ export function grant(config, argv = []) {
   const i = argv.indexOf("--reason");
   const reason = i === -1 ? "" : argv[i + 1] ?? "";
 
+  refuseIfBarred(config, req);
   const before = readFileSync(config.path, "utf8");
   const { toml, changed } = applyGrant(before, req, reason);
   if (!changed) throw new Error(`${req.role} already has ${req.grant} — nothing to add`);
