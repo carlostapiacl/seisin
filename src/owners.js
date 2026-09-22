@@ -106,8 +106,18 @@ function toRegExp(glob) {
 /** Every role whose territory covers `path`. Usually one; zero is a finding. */
 export function ownersOf(config, path) {
   return Object.values(config.roles)
-    .filter((r) => r.writes.some((g) => covers(g, path)))
+    .filter((r) => r.writes.some((g) => covers(g, path)) && !neverWrites(r, path))
     .map((r) => r.name);
+}
+
+/**
+ * The `never_writes` entry of `role` that covers `path`, or null.
+ *
+ * `?? []` because a caller embedding the library builds role objects itself,
+ * and one built before the key existed must keep meaning what it meant.
+ */
+export function neverWrites(role, path) {
+  return (role.neverWrites ?? []).find((g) => covers(g, path)) ?? null;
 }
 
 /** Every role allowed to read `key`, matched with or without its extension. */
@@ -159,6 +169,22 @@ export function explain(config, role, action, target) {
   }
 
   const owners = ownersOf(config, target);
+  /**
+   * Named for what it is, and checked before "no owner".
+   *
+   * A path the role gave up through `never_writes` is not a permission it is
+   * missing. Said as "belongs to nobody", the agent files a request, a person
+   * approves it, and the subtraction is undone from the other side without
+   * anyone deciding to undo it.
+   */
+  const r = config.roles[role];
+  const barred = r && r.writes.some((g) => covers(g, target)) ? neverWrites(r, target) : null;
+  if (barred)
+    return {
+      allowed: false, owners, neverWrites: barred,
+      reason: `${target} is denied by never_writes of ${role} ("${barred}") — ` +
+        `a subtraction written into the policy, not a missing permission`,
+    };
   if (owners.includes(role)) return { allowed: true, owners, reason: `${target} is inside ${role}'s territory` };
   if (owners.length === 0)
     return { allowed: false, owners: [], reason: `${target} has no owner — no role can write it until one claims it` };

@@ -168,7 +168,11 @@ export function decide(config, role, event, { observe = false, now = append, ask
     // the refusal stops being a dead end and becomes something a person can act
     // on in one command. Observing records nothing to approve — there was no
     // denial to answer. See docs/permission-requests.md.
-    if (!observe && !v.allowed)
+    //
+    // Except a `never_writes` refusal. That one is the policy saying no on
+    // purpose; a request for it asks a person to undo a subtraction somebody
+    // wrote, and approving it is how the subtraction disappears unnoticed.
+    if (!observe && !v.allowed && !v.neverWrites)
       ask(queue, { role, action: kind === "key" ? "read" : t.action, target: rel, owners: v.owners ?? [] });
 
     // The action as it was RECORDED, not as the tool named it: a read of a key
@@ -216,7 +220,9 @@ export function decide(config, role, event, { observe = false, now = append, ask
       permissionDecisionReason:
         // The sentence has to name a next step, not just a refusal. An agent
         // told "no" retries; an agent told whose it is asks, or moves on.
-        (denied.owners?.length
+        denied.neverWrites
+          ? `${denied.reason}. Do not ask for it: nothing was queued, because the answer is already written down.` + again
+          : (denied.owners?.length
           ? wasRead
             ? `${denied.target} is declared for ${denied.owners.join(", ")}, not ${role}. Ask for what you need from it rather than reading the key.`
             : `${denied.target} belongs to ${denied.owners.join(", ")}. It is not ${role}'s to change — hand it over rather than working around it.`

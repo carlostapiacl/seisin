@@ -181,7 +181,10 @@ export async function run(config, argv) {
      * "asked" rather than "refused" for exactly that case. What it rules out is
      * a request for something that is not refused at all.
      */
-    if (explain(config, role, entry.action, entry.target).allowed) return;
+    // Nor for a `never_writes` path: that refusal is the policy, written on
+    // purpose, and granting it is undoing a subtraction without deciding to.
+    const v = explain(config, role, entry.action, entry.target);
+    if (v.allowed || v.neverWrites) return;
 
     record(requestsPath(config.root), {
       role,
@@ -361,7 +364,10 @@ export async function run(config, argv) {
      * reason this exists. Inside the repo only: `~/.ssh` is refused on purpose
      * under `isolate` and is not a territory anyone is meant to ask for.
      */
-    if (rel !== d.path)
+    const barred = rel !== d.path && d.action === "write" && config.roles[role]
+      ? explain(config, role, "write", rel).neverWrites
+      : null;
+    if (rel !== d.path && !barred)
       record(requestsPath(config.root), { role, action: d.action, target: rel, owners: ownersOf(config, rel) });
 
     append(logPath(config.root), {
@@ -375,6 +381,8 @@ export async function run(config, argv) {
       verdict: "denied",
       owners: ownersOf(config, rel),
       reason: d.operation,
+      // So the log can tell a subtraction doing its job from a missing permission.
+      ...(barred ? { neverWrites: barred } : {}),
     });
   }, { argv: cmd });
 
