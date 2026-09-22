@@ -346,7 +346,7 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
         // holds: the config, the state directory and the key directories stay
         // shut even here, because observing is not a reason to hand over the
         // paperwork of the confinement.
-        ...(observe ? [abs(".")] : role.writes.map(toWritePath).map(abs)),
+        ...(observe ? [abs(".")] : role.writes.map((g) => toWritePath(g)).map(abs)),
         // `.seisin/` is deliberately NOT here. It used to be, because the hook
         // runs inside the box and has to record what it decided — which made
         // the log and the queue writable by the process they are a record of.
@@ -375,6 +375,15 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
        * relying on someone else's implementation detail staying put.
        */
       denyWrite: [
+        /**
+         * The role's own subtractions, `never_writes`.
+         *
+         * Here and not as a hole cut out of allowWrite, because the profile
+         * cannot cut holes: it grants prefixes and denies prefixes, and a deny
+         * wins over any grant however wide. That is the property the key is
+         * built on, and the same one the entries below rely on.
+         */
+        ...(role.neverWrites ?? []).map((g) => toWritePath(g, "never_writes")).map(abs),
         abs(config.path ?? CONFIG_NAME),
         abs(STATE_DIR),
         ...dirs.map(abs),
@@ -431,8 +440,8 @@ export function providerPaths(config) {
  * kernel, so the trailing glob is trimmed rather than passed through, where it
  * would be read as a literal directory named `**` and silently grant nothing.
  */
-function toWritePath(glob) {
-  if (!EXPRESSIBLE(glob)) throw new Error(unexpressible(glob));
+function toWritePath(glob, key = "writes") {
+  if (!EXPRESSIBLE(glob)) throw new Error(unexpressible(glob, key));
   if (glob === "**") return ".";
   return glob.replace(/\/\*\*$/, "") || ".";
 }
@@ -461,8 +470,8 @@ const EXPRESSIBLE = (g) =>
   !WILD.test(g) ||                            // a literal path
   (g.endsWith("/**") && !WILD.test(g.slice(0, -3)));   // a subtree, wildcard-free above it
 
-function unexpressible(glob) {
-  return `writes = "${glob}" cannot be enforced as written.\n` +
+function unexpressible(glob, key = "writes") {
+  return `${key} = "${glob}" cannot be enforced as written.\n` +
     `  The sandbox grants a path and everything under it — there is no way to say ` +
     `"one level deep".\n` +
     `  Use "${glob.replace(/\/\*$/, "")}/**" for the whole subtree, or name the files.\n` +

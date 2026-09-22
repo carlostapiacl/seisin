@@ -249,6 +249,21 @@ role, including the ones whose whole job is to have nothing to reach.
 > **Use an HTTPS remote for git**, and run SSH deploys outside the confined turn.
 > [Why, exactly, and whose gap it is →](docs/decisions.md#ssh-does-not-work-and-it-is-not-seisin-that-decided-that)
 
+A role can also give something back. `never_writes` subtracts from its own `writes`, and it
+wins however wide the grant is:
+
+```toml
+[roles.backend]
+writes       = ["services/api/**"]
+never_writes = ["services/api/.git/index.lock"]   # works in a worktree; the canonical index is not its business
+```
+
+It is per role on purpose — there is no global version, because a global deny on a lock file
+breaks every role that legitimately commits there. A refusal it causes says so by name and
+leaves **no request** in the queue: approving one would undo a subtraction somebody wrote. An
+entry that no `writes` of the same role covers, or a misspelling like `never_write`, is named
+by `seisin check` instead of being ignored.
+
 `seisin init` will propose this from whatever your repo already says: `.claude/agents/`, then `CODEOWNERS`, then a blank start. It **proposes** — a generated policy you did not read is not a policy.
 
 ## What will look like a bug on the first day

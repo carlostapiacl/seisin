@@ -65,6 +65,10 @@ export function renderReport(report) {
     const writes = collapseSidecars(r.writes).join(" ") || `${C.dim}nothing${C.off}`;
     const keys = r.keys.length ? r.keys.join(" ") : `${C.dim}none${C.off}`;
     lines.push(`  ${C.b}${r.name.padEnd(width)}${C.off}  ${C.blue}writes${C.off} ${writes}\n`);
+    // Only when present: absent is the default, and a "never_writes nothing" line
+    // on every role is noise that teaches the reader to skip the one that matters.
+    if (r.neverWrites?.length)
+      lines.push(`  ${" ".repeat(width)}  ${C.yellow}never${C.off}  ${r.neverWrites.join(" ")}\n`);
     lines.push(`  ${" ".repeat(width)}  ${C.green}keys${C.off}   ${keys}\n\n`);
   }
 

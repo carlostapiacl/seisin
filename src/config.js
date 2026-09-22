@@ -354,6 +354,7 @@ export function loadConfig(path) {
       throw new Error(
         `${path}: roles.${name}: key_mode = "${keyMode}" is not a delivery mode. ` +
         `Known: ${MODES.join(", ")}.`);
+    const neverWrites = readNeverWrites(own(r, "never_writes"), `${path}: roles.${name}.never_writes`);
     out.roles[name] = {
       name,
       /**
@@ -374,6 +375,25 @@ export function loadConfig(path) {
       keyMode: keyMode ?? null,
       env: asArray(own(r, "env"), `roles.${name}.env`),
       network: own(r, "network") === undefined ? null : asArray(own(r, "network"), `roles.${name}.network`),
+      /**
+       * What this role may never write, even inside its own `writes`.
+       *
+       * A subtraction, and the only one the format has. It exists for the case
+       * a territory glob cannot say: `repo/**` minus `repo/.git/index.lock`, for
+       * a role that works in a worktree and has its own index. Without it the
+       * alternative is enumerating every top-level entry of the repo but `.git`
+       * — a list that goes stale the day somebody adds a directory.
+       *
+       * Per role and never global: a global deny on `.git/index.lock` breaks
+       * every role that legitimately commits in the shared checkout. Absent
+       * means exactly what it meant before the key existed.
+       */
+      neverWrites,
+      // Kept so `check` can name a misspelt key instead of ignoring it. An
+      // unknown key in a role table used to be dropped silently, and for a
+      // subtraction that is failing open: `never_write` would read as a rule
+      // and subtract nothing.
+      unknownKeys: Object.keys(r).filter((k) => !ROLE_KEYS.includes(k)),
     };
   }
   return out;
@@ -464,6 +484,30 @@ export function withSidecars(paths) {
   // A policy written before this existed already lists them. Keeping the first
   // occurrence keeps the order somebody chose.
   return [...new Set(out)];
+}
+
+/** The keys a `[roles.<name>]` table can hold. Anything else is reported by `check`. */
+export const ROLE_KEYS = ["writes", "keys", "key_mode", "env", "network", "never_writes"];
+
+/**
+ * `never_writes`, refused rather than guessed when it cannot mean what it says.
+ *
+ * Refused at load, not warned about: this is a list of things a role must not
+ * do, and a malformed entry that loads anyway fails open. An absolute path or a
+ * `..` would point outside the repo the rest of the policy is written against,
+ * so it cannot be the subtraction the person meant.
+ */
+function readNeverWrites(value, where) {
+  const list = asArray(value, where);
+  for (const g of list) {
+    if (typeof g !== "string" || g.trim() === "")
+      throw new Error(`${where}: every entry must be a non-empty string`);
+    if (g.startsWith("/"))
+      throw new Error(`${where}: "${g}" is absolute. never_writes is relative to the repo root, like writes.`);
+    if (g.split("/").includes(".."))
+      throw new Error(`${where}: "${g}" contains "..". never_writes names paths inside the repo.`);
+  }
+  return list;
 }
 
 function asArray(value, where) {

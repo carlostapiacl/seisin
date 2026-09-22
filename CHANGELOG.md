@@ -6,6 +6,28 @@ history; what changed for someone who installs it is here.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## Unreleased
+
+- **`never_writes`: a role can give back part of its own territory.** `writes = ["repo/**"]`
+  cannot say "the whole repo except its `.git/index.lock`", and that is exactly what a role
+  working in a worktree needs: it has its own index and no use for the canonical one. The
+  alternative was enumerating every top-level entry of the repo but `.git` — a list that goes
+  stale the day somebody adds a directory.
+
+  - **Additive.** Absent, or an empty list, means exactly what it meant before. Nobody who
+    upgrades without writing the key sees a change, and `check` says nothing about its absence.
+  - **Per role, never global.** A global deny on a lock file breaks every role that commits
+    there legitimately.
+  - **It wins.** Its entries go to the kernel profile's `denyWrite`, which beats `allowWrite`
+    however wide — the same property the config file and the key directories already rely on.
+  - **A refusal names it and queues nothing.** "denied by never_writes of backend", not "belongs
+    to nobody": said the second way, the agent asks, a person approves, and the subtraction is
+    undone from the other side without anyone deciding to.
+  - **`check` catches the ways it can look written and not be.** An unknown key in a role table
+    used to be ignored in silence; for `never_write` that is failing open. It is now named, with
+    the key it most likely meant. So is an entry no `writes` of the same role covers, which
+    subtracts from nothing. An absolute path or a `..` refuses to load.
+
 ## 0.2.0 — 2026-09-21
 
 - **Written down: HTTP(S) works and SSH does not, and the reason is not the one anybody

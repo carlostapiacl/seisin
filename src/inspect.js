@@ -10,7 +10,8 @@
  */
 import { resolve, dirname, basename, relative, join, delimiter } from "node:path";
 import { realpathSync, lstatSync, readdirSync, existsSync, readFileSync, statSync } from "node:fs";
-import { ownersOf } from "./owners.js";
+import { ownersOf, covers } from "./owners.js";
+import { ROLE_KEYS } from "./config.js";
 import { entriesOf } from "./keys.js";
 import { SHAPES } from "./scan.js";
 import { wired } from "./commands/wire.js";
@@ -29,7 +30,7 @@ export function inspect(config, only = null, where = config.path) {
 
   return {
     where,
-    roles: roles.map((r) => ({ name: r.name, writes: r.writes, keys: r.keys })),
+    roles: roles.map((r) => ({ name: r.name, writes: r.writes, keys: r.keys, neverWrites: r.neverWrites ?? [] })),
     /**
      * The provider commands this config would run, listed because they are the
      * one thing in a `seisin.toml` that **executes**, and it executes in the
@@ -102,6 +103,81 @@ const LIMITS = [
       "runtime: github.com/carlostapiaolguin3-stack/seisin#how-it-holds",
   },
 ];
+
+/**
+ * What is wrong with a role table's keys, as opposed to its paths.
+ *
+ * Two things, both about `never_writes` and both ways a subtraction can look
+ * written and not be:
+ *
+ *   - a key seisin does not know. It used to be dropped without a word, which
+ *     for `writes` is a role with less than it thinks, and for a misspelt
+ *     `never_writes` is a role with MORE than its owner thinks — the one
+ *     direction a permission file must not fail in. Named with the nearest
+ *     known key when there is one close enough to be the intended spelling.
+ *   - a `never_writes` entry that no `writes` of the same role covers. It
+ *     subtracts from nothing, so it is either a typo in the path or a rule
+ *     that stopped applying when the territory moved. Either way it reads as
+ *     protection and is not.
+ *
+ * Silent when `never_writes` is absent. Absent is valid; a check that asks for
+ * the key would turn an optional subtraction into a required migration.
+ */
+function roleKeyWarnings(roles) {
+  const warnings = [];
+  for (const r of roles) {
+    for (const k of r.unknownKeys ?? []) {
+      const near = nearest(k, ROLE_KEYS);
+      warnings.push({
+        kind: "unknown-role-key",
+        headline: `${r.name}: unknown key "${k}" in [roles.${r.name}] — ignored` +
+          (near ? `. Did you mean "${near}"?` : ""),
+        detail: `Known keys: ${ROLE_KEYS.join(", ")}. ` +
+          (near === "never_writes"
+            ? "As written this subtracts nothing: the role can still write every path it lists."
+            : "Nothing in it takes effect."),
+      });
+    }
+    for (const g of r.neverWrites ?? []) {
+      if (r.writes.some((w) => covers(w, g) || covers(w, g.replace(/\/\*\*$/, ""))))
+        continue;
+      warnings.push({
+        kind: "never-writes-subtracts-nothing",
+        headline: `${r.name}: never_writes "${g}" is not inside any of its writes`,
+        detail: "It denies something that was already denied, so it protects nothing. " +
+          "Check the path, or drop the entry if the territory moved.",
+      });
+    }
+  }
+  return warnings;
+}
+
+/** The candidate within edit distance 3 of `word`, or null. */
+function nearest(word, candidates) {
+  // Spellings of the same idea in another vocabulary, checked first because
+  // letters mislead here: `no_writes` is three edits from `writes`, and
+  // suggesting the grant for a misspelt subtraction is the worst answer.
+  if (/deny|never|no_?write/i.test(word)) return "never_writes";
+  let best = null, bestD = 4;
+  for (const c of candidates) {
+    const d = distance(word.toLowerCase(), c);
+    if (d < bestD) { best = c; bestD = d; }
+  }
+  return best;
+}
+
+function distance(a, b) {
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = row[0]; row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cur = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = cur;
+    }
+  }
+  return row[b.length];
+}
 
 /**
  * Paths more than one role claims.
@@ -247,6 +323,7 @@ function warningsFor(config, roles) {
       });
     }
   }
+  warnings.push(...roleKeyWarnings(roles));
   const shared = sharedPaths(config, roles);
 
   if (shared.length)
