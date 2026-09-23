@@ -52,10 +52,8 @@ export const KNOWN_REFUSALS = [
     // Measured 2026-09-23 with Playwright's Chromium under seisin on macOS. It
     // cost a team an afternoon: the error names a Mach port, not a file.
     sign: /bootstrap_check_in\s+org\.chromium\.Chromium\.MachPortRendezvousServer\S*:\s*Permission denied \(1100\)/,
-    say: "Chromium could not register its Mach rendezvous port: this sandbox does not let a program " +
-      "register Mach services. That is not a file or a port, so it is not in seisin's log and no grant " +
-      "opens it. Launch Chromium with --single-process (Playwright: launchOptions.args) and run one " +
-      "worker; several single-process browsers at once are unstable. See docs/upstream/mach-register.md.",
+    say: "Chromium could not register its Mach port: the sandbox does not allow it, and no grant " +
+      "changes that. Launch it with --single-process (Playwright: launchOptions.args) and one worker.",
   },
 ];
 

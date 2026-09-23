@@ -9,13 +9,9 @@ Every command below was run.
 
 [repo]: https://github.com/anthropics/sandbox-runtime
 
-> **Status · already tracked upstream — do not file.** Checked 2026-09-23:
-> [PR #516][516] (opened 2026-09-04 by another contributor, open, not merged)
-> fixes exactly this — Apple's `nc` has no SOCKS5 authentication, so the wired
-> `ProxyCommand` dies at the handshake since the proxy started minting a token —
-> and it cites the two reports it came from, anthropics/claude-code#70684 and
-> #82255. The draft below stays as the measurement behind seisin's README line;
-> if anything is worth doing upstream it is a +1 on that PR, not a third issue.
+> **Status · already tracked, don't file.** [PR #516][516] (open since 2026-09-04, another
+> contributor) fixes exactly this and cites anthropics/claude-code#70684 and #82255. The draft
+> below stays as our measurement. At most, a +1 on that PR.
 
 [516]: https://github.com/anthropics/sandbox-runtime/pull/516
 
@@ -119,12 +115,3 @@ library put that `ProxyCommand` there; the library knows the helper cannot
 authenticate; nothing tells the user. That is the same class as
 [the violations ask](cli-violations.md) — the library holds information the
 caller needs and does not pass it on.
-
-**On filing a third ask while two are unanswered.** `#545` has had no reply
-since 2026-09-13 and `#582` was filed on 2026-09-20 partly because nobody
-checked whether waiting was the plan. Three open asks from one author, in ten
-days, against a repository that has answered none of them, starts to read as
-volume rather than signal. The argument for filing anyway is that this one is
-cheap to act on and the reproducer is three lines. **The decision is Carlos's
-and it is not made yet** — what is done is that the text is ready and verified,
-so filing costs a command rather than an afternoon.

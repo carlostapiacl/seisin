@@ -271,24 +271,18 @@ port on localhost**, so anything listening there without authentication is withi
 `seisin check` says this next to the role. That is macOS: on Linux each role already has a
 private loopback, serves without the key, and reaches nothing on the host either way.
 
-A role that only needs to *reach* a local service — the API an end-to-end suite drives, a test
-database — should name the ports instead: `local_ports = [8001, 8081]`. It reaches those and no
-other port, on macOS and on Linux, so the unauthenticated thing on 8787 stays out of reach.
-The port list is enforced by the sandbox runtime's proxy, which is the only part of it that
-sees a destination port, so **the client has to go through the proxy**: curl, Node's `fetch`,
-Python's `urllib` do on their own; a MySQL driver or a raw socket do not, and are refused like
-any other direct dial — the log says which case it was, see below. Chromium does once it is
-told: Playwright's `proxy` option, filled from `HTTP_PROXY` inside the box (on macOS it also
-needs `--single-process` to start at all). The port is the boundary, not the protocol: the
-proxy tunnels raw TCP to a listed port through `CONNECT`, so list a port because the role may
-reach that service, whatever it speaks.
+If a role only needs to *reach* a local service, name the ports instead:
+`local_ports = [8001, 8081]`. The role reaches those and nothing else on localhost, on macOS
+and Linux. The sandbox's proxy enforces the list, so the client has to use the proxy. curl,
+Node's `fetch` and Python's `urllib` do. A database driver or a raw socket don't, and get
+refused. For Chromium, pass Playwright's `proxy` option from `HTTP_PROXY`; on macOS it also
+needs `--single-process` to start. A listed port is open to anything that speaks `CONNECT`, not
+just HTTP, so list the service, not the protocol.
 
-Refused connections are in the record too. A dial to a local port or a unix socket that the
-kernel stopped is logged as `connect tcp:8787` (the kernel names the port, not the host) or as
-the socket's path, once per target per run, and `seisin walls` says whether the port is missing
-from `local_ports`, listed but dialled directly, or a socket — which no role gets, Docker's
-least of all. None of them files a request: a port is not anybody's territory. macOS only, for
-the same reason as file denials.
+Refused connections are logged too: `connect tcp:<port>` (the kernel gives the port, not the
+host) or the socket path, once per target per run. `seisin walls` says whether the port is
+missing from `local_ports`, listed but dialled directly, or a socket. No request is filed: a
+port isn't anyone's territory. macOS only.
 
 `seisin init` will propose this from whatever your repo already says: `.claude/agents/`, then `CODEOWNERS`, then a blank start. It **proposes** — a generated policy you did not read is not a policy.
 
@@ -724,8 +718,8 @@ already done:
 | **Windows** | the runtime has a backend. seisin has never been pointed at it, and no CI runner covers it |
 | **Deleting inside your own territory** | not covered, and not coverable here — the ask is upstream as [issue #545](https://github.com/anthropics/sandbox-runtime/issues/545), open and unanswered since 2026-09-13, [with the measurement behind it](docs/upstream/denyUnlink.md) and [a demo](docs/demo/) |
 | **`init` heuristics** | it reads `.claude/agents/` then `CODEOWNERS`. Every other convention is a guess nobody has made yet |
-| **SSH inside a turn** | the transport exists — the runtime's SOCKS proxy filters by `(port, host)` — and the `ProxyCommand` it wires up cannot authenticate to it, so `git` over SSH dies at the handshake. The fix is upstream as [PR #516](https://github.com/anthropics/sandbox-runtime/pull/516), open; [the measurement](docs/upstream/ssh-proxycommand.md) is here. Use an HTTPS remote |
-| **A browser inside a role (macOS)** | Chromium registers a Mach service at startup and the runtime's profile has no setting to allow it, so it only starts with `--single-process` — which is unstable with several browsers or after a failed test. The fix is upstream as [PR #598](https://github.com/anthropics/sandbox-runtime/pull/598) for [issue #210](https://github.com/anthropics/sandbox-runtime/issues/210); [measured here](docs/upstream/mach-register.md) |
+| **SSH inside a turn** | the `ProxyCommand` the runtime sets can't authenticate to its own proxy, so `git` over SSH fails at the handshake. Fix upstream: [PR #516](https://github.com/anthropics/sandbox-runtime/pull/516). Use an HTTPS remote |
+| **A browser inside a role (macOS)** | Chromium only starts with `--single-process`, which is unstable with several browsers. Fix upstream: [PR #598](https://github.com/anthropics/sandbox-runtime/pull/598). [Measurement](docs/upstream/mach-register.md) |
 
 Every word above has one meaning, listed in [the glossary](docs/glossary.md) — the boundary
 **denies**, a person **declines**, seisin **refuses** a config it cannot enforce. A tool whose
