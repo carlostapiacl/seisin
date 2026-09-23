@@ -8,6 +8,9 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **Time window in the console.** Quick presets (1h, 4h, 24h, 7d, 30d, all) and a "from" date.
+  It filters what comes from the log: activity, denials, walls and per-role counts. The request
+  queue is not filtered. `/api/state?since=<ISO>` does the same.
 - **Old requests are marked.** If a role has run three times since it last asked and hasn't
   asked again, the queue says so. It is not declined or moved: that stays with a person.
 - **Chromium's Mach error is explained.** The after-failure hook recognises

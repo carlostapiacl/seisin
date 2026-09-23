@@ -89,6 +89,15 @@ button.btn.warn{border-color:var(--amber);color:var(--amber)}
 button:focus-visible,a:focus-visible,select:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 
 .cards{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+/* Time window: quick presets plus a free "from". Filters what comes from the log. */
+.range{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--mid)}
+.range .seg{display:flex;gap:2px;background:var(--hover);border-radius:6px;padding:2px}
+.range .seg button{border:0;background:none;color:var(--mid);padding:4px 10px;border-radius:4px;
+  cursor:pointer;font:inherit;font-size:12px}
+.range .seg button.on{background:var(--panel);color:var(--fg);box-shadow:0 1px 2px #0002}
+.range input{font:inherit;font-size:12px;padding:4px 8px;border:1px solid var(--line2);
+  border-radius:6px;background:var(--bg);color:var(--fg)}
+.range input.on{border-color:var(--fg)}
 .card{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--line2);
   border-radius:8px;padding:14px 16px;min-height:96px;display:flex;flex-direction:column}
 .card.g{border-left-color:var(--green)} .card.a{border-left-color:var(--amber)} .card.b{border-left-color:var(--blue)}
@@ -336,6 +345,19 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
          Each one is a link to the screen that explains it. A number you cannot
          act on is decoration; a number that takes you to the thing it counts
          is the top of a path. -->
+    <div class="range" id="range" hidden>
+      <span>Window</span>
+      <div class="seg" role="group" aria-label="Time window">
+        <button type="button" data-r="1h">1h</button>
+        <button type="button" data-r="4h">4h</button>
+        <button type="button" data-r="24h">24h</button>
+        <button type="button" data-r="7d">7d</button>
+        <button type="button" data-r="30d">30d</button>
+        <button type="button" data-r="all">All</button>
+      </div>
+      <label>from <input type="datetime-local" id="range-from" aria-label="From"></label>
+    </div>
+
     <div class="cards" id="kpis">
       <a class="card kpi" href="#requests" id="k-wait">
         <h2>waiting on you</h2><div class="n" id="c-wait">0</div><div class="s" id="c-wait-s">nothing to decide</div></a>
@@ -867,7 +889,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
               "somebody claims them.";
     document.getElementById("ca-lede").innerHTML = lede;
     var win = document.getElementById("dn-window");
-    if (win) win.textContent = f.total.toLocaleString() + " denials \u00b7 " +
+    if (win) win.textContent = rangeLabel() + " \u00b7 " + f.total.toLocaleString() + " denials \u00b7 " +
       (f.distinct || f.causes.length).toLocaleString() + " distinct paths";
 
     var max = top.times || 1;
@@ -994,7 +1016,8 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     set("k-open", off ? "alarm" : "calm", off,
         off ? (off === 1 ? "role nothing is enforcing" : "roles nothing is enforcing") : "every role confined");
     set("k-ref", f.total ? "live" : "calm", f.total.toLocaleString(),
-        f.total ? (f.distinct || f.causes.length).toLocaleString() + " distinct paths" : "nothing was denied");
+        (f.total ? (f.distinct || f.causes.length).toLocaleString() + " distinct paths" : "nothing was denied") +
+        (RANGE === "all" ? "" : " \u00b7 " + rangeLabel()));
     // The shape, not the size: one name at 74% is a tooling problem, the same
     // volume spread thin is a territory question, so the caption carries the name.
     set("k-conc", fam && fam.share >= 0.4 ? "live" : "calm",
@@ -1179,10 +1202,53 @@ function draw(){
     return (e && e.message) || "failed";
   }
 
+  /* ── time window ──────────────────────────────────────────────────────── */
+  // "1h" … "30d", "all", or "from:<ISO>". Remembered per browser, as a convenience.
+  var RANGE = "all";
+  try { RANGE = localStorage.getItem("seisin.range") || "all"; } catch (_) {}
+  var SPANS = { "1h": 36e5, "4h": 4 * 36e5, "24h": 24 * 36e5, "7d": 7 * 864e5, "30d": 30 * 864e5 };
+
+  // Worked out on every request, so "last 4h" keeps moving while the page is open.
+  function sinceIso(){
+    if (SPANS[RANGE]) return new Date(Date.now() - SPANS[RANGE]).toISOString();
+    if (RANGE.indexOf("from:") === 0) return RANGE.slice(5);
+    return null;
+  }
+  function stateUrl(){
+    var s = sinceIso();
+    return "/api/state" + (s ? "?since=" + encodeURIComponent(s) : "");
+  }
+  function rangeLabel(){
+    if (SPANS[RANGE]) return "last " + RANGE;
+    if (RANGE.indexOf("from:") === 0) return "since " + new Date(RANGE.slice(5)).toLocaleString();
+    return "all time";
+  }
+  function drawRange(){
+    document.querySelectorAll("#range .seg button").forEach(function(b){
+      b.classList.toggle("on", b.dataset.r === RANGE);
+    });
+    var from = document.getElementById("range-from");
+    from.classList.toggle("on", RANGE.indexOf("from:") === 0);
+    if (RANGE.indexOf("from:") !== 0) from.value = "";
+  }
+  function setRange(r){
+    RANGE = r;
+    try { localStorage.setItem("seisin.range", r); } catch (_) {}
+    drawRange();
+    reload().catch(function(){ /* server went away: keep what is on screen */ });
+  }
+  document.querySelectorAll("#range .seg button").forEach(function(b){
+    b.addEventListener("click", function(){ setRange(b.dataset.r); });
+  });
+  document.getElementById("range-from").addEventListener("change", function(e){
+    var t = Date.parse(e.target.value);   // datetime-local is local time, which Date.parse reads as such
+    setRange(isNaN(t) ? "all" : "from:" + new Date(t).toISOString());
+  });
+
   async function boot(){
     let s = null;
     try {
-      const r = await fetch("/api/state", { cache: "no-store", headers: { "x-seisin-token": TOKEN } });
+      const r = await fetch(stateUrl(), { cache: "no-store", headers: { "x-seisin-token": TOKEN } });
       if (r.ok) s = await r.json();
     } catch (_) { /* opened as a file: stay in demo */ }
 
@@ -1233,6 +1299,8 @@ function draw(){
     // everything" against a real repo is not a preview. `dataset.live` is what `show()`
     // reads, so the router never brings it back when you return to Roles.
     document.getElementById("kill").dataset.live = "1";
+    document.getElementById("range").hidden = false;
+    drawRange();
     document.getElementById("kill").hidden = true;
     document.getElementById("toml-note").textContent = "the file on disk, as it stands";
     document.getElementById("foot-mode").textContent = "Live.";
@@ -1329,7 +1397,7 @@ function route(){ return (location.hash || "#requests").slice(1); }
 
   async function refreshLog(){
     try {
-      const r = await fetch("/api/state", { cache: "no-store", headers: { "x-seisin-token": TOKEN } });
+      const r = await fetch(stateUrl(), { cache: "no-store", headers: { "x-seisin-token": TOKEN } });
       if (!r.ok) return;
       const s = await r.json();
       if (s.error) return;
@@ -1352,7 +1420,7 @@ function route(){ return (location.hash || "#requests").slice(1); }
 
   /** Everything again, after a decision rewrote the policy on disk. */
   async function reload(){
-    const r = await fetch("/api/state", { cache: "no-store", headers: { "x-seisin-token": TOKEN } });
+    const r = await fetch(stateUrl(), { cache: "no-store", headers: { "x-seisin-token": TOKEN } });
     const s = await r.json();
     if (s.error) return;
     KEYDIR = (s.keyDirs && s.keyDirs[0]) || ".secrets";
@@ -1364,8 +1432,11 @@ function route(){ return (location.hash || "#requests").slice(1); }
     }));
     LOG = fromServer(s.log);
     REQS = s.requests || [];
+    CAUSES = s.causes || null;
+    WALLS = s.walls || {};
     ONDISK = s.toml || null;
     draw();
+    drawKpis();
   }
 
   boot();
