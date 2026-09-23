@@ -273,6 +273,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
   /* Requests. A queue nobody opens is not human-in-the-loop, so it looks like
      something waiting rather than another table of facts. */
   .req{display:flex;gap:14px;align-items:flex-start;padding:14px 16px;border-top:1px solid var(--line)}
+  .req.stale .who{opacity:.6}
   .req:first-child{border-top:0}
   .req .who{flex:1;min-width:0}
   .req .who b{font-weight:600}
@@ -1029,11 +1030,13 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     host.innerHTML = REQS.map(function(r, i){
       var owners = (r.owners && r.owners.length) ? " — belongs to <b>" + esc(r.owners.join(", ")) + "</b>" : "";
       var times = r.times > 1 ? ' · <span class="asked">asked ' + r.times + "×</span>" : "";
-      return '<div class="req">' +
+      // Marked, not moved: Approve and Decline post this row's number.
+      var stale = r.stale ? ' · not asked again in ' + Number(r.stale.runs) + ' runs since — likely no longer needed' : "";
+      return '<div class="req' + (r.stale ? ' stale' : '') + '">' +
         '<div class="who">' +
           "<div><b>" + esc(r.role) + "</b> wants to " + esc(r.action) +
             ' <span class="path">' + esc(r.grant) + "</span>" + owners + "</div>" +
-          '<div class="sub">first asked over ' + esc(r.target) + times + "</div>" +
+          '<div class="sub">first asked over ' + esc(r.target) + times + stale + "</div>" +
         "</div>" +
         '<div class="act">' +
           '<input id="why-' + i + '" placeholder="why — this outlives you" aria-label="reason">' +

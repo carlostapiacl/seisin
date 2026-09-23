@@ -7,7 +7,8 @@
  * whole feature rests on — see docs/permission-requests.md.
  */
 import { readFileSync, writeFileSync } from "node:fs";
-import { pending, settle, applyGrant, refuseIfBarred, requestsPath } from "../requests.js";
+import { pending, settle, applyGrant, refuseIfBarred, requestsPath, markStale } from "../requests.js";
+import { read, logPath } from "../log.js";
 import { C, out } from "../render.js";
 
 /**
@@ -52,7 +53,7 @@ function pick(config, n) {
 }
 
 export function requests(config) {
-  const queue = pending(requestsPath(config.root));
+  const queue = markStale(pending(requestsPath(config.root)), read(logPath(config.root)));
   out(renderQueue(queue));
   return queue;
 }
@@ -70,6 +71,9 @@ export function renderQueue(queue) {
       // The stable way to name it: a number is a position in a queue that agents
       // are still writing to, and this does not move when the queue does.
       lines.push(`        ${C.dim}id ${r.key}${C.off}\n`);
+    // Marked, not moved: the number above is what `grant <n>` is typed against.
+    if (r.stale)
+      lines.push(`        ${C.dim}not asked again in ${r.stale.runs} runs of ${r.role} since — likely no longer needed${C.off}\n`);
     const note = handoffNote(r.handoff);
     if (note) lines.push(`        ${C.yellow}${note}${C.off}\n`);
   });

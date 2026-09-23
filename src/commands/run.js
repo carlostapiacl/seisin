@@ -20,10 +20,10 @@ import { spool, spoolPath, SOCK_ENV } from "../spool.js";
 import { secretsOf, redactor } from "../redact.js";
 import { STATE_DIR } from "../layout.js";
 import { C, err } from "../render.js";
-import { pending, record, requestsPath } from "../requests.js";
+import { pending, record, requestsPath, markStale } from "../requests.js";
 import { notifier } from "../notify.js";
 import { ownersOf, explain } from "../owners.js";
-import { append, logPath } from "../log.js";
+import { append, logPath, read } from "../log.js";
 import { renderQueue } from "./requests.js";
 import { watchDenials, inScope, scopeOf, reachedForContent } from "../violations.js";
 
@@ -490,7 +490,7 @@ export async function run(config, argv) {
           `${foreign ? `, ${foreign} from other sandboxes` : ""}${C.off}\n`);
 
     const queue = pending(requestsPath(config.root));
-    if (queue.length) err(renderQueue(queue));
+    if (queue.length) err(renderQueue(markStale(queue, read(logPath(config.root)))));
     const failed = await notify.settle();
     if (failed.length) err(`${C.yellow}seisin: could not notify about a new request (${failed[0]})${C.off}\n`);
     if (!outStream) return process.exit(status);
