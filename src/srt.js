@@ -329,7 +329,9 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
       // Exactly one socket: the parent's audit spool, when there is a parent.
       // Granted by path, not by turning unix sockets on.
       allowUnixSockets: spool ? [spool] : [],
-      allowLocalBinding: false,
+      // Per role, `local_binding = true`. Off by default: listening is a
+      // capability, and most roles never need it.
+      allowLocalBinding: role.localBinding === true,
     },
     filesystem: {
       denyRead,

@@ -28,6 +28,13 @@ changed rather than failing on the old spelling.
     the key it most likely meant. So is an entry no `writes` of the same role covers, which
     subtracts from nothing. An absolute path or a `..` refuses to load.
 
+- **`local_binding = true`: a role can listen on a local port.** Until now the profile set
+  `allowLocalBinding: false` for everyone, so no role could start a dev server or the backend
+  an end-to-end test drives — `php -S 127.0.0.1:…` and `node`'s `listen()` both died with
+  `Operation not permitted`. Off by default and per role, because most roles never need it. It
+  opens binding only; a role reaching its own server on `127.0.0.1` works even with
+  `[network] allow = []`, measured.
+
 ## 0.2.0 — 2026-09-21
 
 - **Written down: HTTP(S) works and SSH does not, and the reason is not the one anybody

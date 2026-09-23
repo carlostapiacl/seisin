@@ -355,6 +355,9 @@ export function loadConfig(path) {
         `${path}: roles.${name}: key_mode = "${keyMode}" is not a delivery mode. ` +
         `Known: ${MODES.join(", ")}.`);
     const neverWrites = readNeverWrites(own(r, "never_writes"), `${path}: roles.${name}.never_writes`);
+    const localBinding = own(r, "local_binding");
+    if (localBinding !== undefined && typeof localBinding !== "boolean")
+      throw new Error(`${path}: roles.${name}.local_binding must be true or false, not ${JSON.stringify(localBinding)}`);
     out.roles[name] = {
       name,
       /**
@@ -389,6 +392,16 @@ export function loadConfig(path) {
        * means exactly what it meant before the key existed.
        */
       neverWrites,
+      /**
+       * Whether this role may listen on a local port — a dev server, the
+       * backend an end-to-end test drives, a test database.
+       *
+       * Off unless the role says so, and per role because most roles never
+       * start a server: an agent that edits docs has no business accepting
+       * connections. It only opens *binding*; what the role can reach is still
+       * `network`, unchanged.
+       */
+      localBinding: localBinding === true,
       // Kept so `check` can name a misspelt key instead of ignoring it. An
       // unknown key in a role table used to be dropped silently, and for a
       // subtraction that is failing open: `never_write` would read as a rule
@@ -487,7 +500,7 @@ export function withSidecars(paths) {
 }
 
 /** The keys a `[roles.<name>]` table can hold. Anything else is reported by `check`. */
-export const ROLE_KEYS = ["writes", "keys", "key_mode", "env", "network", "never_writes"];
+export const ROLE_KEYS = ["writes", "keys", "key_mode", "env", "network", "never_writes", "local_binding"];
 
 /**
  * `never_writes`, refused rather than guessed when it cannot mean what it says.
