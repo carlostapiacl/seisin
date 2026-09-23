@@ -1,8 +1,23 @@
 # Upstream ask · `mach-register` for a named prefix (Chromium)
 
-Issue draft for [anthropics/sandbox-runtime][repo]. **Not filed yet.** Kept here because
-`seisin hook` tells an agent that Chromium needs `--single-process` under the sandbox, and a
-workaround the tool recommends should say what the real fix would be.
+**Already tracked upstream — do not file a new issue.**
+[#210][210] (open since 2026-04-06) asks for exactly this, and [PR #598][598] (opened
+2026-09-22, awaiting review) implements it as `network.allowMachRegister`, the counterpart of
+`allowMachLookup`, with the same trailing-wildcard spelling. Checked 2026-09-23: neither 0.0.76
+nor 0.0.77 (the latest) has it. Kept here because `seisin hook` tells an agent that Chromium
+needs `--single-process`, and a workaround the tool recommends should say what the real fix is
+and where it stands.
+
+What this note adds to the PR, if it is worth a comment there: the PR reproduces with a small C
+probe that calls `bootstrap_check_in`; the table below is Playwright's Chromium end to end, and
+it shows that `mach-register` alone is not enough — the children also need `mach-lookup` for
+the same prefix, which the PR's own example sets but does not say is required.
+
+When it ships, seisin can offer it per role (Chromium's prefixes, both operations) instead of
+`--single-process`.
+
+[210]: https://github.com/anthropics/sandbox-runtime/issues/210
+[598]: https://github.com/anthropics/sandbox-runtime/pull/598
 
 Verified against **0.0.76** on macOS 15, 2026-09-23.
 
@@ -75,5 +90,4 @@ with its defaults (multi-process), three contexts in a row:
 
 So both rules are needed and, for this case, sufficient. The runtime has `allowMachLookup` in
 its settings already; there is no setting that emits `mach-register`, so the second half cannot
-be supplied from outside. The ask is that setting — for example `allowMachRegister`, taking
-names or `prefix*` like its lookup counterpart.
+be supplied from outside. That setting is what PR #598 adds.
