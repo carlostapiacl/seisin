@@ -166,3 +166,14 @@ test("review keeps connections out of the territory advice and out of the map's 
   assert.deepEqual(r.connects.map((c) => [c.where, c.times]), [["tcp:8787", 3]]);
   assert.equal(r.unowned.length, 0, "a port was reported as a hole in the map");
 });
+
+test("a short refusal by a role with local_ports reaches the log", { skip: skip || (process.platform !== "darwin" && "kernel denials are read on macOS only") }, async () => {
+  // The command that runs is `env NO_PROXY=… <cmd>`, and the watcher recognises
+  // a denial by that command. It was handed <cmd> instead, recognised nothing,
+  // and every short refusal of these roles — the kind an agent runs most — left
+  // no line: 0 of 5 measured, against 5 of 5 for a role without the key.
+  const dir = repoWith('[roles.e2e]\nwrites = ["app/**"]\nlocal_ports = [8001]\n');
+  await new Promise((ok) => spawn(process.execPath, [CLI, "run", "e2e", "--", "sh", "-c", "nc -z 127.0.0.1 38787"], { cwd: dir, stdio: "ignore" }).on("close", ok));
+  const log = readFileSync(join(dir, ".seisin", "log.jsonl"), "utf8");
+  assert.match(log, /"action":"connect".*"target":"tcp:38787"/, log);
+});

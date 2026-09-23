@@ -344,6 +344,12 @@ export async function run(config, argv) {
   let offPolicy = 0;                  // refused, but about nothing the policy names
   let walks = 0;                      // a recursive search reaching a closed door
   const connects = new Set();         // one line per refused target per run
+  // What actually runs inside the box, computed once and used by both ends. The
+  // watcher recognises a denial by comparing the runtime's command tag with this
+  // argv; handed `cmd` while `srt` was handed `env NO_PROXY=… cmd`, it recognised
+  // nothing for a role with `local_ports`, and every short refusal of those roles
+  // — writes included — left no line (measured: 0 of 5, and 5 of 5 without the key).
+  const boxed = loopbackVia(config.roles[role], cmd);
   const denials = watchDenials((d) => {
     /**
      * A refused connection: logged, never queued.
@@ -411,7 +417,7 @@ export async function run(config, argv) {
       // So the log can tell a subtraction doing its job from a missing permission.
       ...(barred ? { neverWrites: barred } : {}),
     });
-  }, { argv: cmd });
+  }, { argv: boxed });
 
   // Deliberately NOT announced here. On Linux this branch is taken every time,
   // so saying it per run puts a line the reader cannot act on in front of every
@@ -430,7 +436,7 @@ export async function run(config, argv) {
   const nested = nestedSandboxWarning(cmd);
   if (nested) err(`${C.yellow}seisin: ${nested}${C.off}\n`);
 
-  const child = spawn(srt, ["--settings", file, "--", ...loopbackVia(config.roles[role], cmd)], {
+  const child = spawn(srt, ["--settings", file, "--", ...boxed], {
     stdio: outStream ? ["inherit", "pipe", "pipe"] : "inherit",
     env,
   });
