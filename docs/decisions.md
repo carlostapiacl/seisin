@@ -689,6 +689,14 @@ needs it; the constraints above are what it has to meet when it does.
 
 ## Still open
 
+- **An MCP tool call has no owner.** The hook judges file tools and `Bash`; any other tool,
+  `mcp__supabase__execute_sql` for example, returns no target, so it gets no verdict and no line
+  in the log. The kernel does not see it either when the MCP server runs outside the box. What
+  seisin offers today is narrower: `mcp = [...]` lists which servers a role may load at all.
+  Answering "whose is the table this call touches" would need a resource that is not a path,
+  asked of the same ownership map — and an unknown tool should say it is unknown instead of
+  passing in silence. Not built.
+
 - ~~**The queue says "refused" and means "asked for".**~~ **Settled 2026-09-14**,
   and it was two problems rather than one.
 
