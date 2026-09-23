@@ -8,6 +8,9 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **The console says when its link is stale.** Every `seisin ui` run mints a new token, so a tab
+  opened before a restart used to reload into the example policy with nothing saying why. It now
+  says the link is from an earlier run and to open the new one.
 - **Shorter `walls` and `review`.** `walls` hides walls the role stopped hitting (three runs, same
   rule as old requests; `--all` shows them) and says "belongs to X" instead of repeating the path.
   `review` shows ten rows per section (`--all` for everything): 1,557 lines became 78 on a real log.

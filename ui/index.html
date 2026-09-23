@@ -1249,13 +1249,30 @@ function draw(){
   });
 
   async function boot(){
-    let s = null;
+    let s = null, stale = false;
     try {
       const r = await fetch(stateUrl(), { cache: "no-store", headers: { "x-seisin-token": TOKEN } });
       if (r.ok) s = await r.json();
+      // A live server that refuses this tab's token: `seisin ui` was restarted
+      // and minted a new one. Falling back to the example here showed a policy
+      // that is not the reader's, one F5 after a restart, with nothing saying why.
+      stale = r.status === 403;
     } catch (_) { /* opened as a file: stay in demo */ }
 
     const label = document.getElementById("source");
+    if (stale) {
+      label.textContent = "link from an earlier run";
+      label.style.color = "var(--amber)";
+      document.querySelector("main").innerHTML =
+        '<div class="box" style="padding:22px 24px;max-width:640px">' +
+        '<h2 style="margin:0 0 8px;font-size:17px">This tab has the link from an earlier run</h2>' +
+        '<p style="margin:0 0 8px">`seisin ui` was restarted, and every run gets a new token. ' +
+        'Open the new link it printed in the terminal (it starts with ' +
+        '<code>http://127.0.0.1:' + location.port + '/#t=</code>).</p>' +
+        '<p style="margin:0;color:var(--mid)">Nothing here is shown until then, so this page never ' +
+        'passes the example policy off as yours.</p></div>';
+      return;
+    }
     if (!s || s.error) {
       label.textContent = location.protocol.startsWith("http") && !TOKEN
         ? "no token — open the link `seisin ui` printed · showing an example"
