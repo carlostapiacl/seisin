@@ -269,8 +269,11 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
 
 @media (max-width:980px){.two{grid-template-columns:1fr}}
 @media (max-width:720px){
-  .frame{grid-template-columns:1fr}
-  .side{border-right:0;border-bottom:1px solid var(--line)}
+  /* minmax(0,1fr), not 1fr: a bare 1fr never shrinks below its widest child's
+     min-content, and the nav's unwrapped links made the whole page 793px wide on a
+     375px phone. The tabs scroll inside .list instead. */
+  .frame{grid-template-columns:minmax(0,1fr)}
+  .side{border-right:0;border-bottom:1px solid var(--line);min-width:0}
   .side .list{display:flex;overflow-x:auto;padding:6px 8px}
   .side .cap{display:none}
   .side a{border-left:0;border-bottom:2px solid transparent;white-space:nowrap}
