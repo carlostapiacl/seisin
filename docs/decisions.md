@@ -554,10 +554,11 @@ not authenticate.
 
 **What seisin should do.** Not invent a protocol: this is upstream-shaped. The runtime wires
 a `ProxyCommand` around a tool it documents as unable to authenticate to its own proxy, and
-either the helper should change or the variable should not be set. That ask is
-[written and verified](upstream/ssh-proxycommand.md) against 0.0.76 and 0.0.77 — **not
-filed**, because two earlier ones are open and unanswered and a third in ten days starts to
-read as volume rather than signal. The text is ready; filing is a decision.
+either the helper should change or the variable should not be set. The ask was
+[written and verified](upstream/ssh-proxycommand.md) against 0.0.76 and 0.0.77 and never
+filed — and it did not need to be: upstream PR
+[#516](https://github.com/anthropics/sandbox-runtime/pull/516), open since 2026-09-04, fixes
+exactly this.
 
 **What to do today.** Use an HTTPS remote for git — it passes. Run SSH deploys outside the
 confined turn. Both of those were already true; what changed is that the reason is now the

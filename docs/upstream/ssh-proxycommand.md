@@ -9,10 +9,15 @@ Every command below was run.
 
 [repo]: https://github.com/anthropics/sandbox-runtime
 
-> **Status · not filed yet.** Written and verified. The other two asks are
-> [`#545`][545] — open since 2026-09-13 with no reply — and [`#582`][582],
-> filed 2026-09-20. Filing a third while two are unanswered is a judgement
-> about noise, not about readiness; see the note at the end.
+> **Status · already tracked upstream — do not file.** Checked 2026-09-23:
+> [PR #516][516] (opened 2026-09-04 by another contributor, open, not merged)
+> fixes exactly this — Apple's `nc` has no SOCKS5 authentication, so the wired
+> `ProxyCommand` dies at the handshake since the proxy started minting a token —
+> and it cites the two reports it came from, anthropics/claude-code#70684 and
+> #82255. The draft below stays as the measurement behind seisin's README line;
+> if anything is worth doing upstream it is a +1 on that PR, not a third issue.
+
+[516]: https://github.com/anthropics/sandbox-runtime/pull/516
 
 [545]: https://github.com/anthropics/sandbox-runtime/issues/545
 [582]: https://github.com/anthropics/sandbox-runtime/issues/582
