@@ -8,6 +8,12 @@ Verified against **0.0.76**, re-verified against **0.0.77** on 2026-09-20.
 
 [repo]: https://github.com/anthropics/sandbox-runtime
 
+**PR opened 2026-09-23: [#601](https://github.com/anthropics/sandbox-runtime/pull/601)**, `srt --violations <path>`:
+turns on the kernel monitors and appends each recorded violation as a JSON line. Measured: without
+a short wait before exit, 9 of 10 last-line denies were lost on macOS; with it, 10 of 10. On Linux
+it records proxy denies; bwrap's `Read-only file system` still isn't reported. Once it ships,
+seisin can read this file instead of running its own `log stream`, and get proxy denies too.
+
 **Filed 2026-09-20 as [anthropics/sandbox-runtime#582][582].** Re-verified
 against **0.0.77** on the day it went up — both call sites unchanged from 0.0.76,
 only the line number in `dist/cli.js` moved (189 → 335), and the filed text cites
