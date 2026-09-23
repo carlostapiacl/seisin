@@ -10,6 +10,9 @@
  * unless it is named. The base list below is what a command needs to be a
  * command at all, and it deliberately contains no credential-shaped names.
  */
+import { existsSync } from "node:fs";
+
+const SYSTEM_BUNDLE = "/etc/ssl/cert.pem";
 
 /**
  * What survives with no policy at all.
@@ -57,7 +60,34 @@ export const BASE = [
  * A role that wants the old behaviour names `GIT_OPTIONAL_LOCKS` in its `env`
  * and sets it in the parent — the loop below then overwrites this.
  */
-export const DEFAULTS = { GIT_OPTIONAL_LOCKS: "0" };
+export const DEFAULTS = {
+  GIT_OPTIONAL_LOCKS: "0",
+  /**
+   * Node's built-in `fetch()` ignores HTTP_PROXY/HTTPS_PROXY unless told
+   * otherwise, so inside the box it tries DNS directly and dies with ENOTFOUND
+   * while `npm`, which reads the proxy itself, works. Measured on Node 24.2:
+   * ENOTFOUND without it, 200 with it. It only makes Node use the proxy the
+   * sandbox already routes everything through — nothing is widened. Older
+   * Nodes ignore the variable.
+   */
+  NODE_USE_ENV_PROXY: "1",
+  /**
+   * The system's CA bundle, when there is one at this path (macOS ships it).
+   *
+   * Go 1.27+ verifies against SSL_CERT_FILE instead of asking the system when
+   * the variable is set ("the native Go verifier is used", go1.27 notes), and
+   * asking the system means com.apple.trustd.agent, which the sandbox closes.
+   * Measured: `go get` fails with `x509: OSStatus -26276` without it and works
+   * with it, with trustd still shut. Binaries built with Go before 1.27 (gh
+   * 2.89 is 1.26) ignore it; for those, and for Dart, see `trustd = true`.
+   *
+   * Only if the file exists: on a system without it, pointing every TLS client
+   * at a missing file would break the ones that work today. And a parent that
+   * sets its own SSL_CERT_FILE or SSL_CERT_DIR — a corporate CA — keeps it;
+   * see buildEnv.
+   */
+  ...(existsSync(SYSTEM_BUNDLE) ? { SSL_CERT_FILE: SYSTEM_BUNDLE } : {}),
+};
 
 /**
  * Names that must never ride along, even if a role asks for them by pattern.
@@ -88,6 +118,18 @@ export function buildEnv(parent, role, extra = []) {
     if (!wanted.has(name)) { dropped.push(name); continue; }
     if (NEVER.test(name) && !(role.env ?? []).includes(name)) { dropped.push(name); continue; }
     env[name] = value;
+  }
+  // A trust store the parent chose is a decision about who to trust, not an
+  // incidental variable: it crosses whether or not the role named it, and it
+  // replaces the default rather than sitting next to it. They are paths, never
+  // secrets. A role that names SSL_CERT_FILE while the parent has none opts out
+  // of the default.
+  if (parent.SSL_CERT_FILE || parent.SSL_CERT_DIR) {
+    delete env.SSL_CERT_FILE;
+    for (const k of ["SSL_CERT_FILE", "SSL_CERT_DIR"])
+      if (parent[k]) { env[k] = parent[k]; const i = dropped.indexOf(k); if (i !== -1) dropped.splice(i, 1); }
+  } else if ((role.env ?? []).includes("SSL_CERT_FILE")) {
+    delete env.SSL_CERT_FILE;
   }
   // A role may name a variable the parent does not have. That is not an error —
   // it is a policy written ahead of the environment, which is the right order.

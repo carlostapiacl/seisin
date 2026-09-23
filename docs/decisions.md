@@ -563,6 +563,51 @@ read as volume rather than signal. The text is ready; filing is a decision.
 confined turn. Both of those were already true; what changed is that the reason is now the
 real one.
 
+## trustd: every sandbox chose a side
+
+On macOS, Go and Dart do not verify a TLS certificate themselves: they ask the system, and
+the system answers through `com.apple.trustd.agent`. The runtime seisin sits on closes that
+service. So inside the box `gh`, `go get` and `flutter pub get` fail with the domain allowed and
+the connection made — measured on 0.0.76 with a plain CONNECT tunnel, although the runtime's
+option for it is documented as needed only behind a TLS-intercepting proxy.
+
+How it got here, all public: the runtime removed the service in
+[#108](https://github.com/anthropics/sandbox-runtime/pull/108) ("TLS is handled by the proxy
+layer", tested with curl, npm, pip, cargo and python — no Go binary), Go tools broke
+([#118](https://github.com/anthropics/sandbox-runtime/issues/118)), and
+[#120](https://github.com/anthropics/sandbox-runtime/pull/120) brought it back as
+`enableWeakerNetworkIsolation`, off, with a warning that it is an exfiltration path. The report
+without interception, [#125](https://github.com/anthropics/sandbox-runtime/issues/125), is open.
+
+The rest of the field, read in their source: Codex allows trustd whenever the network is on;
+Gemini CLI allows it in its default profile and not in its strict ones; nono allows every Mach
+lookup and denies the Keychain; Homebrew's build sandbox allows it unconditionally, Bazel never
+restricts Mach lookups, and Nix allows it together with full network. The runtime is the only
+one that closes it by default.
+
+The fix came from the language, not from a sandbox: [Go 1.27](https://go.dev/doc/go1.27) honors
+`SSL_CERT_FILE` on macOS and uses its own verifier when it is set
+([golang/go#77865](https://github.com/golang/go/issues/77865), filed because of #118). Dart
+has no equivalent — it always verifies through the Security framework.
+
+What seisin does, in that order:
+
+1. **Remove the need where it can.** `SSL_CERT_FILE` points at the system bundle by default,
+   so Go 1.27+ verifies with trustd shut. `NODE_USE_ENV_PROXY=1`, because Node's `fetch()`
+   otherwise ignores the proxy and tries DNS on its own. Neither widens anything.
+2. **Make the rest a written, per-role answer.** `trustd = true` opens that one service for
+   that one role — Dart, and Go built before 1.27 — and `check` prints what it costs next to the
+   role. Every other sandbox makes this choice once, for everything with network; here it is
+   made per role, and it is visible.
+3. **Not the escape hatch.** Running `gh` outside the box is the documented answer elsewhere,
+   and it works when a person approves each run. An agent that runs alone overnight has nobody
+   to approve it, and "outside the box" there means no boundary at all.
+
+What the warning rests on: trustd fetches, outside the sandbox, the URLs a certificate carries
+(Apple's `SecCAIssuerRequest.m`), so a confined process could make it fetch a URL of its
+choosing. No public demonstration of that exists. Allowing a domain like `github.com` already
+opens a comparable path — the runtime's own docs say so — so trustd adds a path, not a category.
+
 ## Still open
 
 - ~~**The queue says "refused" and means "asked for".**~~ **Settled 2026-09-14**,

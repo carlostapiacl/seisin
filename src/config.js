@@ -356,6 +356,9 @@ export function loadConfig(path) {
         `Known: ${MODES.join(", ")}.`);
     const neverWrites = readNeverWrites(own(r, "never_writes"), `${path}: roles.${name}.never_writes`);
     const localBinding = own(r, "local_binding");
+    const trustd = own(r, "trustd");
+    if (trustd !== undefined && typeof trustd !== "boolean")
+      throw new Error(`${path}: roles.${name}.trustd must be true or false, not ${JSON.stringify(trustd)}`);
     if (localBinding !== undefined && typeof localBinding !== "boolean")
       throw new Error(`${path}: roles.${name}.local_binding must be true or false, not ${JSON.stringify(localBinding)}`);
     out.roles[name] = {
@@ -402,6 +405,13 @@ export function loadConfig(path) {
        * on every interface and connect to every localhost port. See `check`.
        */
       localBinding: localBinding === true,
+      /**
+       * Whether this role may reach com.apple.trustd.agent (macOS). Needed by
+       * Dart/Flutter and by Go built before 1.27 to verify TLS at all; Go 1.27+
+       * does without it through the SSL_CERT_FILE that env.js sets. Off unless
+       * the role says so. See srt.js for what it costs.
+       */
+      trustd: trustd === true,
       // Kept so `check` can name a misspelt key instead of ignoring it. An
       // unknown key in a role table used to be dropped silently, and for a
       // subtraction that is failing open: `never_write` would read as a rule
@@ -500,7 +510,7 @@ export function withSidecars(paths) {
 }
 
 /** The keys a `[roles.<name>]` table can hold. Anything else is reported by `check`. */
-export const ROLE_KEYS = ["writes", "keys", "key_mode", "env", "network", "never_writes", "local_binding"];
+export const ROLE_KEYS = ["writes", "keys", "key_mode", "env", "network", "never_writes", "local_binding", "trustd"];
 
 /**
  * `never_writes`, refused rather than guessed when it cannot mean what it says.
