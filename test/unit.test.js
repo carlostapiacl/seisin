@@ -1276,6 +1276,26 @@ test("the page never carries the token, and every /api/ route asks for it", asyn
   assert.equal(ok.status, 200);
 });
 
+test("decline all refuses exactly what the page showed, grants nothing, and asks for the token", async (t) => {
+  const { box, port, token } = await consola(t);
+  const q = join(box, ".seisin", "requests.jsonl");
+  record(q, { role: "backend", action: "write", target: "src/web/b.ts", owners: ["frontend"] });
+  const shown = pending(q).map((p) => p.key);
+  // Llega uno nuevo después de que la página dibujó: no se rechaza sin verlo.
+  record(q, { role: "frontend", action: "write", target: "docs/late.md", owners: [] });
+  const url = `http://127.0.0.1:${port}/api/decline-all`;
+  const body = JSON.stringify({ keys: shown, reason: "ruido de un bug ya arreglado" });
+  assert.equal((await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body })).status, 403);
+  const before = readFileSync(join(box, "seisin.toml"), "utf8");
+  const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json", "x-seisin-token": token }, body });
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).declined, 2);
+  const left = pending(q);
+  assert.equal(left.length, 1);
+  assert.match(left[0].target, /late\.md/);
+  assert.equal(readFileSync(join(box, "seisin.toml"), "utf8"), before, "declining changed the policy");
+});
+
 test("the console only answers to its own host name", async (t) => {
   // DNS rebinding: un dominio ajeno apuntado a 127.0.0.1 llega con otro Host.
   const { port, token } = await consola(t);

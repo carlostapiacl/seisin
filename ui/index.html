@@ -145,6 +145,9 @@ button:focus-visible,a:focus-visible,select:focus-visible{outline:2px solid var(
   justify-content:space-between;gap:12px}
 .box>header h2{font-size:13px;font-weight:600;margin:0}
 .box>header .note{font-size:11px;color:var(--dim)}
+.box>header .bulk{margin-left:auto;display:flex;gap:6px;align-items:center}
+.box>header .bulk[hidden]{display:none}
+.box>header .bulk input{font-size:12px;padding:4px 6px;min-width:180px}
 
 .scrollx{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:13px;min-width:720px}
@@ -387,6 +390,10 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
         <header>
           <h2>Pending decisions</h2>
           <span class="note">granting edits seisin.toml · here or in the terminal, never through MCP</span>
+          <span class="bulk" id="bulk" hidden>
+            <input id="why-all" placeholder="why, for all of them" aria-label="reason for declining all">
+            <button class="btn warn" id="decline-all" type="button">Decline all</button>
+          </span>
         </header>
         <div id="reqs"></div>
       </div>
@@ -1036,6 +1043,46 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     host.querySelectorAll("button[data-n]").forEach(function(b){
       b.addEventListener("click", function(){ act(b); });
     });
+    drawBulk();
+  }
+
+  /**
+   * Decline every request on screen — two clicks, no dialog.
+   *
+   * There is no "approve all" on purpose: a grant is read one at a time. The
+   * keys sent are the ones drawn now, so a request that arrives in between is
+   * not refused unseen.
+   */
+  function drawBulk(){
+    var bulk = document.getElementById("bulk");
+    var btn = document.getElementById("decline-all");
+    bulk.hidden = REQS.length < 2;
+    btn.disabled = false;
+    btn.dataset.armed = "";
+    btn.textContent = "Decline all (" + REQS.length + ")";
+    btn.onclick = async function(){
+      if (!btn.dataset.armed) {
+        btn.dataset.armed = "1";
+        btn.textContent = "Click again to decline " + REQS.length;
+        setTimeout(function(){ if (btn.dataset.armed) { btn.dataset.armed = ""; btn.textContent = "Decline all (" + REQS.length + ")"; } }, 4000);
+        return;
+      }
+      btn.disabled = true;
+      try {
+        var r = await fetch("/api/decline-all", {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-seisin-token": TOKEN },
+          body: JSON.stringify({ keys: REQS.map(function(q){ return q.key; }),
+                                 reason: (document.getElementById("why-all") || {}).value || "declined in bulk from the console" })
+        });
+        var out = await r.json();
+        if (!r.ok) throw new Error(out.error || "refused");
+        await reload();
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = e.message;
+      }
+    };
   }
 
   /**
