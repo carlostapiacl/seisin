@@ -376,6 +376,24 @@ writes = ["src/api/**"]   # granted 2026-09-12 · asked 3× · "frontend owns ch
 person applies it, in a terminal or in the console. That asymmetry is deliberate and it is
 the reason the MCP server exists at all.
 
+**A person hears about it.** With `[notify]`, the parent process sends one message per new
+request — the role, the path, whose it is, and `seisin grant <n>` — to ntfy, Slack or any
+webhook. The URL lives in a key directory no role declares (`url_file`) or in the parent's
+`SEISIN_NOTIFY_URL`; written plainly into `seisin.toml`, which every role can read, it refuses to
+load, because whoever reads it can send you a fake "approve".
+
+```toml
+[notify]
+url_file = ".secrets/notify-url.txt"   # e.g. https://ntfy.sh/<your-topic>
+format   = "text"                      # or "slack", "json"
+```
+
+**And so does the agent.** `seisin wire` installs the hook for four events. Before a tool call
+it explains a refusal it can see coming; after a command fails it reads the kernel's own refusal
+from the log and tells the agent whose the path was and how many times it has been refused —
+the half PreToolUse never sees; and when a session starts, resumes or is compacted it hands the
+agent its territory and its walls, before the first one.
+
 **[How a denial becomes a request, why it deduplicates, and what a grant records →](docs/permission-requests.md)**
 
 ## Ask your own assistant

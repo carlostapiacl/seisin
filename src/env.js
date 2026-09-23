@@ -117,6 +117,9 @@ export function buildEnv(parent, role, extra = []) {
   for (const [name, value] of Object.entries(parent)) {
     if (!wanted.has(name)) { dropped.push(name); continue; }
     if (NEVER.test(name) && !(role.env ?? []).includes(name)) { dropped.push(name); continue; }
+    // Not even when named: whoever can read the notify URL can send the person
+    // a fake "approve #3". Only the parent uses it (notify.js).
+    if (name === "SEISIN_NOTIFY_URL") { dropped.push(name); continue; }
     env[name] = value;
   }
   // A trust store the parent chose is a decision about who to trust, not an
