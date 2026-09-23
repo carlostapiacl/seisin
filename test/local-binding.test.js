@@ -70,10 +70,24 @@ test("the real sandbox lets that role serve and reach a local port, and refuses 
   const as = (role) => spawnSync(process.execPath, [CLI, "run", role, "--", "sh", "-c", SERVE_AND_ASK],
     { cwd: dir, encoding: "utf8" }).status;
   assert.equal(as("e2e"), 0, "local_binding = true and still no server");
-  assert.notEqual(as("docs"), 0, "a role without the key could listen");
+  if (process.platform === "darwin")
+    assert.notEqual(as("docs"), 0, "a role without the key could listen");
+  else
+    // Linux: the runtime drops the network namespace, so every role has a
+    // private loopback and serving inside it reaches nobody else. Measured:
+    // Debian 12, bwrap 0.8.0 — both roles serve, neither reaches the host.
+    assert.equal(as("docs"), 0, "a private loopback should work without the key");
 });
 
-test("check says what local_binding really opens", () => {
+test("check warns about local_binding and trustd only where they mean something", () => {
+  const cfg = loadConfig(join(repoWith(TWO + 'trustd = true\n'), "seisin.toml"));
+  const kinds = inspect(cfg).warnings.map((w) => w.kind);
+  const mac = process.platform === "darwin";
+  assert.equal(kinds.includes("local-binding-reaches-localhost"), mac);
+  assert.equal(kinds.includes("trustd-open"), mac);
+});
+
+test("check says what local_binding really opens", { skip: process.platform !== "darwin" && "macOS only: on Linux every role has a private loopback" }, () => {
   const w = inspect(loadConfig(join(repoWith(TWO), "seisin.toml"))).warnings
     .filter((x) => x.kind === "local-binding-reaches-localhost");
   assert.equal(w.length, 1, "one warning, for the role that has it");

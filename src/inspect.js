@@ -138,7 +138,11 @@ function roleKeyWarnings(roles) {
             : "Nothing in it takes effect."),
       });
     }
-    if (r.localBinding)
+    // macOS only, and not by omission: on Linux the runtime removes the network
+    // namespace, so every role already has a loopback of its own — it can serve
+    // and reach its own server with or without the key, and reaches nothing on
+    // the host either way (measured in Docker, Debian 12, bwrap 0.8.0).
+    if (r.localBinding && process.platform === "darwin")
       warnings.push({
         kind: "local-binding-reaches-localhost",
         headline: `${r.name}: local_binding lets it connect to every port on localhost, not only listen`,
@@ -146,7 +150,8 @@ function roleKeyWarnings(roles) {
           "Anything listening on this machine without authentication — a local control API, a " +
           "database, a dev server — is within this role's reach, outside its territory.",
       });
-    if (r.trustd)
+    // trustd is a macOS service; on Linux the key changes nothing.
+    if (r.trustd && process.platform === "darwin")
       warnings.push({
         kind: "trustd-open",
         headline: `${r.name}: trustd = true opens com.apple.trustd.agent, a path out that the domain list does not see`,

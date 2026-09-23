@@ -73,7 +73,7 @@ test("trustd is a boolean, and anything else refuses to load", () => {
   assert.throws(() => loadConfig(join(dir, "seisin.toml")), /trustd must be true or false/);
 });
 
-test("check names what trustd opens, next to the role", () => {
+test("check names what trustd opens, next to the role", { skip: process.platform !== "darwin" && "trustd is a macOS service" }, () => {
   const report = inspect(loadConfig(join(repoWith(TWO), "seisin.toml")));
   const w = report.warnings.filter((x) => x.kind === "trustd-open");
   assert.equal(w.length, 1);

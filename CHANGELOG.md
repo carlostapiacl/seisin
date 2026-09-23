@@ -40,6 +40,11 @@ changed rather than failing on the old spelling.
   a local control API with no authentication. Grant it to a role only where nothing on
   localhost would act on an unauthenticated request.
 
+  **That is macOS.** On Linux the runtime drops the network namespace, so every role already
+  has a loopback of its own: it can serve and reach its own server without the key, and reaches
+  nothing on the host with it — measured in Docker (Debian 12, bubblewrap 0.8.0). `check` only
+  warns on macOS.
+
 - **TLS on macOS: Go and Node work inside the box, and `trustd = true` for what still cannot.**
   Go and Dart verify certificates by asking `com.apple.trustd.agent`, which the sandbox closes,
   so `gh`, `go get` and `flutter pub get` failed with the domain allowed — with a plain tunnel,
