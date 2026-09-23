@@ -8,6 +8,19 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **Security: the console no longer hands its token to whoever asks.** `seisin ui` used to inline
+  the token that approves requests into the page, and `/api/state` answered with no token at all
+  — both resting on "an agent cannot reach loopback". `local_binding = true` makes that false on
+  macOS, and a read-only review reproduced a role reading the token off `GET /` and approving its
+  own request into another role's territory. The token now travels only in the fragment of the
+  link `ui` opens (`#t=…`, never sent to any server), the page keeps it for the tab and wipes it
+  from the address bar and history, every `/api/` route requires it, and the server only answers
+  to its own `Host`. Found before release; no published version had `local_binding`.
+- **Paths are read the same way everywhere.** `seisin_explain` over MCP answered "no owner" for an
+  absolute path the CLI called allowed, and no surface resolved symlinks, so a path under `/tmp`
+  on macOS was refused by the sentence and allowed by the kernel. One function now serves the
+  CLI, the hook, `run`, `whose` and the MCP server, with a test that asks all three the same thing.
+
 - **`never_writes`: a role can give back part of its own territory.** `writes = ["repo/**"]`
   cannot say "the whole repo except its `.git/index.lock`", and that is exactly what a role
   working in a worktree needs: it has its own index and no use for the canonical one. The
@@ -27,6 +40,11 @@ changed rather than failing on the old spelling.
     used to be ignored in silence; for `never_write` that is failing open. It is now named, with
     the key it most likely meant. So is an entry no `writes` of the same role covers, which
     subtracts from nothing. An absolute path or a `..` refuses to load.
+  - **On Linux, only paths that exist when the role starts.** bubblewrap denies by mounting over
+    a path and creates it on the host if it is missing — for `.git/index.lock` that locks every
+    other user out, and for good if the role is killed (measured). seisin skips those there;
+    `explain` says so and `check` names them. A symlink on the way is resolved, and a database's
+    sidecars (`-wal`, `-shm`, `-journal`) are subtracted with it.
 
 - **`local_binding = true`: a role can listen on a local port.** Until now the profile set
   `allowLocalBinding: false` for everyone, so no role could start a dev server or the backend
