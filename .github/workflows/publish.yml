@@ -1,0 +1,43 @@
+# Publishing, from CI and nowhere else, with provenance.
+#
+# A permission tool is a supply-chain target: whoever can publish seisin decides
+# what runs as the boundary on every machine that installs it. Publishing from a
+# laptop proves nothing about what was built. From here, npm records which
+# workflow, commit and repository produced the tarball (--provenance), and the
+# suite has to pass on both kernels first.
+#
+# One-time setup, by the maintainer on npmjs.com: package settings → Trusted
+# publishing → GitHub Actions, repository carlostapiaolguin3-stack/seisin,
+# workflow publish.yml. Until then the job falls back to an NPM_TOKEN secret if
+# one exists, and fails loudly if neither does.
+name: publish
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write        # provenance, and trusted publishing without a token
+
+jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      # The tag has to be the version, or the provenance points at a commit that
+      # does not say what it claims to be.
+      - name: tag matches package.json
+        run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
