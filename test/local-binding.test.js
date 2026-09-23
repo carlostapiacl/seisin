@@ -72,3 +72,10 @@ test("the real sandbox lets that role serve and reach a local port, and refuses 
   assert.equal(as("e2e"), 0, "local_binding = true and still no server");
   assert.notEqual(as("docs"), 0, "a role without the key could listen");
 });
+
+test("check says what local_binding really opens", () => {
+  const w = inspect(loadConfig(join(repoWith(TWO), "seisin.toml"))).warnings
+    .filter((x) => x.kind === "local-binding-reaches-localhost");
+  assert.equal(w.length, 1, "one warning, for the role that has it");
+  assert.match(w[0].headline, /e2e: .*every port on localhost/);
+});

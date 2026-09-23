@@ -31,9 +31,14 @@ changed rather than failing on the old spelling.
 - **`local_binding = true`: a role can listen on a local port.** Until now the profile set
   `allowLocalBinding: false` for everyone, so no role could start a dev server or the backend
   an end-to-end test drives — `php -S 127.0.0.1:…` and `node`'s `listen()` both died with
-  `Operation not permitted`. Off by default and per role, because most roles never need it. It
-  opens binding only; a role reaching its own server on `127.0.0.1` works even with
-  `[network] allow = []`, measured.
+  `Operation not permitted`. Off by default and per role, because most roles never need it.
+
+  **It is wider than its name**, and `check` says so. The runtime turns it into three rules:
+  listen on *any* interface (`0.0.0.0` included, so a server can be reachable from the LAN),
+  accept inbound, and connect to *every* port on localhost. That last one means the role can
+  reach whatever else is listening on the machine — found the same day it was written, against
+  a local control API with no authentication. Grant it to a role only where nothing on
+  localhost would act on an unauthenticated request.
 
 ## 0.2.0 — 2026-09-21
 
