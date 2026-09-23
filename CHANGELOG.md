@@ -8,39 +8,17 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
-- **A request the role stopped asking for is marked.** A request is recorded again on every
-  refusal, so one that is still needed keeps a fresh date. When the role has run three times
-  since (runs told apart by a ten-minute gap in its log lines) without asking again, the queue
-  says so — in `seisin requests`, at the end of `seisin run`, in the console and through MCP.
-  Marked only: it is not declined and not moved, because declining is a person's call and the
-  numbers `grant <n>` is typed against must not shift on their own.
-- **Chromium's Mach refusal is explained.** When a command fails with Chromium's
-  `bootstrap_check_in … MachPortRendezvousServer … Permission denied (1100)`, the after-failure
-  hook says what it is — the sandbox does not let a program register Mach services — and that
-  `--single-process` with one worker is the way through. It is not a path, so it was never in
-  the log. The runtime fix is upstream PR #598 (`allowMachRegister`); `docs/upstream/mach-register.md`
-  has the end-to-end measurement.
-- **`local_ports`: reach the local ports you name, and no others.** `local_ports = [8001, 8081]`
-  lets a role connect to those ports on this machine and keeps every other one refused — which
-  `local_binding` cannot do, because the kernel profile only has "no port" or "every port". The
-  list is enforced by the runtime's proxy (the one component that sees a destination port), and
-  seisin routes loopback through it for that role only. Measured on macOS and on Linux: curl,
-  Node's `fetch` and Python's `urllib` reach a listed port and get *blocked by network allowlist*
-  on the next one. Chromium reaches it through Playwright's `proxy` option; clients that dial
-  directly — a database driver, a raw socket — are still refused, and the log says so by name.
-  The proxy also tunnels raw TCP to a listed port through `CONNECT`: a listed port is open to
-  the service, not only to HTTP. `seisin.toml` arrays now take whole numbers, and only this key reads
-  them.
-- **Refused connections are recorded.** A dial the kernel stopped, to a local port or a unix
-  socket, used to leave nothing behind: the agent saw `connect EPERM` and concluded the service
-  was down. It is now a `connect` line in the log (`tcp:<port>` or the socket's path), once per
-  target per run, with a sentence in `walls` and the after-failure hook that tells the three
-  cases apart. DNS lookups (mDNSResponder) are left out, or they would bury the rest. No request
-  is filed for any of it. Refusals by the proxy — a domain not on the list — still are not
-  recorded: the runtime keeps them to itself on the CLI path.
-- **A mark.** An S drawn as a property line splitting one plot between two holders, with the held
-  side filled. It is the favicon of the console and the project page, and it sits beside the name
-  in the console's sidebar, where it follows the light or dark theme.
+- **Old requests are marked.** If a role has run three times since it last asked and hasn't
+  asked again, the queue says so. It is not declined or moved: that stays with a person.
+- **Chromium's Mach error is explained.** The after-failure hook recognises
+  `bootstrap_check_in … Permission denied (1100)` and points to `--single-process`. Real fix:
+  upstream PR #598.
+- **`local_ports`.** `local_ports = [8001, 8081]` lets a role reach those local ports and no
+  others, through the runtime's proxy. Clients that skip the proxy (database drivers, raw
+  sockets) are still refused. Arrays in `seisin.toml` now accept numbers, for this key only.
+- **Refused connections are logged**, as `connect tcp:<port>` or a socket path, and `walls`
+  explains them. Refusals by the proxy itself still aren't visible.
+- **New mark**: an S drawn as a boundary line, used as the favicon and in the console sidebar.
 - **The log is chained, and `seisin log verify` checks it.** Every line carries `prev`, the hash of
   the line before it, so editing, deleting or reordering a line shows — the log is the record of
   who was refused what, and it could be rewritten without a trace. A lock keeps several roles of

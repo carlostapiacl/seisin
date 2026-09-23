@@ -188,7 +188,7 @@ export function expand(p) {
  * for loopback: nothing, or `localhost:*` (`allowLocalBinding`), and the runtime
  * exposes no third. The proxy is the one component that sees a destination
  * port, and it already takes `host:port` entries. It refuses loopback unless
- * the literal and port are listed, which is the property this relies on: 8787
+ * the literal and port are listed, which is the property this relies on: 9000
  * stays refused when 8001 is open. Measured, 2026-09-23: curl, Node's fetch
  * and Python's urllib reach a listed port and get "Connection blocked by
  * network allowlist" on an unlisted one.

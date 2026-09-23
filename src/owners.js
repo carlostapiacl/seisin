@@ -246,9 +246,9 @@ function explainConnect(config, role, target) {
     if (r?.localPorts?.includes(n))
       return {
         allowed: false, owners: [], network: true, listed: true,
-        reason: `port ${n} is in ${role}'s local_ports, but this client connected directly. ` +
-          `Only clients that go through HTTP_PROXY reach a listed port — curl, Node's fetch, ` +
-          `Python's urllib do; a database driver or a browser needs to be pointed at the proxy`,
+        reason: `port ${n} is in ${role}'s local_ports, but this client skipped the proxy. ` +
+          `curl, fetch and urllib use HTTP_PROXY on their own; a database driver or a browser ` +
+          `has to be pointed at it`,
       };
     // The kernel names no host, and every direct dial is refused — to an
     // outside host as much as to localhost. So both readings, not a guess:
@@ -256,19 +256,18 @@ function explainConnect(config, role, target) {
     // its way to the internet opens a port and fixes nothing.
     return {
       allowed: false, owners: [], network: true,
-      reason: `a direct connection to port ${n} is refused, and the kernel does not say to which host. ` +
-        `If it was a local service this role should reach, a person adds local_ports = [${n}]` +
+      reason: `a direct connection to port ${n} was refused (the kernel does not say to which host). ` +
+        `If it is a local service this role needs, a person adds local_ports = [${n}]` +
         `${r?.localPorts?.length ? ` (it has ${r.localPorts.join(", ")})` : ""}. ` +
-        `If it was a host outside this machine, the client skipped HTTP_PROXY: the domain goes in ` +
-        `the network allowlist and the client has to use the proxy`,
+        `If it is an outside host, the client skipped HTTP_PROXY`,
     };
   }
   return {
     allowed: false, owners: [], network: true,
     reason: `${target} is a unix socket, and roles get none` +
       (/docker\.sock$/.test(target)
-        ? ` — Docker's least of all: reaching it is mounting any directory on this machine. ` +
-          `Start containers outside the role and reach them by port`
+        ? `. Docker's socket can mount any directory on this machine: start containers outside ` +
+          `the role and reach them by port`
         : ""),
   };
 }

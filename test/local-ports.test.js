@@ -149,9 +149,9 @@ test("the sentence tells the three cases apart, and none has an owner", () => {
   assert.match(missing.reason, /skipped HTTP_PROXY/);
   const direct = explain(cfg, "e2e", "connect", "tcp:8001");
   assert.equal(direct.listed, true);
-  assert.match(direct.reason, /connected directly/);
+  assert.match(direct.reason, /skipped the proxy/);
   const docker = explain(cfg, "e2e", "connect", "/Users/me/.docker/run/docker.sock");
-  assert.match(docker.reason, /Docker's least of all/);
+  assert.match(docker.reason, /mount any directory/);
   for (const v of [missing, direct, docker]) assert.deepEqual(v.owners, []);
 });
 

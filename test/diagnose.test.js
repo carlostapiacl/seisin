@@ -132,7 +132,7 @@ test("Chromium's Mach registration refusal is explained, with nothing in the log
       "kr == KERN_SUCCESS. bootstrap_check_in org.chromium.Chromium.MachPortRendezvousServer.79341: Permission denied (1100)" };
   const out = await afterTool(cfg, "web", died, { file: logPath(dir), wait: [0] });
   const text = out.hookSpecificOutput.additionalContext;
-  assert.match(text, /Mach rendezvous port/);
+  assert.match(text, /register its Mach port/);
   assert.match(text, /--single-process/);
   assert.match(text, /one\s+worker/);
   // Only that signature: another "Permission denied" with an empty log stays quiet.

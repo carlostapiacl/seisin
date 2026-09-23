@@ -152,23 +152,10 @@ it switched off on this path.
 
 ## Field evidence since filing · 2026-09-23
 
-Not posted to #582 yet; ready as a comment if it helps the issue move.
+Not posted to #582. Ready as a comment if useful.
 
-An agent ran a Flutter Web end-to-end suite under `srt`, with the app's API and front
-reachable through the proxy (listed `localhost:<port>` entries). Two refusals the proxy made
-never reached anyone who could act on them:
-
-- **The page fetched its renderer from a CDN** — `www.gstatic.com/flutter-canvaskit/…` and
-  `fonts.gstatic.com` — and the proxy refused both. The agent learned the host names only from
-  the browser's console output, several steps later.
-- **The same agent then blamed that refusal for an unrelated failure.** A test that failed
-  because the browser process had died (the Mach registration in
-  [mach-register.md](mach-register.md)) was reported as "gstatic is outside the allowlist". With
-  the proxy's refusals invisible, the one it had found by hand became the explanation for
-  everything nearby. A list of what the proxy refused during the run would have shown the
-  refusal and, just as usefully, its timing — not at the moment the test died.
-
-The fix on the app side was to bundle the renderer, after which the only outbound request left
-was an error-reporting CDN, refused and correctly so. Finding that out also took reading a
-browser console: the kernel-side refusals of the same run were in the wrapper's log within
-milliseconds, the proxy's were not there at all.
+An agent ran a Flutter Web end-to-end suite under `srt`. The page loaded its renderer from
+`www.gstatic.com` and `fonts.gstatic.com`, and the proxy blocked both. The agent only found the
+host names in the browser console, several steps later. It then blamed that block for an
+unrelated failure, a browser crash (see [mach-register.md](mach-register.md)). A list of what
+the proxy refused, with times, would have shown both.
