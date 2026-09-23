@@ -228,6 +228,32 @@ function readBody(req) {
   });
 }
 
+/**
+ * Refuse every request the page was showing, in one go.
+ *
+ * Only refusing. There is no "approve all" and there will not be: a grant is a
+ * decision about one path and one owner, and doing forty of them without
+ * reading them is the permissive default this tool exists to stand against.
+ * Refusing in bulk is safe — it grants nothing and changes no policy — and it
+ * is what a queue full of noise from a bug already fixed needs.
+ *
+ * By key, not "whatever is pending now": a request that arrived after the page
+ * drew is one the person has not seen, and it stays.
+ */
+function declineAll(configPath, { keys, reason }) {
+  if (!Array.isArray(keys) || !keys.length) throw new Error("keys must list the requests on screen");
+  const cfg = loadConfig(configPath);
+  const file = requestsPath(cfg.root);
+  const wanted = new Set(keys.map(String));
+  let declined = 0;
+  for (const req of pending(file)) {
+    if (!wanted.has(req.key)) continue;
+    settle(file, req.key, "denied", reason ?? "");
+    declined++;
+  }
+  return { ok: true, declined };
+}
+
 export function serve(configPath, port = 4178) {
   const page = join(HERE, "..", "ui", "index.html");
   if (!existsSync(page)) throw new Error("the console is missing from this install");
@@ -292,6 +318,16 @@ export function serve(configPath, port = 4178) {
     if (pathOf(req.url).startsWith("/api/") && !authorized(req)) {
       res.writeHead(403, { "content-type": "application/json" });
       return res.end(JSON.stringify({ error: "bad or missing token — open the URL `seisin ui` printed" }));
+    }
+    if (req.method === "POST" && pathOf(req.url) === "/api/decline-all") {
+      try {
+        const out = declineAll(configPath, JSON.parse((await readBody(req)) || "{}"));
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        return res.end(JSON.stringify(out));
+      } catch (e) {
+        res.writeHead(400, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ error: e.message }));
+      }
     }
     if (req.method === "POST" && pathOf(req.url) === "/api/decide") {
       try {
