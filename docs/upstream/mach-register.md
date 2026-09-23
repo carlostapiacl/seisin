@@ -4,6 +4,12 @@
 [PR #598][598] (opened 2026-09-22, awaiting review), which adds `network.allowMachRegister`.
 Not in 0.0.76 or 0.0.77 as of 2026-09-23.
 
+**Reviewed on the PR, 2026-09-23** ([review](https://github.com/anthropics/sandbox-runtime/pull/598#pullrequestreview-5295911678)):
+built the branch and ran it through `srt --settings` with Playwright's Chromium. It works, with 4
+browsers in parallel too. We suggested two doc lines: register needs the matching lookup
+(register alone hangs), and Playwright's Chromium uses `org.chromium.Chromium.*`, not the
+example's prefix.
+
 This page keeps our measurement. The PR reproduces with a small C probe; this is Playwright's
 Chromium end to end, and it shows `mach-register` alone isn't enough.
 
