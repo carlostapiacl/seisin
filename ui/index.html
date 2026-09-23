@@ -670,7 +670,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     L.push('  <span class="k">"network"</span>: {');
     L.push('    "allowedDomains": ["github.com"],');
     L.push('    "deniedDomains": [], "allowUnixSockets": [],');
-    L.push('    "allowLocalBinding": false');
+    L.push('    "allowLocalBinding": '+(r.localBinding?'<span class="d">true</span>  <span class="c">// can reach every localhost port (macOS)</span>':'false'));
     L.push("  },");
     L.push('  <span class="k">"filesystem"</span>: {');
     // KEYDIR comes from seisin.toml, which is a file the console may be
@@ -690,8 +690,13 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     });
     else L.push('      <span class="c">// no territory</span>');
     L.push("    ],");
-    L.push('    "denyWrite": []');
-    L.push("  }");
+    if((r.neverWrites||[]).length){
+      L.push('    <span class="d">"denyWrite"</span>: [  <span class="c">// never_writes</span>');
+      r.neverWrites.forEach(function(p,i){ L.push('      "'+esc(p.replace(/\/\*\*$/,""))+'"'+(i<r.neverWrites.length-1?",":"")); });
+      L.push("    ]");
+    } else L.push('    "denyWrite": []');
+    L.push("  }"+(r.trustd?",":""));
+    if(r.trustd) L.push('  <span class="d">"enableWeakerNetworkIsolation"</span>: true  <span class="c">// trustd = true</span>');
     L.push("}");
     document.getElementById("cfg").innerHTML=L.join("\n");
   }
@@ -1127,7 +1132,12 @@ function draw(){
       writes: r.writes.slice(),
       keys: r.keys.map(k => k.replace(/\.[^.]+$/, "")),
       sandbox: true,
-      blocks: r.blocks
+      blocks: r.blocks,
+      // The three role keys that change the profile, drawn from what the
+      // server says rather than typed into this page (review of 2026-09-22, #5).
+      neverWrites: r.neverWrites || [],
+      localBinding: !!r.localBinding,
+      trustd: !!r.trustd
     }));
     LOG = fromServer(s.log);
     REQS = s.requests || [];
