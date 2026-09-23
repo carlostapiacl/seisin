@@ -161,7 +161,7 @@ export function atSessionStart(config, role, event, { file } = {}) {
   if ((r.neverWritesDeclared ?? r.neverWrites ?? []).length)
     lines.push(`Never, even inside that: ${(r.neverWritesDeclared ?? r.neverWrites).join(", ")}.`);
   if (r.keys.length) lines.push(`Keys you hold: ${r.keys.join(", ")}.`);
-  const w = file ? walls(config, role, { file, limit: 5 }) : [];
+  const w = file ? walls(config, role, { file, limit: 5, fresh: true }) : [];
   if (w.length) {
     lines.push("Already refused more than once, and still refused — do not try again, hand it over:");
     for (const x of w)

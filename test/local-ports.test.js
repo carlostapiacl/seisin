@@ -142,10 +142,10 @@ test("the sentence tells the three cases apart, and none has an owner", () => {
   const cfg = load('[roles.e2e]\nwrites = ["app/**"]\nlocal_ports = [8001]\n');
   const missing = explain(cfg, "e2e", "connect", "tcp:8787");
   assert.equal(missing.allowed, false);
-  assert.match(missing.reason, /local_ports = \[8787\] \(it has 8001\)/);
+  assert.match(missing.reason, /port 8787.*local_ports \(has 8001\)/);
   // The kernel names no host, so an outside host is the other reading, not a
   // footnote: 443 is almost always a client that skipped the proxy.
-  assert.match(missing.reason, /does not say to which host/);
+  assert.match(missing.reason, /host unknown/);
   assert.match(missing.reason, /skipped HTTP_PROXY/);
   const direct = explain(cfg, "e2e", "connect", "tcp:8001");
   assert.equal(direct.listed, true);

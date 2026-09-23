@@ -20,6 +20,15 @@ import { C, out } from "../render.js";
 export function reviewCommand(config, argv = []) {
   const i = argv.indexOf("--min");
   const r = review(config, { minDenials: i === -1 ? 3 : Number(argv[i + 1]) });
+  // Ten rows per section unless --all: on a real 32-role log the full report
+  // was 1,557 lines, which nobody reads.
+  const all = argv.includes("--all");
+  const TOP = 10;
+  const cap = (list) => (all ? list : list.slice(0, TOP));
+  const more = (list) => {
+    if (!all && list.length > TOP) out(`    ${C.dim}… ${list.length - TOP} more: seisin review --all${C.off}\n`);
+  };
+  const who = (owners) => owners.length > 3 ? `${owners.slice(0, 3).join(", ")} +${owners.length - 3}` : owners.join(", ");
 
   if (!r.entries) {
     out(`\n  ${C.dim}nothing recorded yet. Run an agent through seisin first.${C.off}\n\n`);
@@ -33,10 +42,11 @@ export function reviewCommand(config, argv = []) {
     out(`\n  ${C.b}Stopped, repeatedly${C.off}\n`);
     out(`  ${C.dim}a role blocked on the same place over and over is a policy that is wrong,${C.off}\n`);
     out(`  ${C.dim}not an agent that is misbehaving${C.off}\n\n`);
-    for (const f of r.friction) {
-      const whose = f.owners.length ? ` ${C.dim}— belongs to ${f.owners.join(", ")}${C.off}` : "";
+    for (const f of cap(r.friction)) {
+      const whose = f.owners.length ? ` ${C.dim}— belongs to ${who(f.owners)}${C.off}` : "";
       out(`    ${C.yellow}${String(f.times).padStart(4)}×${C.off}  ${C.b}${f.role}${C.off} ${f.action} ${f.where}${whose}\n`);
     }
+    more(r.friction);
     out(`\n  ${C.dim}seisin grant, or move the territory. Either way it is a decision, not noise.${C.off}\n`);
   }
 
@@ -58,8 +68,9 @@ export function reviewCommand(config, argv = []) {
     out(`\n  ${C.b}Refused connections${C.off}\n`);
     out(`  ${C.dim}a local port or socket the role kept dialling. Not a grant: a port goes in${C.off}\n`);
     out(`  ${C.dim}local_ports, and a socket stays closed${C.off}\n\n`);
-    for (const c of r.connects)
+    for (const c of cap(r.connects))
       out(`    ${C.yellow}${String(c.times).padStart(4)}×${C.off}  ${C.b}${c.role}${C.off} ${c.where}\n`);
+    more(r.connects);
     out(`\n  ${C.dim}seisin walls <role> says, per target, which of the two it is.${C.off}\n`);
   }
 
@@ -67,8 +78,9 @@ export function reviewCommand(config, argv = []) {
     out(`\n  ${C.b}Held at the keys${C.off}\n`);
     out(`  ${C.dim}a [keys] dir is closed to every role, so this is the policy working${C.off}\n`);
     out(`  ${C.dim}— not a territory drawn wrong, and never a thing to grant${C.off}\n\n`);
-    for (const g of r.guarded)
+    for (const g of cap(r.guarded))
       out(`    ${C.dim}${String(g.times).padStart(4)}×${C.off}  ${C.b}${g.role}${C.off} ${g.action} ${g.where}\n`);
+    more(r.guarded);
     out(`\n  ${C.dim}Worth a look only if a role genuinely needs one of these: that is a${C.off}\n`);
     out(`  ${C.dim}\`keys\` line for the file, never a write grant on the directory.${C.off}\n`);
   }
@@ -90,14 +102,16 @@ export function reviewCommand(config, argv = []) {
     out(`\n  ${C.b}Granted, never used${C.off}\n`);
     out(`  ${C.dim}nothing was written here in the window above. This is the only evidence${C.off}\n`);
     out(`  ${C.dim}anyone will ever have for making a permission file smaller${C.off}\n\n`);
-    for (const u of r.unused) out(`    ${C.b}${u.role}${C.off}  ${u.glob}\n`);
+    for (const u of cap(r.unused)) out(`    ${C.b}${u.role}${C.off}  ${u.glob}\n`);
+    more(r.unused);
     out(`\n  ${C.dim}A short window proves nothing. Check the dates before you delete a line.${C.off}\n`);
   }
 
   if (r.unowned.length) {
     out(`\n  ${C.b}Owned by nobody${C.off}\n`);
     out(`  ${C.dim}touched by an agent, claimed by no role — holes in the map${C.off}\n\n`);
-    for (const u of r.unowned.slice(0, 10)) out(`    ${String(u.times).padStart(4)}×  ${u.where}\n`);
+    for (const u of cap(r.unowned)) out(`    ${String(u.times).padStart(4)}×  ${u.where}\n`);
+    more(r.unowned);
   }
 
   if (!r.friction.length && !r.guarded.length && !r.unused.length && !r.unowned.length && r.unusedKnowable)
