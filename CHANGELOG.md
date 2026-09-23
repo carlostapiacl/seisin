@@ -8,6 +8,22 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **The agent hears the refusals only the kernel saw.** PreToolUse sees the path a tool call
+  names; a child process, a script or a path the regex missed reaches the agent as `Operation not
+  permitted` with nothing else, and it retries — 72% of 5,617 refusals on one portfolio were the
+  same role hitting the same path again. `seisin hook` now also answers PostToolUseFailure and
+  PostToolUse (Bash): it reads the kernel's line from the log (it lands ~30 ms after the refusal,
+  measured inside the box) and tells the agent whose the path is, how many times it has been
+  refused, and to hand it over. And SessionStart — startup, resume and compact — hands the agent
+  its territory and its walls before the first one. `seisin wire` installs all four, and a repo
+  wired before only had PreToolUse is no longer reported as already wired. Taken from nono's
+  hook-driven diagnostics, without its suggestion to widen the profile: seisin assumes the file
+  is somebody else's.
+- **A person hears about a new request.** `[notify]` sends one message per new request from the
+  parent process — never from the role — with the role, the path, the owner and the command that
+  answers it. The URL is a credential: it must live in a key directory no role declares or in the
+  parent's `SEISIN_NOTIFY_URL`, which never crosses into the box even if a role names it.
+
 - **Security: the console no longer hands its token to whoever asks.** `seisin ui` used to inline
   the token that approves requests into the page, and `/api/state` answered with no token at all
   — both resting on "an agent cannot reach loopback". `local_binding = true` makes that false on

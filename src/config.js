@@ -12,6 +12,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { CONFIG_NAME } from "./layout.js";
 import { parseKey, MODES, checkNames, BUILTIN } from "./keys.js";
+import { readNotify } from "./notify.js";
 
 export { CONFIG_NAME } from "./layout.js";
 
@@ -422,6 +423,7 @@ export function loadConfig(path) {
       unknownKeys: Object.keys(r).filter((k) => !ROLE_KEYS.includes(k)),
     };
   }
+  out.notify = readNotify(own(parsed, "notify"), { path, root: out.root, keyDirs, roles: out.roles, own });
   return out;
 }
 

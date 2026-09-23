@@ -9,6 +9,8 @@
  */
 import { findConfig, loadConfig } from "../config.js";
 import { decide } from "../hook.js";
+import { afterTool, atSessionStart } from "../diagnose.js";
+import { logPath } from "../log.js";
 import { flush } from "../spool.js";
 
 export async function hook(stdin = process.stdin, env = process.env) {
@@ -33,6 +35,15 @@ export async function hook(stdin = process.stdin, env = process.env) {
   }
   if (!config.roles[role]) return null;
 
+  // One command for every event it is wired to, so `seisin wire` adds one name.
+  // The after-the-fact and session-start halves only explain; neither decides.
+  const event_ = event.hook_event_name;
+  if (event_ === "PostToolUse" || event_ === "PostToolUseFailure") {
+    try { return await afterTool(config, role, event, { file: logPath(config.root) }); } catch { return null; }
+  }
+  if (event_ === "SessionStart") {
+    try { return atSessionStart(config, role, event, { file: logPath(config.root) }); } catch { return null; }
+  }
   const decision = decide(config, role, event, { observe: env.SEISIN_OBSERVE === "1" });
   // The entries went to a socket, and cli.js exits as soon as we return. An
   // exit does not drain a socket, so the record would be lost precisely on the

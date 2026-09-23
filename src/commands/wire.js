@@ -20,10 +20,29 @@ import { C, out } from "../render.js";
 const SETTINGS = join(".claude", "settings.json");
 
 /** Where the PreToolUse entry lives, and what it has to say. */
-export function hookEntry() {
+export function hookEntry(command = "seisin hook") {
   return {
     matcher: "*",
-    hooks: [{ type: "command", command: "seisin hook" }],
+    hooks: [{ type: "command", command }],
+  };
+}
+
+/**
+ * Every event `seisin hook` answers, and the matcher each one needs.
+ *
+ * PreToolUse explains before an attempt; the other three explain what only the
+ * kernel saw (PostToolUseFailure, and PostToolUse for Bash, whose failed
+ * command is a result rather than a failure) and hand the agent its map when a
+ * session starts, resumes or is compacted. Exported so a harness that writes
+ * its own settings per role — rather than the project's — can install the same.
+ */
+export function hookEntries(command = "seisin hook") {
+  const h = [{ type: "command", command }];
+  return {
+    PreToolUse: [{ matcher: "*", hooks: h }],
+    PostToolUse: [{ matcher: "Bash", hooks: h }],
+    PostToolUseFailure: [{ matcher: "*", hooks: h }],
+    SessionStart: [{ matcher: "startup|resume|compact", hooks: h }],
   };
 }
 
@@ -32,7 +51,11 @@ export function wired(root) {
   const file = join(root, SETTINGS);
   if (!existsSync(file)) return false;
   try {
-    return JSON.stringify(JSON.parse(readFileSync(file, "utf8"))).includes("seisin hook");
+    // All four events, not any one: a repo wired before the after-the-fact and
+    // session-start hooks existed has only PreToolUse, and "already wired" there
+    // would keep it from ever getting the rest.
+    const hooks = JSON.parse(readFileSync(file, "utf8")).hooks ?? {};
+    return Object.keys(hookEntries()).every((ev) => JSON.stringify(hooks[ev] ?? []).includes("seisin hook"));
   } catch {
     return false;                       // unreadable settings is not "wired"
   }
@@ -58,8 +81,10 @@ export function wire(config) {
   }
 
   settings.hooks ??= {};
-  settings.hooks.PreToolUse ??= [];
-  settings.hooks.PreToolUse.push(hookEntry());
+  for (const [ev, entries] of Object.entries(hookEntries())) {
+    settings.hooks[ev] ??= [];
+    if (!JSON.stringify(settings.hooks[ev]).includes("seisin hook")) settings.hooks[ev].push(...entries);
+  }
 
   mkdirSync(join(config.root, ".claude"), { recursive: true });
   writeFileSync(file, JSON.stringify(settings, null, 2) + "\n");

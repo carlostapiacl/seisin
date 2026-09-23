@@ -21,6 +21,7 @@ import { secretsOf, redactor } from "../redact.js";
 import { STATE_DIR } from "../layout.js";
 import { C, err } from "../render.js";
 import { pending, record, requestsPath } from "../requests.js";
+import { notifier } from "../notify.js";
 import { ownersOf, explain } from "../owners.js";
 import { append, logPath } from "../log.js";
 import { renderQueue } from "./requests.js";
@@ -121,6 +122,9 @@ export async function run(config, argv) {
    * on disk is when the decision happened, not when the parent got around to it.
    */
   const observe = mine.includes("--observe");
+  // Built before the first request can arrive; the POST leaves from here, the
+  // parent, never from inside the box (notify.js).
+  const notify = notifier(config);
   const sockPath = spoolPath();
   const audit = await spool((to, entry) => {
     /**
@@ -187,12 +191,9 @@ export async function run(config, argv) {
     const v = explain(config, role, entry.action, entry.target);
     if (v.allowed || v.neverWrites) return;
 
-    record(requestsPath(config.root), {
-      role,
-      action: entry.action,
-      target: entry.target,
-      owners: ownersOf(config, entry.target),
-    });
+    const asked = { role, action: entry.action, target: entry.target, owners: ownersOf(config, entry.target) };
+    record(requestsPath(config.root), asked);
+    notify.maybe(asked);
   }, sockPath);
 
   const settings = settingsFor(config, role, sockPath, observe);
@@ -369,7 +370,9 @@ export async function run(config, argv) {
       ? explain(config, role, "write", rel).neverWrites
       : null;
     if (rel !== d.path && !barred)
-      record(requestsPath(config.root), { role, action: d.action, target: rel, owners: ownersOf(config, rel) });
+      { const asked = { role, action: d.action, target: rel, owners: ownersOf(config, rel) };
+        record(requestsPath(config.root), asked);
+        notify.maybe(asked); }
 
     append(logPath(config.root), {
       at: new Date().toISOString(),
@@ -459,6 +462,8 @@ export async function run(config, argv) {
 
     const queue = pending(requestsPath(config.root));
     if (queue.length) err(renderQueue(queue));
+    const failed = await notify.settle();
+    if (failed.length) err(`${C.yellow}seisin: could not notify about a new request (${failed[0]})${C.off}\n`);
     if (!outStream) return process.exit(status);
     let left = 2;
     const guard = setTimeout(() => process.exit(status), 2000);
