@@ -181,6 +181,53 @@ export function expand(p) {
  * the repo's state directory being writable from inside — see spool.js. With
  * no parent there is nothing to grant and nothing to reach.
  */
+/**
+ * `local_ports`, as the allowlist entries that let the proxy dial them.
+ *
+ * Why the proxy and not the kernel. The kernel profile has exactly two answers
+ * for loopback: nothing, or `localhost:*` (`allowLocalBinding`), and the runtime
+ * exposes no third. The proxy is the one component that sees a destination
+ * port, and it already takes `host:port` entries. It refuses loopback unless
+ * the literal and port are listed, which is the property this relies on: 8787
+ * stays refused when 8001 is open. Measured, 2026-09-23: curl, Node's fetch
+ * and Python's urllib reach a listed port and get "Connection blocked by
+ * network allowlist" on an unlisted one.
+ *
+ * All three spellings, because a client says whichever it says.
+ */
+export function localPortDomains(ports = []) {
+  return (ports ?? []).flatMap((p) => [`localhost:${p}`, `127.0.0.1:${p}`, `[::1]:${p}`]);
+}
+
+/**
+ * What the runtime puts in NO_PROXY, minus loopback.
+ *
+ * The runtime always exempts localhost from the proxy, so a client talks to
+ * 127.0.0.1:8001 directly — and the kernel, which has no port list, refuses
+ * it. For a role with `local_ports` the exemption is taken back, so loopback
+ * goes through the proxy, where the port list is. Only for those roles: for
+ * every other role loopback is refused either way and nothing changes.
+ *
+ * Kept in step with sandbox-utils.js of the pinned runtime by a test.
+ */
+export const NO_PROXY_WITHOUT_LOOPBACK = "169.254.0.0/16,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16";
+
+/**
+ * The command a role runs, with loopback routed through the proxy when it
+ * has `local_ports`.
+ *
+ * An `env` in front and not a variable in the environment seisin passes: the
+ * runtime sets NO_PROXY itself, after seisin's environment, so the only place
+ * that wins is inside the box. Clients that ignore HTTP_PROXY — a MySQL driver,
+ * Chromium, which exempts loopback on its own — still get refused. They need
+ * to be pointed at the proxy, or the port needs `local_binding`, which opens
+ * every port.
+ */
+export function loopbackVia(role, cmd) {
+  if (!role?.localPorts?.length) return cmd;
+  return ["env", `NO_PROXY=${NO_PROXY_WITHOUT_LOOPBACK}`, `no_proxy=${NO_PROXY_WITHOUT_LOOPBACK}`, ...cmd];
+}
+
 export function settingsFor(config, roleName, spool = null, observe = false) {
   const role = config.roles[roleName];
   if (!role) throw new Error(`unknown role "${roleName}". Known: ${Object.keys(config.roles).join(", ")}`);
@@ -326,7 +373,13 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
 
   return {
     network: {
-      allowedDomains: role.network ?? config.allowedDomains,
+      // `local_ports` rides the same allowlist as the domains: the runtime's
+      // proxy is the one place that sees the destination PORT. See loopbackVia.
+      // Without ports the value is passed through untouched, `undefined` included: that
+      // is how a config with no network list has always read, and a spread would throw.
+      allowedDomains: role.localPorts?.length
+        ? [...(role.network ?? config.allowedDomains ?? []), ...localPortDomains(role.localPorts)]
+        : role.network ?? config.allowedDomains,
       deniedDomains: [],
       // Exactly one socket: the parent's audit spool, when there is a parent.
       // Granted by path, not by turning unix sockets on.

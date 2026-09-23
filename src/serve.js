@@ -157,6 +157,7 @@ function state(configPath) {
     env: r.env,
     neverWrites: r.neverWritesDeclared ?? r.neverWrites ?? [],
     localBinding: r.localBinding === true,
+    localPorts: r.localPorts ?? [],
     trustd: r.trustd === true,
     blocks: entries.filter((e) => e.role === r.name && e.verdict === "denied").length,
     settings: settingsFor(cfg, r.name),

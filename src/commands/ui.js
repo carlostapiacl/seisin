@@ -21,16 +21,18 @@ export async function ui(config, argv = []) {
   // request to this server, or to anything else, ever carries it. The page
   // moves it into the tab's storage and strips it from the address bar.
   const url = `http://127.0.0.1:${bound}/#t=${server.seisinToken}`;
-  const reach = process.platform === "darwin"
-    ? Object.values(config.roles).filter((r) => r.localBinding).map((r) => r.name)
-    : [];
+  // local_binding opens every port (macOS); local_ports opens the ones it
+  // names, on every platform — so only a role that names THIS port counts.
+  const reach = Object.values(config.roles)
+    .filter((r) => (r.localBinding && process.platform === "darwin") || (r.localPorts ?? []).includes(bound))
+    .map((r) => r.name);
 
   out(
     `\n  ${C.b}${url}${C.off}\n` +
     `  ${C.dim}reading ${relative(process.cwd(), config.path)} and the log, live. ctrl-c to stop.${C.off}\n` +
     `  ${C.dim}the link carries this run's token: open it here, do not paste it anywhere.${C.off}\n` +
     (reach.length
-      ? `  ${C.yellow}${reach.join(", ")} can reach localhost (local_binding): they can load this page, ` +
+      ? `  ${C.yellow}${reach.join(", ")} can reach this port on localhost: they can load this page, ` +
         `but not the token, which only travels in the link above.${C.off}\n`
       : "") + "\n"
   );

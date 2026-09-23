@@ -59,11 +59,13 @@ test("a path that is not absolute is dropped rather than guessed at", () => {
   assert.equal(parseChunk(relative), null);
 });
 
-test("operations map onto the two verbs the log speaks", () => {
+test("operations map onto the three verbs the log speaks", () => {
   assert.equal(actionOf("file-write-create"), "write");
   assert.equal(actionOf("file-write-unlink"), "write");
   assert.equal(actionOf("file-read-data"), "read");
-  assert.equal(actionOf("network-outbound"), null);
+  // Since local_ports: a refused dial is recorded (narrowly — see local-ports.test.js).
+  assert.equal(actionOf("network-outbound"), "connect");
+  assert.equal(actionOf("mach-lookup"), null);
   assert.equal(actionOf("sysctl-read"), null);
 });
 

@@ -30,7 +30,7 @@ export function inspect(config, only = null, where = config.path) {
 
   return {
     where,
-    roles: roles.map((r) => ({ name: r.name, writes: r.writes, keys: r.keys, neverWrites: r.neverWrites ?? [], localBinding: r.localBinding === true, trustd: r.trustd === true })),
+    roles: roles.map((r) => ({ name: r.name, writes: r.writes, keys: r.keys, neverWrites: r.neverWrites ?? [], localBinding: r.localBinding === true, localPorts: r.localPorts ?? [], trustd: r.trustd === true })),
     /**
      * The provider commands this config would run, listed because they are the
      * one thing in a `seisin.toml` that **executes**, and it executes in the
@@ -159,6 +159,17 @@ function roleKeyWarnings(roles, config = null) {
         detail: "The runtime grants bind on any interface, inbound, and outbound to localhost:*. " +
           "Anything listening on this machine without authentication — a local control API, a " +
           "database, a dev server — is within this role's reach, outside its territory.",
+      });
+    // Both at once is a config that says "these ports" and grants "every port".
+    // macOS only: on Linux local_binding reaches nothing on the host, so there
+    // local_ports is the only one of the two that does anything.
+    if (r.localBinding && r.localPorts?.length && process.platform === "darwin")
+      warnings.push({
+        kind: "local-ports-moot",
+        headline: `${r.name}: local_ports names ${r.localPorts.join(", ")}, but local_binding already opens every localhost port`,
+        detail: "local_binding grants outbound to localhost:* in the kernel profile, so the port list " +
+          "restricts nothing for this role. Drop local_binding if the role only needs to reach " +
+          "those ports; keep it only if the role has to listen.",
       });
     // trustd is a macOS service; on Linux the key changes nothing.
     if (r.trustd && process.platform === "darwin")

@@ -222,7 +222,59 @@ export function keyHolders(config, key) {
  * not a permission problem, it is a hole in the map. Saying so is more useful
  * than denying quietly, and it is the only way the hole ever gets fixed.
  */
+/**
+ * A connection the kernel refused: `tcp:<port>` or a unix socket path.
+ *
+ * The kernel does not say which host — its line is `remote:*:<port>` — so the
+ * sentence says the port and what the policy gives for it, and nothing it
+ * cannot know. Three answers, because they send a person to three places:
+ *
+ *   - the port is not in `local_ports`: a policy question, add it or do not;
+ *   - it is, and was refused anyway: the client dialled directly instead of
+ *     through the proxy — a MySQL driver, Chromium, a raw socket — and adding
+ *     the port again will not change that;
+ *   - a unix socket: seisin grants none, on purpose. The one that comes up is
+ *     Docker's, and a role that can reach Docker can mount the whole disk.
+ *
+ * Never an owner and never a request: a port is not anybody's territory.
+ */
+function explainConnect(config, role, target) {
+  const r = config.roles[role];
+  const port = /^tcp:(\d+)$/.exec(target)?.[1];
+  if (port) {
+    const n = Number(port);
+    if (r?.localPorts?.includes(n))
+      return {
+        allowed: false, owners: [], network: true, listed: true,
+        reason: `port ${n} is in ${role}'s local_ports, but this client connected directly. ` +
+          `Only clients that go through HTTP_PROXY reach a listed port — curl, Node's fetch, ` +
+          `Python's urllib do; a database driver or a browser needs to be pointed at the proxy`,
+      };
+    // The kernel names no host, and every direct dial is refused — to an
+    // outside host as much as to localhost. So both readings, not a guess:
+    // advising `local_ports = [443]` for a client that skipped the proxy on
+    // its way to the internet opens a port and fixes nothing.
+    return {
+      allowed: false, owners: [], network: true,
+      reason: `a direct connection to port ${n} is refused, and the kernel does not say to which host. ` +
+        `If it was a local service this role should reach, a person adds local_ports = [${n}]` +
+        `${r?.localPorts?.length ? ` (it has ${r.localPorts.join(", ")})` : ""}. ` +
+        `If it was a host outside this machine, the client skipped HTTP_PROXY: the domain goes in ` +
+        `the network allowlist and the client has to use the proxy`,
+    };
+  }
+  return {
+    allowed: false, owners: [], network: true,
+    reason: `${target} is a unix socket, and roles get none` +
+      (/docker\.sock$/.test(target)
+        ? ` — Docker's least of all: reaching it is mounting any directory on this machine. ` +
+          `Start containers outside the role and reach them by port`
+        : ""),
+  };
+}
+
 export function explain(config, role, action, target) {
+  if (action === "connect") return explainConnect(config, role, target);
   if (action === "read") {
     const holders = keyHolders(config, target);
     if (holders.includes(role)) return { allowed: true, owners: holders, reason: `${role} declares ${target}` };

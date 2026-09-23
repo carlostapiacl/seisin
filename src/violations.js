@@ -55,12 +55,14 @@ const DENY = /Sandbox:\s+(\S+)\((\d+)\)\s+deny\(\d+\)\s+(\S+)\s+(.+?)\s*$/;
 const TAG = /CMD64_(.*?)_END_(\S*_SBX)\s*$/;
 
 /**
- * A Seatbelt operation, as one of the two verbs the log speaks.
+ * A Seatbelt operation, as one of the three verbs the log speaks.
  *
- * Anything that is not a file operation — `mach-lookup`, `network-outbound`,
- * `sysctl-read` — returns null and is dropped. Those are the sandbox doing its
- * job against the machine, not a role reaching into someone else's territory,
- * and the network half already has its own path through the proxy.
+ * `network-outbound` is `connect` — a refused dial to a local port or socket,
+ * kept narrow by `connectTarget` below. Everything else that is not a file
+ * operation — `mach-lookup`, `sysctl-read` — returns null and is dropped: the
+ * sandbox doing its job against the machine, not a role reaching for anything
+ * a person could decide about. Refusals by the proxy (a domain not on the
+ * list) never reach this log at all; see docs/decisions.md.
  *
  * **`file-read-metadata` is dropped too, and that one was learned the hard
  * way.** It is a refused `stat()`, which is what any directory walk produces
@@ -79,6 +81,31 @@ const TAG = /CMD64_(.*?)_END_(\S*_SBX)\s*$/;
 export function actionOf(operation) {
   if (operation.startsWith("file-write")) return "write";
   if (operation === "file-read-data") return "read";
+  if (operation === "network-outbound") return "connect";
+  return null;
+}
+
+/**
+ * The target of a refused connection, or null when it is not one worth a line.
+ *
+ * `network-outbound` was dropped with the rest of the non-file operations, and
+ * that hid the one refusal an agent misreads the most: a role that cannot reach
+ * the test database gets `connect EPERM`, no path, and concludes the service is
+ * down (measured: a whole cell spent two rounds reporting Docker as broken
+ * while Docker was up). Kept narrow, because the lesson of
+ * `file-read-metadata` applies here as well:
+ *
+ *   - `remote:*:<port>` — a TCP dial the profile refused. The kernel does not
+ *     name the host, so the target is the port and nothing more.
+ *   - a unix socket path — except under /var/run, where the system daemons
+ *     live: every DNS lookup inside the box is a refused connect to
+ *     mDNSResponder, and recording those would bury everything else.
+ *   - anything else (an empty detail, which the kernel also writes) — dropped.
+ */
+export function connectTarget(detail) {
+  const port = /^remote:\S*:(\d+)$/.exec(detail)?.[1];
+  if (port) return `tcp:${port}`;
+  if (detail.startsWith("/") && !/^\/(private\/)?var\/run\//.test(detail)) return detail;
   return null;
 }
 
@@ -107,6 +134,11 @@ export function parseChunk(chunk) {
   if (!deny) return null;
   const action = actionOf(deny.operation);
   if (!action) return null;
+  if (action === "connect") {
+    const target = connectTarget(deny.detail);
+    if (!target) return null;
+    return { ...deny, action, path: target, suffix: tag?.suffix ?? null, command: tag?.command ?? null };
+  }
   // Only an absolute path is a territory question. A relative or malformed
   // detail means the line was not what it looked like; dropping beats guessing.
   if (!deny.detail.startsWith("/")) return null;

@@ -12,7 +12,7 @@ import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
-import { settingsFor, roleHome } from "../srt.js";
+import { settingsFor, roleHome, loopbackVia } from "../srt.js";
 import { buildEnv } from "../env.js";
 import { resolveKeys } from "../keys.js";
 import { nestedSandboxWarning } from "../nested.js";
@@ -343,7 +343,28 @@ export async function run(config, argv) {
   const keyDirs = (config.keyDirs ?? []).map((d) => (d.startsWith("/") ? d : join(config.root, d)));
   let offPolicy = 0;                  // refused, but about nothing the policy names
   let walks = 0;                      // a recursive search reaching a closed door
+  const connects = new Set();         // one line per refused target per run
   const denials = watchDenials((d) => {
+    /**
+     * A refused connection: logged, never queued.
+     *
+     * Once per target per run, because the thing that dials a closed port is
+     * usually a readiness loop, and a loop polling a database every half second
+     * would otherwise write the log the size of the wait. And no request: a port
+     * is not a territory anyone owns, so there is nobody to hand it to — the
+     * sentence says what the policy would have to change instead.
+     */
+    if (d.action === "connect") {
+      if (connects.has(d.path)) return;
+      connects.add(d.path);
+      const v = explain(config, role, "connect", d.path);
+      append(logPath(config.root), {
+        at: new Date().toISOString(), role, tool: "kernel", source: "kernel",
+        action: "connect", kind: "network", target: d.path, verdict: "denied",
+        owners: [], reason: d.operation, ...(v.listed ? { listed: true } : {}),
+      });
+      return;
+    }
     if (!inScope(d.path, scope)) { offPolicy++; return; }
     if (!reachedForContent(d)) { walks++; return; }
     // Relative inside the repo, absolute outside it. A role can be refused at
@@ -409,7 +430,7 @@ export async function run(config, argv) {
   const nested = nestedSandboxWarning(cmd);
   if (nested) err(`${C.yellow}seisin: ${nested}${C.off}\n`);
 
-  const child = spawn(srt, ["--settings", file, "--", ...cmd], {
+  const child = spawn(srt, ["--settings", file, "--", ...loopbackVia(config.roles[role], cmd)], {
     stdio: outStream ? ["inherit", "pipe", "pipe"] : "inherit",
     env,
   });

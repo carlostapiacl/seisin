@@ -271,6 +271,25 @@ port on localhost**, so anything listening there without authentication is withi
 `seisin check` says this next to the role. That is macOS: on Linux each role already has a
 private loopback, serves without the key, and reaches nothing on the host either way.
 
+A role that only needs to *reach* a local service — the API an end-to-end suite drives, a test
+database — should name the ports instead: `local_ports = [8001, 8081]`. It reaches those and no
+other port, on macOS and on Linux, so the unauthenticated thing on 8787 stays out of reach.
+The port list is enforced by the sandbox runtime's proxy, which is the only part of it that
+sees a destination port, so **the client has to go through the proxy**: curl, Node's `fetch`,
+Python's `urllib` do on their own; a MySQL driver or a raw socket do not, and are refused like
+any other direct dial — the log says which case it was, see below. Chromium does once it is
+told: Playwright's `proxy` option, filled from `HTTP_PROXY` inside the box (on macOS it also
+needs `--single-process` to start at all). The port is the boundary, not the protocol: the
+proxy tunnels raw TCP to a listed port through `CONNECT`, so list a port because the role may
+reach that service, whatever it speaks.
+
+Refused connections are in the record too. A dial to a local port or a unix socket that the
+kernel stopped is logged as `connect tcp:8787` (the kernel names the port, not the host) or as
+the socket's path, once per target per run, and `seisin walls` says whether the port is missing
+from `local_ports`, listed but dialled directly, or a socket — which no role gets, Docker's
+least of all. None of them files a request: a port is not anybody's territory. macOS only, for
+the same reason as file denials.
+
 `seisin init` will propose this from whatever your repo already says: `.claude/agents/`, then `CODEOWNERS`, then a blank start. It **proposes** — a generated policy you did not read is not a policy.
 
 ## What will look like a bug on the first day
