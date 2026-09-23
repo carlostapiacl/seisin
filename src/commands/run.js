@@ -9,6 +9,7 @@
  */
 import { toRepoRelative } from "../paths.js";
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -349,7 +350,15 @@ export async function run(config, argv) {
   // argv; handed `cmd` while `srt` was handed `env NO_PROXY=… cmd`, it recognised
   // nothing for a role with `local_ports`, and every short refusal of those roles
   // — writes included — left no line (measured: 0 of 5, and 5 of 5 without the key).
-  const boxed = loopbackVia(config.roles[role], cmd);
+  //
+  // And a nonce in front, because the tag alone does not tell runs apart: an
+  // orchestrator starts several roles with the SAME command, the kernel tags
+  // each denial with that command, and every watcher listening recognised it
+  // as its own. One write outside territory became one line per role running,
+  // one request per role, and a denial logged against the role that owns the
+  // path (measured: 3 lines and 3 requests for one write by one of 3 roles).
+  // The nonce makes each run's command unique, so the tag names one run.
+  const boxed = ["env", `SEISIN_RUN_ID=${randomUUID()}`, ...loopbackVia(config.roles[role], cmd)];
   const denials = watchDenials((d) => {
     /**
      * A refused connection: logged, never queued.
