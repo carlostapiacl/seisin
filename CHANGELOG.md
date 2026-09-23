@@ -8,6 +8,9 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **`mcp` per role.** `mcp = ["playwright"]` declares which MCP servers a role may load (`[]` is
+  none, no key is "not limited"). `check`, `explain <role> mcp <server>` and the MCP tool show it.
+  seisin doesn't start MCP servers, so the launcher enforces the list.
 - **Time window in the console.** Quick presets (1h, 4h, 24h, 7d, 30d, all) and a "from" date.
   It filters what comes from the log: activity, denials, walls and per-role counts. The request
   queue is not filtered. `/api/state?since=<ISO>` does the same.

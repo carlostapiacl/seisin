@@ -280,6 +280,12 @@ refused. For Chromium, pass Playwright's `proxy` option from `HTTP_PROXY`; on ma
 needs `--single-process` to start. A listed port is open to anything that speaks `CONNECT`, not
 just HTTP, so list the service, not the protocol.
 
+`mcp = ["playwright"]` lists the MCP servers a role may load; `mcp = []` means none, and no
+key means the policy doesn't say. seisin declares this and `explain` answers it
+(`seisin explain qa mcp tradingview`), but the servers are started by the agent's CLI, so the
+launcher has to apply it. With Claude Code: `--mcp-config` holding only those servers, plus
+`--strict-mcp-config`.
+
 Refused connections are logged too: `connect tcp:<port>` (the kernel gives the port, not the
 host) or the socket path, once per target per run. `seisin walls` says whether the port is
 missing from `local_ports`, listed but dialled directly, or a socket. No request is filed: a

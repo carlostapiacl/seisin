@@ -63,14 +63,14 @@ const TOOLS = [
   {
     name: "seisin_explain",
     description:
-      "Whether a role may read or write a path, and whose it is if not. " +
-      "Use this before suggesting an agent touch a file. Read-only.",
+      "Whether a role may read or write a path, and whose it is if not; or, with action mcp, " +
+      "whether it may load an MCP server. Use this before suggesting an agent touch a file. Read-only.",
     inputSchema: {
       type: "object",
       properties: {
         role: { type: "string" },
-        action: { type: "string", enum: ["read", "write"] },
-        target: { type: "string", description: "path, or key filename for a read" },
+        action: { type: "string", enum: ["read", "write", "mcp"] },
+        target: { type: "string", description: "path; key filename for a read; server name for mcp" },
       },
       required: ["role", "action", "target"],
     },
@@ -164,13 +164,14 @@ const HANDLERS = {
     // that was not "read" fell into the write branch — including a typo, which
     // would answer the wrong question confidently. A declared schema that is
     // not enforced is documentation.
-    if (action !== "read" && action !== "write")
-      throw new Error(`action must be "read" or "write", got ${JSON.stringify(action)}`);
+    if (action !== "read" && action !== "write" && action !== "mcp")
+      throw new Error(`action must be "read", "write" or "mcp", got ${JSON.stringify(action)}`);
     if (typeof target !== "string" || !target)
       throw new Error("target must be a non-empty path");
     const cfg = config();
     if (!cfg.roles[role])
       return { error: `unknown role "${role}"`, known: Object.keys(cfg.roles) };
+    if (action === "mcp") return explain(cfg, role, "mcp", target);
     const rel = toRepoRelative(cfg, target);
     const verdict = explain(cfg, role, action, rel);
     return { ...verdict, alsoOwnedBy: action === "write" ? ownersOf(cfg, rel) : undefined };

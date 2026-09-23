@@ -272,8 +272,23 @@ function explainConnect(config, role, target) {
   };
 }
 
+/** May this role load the MCP server `name`? A declaration, not something the kernel sees. */
+function explainMcp(config, role, name) {
+  const list = config.roles[role]?.mcp;
+  if (list == null)
+    return { allowed: true, owners: [], mcp: true, declared: false,
+      reason: `${role} has no mcp list, so the policy does not limit its MCP servers` };
+  if (list.includes(name))
+    return { allowed: true, owners: [], mcp: true, declared: true, reason: `${role} declares mcp = [${list.map((n) => `"${n}"`).join(", ")}]` };
+  return { allowed: false, owners: [], mcp: true, declared: true,
+    reason: list.length
+      ? `${role} may load only ${list.join(", ")}. Adding ${name} is a change to its mcp list`
+      : `${role} declares mcp = [], no MCP servers` };
+}
+
 export function explain(config, role, action, target) {
   if (action === "connect") return explainConnect(config, role, target);
+  if (action === "mcp") return explainMcp(config, role, target);
   if (action === "read") {
     const holders = keyHolders(config, target);
     if (holders.includes(role)) return { allowed: true, owners: holders, reason: `${role} declares ${target}` };

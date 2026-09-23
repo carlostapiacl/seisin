@@ -172,6 +172,7 @@ export function state(configPath, { since = null } = {}) {
     neverWrites: r.neverWritesDeclared ?? r.neverWrites ?? [],
     localBinding: r.localBinding === true,
     localPorts: r.localPorts ?? [],
+    mcp: r.mcp ?? null,
     trustd: r.trustd === true,
     // Counted over the same window as the causes, so the KPI and the screen it
     // links to agree.

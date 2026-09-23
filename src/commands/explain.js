@@ -14,8 +14,14 @@ import { renderVerdict, C, out } from "../render.js";
 export function explainCommand(config, argv = []) {
   const [role, action, target] = argv;
   if (!role || !action || !target)
-    throw new Error("usage: seisin explain <role> <read|write> <path-or-key>");
+    throw new Error("usage: seisin explain <role> <read|write|mcp> <path, key or MCP server>");
   if (!config.roles[role]) throw new Error(`unknown role "${role}"`);
+
+  if (action === "mcp") {
+    const verdict = explain(config, role, "mcp", target);
+    out(renderVerdict(role, "mcp", target, verdict));
+    return { ...verdict, worktree: [] };
+  }
 
   const verb = action.startsWith("r") ? "read" : "write";
 
