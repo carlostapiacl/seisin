@@ -1076,11 +1076,13 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
                                  reason: (document.getElementById("why-all") || {}).value || "declined in bulk from the console" })
         });
         var out = await r.json();
-        if (!r.ok) throw new Error(out.error || "refused");
+        if (!r.ok) { var err = new Error(out.error || "refused"); err.status = r.status; throw err; }
         await reload();
       } catch (e) {
         btn.disabled = false;
-        btn.textContent = e.message;
+        btn.textContent = "Decline all (" + REQS.length + ")";
+        var note = document.querySelector("#requests .note");
+        if (note) { note.textContent = whyFailed(e, e.status); note.style.color = "var(--amber)"; }
       }
     };
   }
@@ -1103,14 +1105,14 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
         body: JSON.stringify({ number: n, decision: btn.dataset.d, reason: why })
       });
       var out = await r.json();
-      if (!r.ok) throw new Error(out.error || "denied");
+      if (!r.ok) { var err = new Error(out.error || "denied"); err.status = r.status; throw err; }
       // Re-read rather than patch: the grant rewrote seisin.toml, so the
       // territory on screen is stale too, not just the queue.
       await reload();
     } catch (e) {
       row.querySelectorAll("button,input").forEach(function(el){ el.disabled = false; });
       var s = row.querySelector(".sub");
-      s.innerHTML = '<span style="color:var(--amber)">' + esc(e.message) + "</span>";
+      s.innerHTML = '<span style="color:var(--amber)">' + esc(whyFailed(e, e.status)) + "</span>";
     }
   }
 
@@ -1154,6 +1156,20 @@ function draw(){
       return t;
     } catch (_) { return m ? m[1] : ""; }
   })();
+
+  /**
+   * What to tell a person when a request to this server fails.
+   *
+   * "Failed to fetch" was all the browser said when the console had been
+   * restarted under an open tab — the server was gone, or back with a new
+   * token that this tab does not hold. Both have the same fix, and it is not
+   * obvious from either message.
+   */
+  function whyFailed(e, status){
+    if (status === 403 || (e && /network|fetch/i.test(String(e.message || e))))
+      return "the console restarted — this tab's link is stale. Open the new link `seisin ui` printed.";
+    return (e && e.message) || "failed";
+  }
 
   async function boot(){
     let s = null;
