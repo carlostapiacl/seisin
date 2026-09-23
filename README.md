@@ -724,7 +724,8 @@ already done:
 | **Windows** | the runtime has a backend. seisin has never been pointed at it, and no CI runner covers it |
 | **Deleting inside your own territory** | not covered, and not coverable here — the ask is upstream as [issue #545](https://github.com/anthropics/sandbox-runtime/issues/545), open and unanswered since 2026-09-13, [with the measurement behind it](docs/upstream/denyUnlink.md) and [a demo](docs/demo/) |
 | **`init` heuristics** | it reads `.claude/agents/` then `CODEOWNERS`. Every other convention is a guess nobody has made yet |
-| **SSH inside a turn** | the transport exists — the runtime's SOCKS proxy filters by `(port, host)` — and the `ProxyCommand` it wires up cannot authenticate to it, so `git` over SSH dies at the handshake. [The ask](docs/upstream/ssh-proxycommand.md) is written and verified, not filed. Use an HTTPS remote |
+| **SSH inside a turn** | the transport exists — the runtime's SOCKS proxy filters by `(port, host)` — and the `ProxyCommand` it wires up cannot authenticate to it, so `git` over SSH dies at the handshake. The fix is upstream as [PR #516](https://github.com/anthropics/sandbox-runtime/pull/516), open; [the measurement](docs/upstream/ssh-proxycommand.md) is here. Use an HTTPS remote |
+| **A browser inside a role (macOS)** | Chromium registers a Mach service at startup and the runtime's profile has no setting to allow it, so it only starts with `--single-process` — which is unstable with several browsers or after a failed test. The fix is upstream as [PR #598](https://github.com/anthropics/sandbox-runtime/pull/598) for [issue #210](https://github.com/anthropics/sandbox-runtime/issues/210); [measured here](docs/upstream/mach-register.md) |
 
 Every word above has one meaning, listed in [the glossary](docs/glossary.md) — the boundary
 **denies**, a person **declines**, seisin **refuses** a config it cannot enforce. A tool whose
