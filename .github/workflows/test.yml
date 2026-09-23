@@ -16,6 +16,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:       # publish.yml runs this before publishing
 
 jobs:
   suite:
@@ -51,10 +52,13 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           sudo sysctl -w kernel.unprivileged_userns_clone=1 || true
 
+      # Pinned to the version package.json pins. Unpinned, CI tested whatever the
+      # registry served that day while users ran the version in the lockfile —
+      # for the one dependency that IS the enforcement.
       - name: install the sandbox runtime
-        run: npm install -g @anthropic-ai/sandbox-runtime
+        run: npm install -g @anthropic-ai/sandbox-runtime@$(node -p "require('./package.json').dependencies['@anthropic-ai/sandbox-runtime']")
 
-      - run: npm install
+      - run: npm ci
 
       - name: suite
         run: npm test
