@@ -11,7 +11,7 @@
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, symlinkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, symlinkSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -30,12 +30,21 @@ const CLI = join(HERE, "..", "src", "cli.js");
 // is writable by every role, so a repo there passes "cannot write" by accident.
 const BOX = join(HERE, ".sandbox-box");
 
-function repoWith(toml) {
+function repoWith(toml, touch = []) {
   mkdirSync(BOX, { recursive: true });
   const dir = mkdtempSync(join(BOX, "never-"));
   writeFileSync(join(dir, "seisin.toml"), toml);
+  // What a subtraction names has to exist for it to be enforced on Linux (see
+  // enforcedNeverWrites), so the tests that are about enforcement create it —
+  // and then say the same thing on both kernels. The Linux-only test below is
+  // the one about a path that does not exist.
+  for (const f of touch) {
+    mkdirSync(dirname(join(dir, f)), { recursive: true });
+    if (!f.endsWith("/")) writeFileSync(join(dir, f), "");
+  }
   return dir;
 }
+const LOCK = ["app/.git/index.lock"];
 
 const WORKTREE_ROLE =
   '[roles.dev]\nwrites = ["app/**"]\nnever_writes = ["app/.git/index.lock"]\n\n' +
@@ -52,7 +61,7 @@ test("absent means exactly what it meant before the key existed", () => {
 });
 
 test("it beats writes, and only for the role that wrote it", () => {
-  const cfg = loadConfig(join(repoWith(WORKTREE_ROLE), "seisin.toml"));
+  const cfg = loadConfig(join(repoWith(WORKTREE_ROLE, LOCK), "seisin.toml"));
   const v = explain(cfg, "dev", "write", "app/.git/index.lock");
   assert.equal(v.allowed, false);
   assert.equal(v.neverWrites, "app/.git/index.lock");
@@ -66,13 +75,13 @@ test("it beats writes, and only for the role that wrote it", () => {
 
 test("a subtree subtraction covers what is under it", () => {
   const cfg = loadConfig(join(repoWith(
-    '[roles.dev]\nwrites = ["app/**"]\nnever_writes = ["app/.git/**"]\n'), "seisin.toml"));
+    '[roles.dev]\nwrites = ["app/**"]\nnever_writes = ["app/.git/**"]\n', ["app/.git/"]), "seisin.toml"));
   assert.equal(explain(cfg, "dev", "write", "app/.git/refs/heads/main").allowed, false);
   assert.equal(explain(cfg, "dev", "write", "app/README.md").allowed, true);
 });
 
 test("the kernel profile denies it, on top of the grant", () => {
-  const dir = repoWith(WORKTREE_ROLE);
+  const dir = repoWith(WORKTREE_ROLE, LOCK);
   const cfg = loadConfig(join(dir, "seisin.toml"));
   const fs = settingsFor(cfg, "dev").filesystem;
   assert.ok(fs.allowWrite.includes(join(dir, "app")));
@@ -81,7 +90,7 @@ test("the kernel profile denies it, on top of the grant", () => {
 });
 
 test("a refusal by never_writes queues no request", () => {
-  const dir = repoWith(WORKTREE_ROLE);
+  const dir = repoWith(WORKTREE_ROLE, LOCK);
   const cfg = loadConfig(join(dir, "seisin.toml"));
   const out = decide(cfg, "dev", {
     tool_name: "Write", tool_input: { file_path: join(dir, "app/.git/index.lock"), content: "" },
@@ -94,7 +103,7 @@ test("a refusal by never_writes queues no request", () => {
 });
 
 test("check lists it in the role's summary", () => {
-  const cfg = loadConfig(join(repoWith(WORKTREE_ROLE), "seisin.toml"));
+  const cfg = loadConfig(join(repoWith(WORKTREE_ROLE, LOCK), "seisin.toml"));
   const report = inspect(cfg);
   assert.deepEqual(report.roles.find((r) => r.name === "dev").neverWrites, ["app/.git/index.lock"]);
   assert.match(renderReport(report), /never.*app\/\.git\/index\.lock/);
@@ -133,19 +142,18 @@ for (const [bad, why] of [["/etc/passwd", /absolute/], ["app/../x", /\.\./], [""
 const skip = resolveSrt() !== null ? false : "sandbox runtime not installed";
 
 test("the real sandbox refuses the write, and the rest of the territory still works", { skip }, () => {
-  const dir = repoWith(WORKTREE_ROLE);
-  mkdirSync(join(dir, "app", ".git"), { recursive: true });
+  const dir = repoWith(WORKTREE_ROLE, LOCK);
   const as = (role, line) => spawnSync(process.execPath, [CLI, "run", role, "--", "sh", "-c", line],
     { cwd: dir, encoding: "utf8" }).status === 0;
   assert.ok(as("dev", "echo x > app/ok.txt"), "the territory must still be writable");
   assert.ok(!as("dev", "echo x > app/.git/index.lock"), "never_writes did not reach the kernel");
-  assert.ok(!existsSync(join(dir, "app", ".git", "index.lock")));
+  assert.equal(readFileSync(join(dir, "app", ".git", "index.lock"), "utf8"), "", "the file was written");
   assert.ok(as("lead", "echo x > app/.git/index.lock"), "the other role lost the file too");
 });
 
 test("a grant that never_writes would cancel is refused, not written", async () => {
   const { refuseIfBarred } = await import("../src/requests.js");
-  const cfg = loadConfig(join(repoWith(WORKTREE_ROLE), "seisin.toml"));
+  const cfg = loadConfig(join(repoWith(WORKTREE_ROLE, LOCK), "seisin.toml"));
   assert.throws(
     () => refuseIfBarred(cfg, { role: "dev", action: "write", target: "app/.git/index.lock" }),
     /never_writes of dev.*Granting it would change nothing/);
@@ -157,7 +165,8 @@ test("a grant that never_writes would cancel is refused, not written", async () 
 test("the sidecars of a database go with it", () => {
   // Revisión del 22/09, #4: un -wal fabricado se aplica a la base al abrirla.
   const cfg = loadConfig(join(repoWith(
-    '[roles.dev]\nwrites = ["data/**"]\nnever_writes = ["data/app.sqlite"]\n'), "seisin.toml"));
+    '[roles.dev]\nwrites = ["data/**"]\nnever_writes = ["data/app.sqlite"]\n',
+    ["data/app.sqlite", "data/app.sqlite-wal", "data/app.sqlite-shm", "data/app.sqlite-journal"]), "seisin.toml"));
   for (const f of ["data/app.sqlite", "data/app.sqlite-wal", "data/app.sqlite-shm", "data/app.sqlite-journal"])
     assert.equal(explain(cfg, "dev", "write", f).allowed, false, f);
 });
@@ -165,13 +174,12 @@ test("the sidecars of a database go with it", () => {
 test("a symlink on the way does not route around it", { skip }, () => {
   // Revisión del 22/09, #3: app/data -> store, y escribir app/data/prod.lock
   // pasaba (rc=0) porque el kernel ve store/prod.lock.
-  const dir = repoWith('[roles.dev]\nwrites = ["app/**"]\nnever_writes = ["app/data/prod.lock"]\n');
-  mkdirSync(join(dir, "app", "store"), { recursive: true });
+  const dir = repoWith('[roles.dev]\nwrites = ["app/**"]\nnever_writes = ["app/data/prod.lock"]\n', ["app/store/prod.lock"]);
   symlinkSync("store", join(dir, "app", "data"));
   const r = spawnSync(process.execPath, [CLI, "run", "dev", "--", "sh", "-c", "echo x > app/data/prod.lock"],
     { cwd: dir, encoding: "utf8" });
   assert.notEqual(r.status, 0, "the write went through the symlink");
-  assert.ok(!existsSync(join(dir, "app", "store", "prod.lock")));
+  assert.equal(readFileSync(join(dir, "app", "store", "prod.lock"), "utf8"), "", "the file behind the link was written");
 });
 
 test("on Linux, a path that does not exist is not mounted over, and every answer says so", { skip: process.platform !== "linux" && "Linux only: bubblewrap mounts over what it denies" }, () => {
@@ -205,4 +213,15 @@ test("the MCP draft does not offer what grant would refuse", async () => {
     assert.equal(d.applyWith, null);
     assert.equal(d.wouldAdd, undefined);
   } finally { process.chdir(cwd); }
+});
+
+test("on macOS, a symlink on the way does not route around it even before the file exists", { skip: (skip || process.platform !== "darwin") && "macOS: the reviewed case, a lock file not taken yet" }, () => {
+  // El caso exacto de la revisión (#3): el archivo todavía no existe, srt no
+  // resuelve rutas inexistentes, y sin el ancestro resuelto la escritura pasaba.
+  const dir = repoWith('[roles.dev]\nwrites = ["app/**"]\nnever_writes = ["app/data/prod.lock"]\n', ["app/store/"]);
+  symlinkSync("store", join(dir, "app", "data"));
+  const r = spawnSync(process.execPath, [CLI, "run", "dev", "--", "sh", "-c", "echo x > app/data/prod.lock"],
+    { cwd: dir, encoding: "utf8" });
+  assert.notEqual(r.status, 0, "the write went through the symlink");
+  assert.ok(!existsSync(join(dir, "app", "store", "prod.lock")));
 });
