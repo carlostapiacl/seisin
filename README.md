@@ -57,9 +57,9 @@ flowchart LR
     style H fill:#eef,stroke:#66c
 ```
 
-**The kernel says no. seisin says whose.** That second half is the whole thing: every other
-permission layer in this space answers *yes* or *no*, and a refusal that also names an owner
-turns a dead end into a handoff.
+**The kernel says no. seisin says whose.** That second half is the whole thing: other
+permission layers in this space answer *yes* or *no*, or at best *which rule* said no — and a
+refusal that also names an owner turns a dead end into a handoff.
 
 ![seisin denying a write outside a role's territory, then naming the owner](docs/img/demo.gif)
 
@@ -76,7 +76,7 @@ $ seisin run frontend -- sh -c 'echo // fix >> src/api/orders.ts'
     seisin grant <n> [--reason "…"]   ·   seisin decline <n> [--reason "…"]
 ```
 
-**Whose it was, at the moment it was denied.** Every other permission layer in this space answers *yes* or *no*. Answering **"no, and it belongs to `backend`"** turns a block into a handoff — and one a person can approve in a command, rather than a line somebody has to remember to go and read.
+**Whose it was, at the moment it was denied.** Other permission layers answer *yes* or *no*, and the good ones say which rule it was and how to widen it. Answering **"no, and it belongs to `backend`"** turns a block into a handoff — and one a person can approve in a command, rather than a line somebody has to remember to go and read.
 
 The kernel is what denies; the name comes from the policy. That first line is all the boundary itself can say — no path, no reason, nothing to read afterwards — so seisin reads the refusal out of the kernel's own log and answers the question it leaves open. On Linux only the hook can do that; [the ask is upstream](docs/upstream/cli-violations.md) as [issue #582](https://github.com/anthropics/sandbox-runtime/issues/582).
 
@@ -635,12 +635,13 @@ This space already has good work, and seisin is not the first thing here:
 - [`XuebinMa/agent-guard`](https://github.com/XuebinMa/agent-guard) — a permission-enforcement SDK, also one global policy.
 - [`NVIDIA/OpenShell`](https://github.com/NVIDIA/openshell) — a runtime that sandboxes an agent with Landlock and seccomp, under a declarative policy. Serious, and the closest thing here by weight.
 - [`dredozubov/hazmat`](https://github.com/dredozubov/hazmat) — runs the agent as a different system user, with `pf` rules and snapshots.
+- [`nolabs-ai/nono`](https://github.com/nolabs-ai/nono) — a kernel sandbox for agents on the host (Seatbelt, Landlock), with per-tool child sandboxes, a credential proxy with endpoint filtering, approval webhooks and a tamper-evident audit log. The most complete sandbox here, and on a Mac the one that enforces through the same kernel seisin does. `nono why` explains *which rule* denied something and how to allow it; it has no notion of *whose* it was.
 - *Directory ownership* is recommended in half the multi-agent write-ups. As far as I could find, nobody enforces it, and nobody names the owner in the refusal. That gap is the reason for this repo.
 
 ### One sentence to tell these apart, because the names all sound the same
 
-**OpenShell and hazmat isolate the agent from your machine. seisin separates roles from each
-other inside one repository, and when it blocks something it names the owner.**
+**OpenShell, hazmat and nono isolate the agent from your machine. seisin separates roles from
+each other inside one repository, and when it blocks something it names the owner.**
 
 Those are different problems and the first one is not the one this solves. If what you want
 is "this agent cannot touch anything outside its box", they do that and OpenShell does it
