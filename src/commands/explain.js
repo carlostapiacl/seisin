@@ -5,6 +5,7 @@
  * That is the only reason the exit code is not always 0 — a denial is an answer,
  * not a failure, but a shell has one channel for both.
  */
+import { toRepoRelative } from "../paths.js";
 import { isAbsolute } from "node:path";
 import { explain } from "../owners.js";
 import { twinsOf, whereIs } from "../worktree.js";
@@ -34,7 +35,7 @@ export function explainCommand(config, argv = []) {
    * because that is a question about somewhere else and it still deserves its
    * honest "no owner".
    */
-  const asked = target.startsWith(config.root + "/") ? target.slice(config.root.length + 1) : target;
+  const asked = toRepoRelative(config, target);
 
   const verdict = explain(config, role, verb, asked);
   out(renderVerdict(role, verb, target, verdict));

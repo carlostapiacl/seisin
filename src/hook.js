@@ -16,6 +16,7 @@
  * is a minor one here, because the enforcer is the kernel and it is not fooled.
  * What escapes this file goes unexplained, not unblocked.
  */
+import { toRepoRelative } from "./paths.js";
 import { explain, normalize } from "./owners.js";
 import { append, logPath } from "./log.js";
 import { timesHit } from "./walls.js";
@@ -139,7 +140,7 @@ export function decide(config, role, event, { observe = false, now = append, ask
   const verdicts = [];
 
   for (const t of targets) {
-    const rel = t.path.startsWith(config.root + "/") ? t.path.slice(config.root.length + 1) : t.path;
+    const rel = toRepoRelative(config, t.path);
     const kind = kindOf(config, rel);
 
     // Reading an ordinary file is never a policy question. Territory divides

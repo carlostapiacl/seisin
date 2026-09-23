@@ -26,6 +26,7 @@
  * The cost of this choice is written down under PROTOCOLS below: we track the
  * spec by hand, and the spec moves.
  */
+import { toRepoRelative } from "./paths.js";
 import { loadConfig, findConfig } from "./config.js";
 import { inspect } from "./inspect.js";
 import { explain, ownersOf } from "./owners.js";
@@ -170,8 +171,9 @@ const HANDLERS = {
     const cfg = config();
     if (!cfg.roles[role])
       return { error: `unknown role "${role}"`, known: Object.keys(cfg.roles) };
-    const verdict = explain(cfg, role, action, target);
-    return { ...verdict, alsoOwnedBy: action === "write" ? ownersOf(cfg, target) : undefined };
+    const rel = toRepoRelative(cfg, target);
+    const verdict = explain(cfg, role, action, rel);
+    return { ...verdict, alsoOwnedBy: action === "write" ? ownersOf(cfg, rel) : undefined };
   },
 
   seisin_requests() {

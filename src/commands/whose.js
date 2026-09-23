@@ -16,6 +16,7 @@
  * worth attacking, because unlike everything else in this tool it is meant to
  * be called *from inside* the box.
  */
+import { toRepoRelative } from "../paths.js";
 import { ownersOf, keyHolders } from "../owners.js";
 import { twinsOf, whereIs } from "../worktree.js";
 import { C, out } from "../render.js";
@@ -24,7 +25,7 @@ export function whose(config, argv = []) {
   const target = argv[0];
   if (!target) throw new Error("usage: seisin whose <path>");
 
-  const rel = target.startsWith(config.root + "/") ? target.slice(config.root.length + 1) : target;
+  const rel = toRepoRelative(config, target);
   const isKey = (config.keyDirs ?? []).some((d) => rel === d || rel.startsWith(d + "/"));
   const owners = isKey ? keyHolders(config, rel) : ownersOf(config, rel);
 

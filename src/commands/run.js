@@ -7,6 +7,7 @@
  *
  * Everything in here is ordering that was wrong once. The comments say which.
  */
+import { toRepoRelative } from "../paths.js";
 import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { join, dirname, delimiter } from "node:path";
@@ -347,7 +348,7 @@ export async function run(config, argv) {
     // Relative inside the repo, absolute outside it. A role can be refused at
     // ~/.ssh under `isolate`, and "../../../.ssh/id_rsa" would be a worse
     // answer to "what was refused" than the path itself.
-    const rel = d.path.startsWith(config.root + "/") ? d.path.slice(config.root.length + 1) : d.path;
+    const rel = toRepoRelative(config, d.path);
 
     /**
      * A refusal the hook never saw still leaves a request behind.

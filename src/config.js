@@ -394,7 +394,10 @@ export function loadConfig(path) {
        * every role that legitimately commits in the shared checkout. Absent
        * means exactly what it meant before the key existed.
        */
-      neverWrites,
+      // Sidecars too: `data/app.sqlite` minus its `-wal` is not a subtraction.
+      // A fabricated -wal is applied to the database the next time it opens.
+      neverWrites: withSidecars(neverWrites),
+      neverWritesDeclared: neverWrites,
       /**
        * Whether this role may listen on a local port — a dev server, the
        * backend an end-to-end test drives, a test database.

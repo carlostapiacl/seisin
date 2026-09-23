@@ -68,7 +68,7 @@ export function renderReport(report) {
     // Only when present: absent is the default, and a "never_writes nothing" line
     // on every role is noise that teaches the reader to skip the one that matters.
     if (r.neverWrites?.length)
-      lines.push(`  ${" ".repeat(width)}  ${C.yellow}never${C.off}  ${r.neverWrites.join(" ")}\n`);
+      lines.push(`  ${" ".repeat(width)}  ${C.yellow}never${C.off}  ${collapseSidecars(r.neverWrites).join(" ")}\n`);
     if (r.trustd)
       lines.push(`  ${" ".repeat(width)}  ${C.yellow}trustd${C.off} TLS through the system verifier (trustd)\n`);
     if (r.localBinding)
