@@ -8,6 +8,14 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **The log is chained, and `seisin log verify` checks it.** Every line carries `prev`, the hash of
+  the line before it, so editing, deleting or reordering a line shows — the log is the record of
+  who was refused what, and it could be rewritten without a trace. A lock keeps several roles of
+  one round, each with its own parent writing the same file, from forking the chain (tested with
+  four processes at once). Lines from before this version are an unchained prefix, not tampering.
+  Exit 1 on a break, for CI or a pre-commit hook. From nono's audit trail; the Merkle root and
+  signature it adds on top are left for when someone asks.
+
 - **The agent hears the refusals only the kernel saw.** PreToolUse sees the path a tool call
   names; a child process, a script or a path the regex missed reaches the agent as `Operation not
   permitted` with nothing else, and it retries — 72% of 5,617 refusals on one portfolio were the

@@ -54,6 +54,7 @@ ${C.b}seisin${C.off} — give each agent its own folders and its own keys
   seisin grant <n> [--reason "…"]       approve one, with its provenance
   seisin decline <n> [--reason "…"]     turn one down, and record why
   seisin log [--role r] [--verdict denied]
+  seisin log verify                     does the log's hash chain hold
   seisin watch                          follow the log live
   seisin init [--from-observations]     propose a ${CONFIG_NAME} for this repo
   seisin ui [--port n]                  open the console, live

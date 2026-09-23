@@ -13,7 +13,8 @@
  * tries the parent's socket first for exactly that reason; writing the file
  * directly is what happens when there is no parent, outside the box.
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync, unlinkSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { STATE_DIR, LOG_NAME } from "./layout.js";
 import { send } from "./spool.js";
@@ -37,11 +38,104 @@ export function append(file, entry) {
   if (send("log", entry)) return true;
   try {
     mkdirSync(dirname(file), { recursive: true });
-    appendFileSync(file, JSON.stringify({ at: new Date().toISOString(), ...entry }) + "\n");
+    withLock(file, () => {
+      // `prev` goes last and is computed from the previous line exactly as it
+      // sits on disk, so verifying needs nothing but the file.
+      const line = JSON.stringify({ at: new Date().toISOString(), ...entry, prev: hashOf(lastLine(file)) });
+      appendFileSync(file, line + "\n");
+    });
     return true;
   } catch {
     return false;
   }
+}
+
+/**
+ * The log is chained: every line carries `prev`, the hash of the line before it.
+ *
+ * The log is the record of who touched what and who was refused what, and it
+ * could be edited without a trace. A chain does not stop anyone with write
+ * access from rewriting it — nothing inside a file can — but it makes an edit,
+ * a deletion or a reordering show, and `seisin log verify` says where. Taken
+ * from nono's audit trail; the Merkle root and the signature it adds on top
+ * are left for when someone asks for them.
+ *
+ * The first chained line of a file points at GENESIS. A file started by
+ * rotation should point at the last line of the one before it; there is no
+ * rotation yet, and when there is, that is what it has to do.
+ */
+export const GENESIS = "0".repeat(32);
+
+export function hashOf(line) {
+  return line == null ? GENESIS : createHash("sha256").update(line).digest("hex").slice(0, 32);
+}
+
+/** The last complete line of the file, or null when there is none. */
+function lastLine(file) {
+  if (!existsSync(file)) return null;
+  const { size } = statSync(file);
+  if (size === 0) return null;
+  const from = Math.max(0, size - 64 * 1024);
+  const fd = openSync(file, "r");
+  try {
+    const buf = Buffer.alloc(size - from);
+    readSync(fd, buf, 0, buf.length, from);
+    const lines = buf.toString("utf8").split("\n").filter((l) => l.trim());
+    return lines.length ? lines[lines.length - 1] : null;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * One writer at a time. Several roles of a round run at once and write this
+ * same file; two of them reading the same last line would fork the chain.
+ * A lock left by a killed process is taken over after a few seconds.
+ */
+function withLock(file, fn) {
+  const lock = file + ".lock";
+  const deadline = Date.now() + 2000;
+  for (;;) {
+    try {
+      closeSync(openSync(lock, "wx"));
+      break;
+    } catch (e) {
+      if (e.code !== "EEXIST") throw e;
+      try { if (Date.now() - statSync(lock).mtimeMs > 5000) { unlinkSync(lock); continue; } } catch {}
+      if (Date.now() > deadline) break;          // never block the run over bookkeeping
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+    }
+  }
+  try { return fn(); } finally { try { unlinkSync(lock); } catch {} }
+}
+
+/**
+ * Walk the file and say where the chain breaks.
+ *
+ * Lines written before the chain existed have no `prev`; they are counted as an
+ * unchained prefix, not reported as tampering. After the first chained line,
+ * a line without `prev` is itself a break.
+ */
+export function verifyChain(file) {
+  const out = { lines: 0, unchained: 0, chained: 0, breaks: [] };
+  if (!existsSync(file)) return out;
+  let previous = null;
+  let started = false;
+  for (const line of readFileSync(file, "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    out.lines++;
+    let e = null;
+    try { e = JSON.parse(line); } catch {}
+    const prev = e?.prev;
+    if (!started && prev === undefined) { out.unchained++; previous = line; continue; }
+    started = true;
+    const expected = out.chained === 0 && out.unchained === 0 ? GENESIS : hashOf(previous);
+    const ok = prev === expected || (out.chained === 0 && prev === hashOf(previous));
+    if (!ok) out.breaks.push({ line: out.lines, expected, found: prev ?? null });
+    out.chained++;
+    previous = line;
+  }
+  return out;
 }
 
 /** Reads entries, newest last. A malformed line is skipped, never fatal. */
