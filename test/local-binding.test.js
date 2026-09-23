@@ -5,6 +5,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
+const require_ = createRequire(import.meta.url);
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +16,9 @@ import { settingsFor } from "../src/srt.js";
 import { inspect } from "../src/inspect.js";
 import { renderReport } from "../src/render.js";
 import { resolveSrt } from "../src/commands/run.js";
+import { serve } from "../src/serve.js";
+import { record, pending } from "../src/requests.js";
+import { readFileSync } from "node:fs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI = join(HERE, "..", "src", "cli.js");
@@ -92,4 +97,33 @@ test("check says what local_binding really opens", { skip: process.platform !== 
     .filter((x) => x.kind === "local-binding-reaches-localhost");
   assert.equal(w.length, 1, "one warning, for the role that has it");
   assert.match(w[0].headline, /e2e: .*every port on localhost/);
+});
+
+test("a role with local_binding cannot read the console's token nor approve its own request", { skip: (skip || process.platform !== "darwin") && "macOS: only there does local_binding reach localhost" }, async (t) => {
+  // La reproducción de la revisión del 2026-09-22, como prueba: el rol llega a
+  // la consola (local_binding abre localhost:*), pero el token ya no viaja en
+  // ninguna respuesta, así que ni lo lee ni puede aprobar.
+  const dir = repoWith(TWO.replace('[roles.docs]\nwrites = ["docs/**"]', '[roles.docs]\nwrites = ["docs/**", "secret/**"]'));
+  record(join(dir, ".seisin", "requests.jsonl"),
+    { role: "e2e", action: "write", target: "secret/x.txt", owners: ["docs"] });
+  const server = await serve(join(dir, "seisin.toml"), 0);
+  t.after(() => server.close());
+  const port = server.address().port;
+  const steal =
+    `P=$(curl -s -m 5 http://127.0.0.1:${port}/); ` +
+    `echo "page:$(echo "$P" | grep -c ${server.seisinToken})"; ` +
+    `T=$(echo "$P" | sed -n 's/.*SEISIN_TOKEN="\\([a-f0-9]*\\)".*/\\1/p'); ` +
+    `echo "state:$(curl -s -m 5 -o /dev/null -w %{http_code} http://127.0.0.1:${port}/api/state)"; ` +
+    `echo "decide:$(curl -s -m 5 -o /dev/null -w %{http_code} -X POST -H "x-seisin-token: $T" ` +
+    `-d '{"number":1,"decision":"granted"}' http://127.0.0.1:${port}/api/decide)"`;
+  const out = await new Promise((ok) => {
+    const { spawn } = require_("node:child_process");
+    const p = spawn(process.execPath, [CLI, "run", "e2e", "--", "sh", "-c", steal], { cwd: dir });
+    let s = ""; p.stdout.on("data", (d) => (s += d)); p.on("close", () => ok(s));
+  });
+  assert.match(out, /page:0/, "the page carried the token");
+  assert.match(out, /state:403/, "/api/state answered the role without a token");
+  assert.match(out, /decide:403/, "the role approved its own request");
+  assert.ok(!loadConfig(join(dir, "seisin.toml")).roles.e2e.writes.includes("secret/**"), "the role granted itself secret/**");
+  assert.equal(pending(join(dir, ".seisin", "requests.jsonl")).length, 1, "the request was settled");
 });
