@@ -132,3 +132,25 @@ test("the time window narrows what comes from the log, and nothing else", async 
   assert.equal(sinceOf("/api/state"), null);
   assert.equal(sinceOf("/api/state?since=yesterday-ish"), null, "a bad filter shows everything");
 });
+
+test("'all' is never smaller than a window inside it", async () => {
+  const { state } = await import("../src/serve.js");
+  const { mkdtempSync, mkdirSync, writeFileSync } = await import("node:fs");
+  const { join, dirname } = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const box = join(dirname(fileURLToPath(import.meta.url)), ".sandbox-box");
+  mkdirSync(box, { recursive: true });
+  const dir = mkdtempSync(join(box, "window-"));
+  writeFileSync(join(dir, "seisin.toml"), '[roles.a]\nwrites = ["src/**"]\n');
+  mkdirSync(join(dir, ".seisin"));
+  // More than the old 4000-line cap, all of it recent.
+  const at = new Date().toISOString();
+  const lines = Array.from({ length: 4500 }, (_, i) =>
+    JSON.stringify({ at, role: "a", action: "write", target: `docs/f${i % 50}.md`, verdict: "denied", owners: [] }));
+  writeFileSync(join(dir, ".seisin", "log.jsonl"), lines.join("\n") + "\n");
+  const all = state(join(dir, "seisin.toml"));
+  const month = state(join(dir, "seisin.toml"), { since: new Date(Date.now() - 30 * 864e5).toISOString() });
+  assert.equal(month.causes.total, 4500);
+  assert.equal(all.causes.total, 4500, "'all' was capped at the last 4000 lines");
+  assert.equal(all.roles[0].blocks, 4500);
+});

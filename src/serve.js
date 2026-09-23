@@ -159,9 +159,10 @@ export function state(configPath, { since = null } = {}) {
   // walls and the per-role counts. Not the request queue, which is what is
   // waiting now whatever the window.
   const entries = read(logPath(cfg.root), { limit: 200, since });
-  // A wider window than the activity tail, because grouping by cause is an
-  // arithmetic question and 200 lines of a busy day is one role's morning.
-  const forShape = read(logPath(cfg.root), since ? { since } : { limit: 4000 });
+  // The whole window, not a tail. "All" used to mean the last 4000 lines, so a
+  // 30-day window could show more denials than "all" did (6k against 4k on a
+  // real log). Every count on the page comes from this list.
+  const forShape = read(logPath(cfg.root), since ? { since } : {});
 
   const roles = Object.values(cfg.roles).map((r) => ({
     name: r.name,
