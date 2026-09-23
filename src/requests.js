@@ -175,6 +175,50 @@ export function pending(file, { includeSettled = false } = {}) {
 }
 
 /**
+ * How many runs of the role, after the last time it asked, make a request old.
+ *
+ * A request is recorded again on every refusal, so one the role still needs
+ * keeps a fresh `last`. One whose need went away — the work moved somewhere the
+ * role may write, or the task ended — stops being asked while the role keeps
+ * running. Three runs is enough to say "not since" and few enough that a queue
+ * does not carry a dead request for a week.
+ */
+export const STALE_RUNS = 3;
+
+/**
+ * Two log lines of a role this far apart belong to different runs. The log has
+ * no run marker; a gap is the closest thing to one it can show.
+ */
+export const RUN_GAP_MS = 10 * 60_000;
+
+/**
+ * Marks the requests the role has stopped asking for, read off the log.
+ *
+ * Marked, never settled and never moved. Declining is a person's decision, and
+ * reordering would shift the numbers `grant <n>` is typed against while
+ * nobody decided anything. The mark says what is true — the role ran N times
+ * since and did not ask again — and leaves the rest to whoever reads it.
+ * `entries` are log lines (`read(logPath(root))`); `now` is for the tests.
+ */
+export function markStale(queue, entries, { runs = STALE_RUNS, gapMs = RUN_GAP_MS } = {}) {
+  const at = new Map();                 // role -> sorted times of its log lines
+  for (const e of entries) {
+    const t = Date.parse(e.at);
+    if (!e.role || Number.isNaN(t)) continue;
+    (at.get(e.role) ?? at.set(e.role, []).get(e.role)).push(t);
+  }
+  for (const list of at.values()) list.sort((a, b) => a - b);
+  for (const r of queue) {
+    const since = Date.parse(r.last);
+    const later = (at.get(r.role) ?? []).filter((t) => t > since);
+    let n = 0, prev = -Infinity;
+    for (const t of later) { if (t - prev > gapMs) n++; prev = t; }
+    if (n >= runs) r.stale = { runs: n, since: r.last };
+  }
+  return queue;
+}
+
+/**
  * Adds a granted glob to a role in the config text, with its provenance.
  *
  * Edits the text rather than re-emitting the file, because a config someone

@@ -31,7 +31,7 @@ import { loadConfig, findConfig } from "./config.js";
 import { inspect } from "./inspect.js";
 import { explain, ownersOf } from "./owners.js";
 import { settingsFor } from "./srt.js";
-import { pending, requestsPath, grantFor, refuseIfBarred } from "./requests.js";
+import { pending, requestsPath, grantFor, refuseIfBarred, markStale } from "./requests.js";
 import { read, logPath } from "./log.js";
 import { causesOf } from "./serve.js";
 import { walls, wasted } from "./walls.js";
@@ -178,11 +178,12 @@ const HANDLERS = {
 
   seisin_requests() {
     const cfg = config();
-    const queue = pending(requestsPath(cfg.root));
+    const queue = markStale(pending(requestsPath(cfg.root)), read(logPath(cfg.root)));
     return {
       pending: queue.map((r, i) => ({
         number: i + 1, role: r.role, action: r.action,
         wants: r.grant, ownedBy: r.owners, asked: r.times, lastAsked: r.last,
+        ...(r.stale ? { stale: `not asked again in ${r.stale.runs} runs of ${r.role} since` } : {}),
       })),
       // Said in the payload and not only in the tool description, because a
       // model reading this is deciding what to do next.

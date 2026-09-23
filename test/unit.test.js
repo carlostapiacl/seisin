@@ -1710,3 +1710,20 @@ test("observing says nothing about a queue, because it filed none", () => {
   assert.equal(out.decision, null);
   assert.equal(pedidos, 0);
 });
+test("a request the role stopped asking for is marked, not moved and not settled", async () => {
+  const { markStale, STALE_RUNS } = await import("../src/requests.js");
+  const q = () => [
+    { key: "a", role: "qa", last: "2026-09-23T10:00:00.000Z" },
+    { key: "b", role: "qa", last: "2026-09-23T13:00:00.000Z" },
+    { key: "c", role: "dev", last: "2026-09-23T10:00:00.000Z" },
+  ];
+  // qa: three runs after 10:00 (gaps over ten minutes), the last of them after 13:00 too.
+  const log = ["10:30", "10:31", "11:30", "13:30"].map((t) => ({ role: "qa", at: `2026-09-23T${t}:00.000Z` }));
+  const out = markStale(q(), log);
+  assert.equal(STALE_RUNS, 3);
+  assert.deepEqual(out.map((r) => r.key), ["a", "b", "c"], "order is untouched: numbers are typed against it");
+  assert.deepEqual(out[0].stale, { runs: 3, since: "2026-09-23T10:00:00.000Z" });
+  assert.equal(out[1].stale, undefined, "one run since is not enough");
+  assert.equal(out[2].stale, undefined, "another role's runs do not count");
+  assert.ok(out.every((r) => r.state === undefined), "nothing is decided");
+});

@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
 import { read, logPath } from "./log.js";
 import { settingsFor } from "./srt.js";
-import { pending, requestsPath, settle, applyGrant, refuseIfBarred } from "./requests.js";
+import { pending, requestsPath, settle, applyGrant, refuseIfBarred, markStale } from "./requests.js";
 import { walls } from "./walls.js";
 import { explain } from "./owners.js";
 
@@ -168,7 +168,7 @@ function state(configPath) {
   return {
     root: cfg.root,
     config: cfg.path,
-    requests: pending(requestsPath(cfg.root)),
+    requests: markStale(pending(requestsPath(cfg.root)), whole),
     // The file itself, not a regeneration of it. The page can render a policy
     // from its own model, and that model has no comments — so showing it under
     // the heading "seisin.toml" next to "copy this back" invites someone to

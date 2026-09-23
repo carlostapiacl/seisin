@@ -8,6 +8,12 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **A request the role stopped asking for is marked.** A request is recorded again on every
+  refusal, so one that is still needed keeps a fresh date. When the role has run three times
+  since (runs told apart by a ten-minute gap in its log lines) without asking again, the queue
+  says so — in `seisin requests`, at the end of `seisin run`, in the console and through MCP.
+  Marked only: it is not declined and not moved, because declining is a person's call and the
+  numbers `grant <n>` is typed against must not shift on their own.
 - **Chromium's Mach refusal is explained.** When a command fails with Chromium's
   `bootstrap_check_in … MachPortRendezvousServer … Permission denied (1100)`, the after-failure
   hook says what it is — the sandbox does not let a program register Mach services — and that
