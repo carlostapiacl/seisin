@@ -268,7 +268,8 @@ A role that starts a server — a dev server, the backend an end-to-end test dri
 `local_binding = true`. Listening is off by default and per role: most roles never start one.
 It is wider than the name: the role can also listen on every interface and **connect to every
 port on localhost**, so anything listening there without authentication is within its reach.
-`seisin check` says this next to the role.
+`seisin check` says this next to the role. That is macOS: on Linux each role already has a
+private loopback, serves without the key, and reaches nothing on the host either way.
 
 `seisin init` will propose this from whatever your repo already says: `.claude/agents/`, then `CODEOWNERS`, then a blank start. It **proposes** — a generated policy you did not read is not a policy.
 
