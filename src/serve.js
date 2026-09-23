@@ -219,12 +219,18 @@ function decide(configPath, { number, decision, reason }) {
 }
 
 /** The body of a POST, capped: this endpoint takes three short fields. */
-function readBody(req) {
+/**
+ * A request body, capped. The cap is per route: one decision is a few hundred
+ * bytes, but "decline all" carries every key on screen — 109 of them were
+ * 9.3 KB, over the old flat 4 KB, and the connection was cut with nothing but
+ * "Failed to fetch" in the browser. Found by Carlos on the first real use.
+ */
+function readBody(req, max = 4096) {
   return new Promise((ok, fail) => {
     let s = "";
     req.on("data", (c) => {
       s += c;
-      if (s.length > 4096) { fail(new Error("body too large")); req.destroy(); }
+      if (s.length > max) { fail(new Error("body too large")); req.destroy(); }
     });
     req.on("end", () => ok(s));
   });
@@ -323,7 +329,8 @@ export function serve(configPath, port = 4178) {
     }
     if (req.method === "POST" && pathOf(req.url) === "/api/decline-all") {
       try {
-        const out = declineAll(configPath, JSON.parse((await readBody(req)) || "{}"));
+        // ~85 bytes per key: 1 MB is ten thousand requests on one screen.
+        const out = declineAll(configPath, JSON.parse((await readBody(req, 1024 * 1024)) || "{}"));
         res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
         return res.end(JSON.stringify(out));
       } catch (e) {
