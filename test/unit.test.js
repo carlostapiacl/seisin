@@ -1296,6 +1296,21 @@ test("decline all refuses exactly what the page showed, grants nothing, and asks
   assert.equal(readFileSync(join(box, "seisin.toml"), "utf8"), before, "declining changed the policy");
 });
 
+test("decline all takes a queue of hundreds in one request", async (t) => {
+  // Con 109 claves (9,3 KB) el tope plano de 4 KB cortaba la conexion.
+  const { box, port, token } = await consola(t);
+  const q = join(box, ".seisin", "requests.jsonl");
+  for (let i = 0; i < 500; i++) record(q, { role: "frontend", action: "write", target: `src/api/d${i}/f.ts`, owners: ["backend"] });
+  const keys = pending(q).map((p) => p.key);
+  assert.ok(JSON.stringify({ keys }).length > 3 * 4096, "not over the old 4 KB cap");
+  const r = await fetch(`http://127.0.0.1:${port}/api/decline-all`, {
+    method: "POST", headers: { "content-type": "application/json", "x-seisin-token": token },
+    body: JSON.stringify({ keys, reason: "cola grande" }) });
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).declined, keys.length);
+  assert.equal(pending(q).length, 0);
+});
+
 test("the console only answers to its own host name", async (t) => {
   // DNS rebinding: un dominio ajeno apuntado a 127.0.0.1 llega con otro Host.
   const { port, token } = await consola(t);

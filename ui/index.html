@@ -1166,8 +1166,10 @@ function draw(){
    * obvious from either message.
    */
   function whyFailed(e, status){
-    if (status === 403 || (e && /network|fetch/i.test(String(e.message || e))))
-      return "the console restarted — this tab's link is stale. Open the new link `seisin ui` printed.";
+    if (status === 403)
+      return "this tab's link is stale — the console restarted. Open the new link `seisin ui` printed.";
+    if (e && /network|fetch/i.test(String(e.message || e)))
+      return "the console did not answer. If `seisin ui` restarted, open the new link it printed.";
     return (e && e.message) || "failed";
   }
 
