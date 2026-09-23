@@ -81,3 +81,13 @@ test("check names what trustd opens, next to the role", { skip: process.platform
   assert.ok(!report.warnings.some((x) => x.kind === "unknown-role-key"));
   assert.match(renderReport(report), /trustd.*system verifier/);
 });
+
+test("the parent's NODE_USE_ENV_PROXY wins, 0 included", () => {
+  assert.equal(buildEnv({ NODE_USE_ENV_PROXY: "0" }, { env: [] }).env.NODE_USE_ENV_PROXY, "0");
+});
+
+test("a role with trustd = true gets no bundle, so Go asks the verifier that sees the Keychain", () => {
+  assert.equal(buildEnv({}, { env: [], trustd: true }).env.SSL_CERT_FILE, undefined);
+  // and a parent's own choice still crosses
+  assert.equal(buildEnv({ SSL_CERT_FILE: "/corp/ca.pem" }, { env: [], trustd: true }).env.SSL_CERT_FILE, "/corp/ca.pem");
+});

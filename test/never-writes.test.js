@@ -188,3 +188,21 @@ test("on Linux, a path that does not exist is not mounted over, and every answer
   writeFileSync(join(dir, "app", ".git", "index.lock"), "");
   assert.ok(settingsFor(cfg, "dev").filesystem.denyWrite.includes(join(dir, "app/.git/index.lock")));
 });
+
+test("the MCP draft does not offer what grant would refuse", async () => {
+  // Revisión del 22/09, #6.
+  const { HANDLERS } = await import("../src/mcp.js");
+  const { record } = await import("../src/requests.js");
+  const dir = repoWith(WORKTREE_ROLE);
+  mkdirSync(join(dir, "app", ".git"), { recursive: true });
+  writeFileSync(join(dir, "app", ".git", "index.lock"), "");   // exists, so enforced on Linux too
+  record(join(dir, ".seisin", "requests.jsonl"), { role: "dev", action: "write", target: "app/.git/index.lock", owners: ["lead"] });
+  const cwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const d = HANDLERS.seisin_draft_grant({ number: 1 });
+    assert.match(d.barred ?? "", /never_writes of dev/);
+    assert.equal(d.applyWith, null);
+    assert.equal(d.wouldAdd, undefined);
+  } finally { process.chdir(cwd); }
+});
