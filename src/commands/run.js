@@ -189,7 +189,7 @@ export async function run(config, argv) {
     // Nor for a `never_writes` path: that refusal is the policy, written on
     // purpose, and granting it is undoing a subtraction without deciding to.
     const v = explain(config, role, entry.action, entry.target);
-    if (v.allowed || v.neverWrites) return;
+    if (v.allowed || v.neverWrites || v.gitMetadata) return;
 
     const asked = { role, action: entry.action, target: entry.target, owners: ownersOf(config, entry.target) };
     record(requestsPath(config.root), asked);
@@ -366,10 +366,12 @@ export async function run(config, argv) {
      * reason this exists. Inside the repo only: `~/.ssh` is refused on purpose
      * under `isolate` and is not a territory anyone is meant to ask for.
      */
-    const barred = rel !== d.path && d.action === "write" && config.roles[role]
-      ? explain(config, role, "write", rel).neverWrites
+    const verdict = rel !== d.path && d.action === "write" && config.roles[role]
+      ? explain(config, role, "write", rel)
       : null;
-    if (rel !== d.path && !barred)
+    const barred = verdict?.neverWrites ?? null;
+    const gitMeta = verdict?.gitMetadata === true;
+    if (rel !== d.path && !barred && !gitMeta)
       { const asked = { role, action: d.action, target: rel, owners: ownersOf(config, rel) };
         record(requestsPath(config.root), asked);
         notify.maybe(asked); }

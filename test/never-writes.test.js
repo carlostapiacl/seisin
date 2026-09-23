@@ -226,3 +226,24 @@ test("on macOS, a symlink on the way does not route around it even before the fi
   assert.notEqual(r.status, 0, "the write went through the symlink");
   assert.ok(!existsSync(join(dir, "app", "store", "prod.lock")));
 });
+
+test("git metadata of a repo the role does not write: refused, explained, never queued", async () => {
+  // .git/index.lock, FETCH_HEAD, objects de un repo ajeno: no es territorio que
+  // se pueda conceder (concederlo es dejar reescribir historia ajena). Medido:
+  // 327 requests por un solo index.lock en un portfolio real.
+  const { refuseIfBarred } = await import("../src/requests.js");
+  const dir = repoWith('[roles.review]\nwrites = ["notes/**"]\n\n[roles.dev]\nwrites = ["app/**"]\n');
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  for (const t of ["app/.git/index.lock", "app/.git/FETCH_HEAD", "app/.git/objects/ab/cd", "app/.git/packed-refs.lock"]) {
+    const v = explain(cfg, "review", "write", t);
+    assert.equal(v.allowed, false, t);
+    assert.equal(v.gitMetadata, true, t);
+    assert.match(v.reason, /git's own bookkeeping/);
+    assert.throws(() => refuseIfBarred(cfg, { role: "review", action: "write", target: t }), /not a territory/);
+  }
+  const out = decide(cfg, "review", { tool_name: "Write", tool_input: { file_path: join(dir, "app/.git/FETCH_HEAD"), content: "" } });
+  assert.match(out.hookSpecificOutput.permissionDecisionReason, /Nothing was queued/);
+  assert.equal(pending(join(dir, ".seisin", "requests.jsonl")).length, 0);
+  // Y el dueño del repo sigue escribiendo su propio .git.
+  assert.equal(explain(cfg, "dev", "write", "app/.git/index.lock").allowed, true);
+});

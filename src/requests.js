@@ -26,7 +26,7 @@
  * rewritten is not evidence. A request that is granted or refused is not
  * deleted — it is followed by a line saying what happened to it.
  */
-import { neverWrites } from "./owners.js";
+import { neverWrites, isGitMetadata, covers } from "./owners.js";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { STATE_DIR, tomlString } from "./layout.js";
@@ -214,6 +214,11 @@ export function refuseIfBarred(config, request) {
       `${request.target} is under never_writes of ${request.role} ("${hit}"), which wins over ` +
       `writes. Granting it would change nothing. If the subtraction is wrong, remove that ` +
       `entry from [roles.${request.role}]; otherwise decline this request.`);
+  // Only a repository the role does not write: its own `.git` is its own business.
+  if (isGitMetadata(request.target) && !(role?.writes ?? []).some((g) => covers(g, request.target)))
+    throw new Error(
+      `${request.target} is git's own bookkeeping, not a territory: granting it lets ${request.role} ` +
+      `rewrite another owner's history. Decline it; a role that needs to commit gets a worktree of its own.`);
 }
 
 export function applyGrant(toml, request, note = "") {
