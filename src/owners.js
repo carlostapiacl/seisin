@@ -105,6 +105,11 @@ function toRegExp(glob) {
   return new RegExp("^" + out + "$");
 }
 
+/** Is this path inside a `.git` directory (git's metadata, not a working file)? */
+export function isGitMetadata(path) {
+  return /(^|\/)\.git\//.test(normalize(path));
+}
+
 /** Every role whose territory covers `path`. Usually one; zero is a finding. */
 export function ownersOf(config, path) {
   return Object.values(config.roles)
@@ -210,6 +215,24 @@ export function explain(config, role, action, target) {
         `a subtraction written into the policy, not a missing permission`,
     };
   if (owners.includes(role)) return { allowed: true, owners, reason: `${target} is inside ${role}'s territory` };
+  /**
+   * Git's own bookkeeping in a repository this role does not write.
+   *
+   * Lock files, FETCH_HEAD, objects, refs, packed-refs: never a territory to
+   * hand over, because granting them is letting the role rewrite somebody
+   * else's history. Codex keeps `.git` read-only under a writable root for the
+   * same reason; nono and Gemini grant the whole of it. Here it stays refused
+   * and is said for what it is — not "belongs to X, ask them", which filed a
+   * request per lock file (327 of them for one index.lock on one portfolio)
+   * that nobody could sensibly approve. The requests side skips it too.
+   */
+  if (isGitMetadata(target))
+    return {
+      allowed: false, owners, gitMetadata: true,
+      reason: `${target} is git's own bookkeeping in a repository ${role} does not write — ` +
+        `not a permission to ask for. Read what you need (git log, git show, git ls-remote) ` +
+        `or work in a worktree of your own`,
+    };
   if (owners.length === 0)
     return { allowed: false, owners: [], reason: `${target} has no owner — no role can write it until one claims it` };
   return { allowed: false, owners, reason: `${target} belongs to ${owners.join(", ")}` };
