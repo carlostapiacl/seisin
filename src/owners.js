@@ -256,10 +256,9 @@ function explainConnect(config, role, target) {
     // its way to the internet opens a port and fixes nothing.
     return {
       allowed: false, owners: [], network: true,
-      reason: `a direct connection to port ${n} was refused (the kernel does not say to which host). ` +
-        `If it is a local service this role needs, a person adds local_ports = [${n}]` +
-        `${r?.localPorts?.length ? ` (it has ${r.localPorts.join(", ")})` : ""}. ` +
-        `If it is an outside host, the client skipped HTTP_PROXY`,
+      reason: `port ${n}, host unknown. Local service: a person adds it to local_ports` +
+        `${r?.localPorts?.length ? ` (has ${r.localPorts.join(", ")})` : ""}. ` +
+        `Outside host: the client skipped HTTP_PROXY`,
     };
   }
   return {

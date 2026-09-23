@@ -8,6 +8,9 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **Shorter `walls` and `review`.** `walls` hides walls the role stopped hitting (three runs, same
+  rule as old requests; `--all` shows them) and says "belongs to X" instead of repeating the path.
+  `review` shows ten rows per section (`--all` for everything): 1,557 lines became 78 on a real log.
 - **`mcp` per role.** `mcp = ["playwright"]` declares which MCP servers a role may load (`[]` is
   none, no key is "not limited"). `check`, `explain <role> mcp <server>` and the MCP tool show it.
   seisin doesn't start MCP servers, so the launcher enforces the list.

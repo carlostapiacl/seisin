@@ -47,8 +47,8 @@ ${C.b}seisin${C.off} — give each agent its own folders and its own keys
   seisin explain <role> read|write <path>
   seisin whose <path>                   who owns it — safe to call from inside the box
   seisin scan                           find secrets outside the declared key dirs
-  seisin review                         what the log says about the policy
-  seisin walls <role>                   what that role keeps being denied, and what it cost
+  seisin review [--all]                 what the log says about the policy
+  seisin walls <role> [--all]           what that role keeps being denied, and what it cost
   seisin wire                           let the agent record what it does
   seisin requests                       what the agents asked for and cannot have
   seisin grant <n> [--reason "…"]       approve one, with its provenance

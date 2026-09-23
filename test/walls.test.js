@@ -160,3 +160,26 @@ test("observing counts nothing at anyone, because nothing was refused", () => {
   assert.equal(timesHit(join(dir, ".seisin", "log.jsonl"), "dev", "write", "deploy/x.yml"), 0);
   rmSync(dir, { recursive: true, force: true });
 });
+
+test("a wall the role stopped hitting is marked, and fresh drops it", () => {
+  const at = (t) => `2026-09-23T${t}:00.000Z`;
+  const { dir, file } = logWith([
+    { ...denial("dev", "deploy/old.yml"), at: at("08:00") },
+    { ...denial("dev", "deploy/old.yml"), at: at("08:01") },
+    // Three later runs (gaps over ten minutes), refused elsewhere, never here again.
+    { ...denial("dev", "deploy/new.yml"), at: at("09:00") },
+    { ...denial("dev", "deploy/new.yml"), at: at("10:00") },
+    { ...denial("dev", "deploy/other.yml"), at: at("11:00") },
+  ]);
+  const got = walls(cfg, "dev", { file });
+  assert.deepEqual(got.find((w) => w.target === "deploy/old.yml").stale, { runs: 3 });
+  assert.equal(got.find((w) => w.target === "deploy/new.yml").stale, undefined);
+  assert.deepEqual(walls(cfg, "dev", { file, fresh: true }).map((w) => w.target), ["deploy/new.yml"]);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("an owned wall says whose it is, without the path a second time", () => {
+  const text = render([{ action: "write", target: "deploy/a.yml", times: 2, owners: ["infra"], reason: "deploy/a.yml belongs to infra" }]);
+  assert.match(text, /belongs to infra/);
+  assert.equal(text.split("deploy/a.yml").length - 1, 1, "the path appears once");
+});
