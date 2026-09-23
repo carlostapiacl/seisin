@@ -10,7 +10,7 @@
  */
 import { createReadStream, watch as watchDir } from "node:fs";
 import { dirname, relative } from "node:path";
-import { read, logPath, size } from "../log.js";
+import { read, logPath, size, verifyChain } from "../log.js";
 import { renderEntry, C, out } from "../render.js";
 
 const flag = (argv, name) => {
@@ -19,6 +19,7 @@ const flag = (argv, name) => {
 };
 
 export function log(config, argv = []) {
+  if (argv[0] === "verify") return verify(config);
   const entries = read(logPath(config.root), {
     role: flag(argv, "--role"),
     verdict: flag(argv, "--verdict"),
@@ -33,6 +34,31 @@ export function log(config, argv = []) {
   const denied = entries.filter((e) => e.verdict === "denied").length;
   out(`\n  ${C.dim}${entries.length} entries · ${denied} denied${C.off}\n\n`);
   return entries;
+}
+
+/**
+ * `seisin log verify` — does the chain hold?
+ *
+ * Exit 1 when it does not, so it can sit in CI or a pre-commit hook. Lines from
+ * before the chain existed are reported as such, not as tampering.
+ */
+function verify(config) {
+  const r = verifyChain(logPath(config.root));
+  if (r.lines === 0) {
+    out(`\n  ${C.dim}nothing recorded yet${C.off}\n\n`);
+    return r;
+  }
+  const head = r.unchained ? `${r.unchained} line(s) from before the chain, then ` : "";
+  if (!r.breaks.length) {
+    out(`\n  ${C.green}intact${C.off}  ${head}${r.chained} chained line(s)\n\n`);
+    return r;
+  }
+  out(`\n  ${C.red}broken${C.off}  ${head}${r.chained} chained line(s), ${r.breaks.length} break(s):\n`);
+  for (const b of r.breaks.slice(0, 10))
+    out(`    line ${b.line}: expected prev ${b.expected}, found ${b.found ?? "none"}\n`);
+  out(`  ${C.dim}a line was edited, removed or reordered just before each of these${C.off}\n\n`);
+  process.exitCode = 1;
+  return r;
 }
 
 /**
