@@ -17,6 +17,8 @@ import { join, dirname } from "node:path";
 import { STATE_DIR, CONFIG_NAME } from "./layout.js";
 import { homedir, tmpdir } from "node:os";
 import { entriesOf } from "./keys.js";
+import { enforcedNeverWrites } from "./owners.js";
+import { realAncestor } from "./paths.js";
 import { realpathSync, lstatSync } from "node:fs";
 import { createHash } from "node:crypto";
 
@@ -385,7 +387,13 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
          * wins over any grant however wide. That is the property the key is
          * built on, and the same one the entries below rely on.
          */
-        ...(role.neverWrites ?? []).map((g) => toWritePath(g, "never_writes")).map(abs),
+        ...enforcedNeverWrites(config, role)
+          .map((g) => abs(toWritePath(g, "never_writes")))
+          // Both spellings: the one written and the one the kernel will meet.
+          // With a symlink on the way (`app/data -> store`) the write lands on
+          // `store/…`, and a deny on the written path alone let it through —
+          // measured by the review of 2026-09-22 (rc=0, file created).
+          .flatMap((p) => { const r = realAncestor(p); return r === p ? [p] : [p, r]; }),
         abs(config.path ?? CONFIG_NAME),
         abs(STATE_DIR),
         ...dirs.map(abs),

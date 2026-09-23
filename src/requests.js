@@ -208,7 +208,7 @@ export function pending(file, { includeSettled = false } = {}) {
 export function refuseIfBarred(config, request) {
   if (request.action === "read") return;
   const role = config.roles?.[request.role];
-  const hit = role && neverWrites(role, request.target);
+  const hit = role && neverWrites(role, request.target, config);
   if (hit)
     throw new Error(
       `${request.target} is under never_writes of ${request.role} ("${hit}"), which wins over ` +

@@ -11,7 +11,7 @@
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, symlinkSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -152,4 +152,39 @@ test("a grant that never_writes would cancel is refused, not written", async () 
   // Anything else goes through as before.
   assert.doesNotThrow(() => refuseIfBarred(cfg, { role: "dev", action: "write", target: "docs/x.md" }));
   assert.doesNotThrow(() => refuseIfBarred(cfg, { role: "lead", action: "write", target: "app/.git/index.lock" }));
+});
+
+test("the sidecars of a database go with it", () => {
+  // Revisión del 22/09, #4: un -wal fabricado se aplica a la base al abrirla.
+  const cfg = loadConfig(join(repoWith(
+    '[roles.dev]\nwrites = ["data/**"]\nnever_writes = ["data/app.sqlite"]\n'), "seisin.toml"));
+  for (const f of ["data/app.sqlite", "data/app.sqlite-wal", "data/app.sqlite-shm", "data/app.sqlite-journal"])
+    assert.equal(explain(cfg, "dev", "write", f).allowed, false, f);
+});
+
+test("a symlink on the way does not route around it", { skip }, () => {
+  // Revisión del 22/09, #3: app/data -> store, y escribir app/data/prod.lock
+  // pasaba (rc=0) porque el kernel ve store/prod.lock.
+  const dir = repoWith('[roles.dev]\nwrites = ["app/**"]\nnever_writes = ["app/data/prod.lock"]\n');
+  mkdirSync(join(dir, "app", "store"), { recursive: true });
+  symlinkSync("store", join(dir, "app", "data"));
+  const r = spawnSync(process.execPath, [CLI, "run", "dev", "--", "sh", "-c", "echo x > app/data/prod.lock"],
+    { cwd: dir, encoding: "utf8" });
+  assert.notEqual(r.status, 0, "the write went through the symlink");
+  assert.ok(!existsSync(join(dir, "app", "store", "prod.lock")));
+});
+
+test("on Linux, a path that does not exist is not mounted over, and every answer says so", { skip: process.platform !== "linux" && "Linux only: bubblewrap mounts over what it denies" }, () => {
+  // Revisión del 22/09, #2, medido en Docker el 23/09: srt monta /dev/null sobre
+  // la ruta y bwrap crea un index.lock vacío en el host durante toda la corrida
+  // — y para siempre si el proceso muere con SIGKILL.
+  const dir = repoWith(WORKTREE_ROLE);
+  mkdirSync(join(dir, "app", ".git"), { recursive: true });
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  assert.ok(!settingsFor(cfg, "dev").filesystem.denyWrite.includes(join(dir, "app/.git/index.lock")));
+  assert.equal(explain(cfg, "dev", "write", "app/.git/index.lock").allowed, true, "the sentence must match the kernel");
+  assert.ok(inspect(cfg).warnings.some((w) => w.kind === "never-writes-not-enforced-here"));
+  // Y existiendo, se aplica.
+  writeFileSync(join(dir, "app", ".git", "index.lock"), "");
+  assert.ok(settingsFor(cfg, "dev").filesystem.denyWrite.includes(join(dir, "app/.git/index.lock")));
 });

@@ -10,6 +10,8 @@
  * agents have to read each other's code to do anything useful. Keys are the
  * exception, and they are handled separately below.
  */
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 
 /**
  * Does this glob cover this path? Supports `**`, `*`, `?` and a trailing `/`.
@@ -106,8 +108,30 @@ function toRegExp(glob) {
 /** Every role whose territory covers `path`. Usually one; zero is a finding. */
 export function ownersOf(config, path) {
   return Object.values(config.roles)
-    .filter((r) => r.writes.some((g) => covers(g, path)) && !neverWrites(r, path))
+    .filter((r) => r.writes.some((g) => covers(g, path)) && !neverWrites(r, path, config))
     .map((r) => r.name);
+}
+
+/**
+ * The `never_writes` entries the kernel will actually be given for this role.
+ *
+ * On macOS, all of them. On Linux, only the ones that exist on disk right now,
+ * and that is the runtime's shape rather than a choice: bubblewrap denies a
+ * path by mounting over it, and to mount over a path that does not exist it
+ * creates it on the host — an empty, read-only file that stays there while the
+ * role runs and forever if the process is killed. For `.git/index.lock`, the
+ * case the key exists for, that locks every other user of the repo out.
+ * Measured in Docker (Debian 12, bwrap 0.8.0) on 2026-09-23: present during the
+ * run, gone after a clean exit, still there after SIGKILL.
+ *
+ * `explain` asks this same function, so the sentence and the kernel agree: a
+ * document stricter than the boundary is the direction this project refuses.
+ * `check` names the entries that are not enforced.
+ */
+export function enforcedNeverWrites(config, role) {
+  const all = role?.neverWrites ?? [];
+  if (process.platform !== "linux" || !config?.root) return all;
+  return all.filter((g) => existsSync(join(config.root, g.replace(/\/\*\*$/, ""))));
 }
 
 /**
@@ -116,8 +140,8 @@ export function ownersOf(config, path) {
  * `?? []` because a caller embedding the library builds role objects itself,
  * and one built before the key existed must keep meaning what it meant.
  */
-export function neverWrites(role, path) {
-  return (role.neverWrites ?? []).find((g) => covers(g, path)) ?? null;
+export function neverWrites(role, path, config = null) {
+  return enforcedNeverWrites(config, role).find((g) => covers(g, path)) ?? null;
 }
 
 /** Every role allowed to read `key`, matched with or without its extension. */
@@ -178,7 +202,7 @@ export function explain(config, role, action, target) {
    * anyone deciding to undo it.
    */
   const r = config.roles[role];
-  const barred = r && r.writes.some((g) => covers(g, target)) ? neverWrites(r, target) : null;
+  const barred = r && r.writes.some((g) => covers(g, target)) ? neverWrites(r, target, config) : null;
   if (barred)
     return {
       allowed: false, owners, neverWrites: barred,

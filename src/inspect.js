@@ -10,7 +10,7 @@
  */
 import { resolve, dirname, basename, relative, join, delimiter } from "node:path";
 import { realpathSync, lstatSync, readdirSync, existsSync, readFileSync, statSync } from "node:fs";
-import { ownersOf, covers } from "./owners.js";
+import { ownersOf, covers, enforcedNeverWrites } from "./owners.js";
 import { ROLE_KEYS } from "./config.js";
 import { entriesOf } from "./keys.js";
 import { SHAPES } from "./scan.js";
@@ -123,9 +123,19 @@ const LIMITS = [
  * Silent when `never_writes` is absent. Absent is valid; a check that asks for
  * the key would turn an optional subtraction into a required migration.
  */
-function roleKeyWarnings(roles) {
+function roleKeyWarnings(roles, config = null) {
   const warnings = [];
   for (const r of roles) {
+    const enforced = new Set(enforcedNeverWrites(config, r));
+    const skipped = (r.neverWritesDeclared ?? r.neverWrites ?? []).filter((g) => !enforced.has(g));
+    if (skipped.length)
+      warnings.push({
+        kind: "never-writes-not-enforced-here",
+        headline: `${r.name}: never_writes ${skipped.join(" ")} — not enforced on Linux until it exists`,
+        detail: "bubblewrap denies a path by mounting over it, and would create a missing one on the host " +
+          "for the whole run — for a lock file, locking everyone else out, and for good if the role is " +
+          "killed. seisin skips those, and explain says allowed for them, so the sentence matches the kernel.",
+      });
     for (const k of r.unknownKeys ?? []) {
       const near = nearest(k, ROLE_KEYS);
       warnings.push({
@@ -344,7 +354,7 @@ function warningsFor(config, roles) {
       });
     }
   }
-  warnings.push(...roleKeyWarnings(roles));
+  warnings.push(...roleKeyWarnings(roles, config));
   const shared = sharedPaths(config, roles);
 
   if (shared.length)
