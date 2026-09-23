@@ -378,6 +378,7 @@ export function loadConfig(path) {
     if (localBinding !== undefined && typeof localBinding !== "boolean")
       throw new Error(`${path}: roles.${name}.local_binding must be true or false, not ${JSON.stringify(localBinding)}`);
     const localPorts = readLocalPorts(own(r, "local_ports"), `${path}: roles.${name}.local_ports`);
+    const mcp = readMcp(own(r, "mcp"), `${path}: roles.${name}.mcp`);
     out.roles[name] = {
       name,
       /**
@@ -436,6 +437,14 @@ export function loadConfig(path) {
        * go through the proxy, which HTTP clients do and a MySQL driver does not.
        */
       localPorts,
+      /**
+       * The MCP servers this role may load, by name, or null when the policy
+       * does not say. `[]` is "none". seisin declares this and does not
+       * enforce it: MCP servers are started by the agent's CLI, so the launcher
+       * builds the CLI's MCP config from this list (Claude Code:
+       * `--mcp-config` with only these + `--strict-mcp-config`).
+       */
+      mcp,
       /**
        * Whether this role may reach com.apple.trustd.agent (macOS). Needed by
        * Dart/Flutter and by Go built before 1.27 to verify TLS at all; Go 1.27+
@@ -542,7 +551,25 @@ export function withSidecars(paths) {
 }
 
 /** The keys a `[roles.<name>]` table can hold. Anything else is reported by `check`. */
-export const ROLE_KEYS = ["writes", "keys", "key_mode", "env", "network", "never_writes", "local_binding", "local_ports", "trustd"];
+export const ROLE_KEYS = ["writes", "keys", "key_mode", "env", "network", "never_writes", "local_binding", "local_ports", "mcp", "trustd"];
+
+/**
+ * `mcp`: names of MCP servers, as the CLI's config calls them. Absent is null,
+ * not [], so a policy that never mentions MCP changes nothing for a launcher
+ * that reads it; `mcp = []` is the explicit "none".
+ */
+function readMcp(value, where) {
+  if (value === undefined) return null;
+  const list = asArray(value, where);
+  const out = [];
+  for (const n of list) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(n))
+      throw new Error(`${where}: ${JSON.stringify(n)} is not an MCP server name. ` +
+        `Use the name from the CLI's config, for example mcp = ["playwright"].`);
+    if (!out.includes(n)) out.push(n);
+  }
+  return out;
+}
 
 /**
  * `local_ports`, refused rather than guessed when it is not a list of ports.

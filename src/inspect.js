@@ -30,7 +30,7 @@ export function inspect(config, only = null, where = config.path) {
 
   return {
     where,
-    roles: roles.map((r) => ({ name: r.name, writes: r.writes, keys: r.keys, neverWrites: r.neverWrites ?? [], localBinding: r.localBinding === true, localPorts: r.localPorts ?? [], trustd: r.trustd === true })),
+    roles: roles.map((r) => ({ name: r.name, writes: r.writes, keys: r.keys, neverWrites: r.neverWrites ?? [], localBinding: r.localBinding === true, localPorts: r.localPorts ?? [], mcp: r.mcp ?? null, trustd: r.trustd === true })),
     /**
      * The provider commands this config would run, listed because they are the
      * one thing in a `seisin.toml` that **executes**, and it executes in the

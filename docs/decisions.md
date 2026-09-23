@@ -646,6 +646,19 @@ poll. `/var/run/*` is dropped because every DNS lookup in the box lands there. R
 proxy (a domain not on the list) aren't logged: the `srt` CLI doesn't expose them. That's
 [#582](https://github.com/anthropics/sandbox-runtime/issues/582).
 
+## `mcp` per role: declared here, enforced by the launcher
+
+Every MCP server a CLI loads puts its tool schemas in the agent's context, and that context is
+re-read on every call. Measured on one team: five global servers no role ever called cost about
+5k tokens of context per call. Which servers a role may load is a per-role capability, like its
+network list, so it belongs in the policy.
+
+seisin can't enforce it. The servers are child processes the CLI starts from its own config;
+the kernel profile sees processes and paths, not "this is an MCP server". So the policy
+declares the list and the launcher applies it (Claude Code: `--mcp-config` with only those
+servers and `--strict-mcp-config`). A missing key means "not limited", not "none", so adding
+the key to seisin changes nothing for a policy that doesn't use it.
+
 ## `extends` between roles: decided, not built yet
 
 nono lets a profile extend others (`"extends": ["team-base", "python-tools"]`), and a team of

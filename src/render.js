@@ -73,6 +73,8 @@ export function renderReport(report) {
       lines.push(`  ${" ".repeat(width)}  ${C.yellow}trustd${C.off} TLS through the system verifier (trustd)\n`);
     if (r.localBinding)
       lines.push(`  ${" ".repeat(width)}  ${C.yellow}listen${C.off} local ports (local_binding)\n`);
+    if (r.mcp)
+      lines.push(`  ${" ".repeat(width)}  ${C.yellow}mcp${C.off}    ${r.mcp.length ? r.mcp.join(" ") : "none"} ${C.dim}(declared; the launcher enforces it)${C.off}\n`);
     if (r.localPorts?.length)
       lines.push(`  ${" ".repeat(width)}  ${C.yellow}reach${C.off}  localhost ${r.localPorts.join(" ")} ${C.dim}(local_ports, through the proxy)${C.off}\n`);
     lines.push(`  ${" ".repeat(width)}  ${C.green}keys${C.off}   ${keys}\n\n`);
