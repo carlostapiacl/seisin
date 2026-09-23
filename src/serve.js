@@ -162,6 +162,8 @@ function state(configPath) {
     settings: settingsFor(cfg, r.name),
   }));
 
+  // Read once for every role's walls, rather than once per role.
+  const whole = read(logPath(cfg.root), { verdict: "denied" });
   return {
     root: cfg.root,
     config: cfg.path,
@@ -179,7 +181,7 @@ function state(configPath) {
     // Empty for a role that has hit nothing twice, which is most of them.
     walls: Object.fromEntries(
       Object.keys(cfg.roles)
-        .map((r) => [r, walls(cfg, r, { file: logPath(cfg.root) })])
+        .map((r) => [r, walls(cfg, r, { entries: whole })])
         .filter(([, w]) => w.length)),
     log: entries.slice(-60).reverse(),
     live: true,

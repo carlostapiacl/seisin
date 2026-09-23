@@ -48,8 +48,12 @@ export const MIN_HITS = 2;
  * different repositories are two walls, and merging them hides which one was
  * hit.
  */
-export function walls(config, role, { file, min = MIN_HITS, since = null, limit = 6 } = {}) {
-  const denied = read(file, { role, verdict: "denied", ...(since ? { since } : {}) });
+export function walls(config, role, { file, entries = null, min = MIN_HITS, since = null, limit = 6 } = {}) {
+  // `entries`: the log already read, for a caller asking about every role at
+  // once (the console asks for 32 on a real policy) — one read instead of 32.
+  const denied = entries
+    ? entries.filter((e) => e.role === role && e.verdict === "denied" && (!since || e.at >= since))
+    : read(file, { role, verdict: "denied", ...(since ? { since } : {}) });
 
   const byKey = new Map();
   for (const e of denied) {
