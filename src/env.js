@@ -124,6 +124,14 @@ export function buildEnv(parent, role, extra = []) {
   // replaces the default rather than sitting next to it. They are paths, never
   // secrets. A role that names SSL_CERT_FILE while the parent has none opts out
   // of the default.
+  // A parent that already says whether Node should use the proxy is answered
+  // as it asked — `=0` included — rather than overwritten by the default.
+  if (parent.NODE_USE_ENV_PROXY !== undefined) env.NODE_USE_ENV_PROXY = parent.NODE_USE_ENV_PROXY;
+  // A role with `trustd = true` can ask the system verifier, which sees the
+  // Keychain — corporate CAs included — and /etc/ssl/cert.pem does not. Setting
+  // the bundle there would make Go 1.27+ skip the verifier the role was given
+  // trustd for, and fail behind a corporate proxy (review of 2026-09-22, #7).
+  if (role.trustd === true) delete env.SSL_CERT_FILE;
   if (parent.SSL_CERT_FILE || parent.SSL_CERT_DIR) {
     delete env.SSL_CERT_FILE;
     for (const k of ["SSL_CERT_FILE", "SSL_CERT_DIR"])

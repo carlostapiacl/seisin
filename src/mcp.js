@@ -31,7 +31,7 @@ import { loadConfig, findConfig } from "./config.js";
 import { inspect } from "./inspect.js";
 import { explain, ownersOf } from "./owners.js";
 import { settingsFor } from "./srt.js";
-import { pending, requestsPath, grantFor } from "./requests.js";
+import { pending, requestsPath, grantFor, refuseIfBarred } from "./requests.js";
 import { read, logPath } from "./log.js";
 import { causesOf } from "./serve.js";
 import { walls, wasted } from "./walls.js";
@@ -242,6 +242,20 @@ const HANDLERS = {
     const req = pending(requestsPath(cfg.root))[Number(number) - 1];
     if (!req) throw new Error(`no pending request #${number}`);
 
+    // The same refusal `seisin grant` and the console apply, asked here first.
+    // Without it this drafted, as approvable, a request that `never_writes`
+    // cancels — and `grant` then refused what the draft had offered.
+    try {
+      refuseIfBarred(cfg, req);
+    } catch (e) {
+      return {
+        barred: e.message,
+        ownedBy: req.owners,
+        applyWith: null,
+        note: "Not approvable as it stands: never_writes wins over writes. Decline it with " +
+          `\`seisin decline ${number}\`, or remove the never_writes entry if the subtraction is wrong.`,
+      };
+    }
     const field = req.action === "read" ? "keys" : "writes";
     return {
       wouldAdd: { role: req.role, field, value: req.grant },

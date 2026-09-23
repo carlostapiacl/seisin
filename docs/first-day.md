@@ -76,12 +76,15 @@ What seisin does about it:
 
 - **Go 1.27 and later** verify against `SSL_CERT_FILE` instead of asking the system, and seisin
   sets it to the system bundle by default. `go get` works with trustd still shut. A parent that
-  sets its own `SSL_CERT_FILE` or `SSL_CERT_DIR` keeps it.
+  sets its own `SSL_CERT_FILE` or `SSL_CERT_DIR` keeps it; a role that names `SSL_CERT_FILE` in
+  its `env` without the parent setting it opts out; and a role with `trustd = true` does not get
+  it, so Go asks the system verifier and sees the Keychain — corporate CAs included, which the
+  bundle does not carry. Tools built on Homebrew's OpenSSL switch to the bundle while it is set.
 - **Go built before 1.27** (check with `go version -m $(which gh)`) and **every Dart/Flutter**
   have no such switch. `trustd = true` on the role opens that one service; `check` says what it
   costs next to the role. Or keep the role offline: Flutter works with packages already fetched
   (`pub get --offline`, `flutter test --no-pub`).
 - **Node's `fetch()`** ignored the proxy and failed with `ENOTFOUND`; seisin sets
-  `NODE_USE_ENV_PROXY=1`, which Node 24 reads.
+  `NODE_USE_ENV_PROXY=1`, which Node 24 reads. A value the parent already set, `0` included, wins.
 
 [Every agent sandbox answered this differently — the comparison →](decisions.md#trustd-every-sandbox-chose-a-side)
