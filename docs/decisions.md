@@ -657,7 +657,8 @@ moving bytes past the boundary, for a case that has not come up.
   `FATAL … Permission denied (1100)` before it loads a page. `chromiumSandbox: false` alone
   does not help; `--single-process` does, on its own (measured with Playwright's defaults). That is a runtime-profile
   refusal (a Mach service registration, not a path), so it is not in the log and not seisin's
-  to grant.
+  to grant. The after-failure hook recognises the line and says so. The real fix is two
+  profile rules the runtime has no setting for; measured in docs/upstream/mach-register.md.
 - *Once running, it reaches a listed port when given the proxy.* Playwright's `proxy` option
   with the server, user and password taken from `HTTP_PROXY` inside the box: the listed port
   loads, the next one shows *Connection blocked by network allowlist*, and without the option

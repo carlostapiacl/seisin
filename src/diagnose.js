@@ -36,6 +36,34 @@ import { collapseSidecars } from "./render.js";
 /** What a refused write or read looks like in a tool's output. A trigger to look, not a verdict. */
 export const DENIAL_SIGNS = /Operation not permitted|EPERM|EACCES|Permission denied|Read-only file system/i;
 
+/**
+ * Refusals the runtime's profile makes that never reach the log, recognised by
+ * what the failing program printed.
+ *
+ * The log holds what the kernel refused on a path or a port. A Mach service
+ * registration is neither: the profile refuses it, the program dies with its
+ * own words, and nothing in `.seisin/` says why. Each entry here is one of those
+ * signatures, measured, with the sentence that sends the agent to the fix
+ * instead of to a retry. Kept to exact signatures — a guess here would be an
+ * explanation for a failure seisin did not cause.
+ */
+export const KNOWN_REFUSALS = [
+  {
+    // Measured 2026-09-23 with Playwright's Chromium under seisin on macOS. It
+    // cost a team an afternoon: the error names a Mach port, not a file.
+    sign: /bootstrap_check_in\s+org\.chromium\.Chromium\.MachPortRendezvousServer\S*:\s*Permission denied \(1100\)/,
+    say: "Chromium could not register its Mach rendezvous port: this sandbox does not let a program " +
+      "register Mach services. That is not a file or a port, so it is not in seisin's log and no grant " +
+      "opens it. Launch Chromium with --single-process (Playwright: launchOptions.args) and run one " +
+      "worker; several single-process browsers at once are unstable. See docs/upstream/mach-register.md.",
+  },
+];
+
+/** The known refusals whose signature is in this output. */
+export function knownRefusals(evidence) {
+  return KNOWN_REFUSALS.filter((k) => k.sign.test(evidence)).map((k) => k.say);
+}
+
 /** How far back a refusal still belongs to the call that just failed. */
 const WINDOW_MS = 120_000;
 /** Read only the end of the log: this runs on every failed command. */
@@ -104,15 +132,18 @@ const PREFACE =
 export async function afterTool(config, role, event, { file, now = Date.now, wait = [0, 100, 300] } = {}) {
   const evidence = JSON.stringify({ r: event.tool_response, e: event.error, o: event.tool_output });
   if (!DENIAL_SIGNS.test(evidence)) return null;
+  // JSON escapes what the program printed; the signatures are written against the text.
+  const known = knownRefusals(evidence.replace(/\\n/g, "\n").replace(/\\"/g, '"'));
   let found = [];
   for (const ms of wait) {
     if (ms) await new Promise((ok) => setTimeout(ok, ms));
     found = recentKernelDenials(file, role, now() - WINDOW_MS);
     if (found.length) break;
   }
-  const lines = found.map((e) => sentence(config, role, file, e)).filter(Boolean).slice(0, MAX_NAMED);
+  const lines = [...known, ...found.map((e) => sentence(config, role, file, e)).filter(Boolean)].slice(0, MAX_NAMED);
   if (!lines.length) return null;
-  const more = found.length > MAX_NAMED ? ` (and ${found.length - MAX_NAMED} more — \`seisin walls ${role}\`)` : "";
+  const total = known.length + found.length;
+  const more = total > MAX_NAMED ? ` (and ${total - MAX_NAMED} more — \`seisin walls ${role}\`)` : "";
   return {
     hookSpecificOutput: {
       hookEventName: event.hook_event_name,

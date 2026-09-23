@@ -8,6 +8,11 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **Chromium's Mach refusal is explained.** When a command fails with Chromium's
+  `bootstrap_check_in … MachPortRendezvousServer … Permission denied (1100)`, the after-failure
+  hook says what it is — the sandbox does not let a program register Mach services — and that
+  `--single-process` with one worker is the way through. It is not a path, so it was never in
+  the log. What the runtime would need is in `docs/upstream/mach-register.md`, measured.
 - **`local_ports`: reach the local ports you name, and no others.** `local_ports = [8001, 8081]`
   lets a role connect to those ports on this machine and keeps every other one refused — which
   `local_binding` cannot do, because the kernel profile only has "no port" or "every port". The
