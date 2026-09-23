@@ -675,7 +675,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     L.push('  <span class="k">"filesystem"</span>: {');
     // KEYDIR comes from seisin.toml, which is a file the console may be
     // pointed at without having written it. Unescaped it was HTML injection
-    // into a page that carries SEISIN_TOKEN — and that token approves grants.
+    // into a page that holds the run's token — and that token approves grants.
     L.push('    <span class="d">"denyRead"</span>: ["'+esc(KEYDIR)+'"],');
     if(r.keys.length){
       L.push('    <span class="g">"allowRead"</span>: [');
@@ -1047,7 +1047,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     try {
       var r = await fetch("/api/decide", {
         method: "POST",
-        headers: { "content-type": "application/json", "x-seisin-token": window.SEISIN_TOKEN || "" },
+        headers: { "content-type": "application/json", "x-seisin-token": TOKEN },
         body: JSON.stringify({ number: n, decision: btn.dataset.d, reason: why })
       });
       var out = await r.json();
@@ -1085,16 +1085,36 @@ function draw(){
    * you can look at before installing anything. What it must never do is show
    * example data while looking live, so the label says which one you are in.
    */
+  /**
+   * This run's token, from the link `seisin ui` opened.
+   *
+   * It arrives in the fragment (#t=…), which the browser never sends to any
+   * server, and it is moved into this tab's storage and wiped from the address
+   * bar and the history entry at once. The server no longer puts it in the
+   * page: anything that could GET "/" used to walk away with it.
+   */
+  var TOKEN = (function(){
+    var m = /(?:^#|&)t=([a-f0-9]+)/.exec(location.hash || "");
+    try {
+      if (m) { sessionStorage.setItem("seisin-token", m[1]); }
+      var t = m ? m[1] : (sessionStorage.getItem("seisin-token") || "");
+      if (m) history.replaceState(null, "", location.pathname + location.search);
+      return t;
+    } catch (_) { return m ? m[1] : ""; }
+  })();
+
   async function boot(){
     let s = null;
     try {
-      const r = await fetch("/api/state", { cache: "no-store" });
+      const r = await fetch("/api/state", { cache: "no-store", headers: { "x-seisin-token": TOKEN } });
       if (r.ok) s = await r.json();
     } catch (_) { /* opened as a file: stay in demo */ }
 
     const label = document.getElementById("source");
     if (!s || s.error) {
-      label.textContent = "example policy — not your repo";
+      label.textContent = location.protocol.startsWith("http") && !TOKEN
+        ? "no token — open the link `seisin ui` printed · showing an example"
+        : "example policy — not your repo";
       label.style.color = "var(--amber)";
       draw();
       return;
@@ -1227,7 +1247,7 @@ function route(){ return (location.hash || "#requests").slice(1); }
 
   async function refreshLog(){
     try {
-      const r = await fetch("/api/state", { cache: "no-store" });
+      const r = await fetch("/api/state", { cache: "no-store", headers: { "x-seisin-token": TOKEN } });
       if (!r.ok) return;
       const s = await r.json();
       if (s.error) return;
@@ -1250,7 +1270,7 @@ function route(){ return (location.hash || "#requests").slice(1); }
 
   /** Everything again, after a decision rewrote the policy on disk. */
   async function reload(){
-    const r = await fetch("/api/state", { cache: "no-store" });
+    const r = await fetch("/api/state", { cache: "no-store", headers: { "x-seisin-token": TOKEN } });
     const s = await r.json();
     if (s.error) return;
     KEYDIR = (s.keyDirs && s.keyDirs[0]) || ".secrets";

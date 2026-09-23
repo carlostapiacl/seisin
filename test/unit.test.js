@@ -1214,8 +1214,9 @@ async function consola(t) {
   const port = server.address().port;
   t.after(() => server.close());
 
-  const page = await (await fetch(`http://127.0.0.1:${port}/`)).text();
-  const token = (page.match(/window\.SEISIN_TOKEN=\"([a-f0-9]+)\"/) ?? [])[1];
+  // El token ya no viaja en la página: `seisin ui` lo pone en el fragmento del
+  // enlace. La prueba lo toma de donde lo toma `ui`.
+  const token = server.seisinToken;
   const post = (body, tok = token) =>
     fetch(`http://127.0.0.1:${port}/api/decide`, {
       method: "POST",
@@ -1225,7 +1226,7 @@ async function consola(t) {
   return { box, port, token, post };
 }
 
-test("the console hands the page a token and refuses a write without it", async (t) => {
+test("the console refuses a write without the token", async (t) => {
   // Loopback no es una frontera contra el navegador: cualquier pestaña abierta
   // puede hacer POST a 127.0.0.1. Lo que no puede es leer este token.
   const { token, post, box } = await consola(t);
@@ -1264,9 +1265,32 @@ test("the console refuses a decision it does not understand", async (t) => {
   assert.ok(!readFileSync(join(box, "seisin.toml"), "utf8").includes("checkout"));
 });
 
+test("the page never carries the token, and every /api/ route asks for it", async (t) => {
+  // Revisión del 2026-09-22: con local_binding un rol leía el token de `GET /`
+  // y se aprobaba sus propias requests; /api/state le daba la política sin token.
+  const { port, token } = await consola(t);
+  const page = await (await fetch(`http://127.0.0.1:${port}/`)).text();
+  assert.ok(!page.includes(token), "the token is in the page again");
+  assert.equal((await fetch(`http://127.0.0.1:${port}/api/state`)).status, 403);
+  const ok = await fetch(`http://127.0.0.1:${port}/api/state`, { headers: { "x-seisin-token": token } });
+  assert.equal(ok.status, 200);
+});
+
+test("the console only answers to its own host name", async (t) => {
+  // DNS rebinding: un dominio ajeno apuntado a 127.0.0.1 llega con otro Host.
+  const { port, token } = await consola(t);
+  const { request } = await import("node:http");
+  const status = await new Promise((ok, fail) => {
+    const r = request({ host: "127.0.0.1", port, path: "/api/state",
+      headers: { host: `evil.example:${port}`, "x-seisin-token": token } }, (res) => ok(res.statusCode));
+    r.on("error", fail); r.end();
+  });
+  assert.equal(status, 403);
+});
+
 test("the console's state carries the queue the page renders", async (t) => {
-  const { port } = await consola(t);
-  const s = await (await fetch(`http://127.0.0.1:${port}/api/state`)).json();
+  const { port, token } = await consola(t);
+  const s = await (await fetch(`http://127.0.0.1:${port}/api/state`, { headers: { "x-seisin-token": token } })).json();
   assert.equal(s.requests.length, 1);
   assert.equal(s.requests[0].grant, "src/api/checkout/**");
   assert.deepEqual(s.requests[0].owners, ["backend"]);

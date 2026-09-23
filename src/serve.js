@@ -240,6 +240,38 @@ export function serve(configPath, port = 4178) {
   const token = randomBytes(24).toString("hex");
 
   /**
+   * Every route under /api/ asks for the token, reads included.
+   *
+   * The page used to be the only thing that carried the token and /api/state
+   * answered anyone. Both rested on "an agent cannot reach loopback", and
+   * `local_binding = true` on macOS makes that false: the runtime lets that
+   * role connect to every localhost port, and loopback bypasses the egress
+   * proxy. Reproduced end to end by a read-only review on 2026-09-22 — a role
+   * read the token off `GET /`, posted to /api/decide, and approved its own
+   * request into another role's territory. /api/state handed it the policy, the
+   * log and where every key lives, with no token at all.
+   *
+   * So the token no longer travels in any response. `seisin ui` puts it in the
+   * URL fragment, which a browser never sends to a server; the page takes it
+   * from there, keeps it for the tab, and removes it from the address bar and
+   * the history entry. Anything that fetches `/` gets a page with no token in it.
+   */
+  const authorized = (req) => req.headers["x-seisin-token"] === token;
+
+  /**
+   * The Host header has to name this server.
+   *
+   * A page on the operator's browser can point a hostname it controls at
+   * 127.0.0.1 (DNS rebinding) and then read responses as same-origin. It still
+   * could not produce the token, but the check is one line and makes the
+   * question moot: the only names this server answers to are its own.
+   */
+  const hostOk = (req, port) => {
+    const h = String(req.headers.host ?? "");
+    return h === `127.0.0.1:${port}` || h === `localhost:${port}`;
+  };
+
+  /**
    * The path, without whatever came after `?`.
    *
    * `req.url` is the raw request target, so a query string made every route
@@ -250,11 +282,15 @@ export function serve(configPath, port = 4178) {
   const pathOf = (u) => (u ?? "/").split("?")[0];
 
   const server = createServer(async (req, res) => {
+    if (!hostOk(req, server.address()?.port)) {
+      res.writeHead(403, { "content-type": "text/plain" });
+      return res.end("wrong host");
+    }
+    if (pathOf(req.url).startsWith("/api/") && !authorized(req)) {
+      res.writeHead(403, { "content-type": "application/json" });
+      return res.end(JSON.stringify({ error: "bad or missing token — open the URL `seisin ui` printed" }));
+    }
     if (req.method === "POST" && pathOf(req.url) === "/api/decide") {
-      if (req.headers["x-seisin-token"] !== token) {
-        res.writeHead(403, { "content-type": "application/json" });
-        return res.end(JSON.stringify({ error: "bad or missing token" }));
-      }
       try {
         const out = decide(configPath, JSON.parse((await readBody(req)) || "{}"));
         res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
@@ -281,10 +317,9 @@ export function serve(configPath, port = 4178) {
       return res.end(body);
     }
     if (pathOf(req.url) === "/" || pathOf(req.url) === "/index.html") {
-      // Inlined rather than put in the URL: a fragment survives in history, in
-      // a screenshot, and in whatever the operator pastes into a chat.
-      const html = readFileSync(page, "utf8")
-        .replace("</head>", `<script>window.SEISIN_TOKEN=${JSON.stringify(token)}</script></head>`);
+      // No token in here. It used to be inlined, which handed it to anything
+      // that could GET this page — see `authorized` above.
+      const html = readFileSync(page, "utf8");
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
       return res.end(html);
     }
@@ -294,7 +329,11 @@ export function serve(configPath, port = 4178) {
   return new Promise((ok, fail) => {
     // Loopback only. The page maps where every credential lives; it has no
     // business being reachable from the network the laptop happens to be on.
-    server.listen(port, "127.0.0.1", () => ok(server));
+    server.listen(port, "127.0.0.1", () => {
+      // For `seisin ui`, which builds the URL, and for tests. Never sent.
+      Object.defineProperty(server, "seisinToken", { value: token });
+      ok(server);
+    });
     server.on("error", (e) =>
       fail(e.code === "EADDRINUSE"
         ? new Error(`port ${port} is busy — pass another with: seisin ui --port <n>`)
