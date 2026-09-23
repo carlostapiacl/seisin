@@ -6,7 +6,7 @@ boundary did not hold. Those do not go in a public issue.
 **Use [private vulnerability reporting][pvr]** on this repository — GitHub's own channel,
 visible to the maintainer and to you, and nobody else until there is a fix to talk about.
 
-[pvr]: https://github.com/carlostapiaolguin3-stack/seisin/security/advisories/new
+[pvr]: https://github.com/carlostapiacl/seisin/security/advisories/new
 
 ## What counts
 

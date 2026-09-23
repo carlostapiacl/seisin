@@ -1,13 +1,13 @@
 # seisin
 
-[![test](https://github.com/carlostapiaolguin3-stack/seisin/actions/workflows/test.yml/badge.svg)](https://github.com/carlostapiaolguin3-stack/seisin/actions/workflows/test.yml)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/carlostapiaolguin3-stack/seisin/badge)](https://scorecard.dev/viewer/?uri=github.com/carlostapiaolguin3-stack/seisin)
+[![test](https://github.com/carlostapiacl/seisin/actions/workflows/test.yml/badge.svg)](https://github.com/carlostapiacl/seisin/actions/workflows/test.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/carlostapiacl/seisin/badge)](https://scorecard.dev/viewer/?uri=github.com/carlostapiacl/seisin)
 [![npm](https://img.shields.io/npm/v/seisin?color=222)](https://www.npmjs.com/package/seisin)
 [![license](https://img.shields.io/badge/license-MIT-222)](LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A518-222)](package.json)
 [![no dependencies](https://img.shields.io/badge/dependencies-1-222)](package.json)
 
-**[The short version, with the demos playing →](https://carlostapiaolguin3-stack.github.io/seisin/)** · this page is the long one.
+**[The short version, with the demos playing →](https://carlostapiacl.github.io/seisin/)** · this page is the long one.
 
 > **seisin** *(n.)* — the legal possession of a piece of land. Not who owns it on paper: who holds it now.
 

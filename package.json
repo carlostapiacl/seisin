@@ -17,13 +17,13 @@
   ],
   "license": "MIT",
   "author": "Carlos Tapia",
-  "homepage": "https://carlostapiaolguin3-stack.github.io/seisin/",
+  "homepage": "https://carlostapiacl.github.io/seisin/",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/carlostapiaolguin3-stack/seisin.git"
+    "url": "git+https://github.com/carlostapiacl/seisin.git"
   },
   "bugs": {
-    "url": "https://github.com/carlostapiaolguin3-stack/seisin/issues"
+    "url": "https://github.com/carlostapiacl/seisin/issues"
   },
   "type": "module",
   "bin": {

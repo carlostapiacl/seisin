@@ -7,7 +7,7 @@
 # suite has to pass on both kernels first.
 #
 # One-time setup, by the maintainer on npmjs.com: package settings → Trusted
-# publishing → GitHub Actions, repository carlostapiaolguin3-stack/seisin,
+# publishing → GitHub Actions, repository carlostapiacl/seisin,
 # workflow publish.yml. Until then the job falls back to an NPM_TOKEN secret if
 # one exists, and fails loudly if neither does.
 name: publish

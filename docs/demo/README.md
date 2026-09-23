@@ -70,7 +70,7 @@ Thirty seconds, nothing installed, nothing of yours touched — it works in a
 temp directory and deletes it on the way out.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/carlostapiaolguin3-stack/seisin/main/docs/demo/writable-means-deletable.sh | bash
+curl -fsSL https://raw.githubusercontent.com/carlostapiacl/seisin/main/docs/demo/writable-means-deletable.sh | bash
 ```
 
 Or read [the script](writable-means-deletable.sh) first, which is the better

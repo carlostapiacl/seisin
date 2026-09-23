@@ -70,7 +70,7 @@ const LIMITS = [
       "equivalent to read here — bubblewrap does not log refusals, and the runtime's substitute " +
       "is not reachable from outside it. The boundary holds exactly as well; what you lose is " +
       "seeing it work. Run `seisin wire` so the hook records what it can. The ask is upstream: " +
-      "github.com/carlostapiaolguin3-stack/seisin/blob/main/docs/upstream/cli-violations.md",
+      "github.com/carlostapiacl/seisin/blob/main/docs/upstream/cli-violations.md",
   }]),
   {
     kind: "keys-only-what-you-declared",
@@ -90,7 +90,7 @@ const LIMITS = [
       "library can read them; nothing reaches a caller that runs the binary, which is what " +
       "seisin does. So for an agent whose endpoints are not published, the options are to " +
       "find them another way or drop the network restriction for it. The ask is upstream: " +
-      "github.com/carlostapiaolguin3-stack/seisin/blob/main/docs/upstream/cli-violations.md",
+      "github.com/carlostapiacl/seisin/blob/main/docs/upstream/cli-violations.md",
   },
   {
     kind: "unlink-uncovered",
@@ -100,7 +100,7 @@ const LIMITS = [
       // package, so for most readers it named a file they do not have.
       "writes and deletes are one permission to the kernel, so `rm` inside a " +
       "role's own folders succeeds. Closing it needs denyUnlink in the sandbox " +
-      "runtime: github.com/carlostapiaolguin3-stack/seisin#how-it-holds",
+      "runtime: github.com/carlostapiacl/seisin#how-it-holds",
   },
 ];
 

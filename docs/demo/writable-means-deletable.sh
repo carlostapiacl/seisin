@@ -59,5 +59,5 @@ cat <<'TEXT'
   there is no way to ask for anything narrower.
 
   The ask is filed upstream:  github.com/anthropics/sandbox-runtime/issues/545
-  What measured its cost:     github.com/carlostapiaolguin3-stack/seisin
+  What measured its cost:     github.com/carlostapiacl/seisin
 TEXT
