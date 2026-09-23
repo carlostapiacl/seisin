@@ -266,7 +266,9 @@ by `seisin check` instead of being ignored.
 
 A role that starts a server — a dev server, the backend an end-to-end test drives — needs
 `local_binding = true`. Listening is off by default and per role: most roles never start one.
-It opens binding on local ports and nothing else; what the role can reach is still `network`.
+It is wider than the name: the role can also listen on every interface and **connect to every
+port on localhost**, so anything listening there without authentication is within its reach.
+`seisin check` says this next to the role.
 
 `seisin init` will propose this from whatever your repo already says: `.claude/agents/`, then `CODEOWNERS`, then a blank start. It **proposes** — a generated policy you did not read is not a policy.
 

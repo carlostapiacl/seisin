@@ -138,6 +138,14 @@ function roleKeyWarnings(roles) {
             : "Nothing in it takes effect."),
       });
     }
+    if (r.localBinding)
+      warnings.push({
+        kind: "local-binding-reaches-localhost",
+        headline: `${r.name}: local_binding lets it connect to every port on localhost, not only listen`,
+        detail: "The runtime grants bind on any interface, inbound, and outbound to localhost:*. " +
+          "Anything listening on this machine without authentication — a local control API, a " +
+          "database, a dev server — is within this role's reach, outside its territory.",
+      });
     for (const g of r.neverWrites ?? []) {
       if (r.writes.some((w) => covers(w, g) || covers(w, g.replace(/\/\*\*$/, ""))))
         continue;

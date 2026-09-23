@@ -398,8 +398,8 @@ export function loadConfig(path) {
        *
        * Off unless the role says so, and per role because most roles never
        * start a server: an agent that edits docs has no business accepting
-       * connections. It only opens *binding*; what the role can reach is still
-       * `network`, unchanged.
+       * connections. Wider than the name: the runtime also lets the role listen
+       * on every interface and connect to every localhost port. See `check`.
        */
       localBinding: localBinding === true,
       // Kept so `check` can name a misspelt key instead of ignoring it. An
