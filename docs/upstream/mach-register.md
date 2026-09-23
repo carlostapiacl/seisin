@@ -4,11 +4,20 @@
 [PR #598][598] (opened 2026-09-22, awaiting review), which adds `network.allowMachRegister`.
 Not in 0.0.76 or 0.0.77 as of 2026-09-23.
 
-**Reviewed on the PR, 2026-09-23** ([review](https://github.com/anthropics/sandbox-runtime/pull/598#pullrequestreview-5295911678)):
-built the branch and ran it through `srt --settings` with Playwright's Chromium. It works, with 4
-browsers in parallel too. We suggested two doc lines: register needs the matching lookup
-(register alone hangs), and Playwright's Chromium uses `org.chromium.Chromium.*`, not the
-example's prefix.
+**Our part on the PR, 2026-09-23:**
+- [Review](https://github.com/anthropics/sandbox-runtime/pull/598#pullrequestreview-5295911678):
+  built the branch, ran Playwright's Chromium through `srt --settings`. It works, with 4 browsers
+  in parallel too. Two doc suggestions: register needs the matching lookup (register alone
+  hangs), and Playwright's Chromium uses `org.chromium.Chromium.*`.
+- The author applied both and added a warning (`43dca4c`): `srt` now warns when
+  `allowMachRegister` has no `allowMachLookup` covering it. He asked whether register should
+  imply the lookup; [we answered no](https://github.com/anthropics/sandbox-runtime/pull/598#issuecomment-5802898145),
+  keep it explicit, and confirmed the warning in the four cases with Chromium.
+- Full suite on macOS 15.7 x86_64: 1216 pass, 680 skip, 1 fail (environmental, fails on `main`
+  too).
+
+What seisin should do once it ships: offer both rules per role, lookup included, since the
+runtime won't imply it.
 
 This page keeps our measurement. The PR reproduces with a small C probe; this is Playwright's
 Chromium end to end, and it shows `mach-register` alone isn't enough.
