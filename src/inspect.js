@@ -30,7 +30,7 @@ export function inspect(config, only = null, where = config.path) {
 
   return {
     where,
-    roles: roles.map((r) => ({ name: r.name, writes: r.writes, keys: r.keys, neverWrites: r.neverWrites ?? [], localBinding: r.localBinding === true })),
+    roles: roles.map((r) => ({ name: r.name, writes: r.writes, keys: r.keys, neverWrites: r.neverWrites ?? [], localBinding: r.localBinding === true, trustd: r.trustd === true })),
     /**
      * The provider commands this config would run, listed because they are the
      * one thing in a `seisin.toml` that **executes**, and it executes in the
@@ -145,6 +145,14 @@ function roleKeyWarnings(roles) {
         detail: "The runtime grants bind on any interface, inbound, and outbound to localhost:*. " +
           "Anything listening on this machine without authentication — a local control API, a " +
           "database, a dev server — is within this role's reach, outside its territory.",
+      });
+    if (r.trustd)
+      warnings.push({
+        kind: "trustd-open",
+        headline: `${r.name}: trustd = true opens com.apple.trustd.agent, a path out that the domain list does not see`,
+        detail: "trustd verifies certificates for Go (before 1.27) and Dart on macOS, and to do it fetches, " +
+          "outside the sandbox, the URLs a certificate carries. The runtime calls it an exfiltration vector; " +
+          "no public demonstration exists. Go 1.27+ does not need it: seisin sets SSL_CERT_FILE.",
       });
     for (const g of r.neverWrites ?? []) {
       if (r.writes.some((w) => covers(w, g) || covers(w, g.replace(/\/\*\*$/, ""))))

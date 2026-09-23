@@ -63,3 +63,25 @@ Where these stand: the sibling case is a `check` warning instead of a surprise, 
 case is resolved in the tool, the SQLite case is named by the hook, and the git one is
 friction that gets logged rather than silenced — a boundary that hides what it denied is the
 thing this project exists to argue against.
+
+**5 · Go and Dart fail TLS on macOS although the domain is allowed.** The error is
+`x509: OSStatus -26276` (Go — `gh`, kubectl, terraform, `go get`) or `CERTIFICATE_VERIFY_FAILED:
+application verification failure` (Dart/Flutter), and it is not the domain list: a blocked
+domain reads `CONNECT tunnel failed, response 403`. On macOS these tools ask the system whether
+a certificate is valid, the system answers through `com.apple.trustd.agent`, and the sandbox
+closes that service. It happens with a plain tunnel, no TLS interception involved — measured,
+and against what the runtime's docs say.
+
+What seisin does about it:
+
+- **Go 1.27 and later** verify against `SSL_CERT_FILE` instead of asking the system, and seisin
+  sets it to the system bundle by default. `go get` works with trustd still shut. A parent that
+  sets its own `SSL_CERT_FILE` or `SSL_CERT_DIR` keeps it.
+- **Go built before 1.27** (check with `go version -m $(which gh)`) and **every Dart/Flutter**
+  have no such switch. `trustd = true` on the role opens that one service; `check` says what it
+  costs next to the role. Or keep the role offline: Flutter works with packages already fetched
+  (`pub get --offline`, `flutter test --no-pub`).
+- **Node's `fetch()`** ignored the proxy and failed with `ENOTFOUND`; seisin sets
+  `NODE_USE_ENV_PROXY=1`, which Node 24 reads.
+
+[Every agent sandbox answered this differently — the comparison →](decisions.md#trustd-every-sandbox-chose-a-side)

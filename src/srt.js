@@ -416,6 +416,15 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
         ...providerPaths(config),
       ],
     },
+    /**
+     * `trustd = true`: the one Mach service TLS needs on macOS for tools that
+     * verify through the Security framework — Go before 1.27 (gh, kubectl,
+     * terraform) and every Dart/Flutter. The runtime ships it as
+     * `enableWeakerNetworkIsolation` and warns it is an exfiltration path:
+     * trustd fetches, outside the box, the URLs a certificate carries. Per role
+     * and off by default, so the answer is written next to the role that needs it.
+     */
+    ...(role.trustd === true ? { enableWeakerNetworkIsolation: true } : {}),
   };
 }
 

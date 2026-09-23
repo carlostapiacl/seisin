@@ -40,6 +40,16 @@ changed rather than failing on the old spelling.
   a local control API with no authentication. Grant it to a role only where nothing on
   localhost would act on an unauthenticated request.
 
+- **TLS on macOS: Go and Node work inside the box, and `trustd = true` for what still cannot.**
+  Go and Dart verify certificates by asking `com.apple.trustd.agent`, which the sandbox closes,
+  so `gh`, `go get` and `flutter pub get` failed with the domain allowed — with a plain tunnel,
+  no interception. seisin now sets `SSL_CERT_FILE` to the system bundle (only where it exists,
+  and never over one the parent set), which Go 1.27+ uses instead of the system verifier, and
+  `NODE_USE_ENV_PROXY=1` so `fetch()` uses the proxy. For Dart and for Go built before 1.27,
+  `trustd = true` opens that one service for that one role, and `check` says what it costs.
+  Measured: Go 1.27 and Node pass by default; `gh` (Go 1.26) and Dart pass only with the key.
+  [Why, and how the other sandboxes answered it →](docs/decisions.md#trustd-every-sandbox-chose-a-side)
+
 ## 0.2.0 — 2026-09-21
 
 - **Written down: HTTP(S) works and SSH does not, and the reason is not the one anybody
