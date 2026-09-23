@@ -69,6 +69,8 @@ export function renderReport(report) {
     // on every role is noise that teaches the reader to skip the one that matters.
     if (r.neverWrites?.length)
       lines.push(`  ${" ".repeat(width)}  ${C.yellow}never${C.off}  ${r.neverWrites.join(" ")}\n`);
+    if (r.localBinding)
+      lines.push(`  ${" ".repeat(width)}  ${C.yellow}listen${C.off} local ports (local_binding)\n`);
     lines.push(`  ${" ".repeat(width)}  ${C.green}keys${C.off}   ${keys}\n\n`);
   }
 
