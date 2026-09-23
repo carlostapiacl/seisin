@@ -8,6 +8,9 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **A mark.** An S drawn as a property line splitting one plot between two holders, with the held
+  side filled. It is the favicon of the console and the project page, and it sits beside the name
+  in the console's sidebar, where it follows the light or dark theme.
 - **The log is chained, and `seisin log verify` checks it.** Every line carries `prev`, the hash of
   the line before it, so editing, deleting or reordering a line shows — the log is the record of
   who was refused what, and it could be rewritten without a trace. A lock keeps several roles of

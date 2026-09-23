@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>seisin console</title>
-<!-- A plot map, which is what the word means: seisin is the legal term for possession
-     of a freehold estate in LAND. The square is the repo, the lines divide it into
-     parcels, and one parcel is claimed. Two strokes and one fill so the divisions
-     survive at 16px, where a favicon actually lives. Also in ui/favicon.svg for anyone
-     who wants the file; inline here so the console needs no second route to serve it. -->
-<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%228%22%20fill%3D%22%2312161c%22%2F%3E%3Cg%20clip-path%3D%22url%28%23p%29%22%3E%3CclipPath%20id%3D%22p%22%3E%3Crect%20x%3D%226%22%20y%3D%226%22%20width%3D%2220%22%20height%3D%2220%22%20rx%3D%224%22%2F%3E%3C%2FclipPath%3E%3Crect%20x%3D%226%22%20y%3D%226%22%20width%3D%229%22%20height%3D%2211%22%20fill%3D%22%233fb950%22%2F%3E%3C%2Fg%3E%3Crect%20x%3D%226%22%20y%3D%226%22%20width%3D%2220%22%20height%3D%2220%22%20rx%3D%224%22%20fill%3D%22none%22%20stroke%3D%22%23e6edf3%22%20stroke-width%3D%222.6%22%2F%3E%3Cpath%20d%3D%22M15%206v11M6%2017h20%22%20stroke%3D%22%23e6edf3%22%20stroke-width%3D%222.6%22%20stroke-linecap%3D%22square%22%2F%3E%3C%2Fsvg%3E">
+<!-- A boundary, which is what the word is about: seisin is the legal term for who
+     actually holds a piece of LAND. The S is a property line splitting one plot between
+     two holders, and the filled side is held. One stroke and one fill so it survives at
+     16px, where a favicon actually lives. Also in ui/favicon.svg for anyone who wants
+     the file; inline here so the console needs no second route to serve it. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%231f2328%22%2F%3E%3Cpath%20d%3D%22M16%205.5C8%205.5%208%2016%2016%2016S24%2026.5%2016%2026.5H26.5V5.5Z%22%20fill%3D%22%232da44e%22%2F%3E%3Cpath%20d%3D%22M16%205.5C8%205.5%208%2016%2016%2016S24%2026.5%2016%2026.5%22%20fill%3D%22none%22%20stroke%3D%22%23fff%22%20stroke-width%3D%222.8%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E">
 <meta name="description" content="Which folders each agent writes, which keys it may read, and whose a path is when the answer is no.">
 <meta name="color-scheme" content="light dark">
 <style>
@@ -60,6 +60,8 @@ body{margin:0;background:var(--bg);color:var(--fg);
 .brand{padding:15px 14px 13px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
 .brand b{font-size:15px;font-weight:600;letter-spacing:-.01em}
 .brand small{font-size:11px;color:var(--mid);display:block;margin-top:1px}
+.brand .id{display:flex;align-items:center;gap:10px}
+.brand .mark{width:28px;height:28px;flex:none}
 .theme{display:flex;gap:2px;background:var(--hover);border-radius:6px;padding:2px}
 .theme button{flex:1;border:0;background:none;color:var(--mid);padding:4px 0;border-radius:4px;
   cursor:pointer;font:inherit;font-size:12px}
@@ -289,7 +291,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
 
   <nav class="side">
     <div class="brand">
-      <div><b>seisin</b><small id="source">folders and keys, per agent</small></div>
+      <div class="id"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--fg)"/><path d="M16 5.5C8 5.5 8 16 16 16S24 26.5 16 26.5H26.5V5.5Z" fill="var(--green)"/><path d="M16 5.5C8 5.5 8 16 16 16S24 26.5 16 26.5" fill="none" stroke="var(--bg)" stroke-width="2.8" stroke-linecap="round"/></svg><div><b>seisin</b><small id="source">folders and keys, per agent</small></div></div>
       <div class="theme" role="group" aria-label="Theme">
         <button type="button" id="t-light">light</button>
         <button type="button" id="t-dark">dark</button>

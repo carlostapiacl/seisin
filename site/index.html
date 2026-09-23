@@ -48,7 +48,8 @@ code{font-family:var(--mono); font-size:.88em}
 
 /* hero */
 header{padding:64px 0 34px; border-bottom:1px solid var(--line)}
-.name{font-family:var(--mono); font-size:2.6rem; font-weight:600; letter-spacing:-.04em}
+.name{font-family:var(--mono); font-size:2.6rem; font-weight:600; letter-spacing:-.04em; display:flex; align-items:center; gap:14px}
+.name .mark{width:1.05em; height:1.05em; flex:none}
 .defn{color:var(--dim); font-size:1rem; margin:.3rem 0 1.4rem; max-width:52ch}
 .defn em{color:var(--ink)}
 .lede{font-size:1.28rem; line-height:1.45; max-width:30ch; font-weight:500; margin:0 0 .2rem}
@@ -171,7 +172,7 @@ svg.flow path,svg.flow line{stroke:var(--line); fill:none}
 
 <header>
   <div class="wrap">
-    <div class="name">seisin</div>
+    <div class="name"><img class="mark" src="favicon.svg" alt="" width="44" height="44">seisin</div>
     <p class="defn"><em>seisin</em> <span class="dim">(n.)</span> — the legal possession of a piece of land. Not who owns it on paper: who holds it now.</p>
 
     <p class="lede">Give each AI agent its own folders and its own keys.</p>
