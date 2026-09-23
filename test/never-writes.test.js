@@ -39,8 +39,9 @@ function repoWith(toml, touch = []) {
   // and then say the same thing on both kernels. The Linux-only test below is
   // the one about a path that does not exist.
   for (const f of touch) {
+    if (f.endsWith("/")) { mkdirSync(join(dir, f), { recursive: true }); continue; }
     mkdirSync(dirname(join(dir, f)), { recursive: true });
-    if (!f.endsWith("/")) writeFileSync(join(dir, f), "");
+    writeFileSync(join(dir, f), "");
   }
   return dir;
 }
