@@ -103,3 +103,32 @@ test("anything the console derives is reachable over MCP", () => {
     assert.ok(names.includes("seisin_" + k),
       `the console computes ${k} and no MCP tool exposes it`);
 });
+
+test("the time window narrows what comes from the log, and nothing else", async () => {
+  const { state, sinceOf } = await import("../src/serve.js");
+  const { mkdtempSync, mkdirSync, writeFileSync } = await import("node:fs");
+  const { join, dirname } = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const box = join(dirname(fileURLToPath(import.meta.url)), ".sandbox-box");
+  mkdirSync(box, { recursive: true });
+  const dir = mkdtempSync(join(box, "window-"));
+  writeFileSync(join(dir, "seisin.toml"), '[roles.a]\nwrites = ["src/**"]\n');
+  mkdirSync(join(dir, ".seisin"));
+  const line = (at, target) => JSON.stringify({ at, role: "a", action: "write", target, verdict: "denied", owners: [] });
+  writeFileSync(join(dir, ".seisin", "log.jsonl"),
+    [line("2026-09-20T10:00:00.000Z", "old/x.ts"), line("2026-09-23T10:00:00.000Z", "new/y.ts")].join("\n") + "\n");
+
+  const all = state(join(dir, "seisin.toml"));
+  assert.equal(all.causes.total, 2);
+  assert.equal(all.roles[0].blocks, 2);
+
+  const since = sinceOf("/api/state?since=2026-09-22T00:00:00.000Z");
+  const recent = state(join(dir, "seisin.toml"), { since });
+  assert.equal(recent.since, "2026-09-22T00:00:00.000Z");
+  assert.equal(recent.causes.total, 1);
+  assert.deepEqual(recent.log.map((e) => e.target), ["new/y.ts"]);
+  assert.equal(recent.roles[0].blocks, 1, "the per-role count follows the window");
+
+  assert.equal(sinceOf("/api/state"), null);
+  assert.equal(sinceOf("/api/state?since=yesterday-ish"), null, "a bad filter shows everything");
+});

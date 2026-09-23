@@ -143,12 +143,25 @@ export function causesOf(cfg, entries) {
   };
 }
 
-function state(configPath) {
+/**
+ * `?since=<ISO date>`, or null for no filter. Anything that does not parse is
+ * ignored rather than refused: a bad filter should show everything, not an error.
+ */
+export function sinceOf(url) {
+  const raw = new URLSearchParams((url ?? "").split("?")[1] ?? "").get("since");
+  const t = raw ? Date.parse(raw) : NaN;
+  return Number.isNaN(t) ? null : new Date(t).toISOString();
+}
+
+export function state(configPath, { since = null } = {}) {
   const cfg = loadConfig(configPath);
-  const entries = read(logPath(cfg.root), { limit: 200 });
+  // The date filter narrows everything read from the log: activity, causes,
+  // walls and the per-role counts. Not the request queue, which is what is
+  // waiting now whatever the window.
+  const entries = read(logPath(cfg.root), { limit: 200, since });
   // A wider window than the activity tail, because grouping by cause is an
   // arithmetic question and 200 lines of a busy day is one role's morning.
-  const forShape = read(logPath(cfg.root), { limit: 4000 });
+  const forShape = read(logPath(cfg.root), since ? { since } : { limit: 4000 });
 
   const roles = Object.values(cfg.roles).map((r) => ({
     name: r.name,
@@ -159,16 +172,22 @@ function state(configPath) {
     localBinding: r.localBinding === true,
     localPorts: r.localPorts ?? [],
     trustd: r.trustd === true,
-    blocks: entries.filter((e) => e.role === r.name && e.verdict === "denied").length,
+    // Counted over the same window as the causes, so the KPI and the screen it
+    // links to agree.
+    blocks: forShape.filter((e) => e.role === r.name && e.verdict === "denied").length,
     settings: settingsFor(cfg, r.name),
   }));
 
   // Read once for every role's walls, rather than once per role.
-  const whole = read(logPath(cfg.root), { verdict: "denied" });
+  const whole = read(logPath(cfg.root), { verdict: "denied", since });
+  // Staleness is about the role's whole history, never the window: a request
+  // is not old just because the filter hides the runs that made it old.
+  const history = since ? read(logPath(cfg.root), { verdict: "denied" }) : whole;
   return {
     root: cfg.root,
     config: cfg.path,
-    requests: markStale(pending(requestsPath(cfg.root)), whole),
+    requests: markStale(pending(requestsPath(cfg.root)), history),
+    since,
     // The file itself, not a regeneration of it. The page can render a policy
     // from its own model, and that model has no comments — so showing it under
     // the heading "seisin.toml" next to "copy this back" invites someone to
@@ -356,7 +375,7 @@ export function serve(configPath, port = 4178) {
     if (pathOf(req.url) === "/api/state") {
       let body;
       try {
-        body = JSON.stringify(state(configPath));
+        body = JSON.stringify(state(configPath, { since: sinceOf(req.url) }));
       } catch (e) {
         res.writeHead(500, { "content-type": "application/json" });
         return res.end(JSON.stringify({ error: e.message }));
