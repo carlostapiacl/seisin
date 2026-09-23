@@ -73,7 +73,7 @@ function findings(config, entries, minDenials) {
   const stopped = new Map();                 // role + directory -> how often
   for (const e of entries) {
     if (e.verdict !== "denied" || !e.target) continue;
-    const dir = e.action === "read" ? e.target : dirOf(e.target);
+    const dir = e.action === "read" || e.action === "connect" ? e.target : dirOf(e.target);
     const key = `${e.role} ${e.action} ${dir}`;
     const seen = stopped.get(key) ?? {
       role: e.role, action: e.action, where: dir, times: 0,
@@ -81,7 +81,7 @@ function findings(config, entries, minDenials) {
       // Carried by the log from both writers — the hook sets it from the config
       // and so does the parent for a kernel denial. Recomputing it from the path
       // here would be a second opinion on a settled question.
-      kind: e.kind === "key" ? "key" : "file",
+      kind: e.kind === "key" || e.kind === "network" ? e.kind : "file",
     };
     seen.times++;
     stopped.set(key, seen);
@@ -91,8 +91,10 @@ function findings(config, entries, minDenials) {
     .filter((f) => f.times >= minDenials)
     .sort((a, b) => b.times - a.times);
 
-  const friction = repeated.filter((f) => f.kind !== "key");
+  const friction = repeated.filter((f) => f.kind !== "key" && f.kind !== "network");
   const guarded = repeated.filter((f) => f.kind === "key");
+  // Ports and sockets: repeated, and not a thing `grant` can answer.
+  const connects = repeated.filter((f) => f.kind === "network");
 
   /* ── 2. what was granted and never used ─────────────────────────────── */
 
@@ -144,7 +146,9 @@ function findings(config, entries, minDenials) {
 
   const unowned = new Map();
   for (const e of entries) {
-    if (!e.target || e.kind === "key") continue;
+    // A key directory is closed on purpose; a port or a socket is not a path
+    // anybody could own. Neither is a hole in the map.
+    if (!e.target || e.kind === "key" || e.kind === "network") continue;
     if (ownersOf(config, e.target).length) continue;
     const dir = dirOf(e.target);
     unowned.set(dir, (unowned.get(dir) ?? 0) + 1);
@@ -153,6 +157,7 @@ function findings(config, entries, minDenials) {
   return {
     friction,
     guarded,
+    connects,
     unused,
     unusedKnowable: knowable,
     unowned: [...unowned.entries()]

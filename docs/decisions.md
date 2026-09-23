@@ -608,6 +608,77 @@ What the warning rests on: trustd fetches, outside the sandbox, the URLs a certi
 choosing. No public demonstration of that exists. Allowing a domain like `github.com` already
 opens a comparable path — the runtime's own docs say so — so trustd adds a path, not a category.
 
+## `local_ports`: the proxy enforces the port, not the kernel
+
+The need is ordinary: a role that runs an end-to-end suite has to reach the API under test
+(8001), the built front (8081) and sometimes its database (3307) — and must not reach the
+control API of the agent team listening on 8787 without a password. `local_binding` cannot
+say that. The Seatbelt profile the runtime generates has two answers for loopback: nothing,
+or `(remote ip "localhost:*")`. There is no option to emit `localhost:8001` alone, and no way
+to add a line to the profile from outside.
+
+The runtime's proxy is the one component that sees a destination port, and its allowlist
+already takes `host:port`. It refuses loopback unless the literal and the port are listed, so
+`127.0.0.1:8001` opens 8001 and nothing else. Two things make that usable:
+
+- **Every spelling is listed** — `localhost:N`, `127.0.0.1:N`, `[::1]:N` — because a client says
+  whichever it says.
+- **Loopback is taken out of `NO_PROXY` for that role.** The runtime always exempts it, which
+  sends the client past the proxy and into the kernel, which refuses. seisin prefixes the
+  command with `env NO_PROXY=<the runtime's list minus loopback>` — inside the box is the only
+  place that wins, since the runtime sets its own after seisin's environment. A test keeps the
+  list in step with the pinned runtime.
+
+Measured on macOS 15 and on Linux (Debian 12, bwrap, Docker): curl, Node's `fetch` (seisin sets
+`NODE_USE_ENV_PROXY`), Python's `urllib` reach a listed port; an unlisted one gets *Connection
+blocked by network allowlist*; a role without the key gets nothing. On Linux this is the only
+way to reach the host at all — the role's network namespace has a loopback of its own.
+
+**The port is the boundary, not the protocol.** The proxy answers `CONNECT` as well as plain
+HTTP, and a `CONNECT` to a listed loopback port is a raw TCP tunnel: measured 2026-09-23, a
+non-HTTP server on a listed port handed its bytes back through `CONNECT` (and through
+`curl --proxytunnel telnet://`), and an unlisted port got `403 blocked-by-allowlist`. So
+`local_ports = [3307]` opens the database to any client inside the box that can speak
+`CONNECT` with the proxy's credentials — which is what it says, but it should not be read as
+"HTTP only". Name a port because the role may reach *that service*, whatever it speaks.
+
+**What does not reach it on its own.** A client that dials directly instead of through the
+proxy: the `mysql` CLI and most database drivers, a raw socket. Those are refused like any
+direct dial, and the log says which case it was (`listed` on the line). A driver that accepts
+a custom stream (Node's `mysql2` takes `stream`) can be handed a `CONNECT` tunnel; the rest
+cannot, and the one real case in front of us — a test database — is reached through the API
+under test, not by the role. No relay is shipped for them: it would be a second component
+moving bytes past the boundary, for a case that has not come up.
+
+**Chromium, measured, because qa's path is Playwright.** Two separate things:
+
+- *It does not start under seisin on macOS as launched by default.* The profile refuses
+  `bootstrap_check_in` for its `MachPortRendezvousServer`, and the browser aborts with
+  `FATAL … Permission denied (1100)` before it loads a page. `chromiumSandbox: false` alone
+  does not help; `--single-process` does, on its own (measured with Playwright's defaults). That is a runtime-profile
+  refusal (a Mach service registration, not a path), so it is not in the log and not seisin's
+  to grant.
+- *Once running, it reaches a listed port when given the proxy.* Playwright's `proxy` option
+  with the server, user and password taken from `HTTP_PROXY` inside the box: the listed port
+  loads, the next one shows *Connection blocked by network allowlist*, and without the option
+  both are `ERR_ACCESS_DENIED`. Playwright adds `<-loopback>` to the bypass list itself; adding
+  it again changes nothing. That configuration lives in the suite's `playwright.config`, which
+  belongs to whoever owns the suite, not to this policy.
+
+The Chromium and `CONNECT` measurements are macOS only. On Linux the allowlist check
+(`filterNetworkRequest`) has no platform branch and the proxy runs on the host side of the
+namespace, so there is no reason for `CONNECT` to behave differently — reasoned, not measured.
+
+**Refused connections, recorded narrowly.** The kernel writes `network-outbound remote:*:<port>`
+— with no host — or the socket path. seisin logs those as `connect`, once per target per run
+(readiness loops poll), and drops `/var/run/*`, where every DNS lookup inside the box lands on
+mDNSResponder. That is the `file-read-metadata` lesson applied before it had to be learned
+again. The proxy's own refusals — a domain not on the list — are not in the log: the runtime
+records them in its in-process violation store, which the `srt` CLI never exposes, and prints
+them only with `SRT_DEBUG`, into the same stderr as the agent's command. Scraping that would
+mix the record with the agent's output. It belongs with the upstream note in
+docs/upstream/cli-violations.md.
+
 ## `extends` between roles: decided, not built yet
 
 nono lets a profile extend others (`"extends": ["team-base", "python-tools"]`), and a team of

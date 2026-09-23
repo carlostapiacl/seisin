@@ -172,6 +172,19 @@ function readValue(value, lineNo) {
         expectItem = true; i++; continue;
       }
       if (!expectItem) bad(`missing comma before ${JSON.stringify(body.slice(i, i + 12))}`);
+      // Whole numbers, for `local_ports`. Digits only: no sign, no decimal, no
+      // underscore — a port is none of those, and every other key still
+      // refuses a number through asArray.
+      const digits = /^\d+/.exec(body.slice(i));
+      if (digits) {
+        const after = body[i + digits[0].length];
+        if (after !== undefined && after !== "," && after !== " " && after !== "\t")
+          bad(`${JSON.stringify(body.slice(i, i + 12))} is not a whole number`);
+        items.push(Number(digits[0]));
+        i += digits[0].length;
+        expectItem = false;
+        continue;
+      }
       if (c !== '"') bad(`array items must be double-quoted, found ${JSON.stringify(body.slice(i, i + 12))}`);
 
       const end = body.indexOf('"', i + 1);
@@ -194,7 +207,9 @@ function readValue(value, lineNo) {
     return items;
   }
 
-  bad("value must be a string, an array of strings, or a boolean");
+  if (/^\d+$/.test(v)) return Number(v);
+
+  bad("value must be a string, an array of strings, a whole number, or a boolean");
 }
 
 /**
@@ -362,6 +377,7 @@ export function loadConfig(path) {
       throw new Error(`${path}: roles.${name}.trustd must be true or false, not ${JSON.stringify(trustd)}`);
     if (localBinding !== undefined && typeof localBinding !== "boolean")
       throw new Error(`${path}: roles.${name}.local_binding must be true or false, not ${JSON.stringify(localBinding)}`);
+    const localPorts = readLocalPorts(own(r, "local_ports"), `${path}: roles.${name}.local_ports`);
     out.roles[name] = {
       name,
       /**
@@ -409,6 +425,17 @@ export function loadConfig(path) {
        * on every interface and connect to every localhost port. See `check`.
        */
       localBinding: localBinding === true,
+      /**
+       * The ports on this machine the role may connect to, and no others.
+       *
+       * The narrow form of reaching a local service. `local_binding` opens
+       * every port on localhost (macOS), which includes whatever control API
+       * is listening there without a password. This names the ports instead,
+       * and the runtime's proxy enforces the list — the same allowlist the
+       * domains go through. See srt.js for what that costs: the client has to
+       * go through the proxy, which HTTP clients do and a MySQL driver does not.
+       */
+      localPorts,
       /**
        * Whether this role may reach com.apple.trustd.agent (macOS). Needed by
        * Dart/Flutter and by Go built before 1.27 to verify TLS at all; Go 1.27+
@@ -515,7 +542,29 @@ export function withSidecars(paths) {
 }
 
 /** The keys a `[roles.<name>]` table can hold. Anything else is reported by `check`. */
-export const ROLE_KEYS = ["writes", "keys", "key_mode", "env", "network", "never_writes", "local_binding", "trustd"];
+export const ROLE_KEYS = ["writes", "keys", "key_mode", "env", "network", "never_writes", "local_binding", "local_ports", "trustd"];
+
+/**
+ * `local_ports`, refused rather than guessed when it is not a list of ports.
+ *
+ * Refused at load for the same reason as `never_writes`: a port list that loads
+ * with a typo in it opens a port nobody meant, or silently fails to open the
+ * one they did. A string is accepted when it is only digits, because TOML
+ * written by hand says `"8001"` as often as `8001`.
+ */
+function readLocalPorts(value, where) {
+  if (value === undefined) return [];
+  const list = Array.isArray(value) ? value : [value];
+  const out = [];
+  for (const v of list) {
+    const n = typeof v === "string" && /^\d+$/.test(v) ? Number(v) : v;
+    if (!Number.isInteger(n) || n < 1 || n > 65535)
+      throw new Error(`${where}: ${JSON.stringify(v)} is not a port. Write numbers from 1 to 65535, ` +
+        `for example local_ports = [8001, 8081].`);
+    if (!out.includes(n)) out.push(n);
+  }
+  return out;
+}
 
 /**
  * `never_writes`, refused rather than guessed when it cannot mean what it says.
@@ -541,6 +590,6 @@ function readNeverWrites(value, where) {
 function asArray(value, where) {
   if (value === undefined) return [];
   if (typeof value === "string") return [value];
-  if (Array.isArray(value)) return value;
+  if (Array.isArray(value) && value.every((v) => typeof v === "string")) return value;
   throw new Error(`${where}: expected a string or an array of strings`);
 }

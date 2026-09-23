@@ -49,6 +49,20 @@ export function reviewCommand(config, argv = []) {
    * two roles the credential directory*. Separated, the same lines read as
    * confirmation instead of as a recommendation, which is what they are.
    */
+  /**
+   * Connections, apart from both of the above: a port is not a territory, so
+   * "grant, or move the territory" does not answer it, and it is not the policy
+   * working either when the service is one the role was meant to reach.
+   */
+  if (r.connects?.length) {
+    out(`\n  ${C.b}Refused connections${C.off}\n`);
+    out(`  ${C.dim}a local port or socket the role kept dialling. Not a grant: a port goes in${C.off}\n`);
+    out(`  ${C.dim}local_ports, and a socket stays closed${C.off}\n\n`);
+    for (const c of r.connects)
+      out(`    ${C.yellow}${String(c.times).padStart(4)}×${C.off}  ${C.b}${c.role}${C.off} ${c.where}\n`);
+    out(`\n  ${C.dim}seisin walls <role> says, per target, which of the two it is.${C.off}\n`);
+  }
+
   if (r.guarded.length) {
     out(`\n  ${C.b}Held at the keys${C.off}\n`);
     out(`  ${C.dim}a [keys] dir is closed to every role, so this is the policy working${C.off}\n`);

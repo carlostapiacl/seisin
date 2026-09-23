@@ -79,7 +79,7 @@ export function recentKernelDenials(file, role, sinceMs) {
 
 /** The sentence for one refusal, in the words the PreToolUse hook uses. */
 function sentence(config, role, file, e) {
-  const action = e.kind === "key" ? "read" : e.action === "read" ? "read" : "write";
+  const action = e.kind === "key" ? "read" : e.action === "read" || e.action === "connect" ? e.action : "write";
   const v = explain(config, role, action, e.target);
   if (v.allowed) return null;             // the policy moved since: nothing to say
   const times = timesHit(file, role, action, e.target);

@@ -677,7 +677,8 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     }
     L.push("{");
     L.push('  <span class="k">"network"</span>: {');
-    L.push('    "allowedDomains": ["github.com"],');
+    var lp=(r.localPorts||[]).map(function(n){return '"localhost:'+Number(n)+'"';});
+    L.push('    "allowedDomains": ["github.com"'+(lp.length?', <span class="g">'+lp.join(', ')+'</span>':'')+']'+(lp.length?',  <span class="c">// local_ports, through the proxy</span>':','));
     L.push('    "deniedDomains": [], "allowUnixSockets": [],');
     L.push('    "allowLocalBinding": '+(r.localBinding?'<span class="d">true</span>  <span class="c">// can reach every localhost port (macOS)</span>':'false'));
     L.push("  },");
@@ -1204,6 +1205,7 @@ function draw(){
       // server says rather than typed into this page (review of 2026-09-22, #5).
       neverWrites: r.neverWrites || [],
       localBinding: !!r.localBinding,
+      localPorts: (r.localPorts || []).slice(),
       trustd: !!r.trustd
     }));
     LOG = fromServer(s.log);
