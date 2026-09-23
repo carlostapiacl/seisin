@@ -407,7 +407,13 @@ export async function run(config, argv) {
       : null;
     const barred = verdict?.neverWrites ?? null;
     const gitMeta = verdict?.gitMetadata === true;
-    if (rel !== d.path && !barred && !gitMeta)
+    // A request for something the policy already grants cannot be approved into
+    // anything: it is misattribution or a kernel/policy mismatch, and either way
+    // the line in the log is the evidence, not a question for a person. The hook
+    // path has always had this check; the kernel path did not, which is how a
+    // role ended up asking for its own territory.
+    const granted = verdict?.allowed === true;
+    if (rel !== d.path && !barred && !gitMeta && !granted)
       { const asked = { role, action: d.action, target: rel, owners: ownersOf(config, rel) };
         record(requestsPath(config.root), asked);
         notify.maybe(asked); }
