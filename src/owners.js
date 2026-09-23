@@ -39,13 +39,47 @@ import { join } from "node:path";
  * kernel is already enforcing it. What was missing was seisin saying so.
  */
 export function covers(glob, path) {
-  const p = normalize(path);
-  let g = normalize(glob);
-  if (glob.endsWith("/")) g += "/**";
+  const p = normalized(path);
+  const m = matcherOf(glob);
   // The path itself, or anything beneath it. The `/` is load-bearing: without
   // it `src/api` would also cover `src/apifoo.ts`, which the kernel does not.
-  if (!WILD.test(g)) return p === g || p.startsWith(g + "/");
-  return toRegExp(g).test(p);
+  if (m.prefix !== null) return p === m.prefix || p.startsWith(m.prefix + "/");
+  return m.re.test(p);
+}
+
+/**
+ * The same glob and the same path, prepared once.
+ *
+ * `covers` is the inner loop of everything that asks "whose is this": owners of
+ * a path is every role's every glob against it, and the console asks that for
+ * every path of every role. On a real 32-role policy that was ~1.7M calls per
+ * refresh, each normalizing the glob again and compiling its regex again — 8 s
+ * of a console that polls, measured with a CPU profile (normalize alone 5 s).
+ * The answer never changes for the same string, so it is kept. Bounded: a
+ * server that runs for days sees paths from the log, and those keep coming.
+ */
+const MAX_CACHED = 50_000;
+const GLOBS = new Map();
+const PATHS = new Map();
+
+function matcherOf(glob) {
+  let m = GLOBS.get(glob);
+  if (m) return m;
+  let g = normalize(glob);
+  if (glob.endsWith("/")) g += "/**";
+  m = WILD.test(g) ? { prefix: null, re: toRegExp(g) } : { prefix: g, re: null };
+  if (GLOBS.size >= MAX_CACHED) GLOBS.clear();
+  GLOBS.set(glob, m);
+  return m;
+}
+
+function normalized(path) {
+  let p = PATHS.get(path);
+  if (p !== undefined) return p;
+  p = normalize(path);
+  if (PATHS.size >= MAX_CACHED) PATHS.clear();
+  PATHS.set(path, p);
+  return p;
 }
 
 /** The four characters toRegExp() treats as wildcards. */
