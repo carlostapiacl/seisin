@@ -1,6 +1,7 @@
 # seisin
 
 [![test](https://github.com/carlostapiacl/seisin/actions/workflows/test.yml/badge.svg)](https://github.com/carlostapiacl/seisin/actions/workflows/test.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/carlostapiacl/seisin/badge)](https://scorecard.dev/viewer/?uri=github.com/carlostapiacl/seisin)
 [![npm](https://img.shields.io/npm/v/seisin?color=222)](https://www.npmjs.com/package/seisin)
 [![license](https://img.shields.io/badge/license-MIT-222)](LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A518-222)](package.json)
