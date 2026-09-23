@@ -121,3 +121,20 @@ test("a real refusal by the kernel becomes the sentence", { skip }, async () => 
   assert.ok(out, `nothing said; stderr was: ${r.stderr}`);
   assert.match(out.hookSpecificOutput.additionalContext, /src\/api\/real\.ts belongs to api/);
 });
+
+test("Chromium's Mach registration refusal is explained, with nothing in the log", async () => {
+  // The line Playwright printed under seisin on 2026-09-23, verbatim but for the pid.
+  const dir = repo();
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  const died = { hook_event_name: "PostToolUseFailure", tool_name: "Bash",
+    error: "browserType.launch: Target page, context or browser has been closed\n" +
+      "[pid=79341][err] [0923/043620.365155:FATAL:base/apple/mach_port_rendezvous_mac.cc:155] Check failed: " +
+      "kr == KERN_SUCCESS. bootstrap_check_in org.chromium.Chromium.MachPortRendezvousServer.79341: Permission denied (1100)" };
+  const out = await afterTool(cfg, "web", died, { file: logPath(dir), wait: [0] });
+  const text = out.hookSpecificOutput.additionalContext;
+  assert.match(text, /Mach rendezvous port/);
+  assert.match(text, /--single-process/);
+  assert.match(text, /one\s+worker/);
+  // Only that signature: another "Permission denied" with an empty log stays quiet.
+  assert.equal(await afterTool(cfg, "web", FAILED, { file: logPath(dir), wait: [0] }), null);
+});
