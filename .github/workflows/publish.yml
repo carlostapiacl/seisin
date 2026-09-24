@@ -32,7 +32,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
+      # No `registry-url`: it writes an .npmrc with `always-auth=true` and an
+      # empty `_authToken` (there is no token, on purpose), which forces token
+      # auth and fails ENEEDAUTH before OIDC is ever tried. Trusted publishing
+      # needs no .npmrc — npm mints the token from `id-token: write` itself.
       # Trusted publishing (OIDC, no token) needs npm 11.5.1+, and node 22 ships
       # npm 10 — without this, publish fell back to a token that is not set and
       # failed with ENEEDAUTH even though the trusted publisher is configured.
@@ -56,5 +59,3 @@ jobs:
       - name: tag matches package.json
         run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
       - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
