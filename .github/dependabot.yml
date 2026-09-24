@@ -1,0 +1,19 @@
+# Keeps the two things that can carry someone else's code up to date: the CI
+# actions (pinned to SHAs, so a bump is a reviewable line that moves the pin)
+# and the one runtime dependency. Weekly, so a version bump is a small PR rather
+# than a surprise the day something breaks.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"
+
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps"

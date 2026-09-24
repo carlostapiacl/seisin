@@ -8,6 +8,40 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+## 0.4.0 — 2026-09-24
+
+- **The console's link can be found again.** The token that authorizes the console travels only
+  in the link's fragment and never in an HTTP response, so a tab that lost it had nowhere to
+  recover it but the terminal that printed it once — and when that terminal was gone, so was the
+  link, with `seisin ui` erroring `port is busy` at the console that was already running. Now a
+  running `seisin ui` records its live link in a file only you can read (`$TMPDIR/snr/`, 0600,
+  removed on exit). `seisin ui` on a busy port reopens that link instead of failing, and
+  `seisin ui --link` prints it. The token now rests on disk for the life of the run rather than
+  only in memory — a bounded, local-user exposure — and it still never appears in a response.
+- **An MCP tool call is no longer invisible.** Until now the hook judged file
+  tools and `Bash` and returned nothing for anything else, so a call like
+  `mcp__supabase__execute_sql` got no verdict, no owner and no line in the log —
+  the kernel does not see it either, since the MCP server runs outside the box.
+  Measured first (the PreToolUse event does arrive, with the tool's own
+  arguments), then read: a call is resolved to the *server* it belongs to and
+  answered by the same `mcp = [...]` a role already declares. A server the role
+  may not load is denied and said so; a name that is not a real
+  `mcp__server__tool` is closed, not waved through; every call is recorded, so a
+  policy can be written from what a run actually reached for. Nothing is queued —
+  which servers a role loads is a change to its `mcp` list, not a grant a person
+  approves. The finer question (which table, which project a call touches) is
+  left for later, on purpose: reading it means a per-server adapter, and that is
+  the line past which this would stop being "whose is it" and become a tool
+  gateway.
+- **The log rotates.** An append-only file that only grows is the right default
+  and the wrong forever. When a segment fills (8 MiB, `SEISIN_LOG_MAX_BYTES`) it
+  is retired and a fresh one is seeded whose first line chains from the retired
+  segment's last hash, so `seisin log verify` holds across the cut and now walks
+  every segment as one chain — a whole segment deleted or reordered in the
+  middle shows, not only an edit inside one. Retired segments beyond the keep
+  count (`SEISIN_LOG_KEEP`, default 5) are dropped from the oldest end; that is
+  retention, and the count of segments is reported so it is not silent.
+
 ## 0.3.0 — 2026-09-24
 
 - **Runtime bumped to `@anthropic-ai/sandbox-runtime` 0.0.77** (from 0.0.76). Full suite green on

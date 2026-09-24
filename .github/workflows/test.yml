@@ -18,6 +18,11 @@ on:
   pull_request:
   workflow_call:       # publish.yml runs this before publishing
 
+# The suite only reads the repo. Naming it least-privilege here means the
+# GITHUB_TOKEN this job gets cannot do anything else, whatever a step pulls in.
+permissions:
+  contents: read
+
 jobs:
   suite:
     name: ${{ matrix.os }} · node ${{ matrix.node }}
@@ -29,9 +34,9 @@ jobs:
         node: [18, 20, 22]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ matrix.node }}
 

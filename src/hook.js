@@ -38,11 +38,40 @@ const FILE_TOOLS = {
 const REDIRECT = /(?:^|\s|;|&&|\|\|)>{1,2}\s*("[^"]+"|'[^']+'|[^\s;|&<>]+)/g;
 const WRITERS = /(?:^|\s|;|&&|\|\|)(?:cp|mv|install|tee|touch|mkdir|rm|rmdir|truncate|dd)\s+([^\n;|&]+)/g;
 
+/**
+ * The server in an `mcp__<server>__<tool>` name, or null if it does not parse.
+ *
+ * The split is on the double underscore: a server name carries single ones
+ * (`claude_ai_Gmail`) and so does a tool name (`execute_sql`), so the server is
+ * everything between `mcp__` and the next `__`. Shared with the parent's intake,
+ * which recomputes the same verdict rather than trusting the line from the box.
+ */
+export function mcpServer(tool) {
+  const m = typeof tool === "string" && /^mcp__(.+?)__(.+)$/.exec(tool);
+  return m ? m[1] : null;
+}
+
 export function targetsOf(tool, input = {}) {
   const kind = FILE_TOOLS[tool];
   if (kind) {
     const p = input.file_path ?? input.path ?? input.notebook_path;
     return p ? [{ action: kind, path: p }] : [];
+  }
+  /**
+   * An MCP tool call names a resource, not a path: `mcp__<server>__<tool>`.
+   *
+   * The kernel never sees it — the MCP server runs outside the box — so a call
+   * that goes unrecorded here goes unrecorded everywhere. Measured 2026-09-24:
+   * the event reaches PreToolUse with the tool's own arguments as `tool_input`,
+   * which is exactly why the file-tool code above returns nothing for it. We
+   * resolve the call to the *server* it belongs to, the unit the policy already
+   * declares in `mcp = [...]`, and leave the finer resource (which table, which
+   * project) for later — deriving it means a per-server adapter, and that is the
+   * line past which this stops being "whose is it" and becomes a tool gateway.
+   * A name that does not parse is returned as an unknown tool, not dropped.
+   */
+  if (typeof tool === "string" && tool.startsWith("mcp__")) {
+    return [{ action: "use", tool, server: mcpServer(tool) }];
   }
   if (tool !== "Bash" || typeof input.command !== "string") return [];
 
@@ -140,6 +169,25 @@ export function decide(config, role, event, { observe = false, now = append, ask
   const verdicts = [];
 
   for (const t of targets) {
+    // A tool call, resolved to its MCP server. "Whose is it" is the question
+    // `mcp = [...]` already answers, so it is asked through the same map rather
+    // than a second one. No request is filed on a denial: a server absent from
+    // a role's list is a policy subtraction a person edits — the shape of
+    // never_writes — not a grant a person approves, and filing one would be a
+    // request nobody can grant. An unparsable name is closed, not waved through.
+    if (t.action === "use") {
+      const v = t.server
+        ? explain(config, role, "mcp", t.server)
+        : { allowed: false, owners: [], mcp: true, reason: `${t.tool} is not a recognisable mcp__<server>__<tool> name` };
+      now(file, {
+        role, tool: event.tool_name, action: "use", kind: "tool", target: t.tool,
+        verdict: observe ? "observed" : v.allowed ? "allowed" : "denied",
+        owners: v.owners ?? [], reason: v.reason,
+      });
+      verdicts.push({ ...v, target: t.tool, kind: "tool", action: "use" });
+      continue;
+    }
+
     const rel = toRepoRelative(config, t.path);
     const kind = kindOf(config, rel);
 
@@ -225,6 +273,8 @@ export function decide(config, role, event, { observe = false, now = append, ask
           ? `${denied.reason}. Do not ask for it: nothing was queued, because the answer is already written down.` + again
           : denied.gitMetadata
           ? `${denied.reason}. Nothing was queued.` + again
+          : denied.mcp
+          ? `${denied.reason}. Nothing was queued: which MCP servers a role may load is set in its mcp list, a policy change a person makes, not a grant they approve.` + again
           : (denied.owners?.length
           ? wasRead
             ? `${denied.target} is declared for ${denied.owners.join(", ")}, not ${role}. Ask for what you need from it rather than reading the key.`

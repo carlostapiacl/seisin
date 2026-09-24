@@ -10,7 +10,7 @@
  */
 import { createReadStream, watch as watchDir } from "node:fs";
 import { dirname, relative } from "node:path";
-import { read, logPath, size, verifyChain } from "../log.js";
+import { read, logPath, size, verifyLog } from "../log.js";
 import { renderEntry, C, out } from "../render.js";
 
 const flag = (argv, name) => {
@@ -43,14 +43,15 @@ export function log(config, argv = []) {
  * before the chain existed are reported as such, not as tampering.
  */
 function verify(config) {
-  const r = verifyChain(logPath(config.root));
+  const r = verifyLog(logPath(config.root));
   if (r.lines === 0) {
     out(`\n  ${C.dim}nothing recorded yet${C.off}\n\n`);
     return r;
   }
   const head = r.unchained ? `${r.unchained} line(s) from before the chain, then ` : "";
+  const segs = r.segments > 1 ? ` across ${r.segments} segments` : "";
   if (!r.breaks.length) {
-    out(`\n  ${C.green}intact${C.off}  ${head}${r.chained} chained line(s)\n\n`);
+    out(`\n  ${C.green}intact${C.off}  ${head}${r.chained} chained line(s)${segs}\n\n`);
     return r;
   }
   out(`\n  ${C.red}broken${C.off}  ${head}${r.chained} chained line(s), ${r.breaks.length} break(s):\n`);

@@ -14,6 +14,7 @@ import { explain } from "../src/owners.js";
 import { inspect } from "../src/inspect.js";
 import { renderReport } from "../src/render.js";
 import { TOOLS } from "../src/mcp.js";
+import { targetsOf, decide } from "../src/hook.js";
 
 const BOX = join(dirname(fileURLToPath(import.meta.url)), ".sandbox-box");
 function load(toml) {
@@ -63,4 +64,79 @@ test("check shows the list and knows the key", () => {
 test("the MCP tool takes mcp as an action", () => {
   const t = TOOLS.find((x) => x.name === "seisin_explain");
   assert.ok(t.inputSchema.properties.action.enum.includes("mcp"));
+});
+
+// ── An MCP tool call is a resource, not a path ──
+// Until 0.4 the hook returned nothing for `mcp__*`, so the call got no verdict,
+// no owner and no line in the log — measured on 2026-09-24, the event reaches
+// the hook, we just were not reading it. Now it resolves to its server and is
+// answered by the same `mcp = [...]` the launcher already reads.
+
+test("targetsOf resolves an mcp tool call to its server, and a bad name to none", () => {
+  assert.deepEqual(targetsOf("mcp__supabase__execute_sql", { query: "select 1" }),
+    [{ action: "use", tool: "mcp__supabase__execute_sql", server: "supabase" }]);
+  // Server names carry single underscores; the split is on the double.
+  assert.deepEqual(targetsOf("mcp__claude_ai_Gmail__get_thread", {}),
+    [{ action: "use", tool: "mcp__claude_ai_Gmail__get_thread", server: "claude_ai_Gmail" }]);
+  // Unparsable: no second `__`. Returned as an unknown tool, not dropped.
+  assert.deepEqual(targetsOf("mcp__weird", {}), [{ action: "use", tool: "mcp__weird", server: null }]);
+});
+
+const evt = (name, input = {}) => ({ tool_name: name, tool_input: input });
+
+test("a call to a declared server is allowed and logged, and nothing is queued", () => {
+  const cfg = load(TOML); // qa: mcp = ["playwright"]
+  const seen = [];
+  let queued = 0;
+  const out = decide(cfg, "qa", evt("mcp__playwright__browser_click", { ref: "x" }),
+    { now: (_f, e) => seen.push(e), ask: () => (queued++, true) });
+  assert.equal(out.decision, null, "an allowed call is not denied");
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].verdict, "allowed");
+  assert.equal(seen[0].kind, "tool");
+  assert.equal(seen[0].target, "mcp__playwright__browser_click");
+  assert.equal(queued, 0, "an allowed call queues nothing");
+});
+
+test("a call to a server outside the list is denied, explained, and never queued", () => {
+  const cfg = load(TOML); // qa: mcp = ["playwright"]
+  const seen = [];
+  let queued = 0;
+  const out = decide(cfg, "qa", evt("mcp__tradingview__quote_get", { symbol: "XAUUSD" }),
+    { now: (_f, e) => seen.push(e), ask: () => (queued++, true) });
+  assert.equal(out.decision, "deny");
+  assert.match(out.hookSpecificOutput.permissionDecisionReason, /only playwright/);
+  assert.match(out.hookSpecificOutput.permissionDecisionReason, /mcp list/);
+  assert.equal(seen[0].verdict, "denied");
+  assert.equal(queued, 0, "an mcp denial is a policy change, not a grantable request");
+});
+
+test("an unparsable mcp tool name is closed, not waved through", () => {
+  const cfg = load(TOML);
+  const seen = [];
+  const out = decide(cfg, "otro", evt("mcp__weird", {}), // otro has no mcp list
+    { now: (_f, e) => seen.push(e), ask: () => true });
+  assert.equal(out.decision, "deny");
+  assert.match(out.hookSpecificOutput.permissionDecisionReason, /not a recognisable/);
+  assert.equal(seen[0].verdict, "denied");
+});
+
+test("a role with no mcp list is not limited, but the call is still recorded", () => {
+  const cfg = load(TOML); // otro: no mcp key at all
+  const seen = [];
+  const out = decide(cfg, "otro", evt("mcp__anything__do", {}),
+    { now: (_f, e) => seen.push(e), ask: () => true });
+  assert.equal(out.decision, null);
+  assert.equal(seen[0].verdict, "allowed");
+  assert.equal(seen[0].kind, "tool");
+});
+
+test("observe records the mcp call and returns no decision", () => {
+  const cfg = load(TOML);
+  const seen = [];
+  const out = decide(cfg, "qa", evt("mcp__tradingview__quote_get", {}),
+    { observe: true, now: (_f, e) => seen.push(e), ask: () => true });
+  assert.equal(out.decision, null);
+  assert.equal(out.hookSpecificOutput, undefined);
+  assert.equal(seen[0].verdict, "observed");
 });

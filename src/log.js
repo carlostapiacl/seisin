@@ -13,9 +13,9 @@
  * tries the parent's socket first for exactly that reason; writing the file
  * directly is what happens when there is no parent, outside the box.
  */
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync, unlinkSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, statSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { STATE_DIR, LOG_NAME } from "./layout.js";
 import { send } from "./spool.js";
 
@@ -39,6 +39,10 @@ export function append(file, entry) {
   try {
     mkdirSync(dirname(file), { recursive: true });
     withLock(file, () => {
+      // Rotate first, under the same lock: a full segment is renamed away and a
+      // fresh one seeded so the chain continues, then this line lands in the new
+      // segment. Done here so the size check and the append never race.
+      maybeRotate(file);
       // `prev` goes last and is computed from the previous line exactly as it
       // sits on disk, so verifying needs nothing but the file.
       const line = JSON.stringify({ at: new Date().toISOString(), ...entry, prev: hashOf(lastLine(file)) });
@@ -48,6 +52,68 @@ export function append(file, entry) {
   } catch {
     return false;
   }
+}
+
+/**
+ * When the current segment fills, retire it and start a fresh one that still
+ * chains.
+ *
+ * An append-only file that only grows is the right default and the wrong
+ * forever: a busy team writes megabytes of it, and `verify` walks all of them
+ * on every run. Rotation caps the size of the file three tools tail while
+ * keeping the property that made the chain worth having — that a deletion shows.
+ *
+ * The retired segment keeps its own chain intact; the new segment's first line
+ * is a `rotated` marker whose `prev` is the retired segment's last hash, so the
+ * two verify as one chain across the cut (`verifyLog`). The comment on GENESIS
+ * asked for exactly this. Segments are numbered upward, `.1` the oldest, and
+ * the oldest beyond the keep count are dropped — the only place seisin removes
+ * a record, and it removes whole retired segments, never a line.
+ */
+const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;   // 8 MiB per segment
+const DEFAULT_KEEP = 5;                        // retired segments kept beside the current one
+
+function envInt(name, fallback) {
+  const n = Number(process.env[name]);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+/** Every segment of the log, oldest → newest, current last. */
+export function logSegments(file) {
+  const dir = dirname(file);
+  const base = basename(file);
+  let names = [];
+  try { names = readdirSync(dir); } catch { return existsSync(file) ? [file] : []; }
+  const archives = names
+    .map((n) => {
+      if (!n.startsWith(base + ".")) return null;
+      const seq = Number(n.slice(base.length + 1));
+      return Number.isInteger(seq) && seq > 0 ? { seq, path: join(dir, n) } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.seq - b.seq)
+    .map((a) => a.path);
+  if (existsSync(file)) archives.push(file);
+  return archives;
+}
+
+function maybeRotate(file) {
+  let sz = 0;
+  try { sz = statSync(file).size; } catch { return; }
+  if (sz < envInt("SEISIN_LOG_MAX_BYTES", DEFAULT_MAX_BYTES)) return;
+
+  const tail = hashOf(lastLine(file));
+  const archives = logSegments(file).filter((p) => p !== file);
+  const seqs = archives.map((p) => Number(p.slice((file + ".").length))).filter(Number.isInteger);
+  const next = (seqs.length ? Math.max(...seqs) : 0) + 1;
+  renameSync(file, `${file}.${next}`);
+  // Seed the new current so the first real append chains from the retired tail.
+  const marker = JSON.stringify({ at: new Date().toISOString(), event: "rotated", from: `${basename(file)}.${next}`, prev: tail });
+  appendFileSync(file, marker + "\n");
+
+  const keep = envInt("SEISIN_LOG_KEEP", DEFAULT_KEEP);
+  const retired = logSegments(file).filter((p) => p !== file); // oldest → newest, includes the new archive
+  for (let i = 0; i < retired.length - keep; i++) { try { unlinkSync(retired[i]); } catch {} }
 }
 
 /**
@@ -116,8 +182,8 @@ function withLock(file, fn) {
  * unchained prefix, not reported as tampering. After the first chained line,
  * a line without `prev` is itself a break.
  */
-export function verifyChain(file) {
-  const out = { lines: 0, unchained: 0, chained: 0, breaks: [] };
+function walk(file, { seed = GENESIS, startLine = 0 } = {}) {
+  const out = { lines: 0, unchained: 0, chained: 0, breaks: [], tail: null };
   if (!existsSync(file)) return out;
   let previous = null;
   let started = false;
@@ -129,13 +195,52 @@ export function verifyChain(file) {
     const prev = e?.prev;
     if (!started && prev === undefined) { out.unchained++; previous = line; continue; }
     started = true;
-    const expected = out.chained === 0 && out.unchained === 0 ? GENESIS : hashOf(previous);
-    const ok = prev === expected || (out.chained === 0 && prev === hashOf(previous));
-    if (!ok) out.breaks.push({ line: out.lines, expected, found: prev ?? null });
+    const first = out.chained === 0 && out.unchained === 0;
+    // A rotation marker leading a segment we have nothing to check it against —
+    // a file verified on its own, or the oldest segment left after the prefix
+    // was pruned for retention (seed still GENESIS) — is accepted rather than
+    // called a break. For any later segment the seed is the real previous tail,
+    // so the marker's `prev` IS checked, and a whole segment deleted or
+    // reordered in the middle shows.
+    const rotationStart = first && e?.event === "rotated" && seed === GENESIS;
+    const expected = first ? seed : hashOf(previous);
+    const ok = rotationStart || prev === expected || (first && prev === hashOf(previous));
+    if (!ok) out.breaks.push({ line: startLine + out.lines, expected, found: prev ?? null });
     out.chained++;
     previous = line;
   }
+  out.tail = previous;
   return out;
+}
+
+export function verifyChain(file, seed = GENESIS) {
+  const r = walk(file, { seed });
+  return { lines: r.lines, unchained: r.unchained, chained: r.chained, breaks: r.breaks };
+}
+
+/**
+ * Verify the whole log, across every rotated segment, as one chain.
+ *
+ * Each retired segment is walked in order, and its last hash becomes the seed
+ * the next segment's `rotated` marker must match — so deleting or reordering a
+ * whole segment shows, not only an edit inside one. With no rotation there is a
+ * single segment and this is exactly `verifyChain`. What it cannot see is a
+ * segment dropped off the *oldest* end by the keep limit: that is retention, not
+ * tampering, and the count of segments is reported so the drop is not silent.
+ */
+export function verifyLog(file) {
+  const segs = logSegments(file);
+  const agg = { lines: 0, unchained: 0, chained: 0, breaks: [], segments: segs.length };
+  let seed = GENESIS;
+  for (const seg of segs) {
+    const r = walk(seg, { seed, startLine: agg.lines });
+    agg.lines += r.lines;
+    agg.unchained += r.unchained;
+    agg.chained += r.chained;
+    agg.breaks.push(...r.breaks);
+    seed = hashOf(r.tail);
+  }
+  return agg;
 }
 
 /** Reads entries, newest last. A malformed line is skipped, never fatal. */
@@ -150,6 +255,7 @@ export function read(file, { role, verdict, since, limit = 0 } = {}) {
     } catch {
       continue; // a half-written line from a killed process is not an error
     }
+    if (e.event === "rotated") continue; // a structural marker, not a decision
     if (role && e.role !== role) continue;
     if (verdict && e.verdict !== verdict) continue;
     if (since && e.at < since) continue;

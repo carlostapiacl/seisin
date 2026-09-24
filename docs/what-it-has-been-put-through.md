@@ -6,7 +6,7 @@
 
 ## The suite
 
-**452 tests** (2026-09-24), on macOS and on Linux under bubblewrap, and in CI on
+**471 tests** (2026-09-24), on macOS and on Linux under bubblewrap, and in CI on
 Node 18/20/22 at every push ([workflow](../.github/workflows/test.yml)).
 
 Twenty-six of them are not unit tests: they run real commands through the real
