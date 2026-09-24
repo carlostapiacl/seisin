@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { boxed } from "./_tmp.js";
 
 import { append, verifyChain, GENESIS } from "../src/log.js";
 
@@ -15,7 +16,7 @@ const BOX = join(HERE, ".sandbox-box");
 
 function logFile() {
   mkdirSync(BOX, { recursive: true });
-  return join(mkdtempSync(join(BOX, "chain-")), ".seisin", "log.jsonl");
+  return join(boxed("chain-"), ".seisin", "log.jsonl");
 }
 const write = (f, n) => { for (let i = 0; i < n; i++) append(f, { role: "r", action: "write", target: `t${i}`, verdict: "denied" }); };
 

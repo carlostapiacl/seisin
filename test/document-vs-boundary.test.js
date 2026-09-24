@@ -11,6 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { covers, ownersOf } from "../src/owners.js";
 import { settingsFor } from "../src/srt.js";
+import { scratch } from "./_tmp.js";
 
 const policy = (writes) => ({
   root: "/repo",
@@ -71,7 +72,7 @@ test("explain strips the repo root, the way whose and the hook already did", asy
   const { explainCommand } = await import("../src/commands/explain.js");
   const { whose } = await import("../src/commands/whose.js");
 
-  const root = mkdtempSync(join(tmpdir(), "seisin-abs-"));
+  const root = scratch("seisin-abs-");
   mkdirSync(join(root, "src", "api"), { recursive: true });
   writeFileSync(join(root, "seisin.toml"),
     '[keys]\ndir = [".secrets"]\n\n[roles.dev]\nwrites = ["src/api/**"]\nkeys = []\n');

@@ -15,162 +15,23 @@
  */
 import { join, dirname } from "node:path";
 import { STATE_DIR, CONFIG_NAME } from "./layout.js";
-import { homedir, tmpdir } from "node:os";
 import { entriesOf } from "./keys.js";
 import { enforcedNeverWrites } from "./owners.js";
 import { realAncestor } from "./paths.js";
-import { realpathSync, lstatSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { denyFor } from "./surface.js";
+import { runsRootOf } from "./rundir.js";
+import { FIFO_SUFFIX } from "./spool.js";
+import {
+  SOCKET_MAX, isLink, realOrSelf, expand, homeFits, roleHome, roleHomeRoot,
+  CREDENTIAL_HOMES, toWritePath, writePathsOf,
+} from "./grants.js";
 
-/**
- * What every agent needs to write no matter which role it is.
- *
- * Found by running a real cell config through the sandbox: territory alone
- * looks correct and is unusable. An agent writes its session state under its
- * own config directory and its tools write scratch files to the temp dir, so a
- * policy of "your folders and nothing else" stops the agent before it starts.
- *
- * The list is not Claude-shaped by accident and it was Claude-shaped by
- * mistake: the first version named `~/.claude` and `~/.codex` and stopped
- * there, so the first agent that was neither — opencode, which logs to
- * `~/.local/share/opencode` — died on startup with `FileSystem.open`. Hence the
- * XDG directories, which is where a CLI that follows convention puts its state.
- *
- * `~/.config` is deliberately NOT here. That is where credentials live —
- * `~/.config/gh/hosts.yml` holds a GitHub token — and while reads outside the
- * declared key directories are open anyway, letting an agent WRITE there is a
- * different thing. A CLI that needs it can be granted it by name.
- *
- * These are grants, so they are listed rather than assumed: `seisin check`
- * prints them, and `[runtime] writes = []` turns them off for anyone who wants
- * to find out the hard way. Note what is NOT here — the home directory, the
- * shell profile, anything under the repo. Scratch space is not a back door.
- */
-/**
- * Where a role's home and scratch live when `[runtime] isolate = true`.
- *
- * Under the state directory but outside the repo tree the roles write, so one
- * role cannot reach another's. Kept out of `.seisin/` inside the repo because
- * that whole directory is denyWrite now.
- */
-/**
- * Short on purpose, and the reason is the same one spool.js already names: a
- * unix socket path is capped near 104 bytes on macOS and the failure when it is
- * too long is an unhelpful EINVAL.
- *
- * This file forgot that one layer down. The runtime creates its multiplexing
- * socket INSIDE the role's home — `<home>/tmp/srt-mux-<pid>-0.sock`, 25 bytes —
- * and the name here used to be `seisin-home-` plus 16 characters. On macOS
- * `tmpdir()` is 48 bytes on its own, so the total cleared 104 for **every role
- * name**, `qa` included: `isolate = true` did not misbehave, it failed to start.
- * Measured, and it is why `homeFits` below exists rather than a comment.
- *
- * Eleven bytes instead of twenty-eight leaves room for a role name up to
- * {@link MAX_ROLE_FOR_HOME} characters.
- */
-export function roleHomeRoot(config) {
-  /**
-   * A hash of the whole path, not a slice of it.
-   *
-   * This was `base64url(root).slice(-16)` — the TAIL of the encoded path, which
-   * is the tail of the path itself. Two checkouts that end the same way get the
-   * same id: `/Users/ana/dev/proyecto` and `/Users/bob/dev/proyecto` collide, and
-   * so do `/home/a/work/api` and `/home/b/work/api`. A collision here is not a
-   * cosmetic clash — both repos' role `dev` would share one HOME, which is the
-   * session token of one handed to the other. Measured on three of four ordinary
-   * pairs; shortening the slice to fit the socket limit would have made it more
-   * likely, not less.
-   */
-  const id = createHash("sha256").update(config.root).digest("base64url").slice(0, 8);
-  return join(tmpdir(), `sn-${id}`);
-}
+// Re-exported: these were srt.js's exports before grants.js existed, and
+// callers (the CLI, the tests, anyone embedding seisin) import them from here.
+export {
+  expand, homeFits, roleHome, roleHomeRoot, CREDENTIAL_HOMES, RUNTIME_WRITES,
+} from "./grants.js";
 
-/** What the runtime appends inside the role's home, at its longest. */
-const SRT_SOCKET_TAIL = "/tmp/srt-mux-999999-0.sock".length;
-
-/** The platform's cap on a unix socket path. macOS is the tight one. */
-const SOCKET_MAX = 104;
-
-/**
- * Whether a role's isolated home leaves room for the runtime's socket.
- *
- * Returns the room left over, negative when it does not fit. Callers refuse
- * rather than let the runtime fail with EINVAL and no explanation — a boundary
- * that cannot start should say so in its own words.
- */
-export function homeFits(config, role) {
-  return SOCKET_MAX - (roleHome(config, role).length + SRT_SOCKET_TAIL);
-}
-
-export function roleHome(config, role) {
-  return join(roleHomeRoot(config), role);
-}
-
-/**
- * Where credentials live in a home directory, denied at both isolate levels.
- *
- * Denies rather than a read allowlist, and the reasoning is above: a
- * default-deny read set has to enumerate every library, interpreter and cache a
- * toolchain touches, gets one wrong, and fails as an unexplainable crash inside
- * the agent. Naming the places credentials actually live is narrower than the
- * ideal and holds up.
- *
- * `~/.config` is here whole rather than `~/.config/gh`: it is where a growing
- * number of CLIs keep their tokens, and listing them one by one is the
- * enumeration this list exists to avoid. A tool that needs a directory under it
- * can be granted it by name.
- */
-export const CREDENTIAL_HOMES = [
-  // The order is not arbitrary: `check` names the first few, so the ones a
-  // reader recognises instantly go first. Everything in the list is denied
-  // either way.
-  "~/.ssh", "~/.aws", "~/.npmrc", "~/.config",
-  "~/.gnupg", "~/.kube", "~/.docker", "~/.netrc", "~/.git-credentials",
-];
-
-export const RUNTIME_WRITES = [
-  "~/.claude", "~/.codex",                 // the CLIs that keep state under their own name
-  "~/.local/share", "~/.local/state",      // XDG data and state: where most others log
-  "~/.cache", "$TMPDIR", "/tmp",
-];
-
-/**
- * `~` and `$TMPDIR` are the only expansions; everything else is a literal path.
- *
- * Symlinks are then resolved, and that is not a nicety. On macOS `/tmp` is a
- * link to `/private/tmp`, and the sandbox enforces on the destination — so a
- * grant written as `/tmp` grants exactly nothing, silently. Measured: with the
- * literal path, writing to /tmp inside the sandbox failed while the policy
- * looked correct on screen.
- */
-/** Is this exact path a symlink? False if it is not on disk. */
-function isLink(p) {
-  try {
-    return lstatSync(p).isSymbolicLink();
-  } catch {
-    return false;
-  }
-}
-
-/** The path with symlinks followed, or the path itself if it is not on disk. */
-function realOrSelf(p) {
-  try {
-    return realpathSync(p);
-  } catch {
-    return p;
-  }
-}
-
-export function expand(p) {
-  let out = p;
-  if (p === "$TMPDIR") out = tmpdir();
-  else if (p === "~" || p.startsWith("~/")) out = join(homedir(), p.slice(2));
-  try {
-    return realpathSync(out);
-  } catch {
-    return out; // not on disk yet; hand the literal through rather than drop it
-  }
-}
 
 /** Reads are denied wholesale under the key directory, then re-allowed one file at a time. */
 /**
@@ -371,6 +232,21 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
     allowRead.push(path);
   }
 
+  /**
+   * Other runs' directories are unreadable; this run's is readable.
+   *
+   * Every run keeps its socket and `scratch` keys under one root (rundir.js),
+   * and every role runs as the same user, so the directory mode protects
+   * nothing between roles. Measured: one role read another's scratch key while
+   * both ran. Same shape as the key directories: deny the parent, allow your own.
+   */
+  const runs = runsRootOf(spool);
+  const isFifo = spool?.endsWith(FIFO_SUFFIX) === true;
+  if (runs) {
+    denyRead.push(runs);
+    allowRead.push(dirname(spool));
+  }
+
   return {
     network: {
       // `local_ports` rides the same allowlist as the domains: the runtime's
@@ -383,7 +259,7 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
       deniedDomains: [],
       // Exactly one socket: the parent's audit spool, when there is a parent.
       // Granted by path, not by turning unix sockets on.
-      allowUnixSockets: spool ? [spool] : [],
+      allowUnixSockets: spool && !isFifo ? [spool] : [],
       // Per role, `local_binding = true`. Off by default: listening is a
       // capability, and most roles never need it.
       allowLocalBinding: role.localBinding === true,
@@ -403,18 +279,11 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
         // holds: the config, the state directory and the key directories stay
         // shut even here, because observing is not a reason to hand over the
         // paperwork of the confinement.
-        ...(observe ? [abs(".")] : role.writes.map((g) => toWritePath(g)).map(abs)),
-        // `.seisin/` is deliberately NOT here. It used to be, because the hook
-        // runs inside the box and has to record what it decided — which made
-        // the log and the queue writable by the process they are a record of.
-        // The hook now sends its lines to the parent over a socket and the
-        // parent holds the file. See spool.js.
-        // Isolated: this role's own home and scratch, and nothing shared.
-        // Otherwise: the real ~/.claude, ~/.cache and /tmp, which every role
-        // shares — convenient, and the reason `isolate` exists.
-        ...(isolated
-          ? [home, join(home, ".config"), join(home, ".local"), join(home, ".cache"), join(home, "tmp")]
-          : (config.runtimeWrites ?? RUNTIME_WRITES).map(expand)),
+        // One function answers "what may this role write" for the settings and
+        // for surface.js, which needs the union over every role. Two copies of
+        // that arithmetic would be two answers the day one of them changes.
+        ...writePathsOf(config, role, { observe }),
+        ...(isFifo ? [spool] : []),
       ],
       /**
        * The confinement's own paperwork, never writable — not even by a role
@@ -447,34 +316,26 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
           // `store/…`, and a deny on the written path alone let it through —
           // measured by the review of 2026-09-22 (rc=0, file created).
           .flatMap((p) => { const r = realAncestor(p); return r === p ? [p] : [p, r]; }),
-        abs(config.path ?? CONFIG_NAME),
-        abs(STATE_DIR),
-        ...dirs.map(abs),
+        /**
+         * Everything the parent reads or executes, and every file that tells a
+         * program outside the box what to run — the policy, `.seisin/`, the key
+         * directories, the key providers, `file://` targets, programs on PATH
+         * installed where a role writes, and each project's hooks and settings.
+         * One list with a reason per entry, built in surface.js, which says why
+         * each member of the family is on it. `seisin check` prints it.
+         */
+        ...denyFor(config, role, { observe }).map((e) => e.path),
         // The audit socket, and the directory holding it. Denying only the
         // socket left `mv /tmp/seisin-xxxx /tmp/gone` as a way to take the
         // channel out without ever touching the file that was protected.
         // Connecting is `network-outbound` and both of those are
         // `file-write-unlink`, so denying them leaves the first working.
-        ...(spool ? [spool, dirname(spool)] : []),
-        /**
-         * Whatever the key providers execute.
-         *
-         * `seisin.toml` is denied because a role that can rewrite the policy
-         * has no policy. A provider command is the same thing one level out:
-         * the parent runs it, unsandboxed, as you — so a role that can rewrite
-         * `bin/open-vault.sh` decides what runs outside the box. That is not a
-         * wider boundary, it is no boundary, and it arrives disguised as an
-         * ordinary file in somebody's territory.
-         *
-         * Found by writing the documentation: every worked example ended up
-         * using a script, because the config language has no escapes and a
-         * one-line shell pipeline cannot be spelled. So the shape this protects
-         * is not a corner case — it is the shape the tool pushes you into.
-         *
-         * Only a command that resolves to a path. A bare name like `security`
-         * or `op` is found on PATH, which is not this policy's to reason about.
-         */
-        ...providerPaths(config),
+        // And the root all runs live under, so no role can put a symlink where
+        // the next run will write its settings and keys.
+        // A FIFO channel (Linux) is written, so it is granted below and only
+        // its directory is denied here: the role writes lines into it and can
+        // neither remove it nor put anything beside it (measured in Docker).
+        ...(spool ? [...(isFifo ? [] : [spool]), dirname(spool), ...(runs ? [runs] : [])] : []),
       ],
     },
     /**
@@ -506,47 +367,3 @@ export function providerPaths(config) {
   return [...new Set(out)];
 }
 
-/**
- * `allowWrite` takes directories, not globs: the OS grants a subtree, it does
- * not pattern-match. `src/api/**` and `src/api/` mean the same thing to the
- * kernel, so the trailing glob is trimmed rather than passed through, where it
- * would be read as a literal directory named `**` and silently grant nothing.
- */
-function toWritePath(glob, key = "writes") {
-  if (!EXPRESSIBLE(glob)) throw new Error(unexpressible(glob, key));
-  if (glob === "**") return ".";
-  return glob.replace(/\/\*\*$/, "") || ".";
-}
-
-/**
- * A write pattern the kernel can be given without changing its meaning.
- *
- * Exactly two shapes qualify: a literal path, and a subtree ending in `/**`.
- * Both map onto what allowWrite actually is — a prefix — so the policy, the
- * explanation and the enforcement stay the same sentence.
- *
- * Everything else is refused, and the one that made this necessary is `src/*`.
- * ownersOf() reads it as one level, because `*` compiles to `[^/]*`. The old
- * translation trimmed the `/*` and handed the kernel `src`, which is the whole
- * subtree. So `seisin explain` said denied and the write landed — measured, not
- * theorised. The document was tighter than the boundary, which is the one
- * direction a permission tool must never fail in.
- *
- * There is no exact translation to find later: Seatbelt and bubblewrap grant
- * prefixes, and "one level down" is not a prefix. Refusing is not a placeholder
- * here, it is the answer.
- */
-const WILD = /[*?[\]]/;                       // owners.js treats all four as wildcards
-const EXPRESSIBLE = (g) =>
-  g === "**" ||                               // the whole repo
-  !WILD.test(g) ||                            // a literal path
-  (g.endsWith("/**") && !WILD.test(g.slice(0, -3)));   // a subtree, wildcard-free above it
-
-function unexpressible(glob, key = "writes") {
-  return `${key} = "${glob}" cannot be enforced as written.\n` +
-    `  The sandbox grants a path and everything under it — there is no way to say ` +
-    `"one level deep".\n` +
-    `  Use "${glob.replace(/\/\*$/, "")}/**" for the whole subtree, or name the files.\n` +
-    `  Refusing rather than widening: the old behaviour granted the subtree while ` +
-    `seisin reported the narrow pattern.`;
-}

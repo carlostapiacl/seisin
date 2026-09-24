@@ -20,6 +20,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { parseGitdir, checkoutOf, worktreesOf, twinsOf, whereIs } from "../src/worktree.js";
 import { loadConfig } from "../src/config.js";
+import { scratch } from "./_tmp.js";
 
 const CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "cli.js");
 const haveGit = spawnSync("git", ["--version"]).status === 0;
@@ -28,7 +29,7 @@ const haveGit = spawnSync("git", ["--version"]).status === 0;
 
 /** A temp directory with symlinks resolved, so paths compare the way git writes them. */
 function box(tag) {
-  return realpathSync(mkdtempSync(join(tmpdir(), `seisin-${tag}-`)));
+  return realpathSync(scratch(`seisin-${tag}-`));
 }
 
 /**

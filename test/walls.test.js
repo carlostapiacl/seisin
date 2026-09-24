@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { walls, render, timesHit } from "../src/walls.js";
 import { decide } from "../src/hook.js";
+import { scratch } from "./_tmp.js";
 
 const cfg = {
   root: "/repo",
@@ -24,7 +25,7 @@ const cfg = {
 
 /** A log file holding exactly these lines. */
 function logWith(entries) {
-  const dir = mkdtempSync(join(tmpdir(), "seisin-walls-"));
+  const dir = scratch("seisin-walls-");
   const file = join(dir, "log.jsonl");
   writeFileSync(file, entries.map((e) => JSON.stringify({ at: "2026-09-20T10:00:00.000Z", ...e })).join("\n") + "\n");
   return { dir, file };
@@ -118,7 +119,7 @@ test("timesHit counts this exact pair and nothing near it", () => {
 });
 
 test("the first denial does not count at you; the second does", () => {
-  const dir = mkdtempSync(join(tmpdir(), "seisin-walls-hook-"));
+  const dir = scratch("seisin-walls-hook-");
   mkdirSync(join(dir, ".seisin"), { recursive: true });
   const local = { ...cfg, root: dir };
   const event = { tool_name: "Write", tool_input: { file_path: "deploy/x.yml" } };
@@ -139,7 +140,7 @@ test("the first denial does not count at you; the second does", () => {
 });
 
 test("the count still names the owner — remembering does not replace the answer", () => {
-  const dir = mkdtempSync(join(tmpdir(), "seisin-walls-hook-"));
+  const dir = scratch("seisin-walls-hook-");
   mkdirSync(join(dir, ".seisin"), { recursive: true });
   const local = { ...cfg, root: dir };
   const event = { tool_name: "Write", tool_input: { file_path: "deploy/x.yml" } };
@@ -152,7 +153,7 @@ test("the count still names the owner — remembering does not replace the answe
 });
 
 test("observing counts nothing at anyone, because nothing was refused", () => {
-  const dir = mkdtempSync(join(tmpdir(), "seisin-walls-hook-"));
+  const dir = scratch("seisin-walls-hook-");
   mkdirSync(join(dir, ".seisin"), { recursive: true });
   const local = { ...cfg, root: dir };
   const event = { tool_name: "Write", tool_input: { file_path: "deploy/x.yml" } };

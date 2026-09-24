@@ -14,9 +14,10 @@ import { tmpdir } from "node:os";
 import { loadConfig, withSidecars } from "../src/config.js";
 import { settingsFor } from "../src/srt.js";
 import { ownersOf, explain } from "../src/owners.js";
+import { scratch } from "./_tmp.js";
 
 function repo(writes) {
-  const dir = mkdtempSync(join(tmpdir(), "seisin-side-"));
+  const dir = scratch("seisin-side-");
   mkdirSync(join(dir, "data"), { recursive: true });
   writeFileSync(join(dir, "seisin.toml"),
     `[roles.dev]\nwrites = [${writes.map((w) => `"${w}"`).join(", ")}]\n`);

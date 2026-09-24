@@ -36,7 +36,7 @@
 import { openSync, readSync, closeSync, statSync } from "node:fs";
 import { read } from "./log.js";
 import { explain } from "./owners.js";
-import { STALE_RUNS, RUN_GAP_MS } from "./requests.js";
+import { STALE_RUNS, RUN_GAP_MS, runsAfter } from "./requests.js";
 
 /** A wall is something you hit more than once. Once is information; twice is a pattern. */
 export const MIN_HITS = 2;
@@ -77,10 +77,8 @@ export function walls(config, role, { file, entries = null, min = MIN_HITS, sinc
   // A wall the role stopped hitting — it ran STALE_RUNS times since, refused
   // elsewhere but not here — is still true and no longer worth saying. Same
   // rule as an old request. `fresh` drops them; otherwise they are marked.
-  const times = denied.map((e) => Date.parse(e.at)).filter((t) => !Number.isNaN(t)).sort((a, b) => a - b);
   for (const w of out) {
-    let n = 0, prev = -Infinity;
-    for (const t of times) if (t > Date.parse(w.lastAt)) { if (t - prev > RUN_GAP_MS) n++; prev = t; }
+    const n = runsAfter(denied, Date.parse(w.lastAt), RUN_GAP_MS);
     if (n >= STALE_RUNS) w.stale = { runs: n };
   }
   const kept = fresh ? out.filter((w) => !w.stale) : out;

@@ -7,26 +7,26 @@
  *
  * Everything in here is ordering that was wrong once. The comments say which.
  */
-import { toRepoRelative } from "../paths.js";
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { finished } from "node:stream/promises";
+import { constants as osConstants } from "node:os";
+import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { settingsFor, roleHome, loopbackVia } from "../srt.js";
 import { buildEnv } from "../env.js";
 import { resolveKeys } from "../keys.js";
 import { nestedSandboxWarning } from "../nested.js";
-import { spool, spoolPath, SOCK_ENV } from "../spool.js";
+import { spool, SOCK_ENV } from "../spool.js";
+import { openRun } from "../rundir.js";
 import { secretsOf, redactor } from "../redact.js";
-import { STATE_DIR } from "../layout.js";
 import { C, err } from "../render.js";
-import { pending, record, requestsPath, markStale } from "../requests.js";
+import { pending, requestsPath, markStale } from "../requests.js";
 import { notifier } from "../notify.js";
-import { ownersOf, explain } from "../owners.js";
-import { append, logPath, read } from "../log.js";
+import { logPath, read } from "../log.js";
 import { renderQueue } from "./requests.js";
-import { watchDenials, inScope, scopeOf, reachedForContent } from "../violations.js";
+import { watchDenials } from "../violations.js";
+import { intake } from "../intake.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -63,14 +63,6 @@ export function resolveSrt() {
   return null;
 }
 
-/** Writes `.seisin/<role>.json` and returns its path. */
-export function writeSettings(config, role, sock = null, observe = false) {
-  const dir = join(config.root, STATE_DIR);
-  mkdirSync(dir, { recursive: true });
-  const file = join(dir, `${role}.json`);
-  writeFileSync(file, JSON.stringify(settingsFor(config, role, sock, observe), null, 2) + "\n");
-  return file;
-}
 
 export async function run(config, argv) {
   /**
@@ -126,79 +118,19 @@ export async function run(config, argv) {
   // Built before the first request can arrive; the POST leaves from here, the
   // parent, never from inside the box (notify.js).
   const notify = notifier(config);
-  const sockPath = spoolPath();
-  const audit = await spool((to, entry) => {
-    /**
-     * Nothing from inside the box is taken at its word.
-     *
-     * The sender is the process being recorded, so every field it supplies is
-     * a claim. Two of them matter. `role` decides whose request this is — left
-     * alone, a frontend agent could file one as backend and wait for a human to
-     * approve it. `owners` decides who the queue says it belongs to, and the
-     * parent can work that out itself from the policy.
-     *
-     * So the role is overwritten with the role of this run, the owners are
-     * recomputed, and anything shaped wrong is dropped. Forging a *log* line is
-     * noise. Forging a *request* is a sentence placed in front of a person for
-     * approval, and that is a different thing entirely.
-     */
-    if (!entry || typeof entry !== "object") return;
-
-    if (to === "log") {
-      // The same treatment the queue already got. The role was overwritten but
-      // everything else was passed through, so a process inside the box could
-      // write "allowed" lines for paths it never touched — which would not move
-      // the boundary, but would move `review`, and `init --from-observations`
-      // builds a policy out of exactly this.
-      if (entry.action !== "read" && entry.action !== "write") return;
-      if (!["allowed", "denied", "observed"].includes(entry.verdict)) return;
-      if (typeof entry.target !== "string" || !entry.target.trim()) return;
-      return void append(logPath(config.root), {
-        at: entry.at,
-        role,
-        tool: String(entry.tool ?? "").slice(0, 40),
-        action: entry.action,
-        kind: entry.kind === "key" ? "key" : "file",
-        target: entry.target.slice(0, 1000),
-        verdict: entry.verdict,
-        owners: ownersOf(config, entry.target),      // recomputed, never taken
-        reason: String(entry.reason ?? "").slice(0, 500),
-      });
-    }
-
-    if (entry.action !== "read" && entry.action !== "write") return;
-    if (typeof entry.target !== "string" || !entry.target.trim()) return;
-
-    /**
-     * The policy has to actually refuse it, or it does not belong in a queue.
-     *
-     * Nothing checked. A process inside the box could file a request for a path
-     * its own role already owns, and the queue would print *first refused on
-     * …* about something that was never refused — a sentence placed in front of
-     * a person for approval, describing an event that did not happen.
-     *
-     * Same treatment as `owners` one branch up: the claim is recomputed here
-     * rather than believed. It is the policy answering a question about itself,
-     * which is arithmetic, and it is the parent asking — the one process the
-     * confined side cannot reach.
-     *
-     * This does not require the agent to have *tried*. Asking for a permission
-     * before reaching for it is a reasonable thing to do, and the wording says
-     * "asked" rather than "refused" for exactly that case. What it rules out is
-     * a request for something that is not refused at all.
-     */
-    // Nor for a `never_writes` path: that refusal is the policy, written on
-    // purpose, and granting it is undoing a subtraction without deciding to.
-    const v = explain(config, role, entry.action, entry.target);
-    if (v.allowed || v.neverWrites || v.gitMetadata) return;
-
-    const asked = { role, action: entry.action, target: entry.target, owners: ownersOf(config, entry.target) };
-    record(requestsPath(config.root), asked);
-    notify.maybe(asked);
-  }, sockPath);
-
+  // Everything that belongs to this run alone — socket, settings, scratch keys
+  // — in one private directory, with one id. See rundir.js.
+  const theRun = openRun();
+  const sockPath = theRun.sock;
   const settings = settingsFor(config, role, sockPath, observe);
-  const file = writeSettings(config, role, sockPath, observe);
+  // Per run, never per role: `.seisin/<role>.json` was one file for every run
+  // of that role, and two at once wrote each other's socket path into it.
+  const file = theRun.writeSettings(settings);
+
+  // What arrives from the hook and from the kernel, checked against the policy
+  // this run started with and written with the run's id on it. See intake.js.
+  const take = intake({ config, role, runId: theRun.id, observe, settings, notify });
+  const audit = await spool(take.fromHook, sockPath);
 
   const srt = resolveSrt();
   if (!srt) throw new Error("sandbox runtime not found. Install it with: npm i -g @anthropic-ai/sandbox-runtime");
@@ -225,7 +157,7 @@ export async function run(config, argv) {
    * declared fails later, somewhere else, looking like something it is not.
    */
   const resolved = resolveKeys(config, config.roles[role]);
-  const scratchKeys = join(dirname(sockPath), "keys");
+  const scratchKeys = theRun.keys;
   if (resolved.some((r) => r.mode === "scratch")) mkdirSync(scratchKeys, { recursive: true, mode: 0o700 });
   for (const { entry, mode, value } of resolved) {
     if (mode === "env") { env[entry.name] = value; continue; }
@@ -334,17 +266,10 @@ export async function run(config, argv) {
    * there is one — `attributeTo` below — and anything that arrived in between is
    * held and re-examined rather than credited to this role on faith.
    *
-   * These lines go through the same `append()` the spool does, with `owners`
-   * recomputed here exactly as they are for a hook line. The rule that nothing
-   * is taken at its word still applies; what changes is who is claiming. The
-   * hook is the process being recorded, and the kernel is the thing that
-   * actually refused — so when the two disagree, this is the one that is right.
+   * What each denial becomes — a log line, a request, or a count — is decided
+   * in intake.js, beside the hook's lines: the kernel is the thing that
+   * actually refused, so when the two disagree, it is the one that is right.
    */
-  const scope = scopeOf(settings, config.root);
-  const keyDirs = (config.keyDirs ?? []).map((d) => (d.startsWith("/") ? d : join(config.root, d)));
-  let offPolicy = 0;                  // refused, but about nothing the policy names
-  let walks = 0;                      // a recursive search reaching a closed door
-  const connects = new Set();         // one line per refused target per run
   // What actually runs inside the box, computed once and used by both ends. The
   // watcher recognises a denial by comparing the runtime's command tag with this
   // argv; handed `cmd` while `srt` was handed `env NO_PROXY=… cmd`, it recognised
@@ -358,81 +283,8 @@ export async function run(config, argv) {
   // one request per role, and a denial logged against the role that owns the
   // path (measured: 3 lines and 3 requests for one write by one of 3 roles).
   // The nonce makes each run's command unique, so the tag names one run.
-  const boxed = ["env", `SEISIN_RUN_ID=${randomUUID()}`, ...loopbackVia(config.roles[role], cmd)];
-  const denials = watchDenials((d) => {
-    /**
-     * A refused connection: logged, never queued.
-     *
-     * Once per target per run, because the thing that dials a closed port is
-     * usually a readiness loop, and a loop polling a database every half second
-     * would otherwise write the log the size of the wait. And no request: a port
-     * is not a territory anyone owns, so there is nobody to hand it to — the
-     * sentence says what the policy would have to change instead.
-     */
-    if (d.action === "connect") {
-      if (connects.has(d.path)) return;
-      connects.add(d.path);
-      const v = explain(config, role, "connect", d.path);
-      append(logPath(config.root), {
-        at: new Date().toISOString(), role, tool: "kernel", source: "kernel",
-        action: "connect", kind: "network", target: d.path, verdict: "denied",
-        owners: [], reason: d.operation, ...(v.listed ? { listed: true } : {}),
-      });
-      return;
-    }
-    if (!inScope(d.path, scope)) { offPolicy++; return; }
-    if (!reachedForContent(d)) { walks++; return; }
-    // Relative inside the repo, absolute outside it. A role can be refused at
-    // ~/.ssh under `isolate`, and "../../../.ssh/id_rsa" would be a worse
-    // answer to "what was refused" than the path itself.
-    const rel = toRepoRelative(config, d.path);
-
-    /**
-     * A refusal the hook never saw still leaves a request behind.
-     *
-     * Without this the two halves of the record disagree in the worst
-     * direction: `review` would show a role stopped repeatedly on a directory
-     * while the queue held nothing to approve, so the one refusal a person most
-     * needed to see — the one that escaped the hook — would be the one with no
-     * way to act on it.
-     *
-     * There is no double counting to avoid. When the hook catches something it
-     * denies the tool call outright and the command never runs, so the kernel
-     * never sees it. These are the ones that got past it, which is the whole
-     * reason this exists. Inside the repo only: `~/.ssh` is refused on purpose
-     * under `isolate` and is not a territory anyone is meant to ask for.
-     */
-    const verdict = rel !== d.path && d.action === "write" && config.roles[role]
-      ? explain(config, role, "write", rel)
-      : null;
-    const barred = verdict?.neverWrites ?? null;
-    const gitMeta = verdict?.gitMetadata === true;
-    // A request for something the policy already grants cannot be approved into
-    // anything: it is misattribution or a kernel/policy mismatch, and either way
-    // the line in the log is the evidence, not a question for a person. The hook
-    // path has always had this check; the kernel path did not, which is how a
-    // role ended up asking for its own territory.
-    const granted = verdict?.allowed === true;
-    if (rel !== d.path && !barred && !gitMeta && !granted)
-      { const asked = { role, action: d.action, target: rel, owners: ownersOf(config, rel) };
-        record(requestsPath(config.root), asked);
-        notify.maybe(asked); }
-
-    append(logPath(config.root), {
-      at: new Date().toISOString(),
-      role,
-      tool: "kernel",
-      source: "kernel",
-      action: d.action,
-      kind: keyDirs.some((k) => d.path === k || d.path.startsWith(k + "/")) ? "key" : "file",
-      target: rel,
-      verdict: "denied",
-      owners: ownersOf(config, rel),
-      reason: d.operation,
-      // So the log can tell a subtraction doing its job from a missing permission.
-      ...(barred ? { neverWrites: barred } : {}),
-    });
-  }, { argv: boxed });
+  const boxed = ["env", `SEISIN_RUN_ID=${theRun.id}`, ...loopbackVia(config.roles[role], cmd)];
+  const denials = watchDenials(take.fromKernel, { argv: boxed });
 
   // Deliberately NOT announced here. On Linux this branch is taken every time,
   // so saying it per run puts a line the reader cannot act on in front of every
@@ -456,6 +308,36 @@ export async function run(config, argv) {
     env,
   });
   denials.attributeTo(child.pid);
+
+  /**
+   * Signals: seisin must not die of one, and must not double one.
+   *
+   * Without handlers Node dies on SIGTERM and SIGINT at once: the agent kept
+   * running with nobody holding its audit channel, and the run's directory
+   * stayed behind (74 had piled up on one machine). An orchestrator's timeout
+   * is a SIGTERM to seisin's pid alone, so SIGTERM and SIGHUP are passed on,
+   * and the run exits 128 + the signal — the runtime itself ends 0 when told
+   * to stop, which reported success for a killed run.
+   *
+   * SIGINT is NOT passed on. It comes from the terminal, which sends it to the
+   * whole foreground group: the runtime gets it too and forwards it to the
+   * agent. Measured with one Ctrl-C: the agent received 2 SIGINTs before any
+   * of this (the runtime already duplicates), and 3 when seisin forwarded as
+   * well — and two in a row is how Claude Code tells "cancel" from "quit". So
+   * seisin only stops dying of it.
+   *
+   * And an interrupted run is never reported as a success. The runtime exits 0
+   * whenever its child dies of a signal (measured: SIGINT and SIGTERM, to the
+   * group or to its pid, all 0), so from here "the agent caught the Ctrl-C and
+   * finished" and "the agent was killed by it" look the same. The run exits
+   * 130 in both until the runtime passes the status through; the other choice
+   * reports a killed run as done, which is the one an orchestrator acts on.
+   */
+  let stoppedBy = null;
+  let interrupted = false;
+  process.on("SIGINT", () => { interrupted = true; });
+  for (const sig of ["SIGTERM", "SIGHUP"])
+    process.on(sig, () => { stoppedBy ??= sig; try { child.kill(sig); } catch {} });
   if (outStream) { child.stdout.pipe(outStream); child.stderr.pipe(errStream); }
 
   // The exit code is the child's, and the output has to be all the way out
@@ -463,15 +345,26 @@ export async function run(config, argv) {
   //
   //   - Calling exit() the moment the child exits discards whatever is still in
   //     the redaction stream, so the command looks like it produced nothing.
-  //   - Waiting for `finish` but subscribing AFTER end() misses the event when
-  //     it fires synchronously, so nothing ever calls exit and the process
-  //     drifts out of the event loop with status 0 — every failure reported as
-  //     a success. A battery of seven sandbox tests came back green on that.
+  //   - Waiting for `finish` but subscribing AFTER it fired left nothing to call
+  //     exit: first the process drifted out with status 0 (every failure
+  //     reported as a success), later the 2-second guard below caught it and
+  //     every keyed run paid two seconds. `finished()` has no such window.
   //
-  // Subscribe first, end second, and keep a real timer (not unref'd, or it
-  // cannot save anything) as the floor.
+  // Keep a real timer (not unref'd, or it cannot save anything) as the ceiling.
+  /**
+   * The status is worked out when the run is about to leave, not when the
+   * child exits. A Ctrl-C reaches the runtime and seisin at once; when the
+   * runtime is quicker, the child's `exit` is handled before seisin's own
+   * SIGINT, `interrupted` is still false, and an interrupted run left with 0.
+   * Seen once in a full suite run under load; by the end of the drains below
+   * the pending signal has been handled.
+   */
+  const statusOf = (code, signal) => stoppedBy ? 128 + osConstants.signals[stoppedBy]
+    : signal ? 1
+    : interrupted && !code ? 130
+    : code ?? 0;
+
   child.on("exit", async (code, signal) => {
-    const status = signal ? 1 : code ?? 0;
     // The notice rides on what you are already looking at. A queue nobody opens
     // is not human-in-the-loop, and this is the terminal that just showed you
     // the denial — so it goes to stderr, beside it, not into the agent's stdout
@@ -487,7 +380,7 @@ export async function run(config, argv) {
     // nothing pays a tick.
     await denials.close({ drain: DRAIN_MS });
     // The run made this directory, so the run removes it.
-    try { rmSync(dirname(sockPath), { recursive: true, force: true }); } catch {}
+    theRun.close();
 
     // Say what was dropped rather than only what was kept. A filter nobody can
     // see is indistinguishable from a monitor that is not working, and this one
@@ -497,6 +390,7 @@ export async function run(config, argv) {
     // policy's paths` is a line that answers a question nobody asked — the
     // counts exist to explain a filter, not to announce that one ran.
     const { attributed, foreign } = denials.stats;
+    const { offPolicy, walks } = take.stats;
     const recorded = attributed - offPolicy - walks;
     if (recorded > 0)
       err(`${C.dim}seisin: ${recorded} kernel denial(s) recorded` +
@@ -508,14 +402,23 @@ export async function run(config, argv) {
     if (queue.length) err(renderQueue(markStale(queue, read(logPath(config.root)))));
     const failed = await notify.settle();
     if (failed.length) err(`${C.yellow}seisin: could not notify about a new request (${failed[0]})${C.off}\n`);
+    // One more turn of the loop, so a signal that arrived with the child's exit
+    // has run its handler before the status is decided.
+    await new Promise((r) => setImmediate(r));
+    const status = statusOf(code, signal);
     if (!outStream) return process.exit(status);
-    let left = 2;
+    // `finished()` and not `once("finish")`, because the event is usually over
+    // before this line runs: `child.stdout.pipe(outStream)` ends the redactor
+    // itself when the child's stdout closes, so the listener was attached to an
+    // event that had already fired and the 2-second guard was the only way out.
+    // Every run with a key paid it — measured 3.0 s against 1.2 s without keys.
+    // `finished()` settles at once for a stream that is already done.
     const guard = setTimeout(() => process.exit(status), 2000);
-    const tick = () => { if (--left > 0) return; clearTimeout(guard); process.exit(status); };
-    outStream.once("finish", tick);
-    errStream.once("finish", tick);
     outStream.end();
     errStream.end();
+    await Promise.all([finished(outStream), finished(errStream)]).catch(() => {});
+    clearTimeout(guard);
+    process.exit(status);
   });
   child.on("error", (e) => { throw new Error(`could not start the sandbox: ${e.message}`); });
 }

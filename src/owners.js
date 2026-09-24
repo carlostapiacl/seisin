@@ -12,6 +12,7 @@
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { protectedBy } from "./surface.js";
 
 /**
  * Does this glob cover this path? Supports `**`, `*`, `?` and a trailing `/`.
@@ -146,6 +147,20 @@ export function isGitMetadata(path) {
 
 /** Every role whose territory covers `path`. Usually one; zero is a finding. */
 export function ownersOf(config, path) {
+  /**
+   * An absolute path is outside the repo, or it is made relative first.
+   *
+   * The kernel reports paths as it meets them, and toRepoRelative leaves the
+   * ones outside the repo absolute on purpose. They then met `writes = ["**"]`,
+   * which matches any string, so a refused write to ~/.claude/plugins was
+   * logged as "owned by dev, wide" — two roles that own nothing outside the
+   * repo. Measured on the first run of Claude Code under the new denies.
+   */
+  if (path.startsWith("/")) {
+    const root = config.root?.endsWith("/") ? config.root : `${config.root}/`;
+    if (!config.root || !path.startsWith(root)) return [];
+    path = path.slice(root.length);
+  }
   return Object.values(config.roles)
     .filter((r) => r.writes.some((g) => covers(g, path)) && !neverWrites(r, path, config))
     .map((r) => r.name);
@@ -297,6 +312,21 @@ export function explain(config, role, action, target) {
   }
 
   const owners = ownersOf(config, target);
+  /**
+   * Protected before anything else, because no territory reaches it.
+   *
+   * The policy, seisin's state, the key directories, what the parent executes
+   * or reads for a key, and the files that make git or Claude Code run
+   * something outside the box. The kernel denies all of them to every role —
+   * surface.js has the list and the reasons — so saying "belongs to dev" about
+   * `seisin.toml` sent a request to a person that no grant could satisfy.
+   */
+  const guard = protectedBy(config, target);
+  if (guard)
+    return {
+      allowed: false, owners, protected: guard.why,
+      reason: `${target} is protected (${guard.why}) — no role writes it, so there is nothing to grant`,
+    };
   /**
    * Named for what it is, and checked before "no owner".
    *

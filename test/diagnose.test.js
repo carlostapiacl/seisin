@@ -12,6 +12,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, appendFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { boxed } from "./_tmp.js";
 
 import { loadConfig } from "../src/config.js";
 import { afterTool, atSessionStart, recentKernelDenials } from "../src/diagnose.js";
@@ -26,7 +27,7 @@ const TOML = '[roles.web]\nwrites = ["src/web/**"]\n\n[roles.api]\nwrites = ["sr
 
 function repo(toml = TOML) {
   mkdirSync(BOX, { recursive: true });
-  const dir = mkdtempSync(join(BOX, "diag-"));
+  const dir = boxed("diag-");
   writeFileSync(join(dir, "seisin.toml"), toml);
   mkdirSync(join(dir, "src", "api"), { recursive: true });
   mkdirSync(join(dir, "src", "web"), { recursive: true });

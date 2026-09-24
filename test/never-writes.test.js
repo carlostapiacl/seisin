@@ -14,6 +14,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, symlinkSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { boxed } from "./_tmp.js";
 
 import { loadConfig } from "../src/config.js";
 import { explain, ownersOf } from "../src/owners.js";
@@ -32,7 +33,7 @@ const BOX = join(HERE, ".sandbox-box");
 
 function repoWith(toml, touch = []) {
   mkdirSync(BOX, { recursive: true });
-  const dir = mkdtempSync(join(BOX, "never-"));
+  const dir = boxed("never-");
   writeFileSync(join(dir, "seisin.toml"), toml);
   // What a subtraction names has to exist for it to be enforced on Linux (see
   // enforcedNeverWrites), so the tests that are about enforcement create it —

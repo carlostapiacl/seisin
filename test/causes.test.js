@@ -8,6 +8,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { causesOf } from "../src/serve.js";
 import { TOOLS } from "../src/mcp.js";
+import { boxed } from "./_tmp.js";
 
 const cfg = {
   root: "/repo",
@@ -111,7 +112,7 @@ test("the time window narrows what comes from the log, and nothing else", async 
   const { fileURLToPath } = await import("node:url");
   const box = join(dirname(fileURLToPath(import.meta.url)), ".sandbox-box");
   mkdirSync(box, { recursive: true });
-  const dir = mkdtempSync(join(box, "window-"));
+  const dir = boxed("window-");
   writeFileSync(join(dir, "seisin.toml"), '[roles.a]\nwrites = ["src/**"]\n');
   mkdirSync(join(dir, ".seisin"));
   const line = (at, target) => JSON.stringify({ at, role: "a", action: "write", target, verdict: "denied", owners: [] });
@@ -140,7 +141,7 @@ test("'all' is never smaller than a window inside it", async () => {
   const { fileURLToPath } = await import("node:url");
   const box = join(dirname(fileURLToPath(import.meta.url)), ".sandbox-box");
   mkdirSync(box, { recursive: true });
-  const dir = mkdtempSync(join(box, "window-"));
+  const dir = boxed("window-");
   writeFileSync(join(dir, "seisin.toml"), '[roles.a]\nwrites = ["src/**"]\n');
   mkdirSync(join(dir, ".seisin"));
   // More than the old 4000-line cap, all of it recent.

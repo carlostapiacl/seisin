@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { boxed } from "./_tmp.js";
 
 import { loadConfig } from "../src/config.js";
 import { explain } from "../src/owners.js";
@@ -17,7 +18,7 @@ import { TOOLS } from "../src/mcp.js";
 const BOX = join(dirname(fileURLToPath(import.meta.url)), ".sandbox-box");
 function load(toml) {
   mkdirSync(BOX, { recursive: true });
-  const dir = mkdtempSync(join(BOX, "mcp-"));
+  const dir = boxed("mcp-");
   writeFileSync(join(dir, "seisin.toml"), toml);
   return loadConfig(join(dir, "seisin.toml"));
 }

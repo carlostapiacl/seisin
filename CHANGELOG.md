@@ -8,6 +8,41 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **Nothing a role can write decides what runs outside the box.** seisin reads the policy, runs
+  key providers and reads `file://` keys outside the sandbox, as you; git, Claude Code and direnv
+  run hooks and settings from your projects outside it too. A role that could write any of those
+  didn't need to escape. Measured against the kernel, each of these worked and now doesn't: a
+  provider planted in a PATH directory the role writes ran on the next run; a `file://` target
+  swapped for a symlink handed over another role's key; every role could open
+  `~/.claude/settings.json` for writing; a nested repo's hooks could be replaced. All of them are
+  now denied to the roles that could write them, from one list with a reason per entry, and
+  `seisin check` shows it under **protected**. Providers are looked up only in PATH directories
+  no role writes.
+- **One private directory per run.** Socket, sandbox settings and `scratch` keys live in
+  `$TMPDIR/snr/<run>/`, readable by that run only. Before, one role could read another's scratch
+  key while both ran, and two runs of one role shared `.seisin/<role>.json`. Directories left by
+  killed runs are swept.
+- **Signals reach the agent, once.** SIGTERM and SIGHUP are passed to the agent and the run exits
+  `128 + signal`; SIGINT is not passed on, because the terminal already sends it to the agent.
+  Before, a SIGTERM or a Ctrl-C killed seisin and left the agent running with nobody recording it.
+  An interrupted run exits 130, never 0: the runtime exits 0 whenever the agent dies of a signal.
+- **The hook's record works on Linux.** The runtime blocks every unix socket inside the box on
+  Linux, so the channel the hook reports through never arrived there. It is a FIFO on Linux now.
+- **Every log line says which run wrote it and under which policy** (`run`, `policy`). Stale
+  requests and walls count real runs instead of guessing from 10-minute gaps. A hook line the
+  policy doesn't back is marked `disputed`.
+- **`file://…#NAME` reads a `.env` the way dotenv does, or refuses.** A trailing comment was
+  kept in the value; a name defined twice gave the first instead of the last; a quoted value
+  across lines came back as its first line; `\n` inside double quotes (how a PEM key sits in a
+  `.env`) came back as a backslash and an n. Now 16 line shapes read exactly as dotenv 16 reads
+  them, and the shapes loaders disagree on (a name twice, an unquoted `#`, text after the closing
+  quote, a quote that does not close) are refused.
+- **Key providers stop after 60 s**, and a provider's error output has the value it printed
+  taken out before it is shown.
+- **Faster runs with keys.** Every run with a key waited out a 2-second exit guard; 3.0 s → 1.2 s.
+- **No requests nobody can grant.** Writes to protected paths no longer file a request, a key's
+  request names who declares the key, and paths outside the repo have no owner.
+
 - **The console says when its link is stale.** Every `seisin ui` run mints a new token, so a tab
   opened before a restart used to reload into the example policy with nothing saying why. It now
   says the link is from an earlier run and to open the new one.

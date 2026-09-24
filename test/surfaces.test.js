@@ -11,6 +11,7 @@
  * read-only review of 2026-09-22. Now every surface asks `toRepoRelative`, and
  * this runs the same cases through all three.
  */
+import { rmSync } from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, realpathSync } from "node:fs";
@@ -26,9 +27,13 @@ import { toRepoRelative } from "../src/paths.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
+const made = [];
+process.on("exit", () => { for (const d of made) try { rmSync(d, { recursive: true, force: true }); } catch {} });
+
 function repo(parent) {
   mkdirSync(parent, { recursive: true });
   const dir = mkdtempSync(join(parent, "surf-"));
+  made.push(dir);
   writeFileSync(join(dir, "seisin.toml"), '[roles.api]\nwrites = ["src/api/**"]\n\n[roles.web]\nwrites = ["src/web/**"]\n');
   return dir;
 }
