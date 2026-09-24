@@ -120,16 +120,20 @@ test("a run stopped by SIGTERM stops its agent, cleans up, and does not report s
   // running with nobody holding its audit socket, and the directory stayed.
   // With the signal forwarded, the runtime then ended 0 — success, for a run
   // an orchestrator had just killed.
-  const c = spawn(process.execPath, [CLI, "run", "b", "--", "sh", "-c", "echo $$ > b/pid; sleep 30"], { cwd: repo });
-  const pidFile = join(repo, "b", "pid");
-  await waitFor(pidFile);
-  const shell = Number(readFileSync(pidFile, "utf8"));
+  // The agent writes `up` at once and would write `alive` after 3 s if it kept
+  // running. A SIGTERM to seisin must stop the agent, so `alive` never appears.
+  // Checked by that marker, not by probing the agent's pid: under bubblewrap the
+  // pid is namespaced, so process.kill from outside gives EPERM, not ESRCH.
+  const c = spawn(process.execPath,
+    [CLI, "run", "b", "--", "sh", "-c", "echo up > b/up; sleep 3; echo alive > b/alive; sleep 30"], { cwd: repo });
+  await waitFor(join(repo, "b", "up"));
   const t = Date.now();
   c.kill("SIGTERM");
   const code = await new Promise((r) => c.on("exit", r));
   assert.equal(code, 143);
   assert.ok(Date.now() - t < 20000);
-  assert.throws(() => process.kill(shell, 0), /ESRCH/, "the agent outlived its run");
+  await new Promise((r) => setTimeout(r, 5000));   // longer than the agent's 3 s
+  assert.ok(!existsSync(join(repo, "b", "alive")), "the agent outlived its run");
 });
 
 test("the FIFO channel carries lines, and a parent that is gone costs nothing", async () => {

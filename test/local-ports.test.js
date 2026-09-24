@@ -99,10 +99,19 @@ test("against the kernel: the named port answers, the next one does not", { skip
   t.after(() => servers.forEach((s) => s.close()));
   const [allowed, other] = servers.map((s) => s.address().port);
   const dir = repoWith(`[roles.e2e]\nwrites = ["app/**"]\nlocal_ports = [${allowed}]\n\n[roles.docs]\nwrites = ["docs/**"]\n`);
-  const probe = (port) => `fetch("http://127.0.0.1:${port}/").then(r=>r.text()).then(t=>console.log("${port}",t),e=>console.log("${port}","refused"))`;
+  // curl, not node's fetch: a listed port is reached THROUGH the runtime's
+  // proxy (loopbackVia routes loopback there), so only a client that honours
+  // http_proxy gets there. curl does on every version; node's fetch only began
+  // to on node 22, so the same probe "refused" a listed port on node 18 and 20.
+  // --retry-connrefused rides out the proxy not being ready the instant the box
+  // starts. This is the same shape a real HTTP client has, which is the point.
+  const script =
+    'probe() { o=$(curl -s --max-time 8 --retry 5 --retry-connrefused "http://127.0.0.1:$1/" 2>/dev/null);' +
+    ' [ "$o" = open ] && echo "$1 open" || echo "$1 refused"; };' +
+    ` probe ${allowed}; probe ${other}`;
   const as = (role) => new Promise((ok) => {
     let out = "";
-    const p = spawn(process.execPath, [CLI, "run", role, "--", process.execPath, "-e", `${probe(allowed)};${probe(other)}`], { cwd: dir });
+    const p = spawn(process.execPath, [CLI, "run", role, "--", "sh", "-c", script], { cwd: dir });
     p.stdout.on("data", (d) => (out += d));
     p.on("close", () => ok(out));
   });
