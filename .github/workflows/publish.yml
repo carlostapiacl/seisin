@@ -33,6 +33,11 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+      # Trusted publishing (OIDC, no token) needs npm 11.5.1+, and node 22 ships
+      # npm 10 — without this, publish fell back to a token that is not set and
+      # failed with ENEEDAUTH even though the trusted publisher is configured.
+      - name: npm that can publish through OIDC
+        run: npm install -g npm@latest
       # `npm publish` runs `prepublishOnly: npm test`, and the sandbox half of
       # the suite needs the real runtime and kernel on this runner too — the
       # same setup the test job does, or every sandboxed run dies here and the
