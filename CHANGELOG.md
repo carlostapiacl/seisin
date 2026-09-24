@@ -8,6 +8,10 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+## 0.3.0 — 2026-09-24
+
+- **Runtime bumped to `@anthropic-ai/sandbox-runtime` 0.0.77** (from 0.0.76). Full suite green on
+  both kernels against it.
 - **Nothing a role can write decides what runs outside the box.** seisin reads the policy, runs
   key providers and reads `file://` keys outside the sandbox, as you; git, Claude Code and direnv
   run hooks and settings from your projects outside it too. A role that could write any of those
