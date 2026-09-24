@@ -41,9 +41,21 @@
  */
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { resolve, isAbsolute } from "node:path";
+import { resolve, isAbsolute, delimiter } from "node:path";
 import { BASE, DEFAULTS } from "./env.js";
 import { SOCK_ENV } from "./spool.js";
+import { resolveExecutable, trustedPath } from "./surface.js";
+
+/**
+ * How long a provider may take. A minute, because the slow case is a person:
+ * `op` and the keychain can put a prompt in front of someone who is not
+ * looking at the screen yet. Before this there was no limit, and a provider
+ * stuck on a prompt nobody could see held the run with no message at all.
+ */
+export const PROVIDER_TIMEOUT_MS = 60_000;
+
+/** A credential is bytes, not megabytes. Past this it is not a key. */
+const PROVIDER_MAX_BYTES = 1024 * 1024;
 
 /**
  * `scheme://rest`, and nothing cleverer.
@@ -202,15 +214,78 @@ function fromJson(obj, key, ref) {
   return String(v);
 }
 
+/**
+ * One `NAME=value` line's value, the way dotenv reads it — or a refusal.
+ *
+ * Compared against dotenv 16 on the same file (2026-09-23), three lines came
+ * back different, and a different value is a wrong credential handed over
+ * without a word:
+ *
+ *   - `A=abc # comment` — dotenv drops the comment; this kept it.
+ *   - a name defined twice — dotenv takes the last; this took the first.
+ *   - a quoted value spanning lines — dotenv reads it whole; this returned
+ *     the first line with its quote.
+ *
+ * The comment is read like dotenv, because there is one reading of it. The
+ * other two are refused, because loaders disagree about them and picking one
+ * is guessing which credential somebody meant.
+ */
+function dotEnvValue(raw, ref, key) {
+  const v = raw.trim();
+  const q = v[0];
+  if (q === '"' || q === "'" || q === "`") {
+    // The closing quote is the first one not escaped with a backslash, as in
+    // dotenv's own pattern: `"a\"b"` is one value, `a\"b`, not `a\`.
+    let end = -1;
+    for (let i = 1; i < v.length; i++) {
+      if (v[i] === "\\") { i++; continue; }
+      if (v[i] === q) { end = i; break; }
+    }
+    if (end === -1)
+      throw new Error(
+        `key "${ref}": ${key}= opens a ${q} quote that does not close on its line.\n` +
+        `  A value across several lines is read differently by different loaders, so seisin ` +
+        `does not read it. Put the credential on one line, or in a file of its own.`);
+    // Only a comment may follow the closing quote. `A="a" b` is read by dotenv
+    // as the whole line, quotes included, and by others as `a`.
+    const rest = v.slice(end + 1).trim();
+    if (rest && !rest.startsWith("#"))
+      throw new Error(
+        `key "${ref}": ${key}= has text after its closing quote (${rest.slice(0, 20)}…).\n` +
+        `  Loaders disagree on what that value is. Quote the whole value.`);
+    const inner = v.slice(1, end);
+    // Inside double quotes dotenv turns \n and \r into the characters — the
+    // shape a PEM key takes in a .env. Handed over literally, the key has a
+    // backslash and an n where its line breaks go, and it does not parse.
+    return q === '"' ? inner.replace(/\\n/g, "\n").replace(/\\r/g, "\r") : inner;
+  }
+  const bare = v.replace(/\s+#.*$/, "");
+  // A `#` inside an unquoted value: dotenv 16 cuts the value there
+  // (`tok_#_123` → `tok_`), python-dotenv and docker compose keep it.
+  if (bare.includes("#"))
+    throw new Error(
+      `key "${ref}": the value of ${key}= contains a # without quotes.\n` +
+      `  Some loaders read everything after it as a comment and some do not, so the ` +
+      `credential depends on who reads the file. Quote it: ${key}="…".`);
+  return bare;
+}
+
 function fromDotEnv(text, key, ref) {
   let sawAny = false;
+  let found = null;
   for (const line of text.split(/\r?\n/)) {
     const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
     if (!m) continue;
     sawAny = true;
     if (m[1] !== key) continue;
-    return m[2].trim().replace(/^(['"])(.*)\1$/, "$2");
+    if (found !== null)
+      throw new Error(
+        `key "${ref}": ${key}= is defined more than once in that file.\n` +
+        `  dotenv takes the last one and other loaders the first, so which credential is meant ` +
+        `is not written down. Keep one.`);
+    found = dotEnvValue(m[2], ref, key);
   }
+  if (found !== null) return found;
   /**
    * Two different failures, and telling them apart is the whole message.
    *
@@ -437,16 +512,43 @@ export function modeOf(config, role, entry) {
  *     is — a provider that prints the secret and then exits non-zero would
  *     otherwise put it in the terminal and the log.
  */
-export function resolveRef(entry, provider, { run = spawnSync, root = "." } = {}) {
+export function resolveRef(entry, provider, { run = spawnSync, root = ".", config = null, env = process.env } = {}) {
   if (provider?.builtin === "file" || (provider === undefined && entry.scheme === "file"))
     return readFileRef(entry, root);
   const argv = provider.command.map((part) => part.replaceAll("{ref}", entry.ref));
-  const r = run(argv[0], argv.slice(1), { encoding: "utf8" });
+  /**
+   * Found where no role can write, and handed the same PATH.
+   *
+   * `spawnSync("fakeprov")` searched the parent's PATH, and a PATH directory
+   * inside a territory made the next run execute whatever that role had put
+   * there — outside the box, as you. Measured on 2026-09-23 with a marker file.
+   * The provider's own PATH is narrowed the same way, because a provider that
+   * is a script starts with `#!/usr/bin/env bash` and looks its interpreter up
+   * again. Without a config (a caller embedding seisin), or with a `run` of the
+   * caller's own, the argv is handed over as given: finding the program is part
+   * of spawning it, and whoever replaced the spawn owns that too.
+   */
+  const opts = { encoding: "utf8", timeout: PROVIDER_TIMEOUT_MS, maxBuffer: PROVIDER_MAX_BYTES };
+  if (config && run === spawnSync) {
+    argv[0] = resolveExecutable(argv[0], config, env);
+    opts.env = { ...env, PATH: trustedPath(config, env).join(delimiter) };
+  }
+  const r = run(argv[0], argv.slice(1), opts);
+  if (r.error?.code === "ETIMEDOUT")
+    throw new Error(
+      `key "${entry.raw}": the ${entry.scheme} provider (${argv[0]}) did not answer in ` +
+      `${PROVIDER_TIMEOUT_MS / 1000} s and was stopped.\n` +
+      `  A provider that waits on a prompt nobody sees would otherwise hold the run forever.`);
   if (r.error)
     throw new Error(
       `key "${entry.raw}": could not run the ${entry.scheme} provider (${argv[0]}): ${r.error.message}`);
   if (r.status !== 0) {
-    const said = (r.stderr ?? "").trim().split("\n").slice(0, 3).join("\n    ");
+    // Whatever it printed on stdout is taken out of stderr before stderr is
+    // shown: a provider that echoes the secret to both and then fails would
+    // otherwise put it in the terminal through the error meant to explain it.
+    const leaked = (r.stdout ?? "").trim();
+    const clean = leaked.length >= 4 ? (r.stderr ?? "").split(leaked).join("‹redacted›") : (r.stderr ?? "");
+    const said = clean.trim().split("\n").slice(0, 3).map((l) => l.slice(0, 200)).join("\n    ");
     throw new Error(
       `key "${entry.raw}": the ${entry.scheme} provider exited ${r.status ?? "on a signal"}.` +
       (said ? `\n    ${said}` : "") +
@@ -473,7 +575,7 @@ export function resolveRef(entry, provider, { run = spawnSync, root = "." } = {}
  * should say so without asking anyone's keychain for a password first.
  */
 export function resolveKeys(config, role, opts = {}) {
-  opts = { root: config.root ?? ".", ...opts };
+  opts = { root: config.root ?? ".", config, ...opts };
   const refs = role.keyEntries.filter((e) => e.kind === "ref");
   const plan = refs.map((entry) => ({ entry, mode: modeOf(config, role, entry) }));
   return plan.map((p) => ({

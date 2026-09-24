@@ -16,6 +16,7 @@ import { entriesOf } from "./keys.js";
 import { SHAPES } from "./scan.js";
 import { wired } from "./commands/wire.js";
 import { RUNTIME_WRITES, CREDENTIAL_HOMES, expand, settingsFor } from "./srt.js";
+import { protections, resolveExecutable } from "./surface.js";
 
 /**
  * A report on one config: the roles, and every way the map lies.
@@ -43,6 +44,14 @@ export function inspect(config, only = null, where = config.path) {
       name: p.name, command: p.command, mode: p.mode,
     })),
     shared: sharedPaths(config, roles),
+    /**
+     * What the kernel will refuse a role inside its own territory, and why:
+     * programs installed where a role writes, the hooks and settings of each
+     * project, provider scripts and `file://` targets. Each takes something
+     * away from a territory as written, so it is shown rather than applied
+     * quietly. See surface.js for the family and the measurements.
+     */
+    protected: protections(config, roles),
     warnings: warningsFor(config, roles),
     limits: LIMITS,
   };
@@ -91,6 +100,24 @@ const LIMITS = [
       "seisin does. So for an agent whose endpoints are not published, the options are to " +
       "find them another way or drop the network restriction for it. The ask is upstream: " +
       "github.com/carlostapiacl/seisin/blob/main/docs/upstream/cli-violations.md",
+  },
+  ...(process.platform === "linux" ? [{
+    kind: "control-files-linux",
+    headline: "a project's hooks and settings are protected only where they already exist",
+    detail:
+      "bubblewrap denies a path by mounting over it, and for a path that is not there it would " +
+      "create it on your disk. So on Linux a role can still create a .git/hooks entry or a " +
+      ".claude/settings.json in a project of its territory that had none. On macOS the kernel " +
+      "refuses creating them too.",
+  }] : []),
+  {
+    kind: "shared-scratch",
+    headline: "roles share ~/.cache, ~/.local/share and the temp dir unless isolate = \"home\"",
+    detail:
+      "programs installed there that are on your PATH are protected, and so are Claude Code's " +
+      "settings and plugins. Anything else a program outside the box reads from those places — a " +
+      "cache it executes, a tool not on PATH — is writable by every role. isolate = \"home\" " +
+      "gives each role its own.",
   },
   {
     kind: "unlink-uncovered",
@@ -366,6 +393,33 @@ function warningsFor(config, roles) {
     }
   }
   warnings.push(...roleKeyWarnings(roles, config));
+
+  // A provider the parent could not find where no role writes. `run` refuses
+  // it with the same sentence; here it is found before anybody runs anything.
+  for (const [scheme, p] of Object.entries(config.keyProviders ?? {})) {
+    const cmd = p.command?.[0];
+    if (!cmd || cmd.includes("/")) continue;
+    try { resolveExecutable(cmd, config); } catch (e) {
+      if (!/a role can write/.test(e.message)) continue;
+      warnings.push({
+        kind: "provider-in-territory",
+        headline: `the ${scheme}:// provider "${cmd}" is only found where a role can write`,
+        detail: e.message.split("\n").slice(1).map((l) => l.trim()).join(" "),
+      });
+    }
+  }
+
+  // PATH entries that are not absolute resolve against wherever the parent is
+  // standing, which is the repo. They are ignored for every lookup seisin makes
+  // outside the box; said here because a lookup that skips them can find a
+  // different program than your shell does.
+  const unanchored = (process.env.PATH ?? "").split(delimiter).filter((d) => !d || !d.startsWith("/"));
+  if (unanchored.length)
+    warnings.push({
+      kind: "relative-path",
+      headline: `PATH has ${unanchored.length} relative entr${unanchored.length === 1 ? "y" : "ies"} (${unanchored.map((d) => JSON.stringify(d)).join(", ")})`,
+      detail: "They resolve inside the repo, where roles write, so seisin skips them when it looks for a program to run outside the box.",
+    });
   const shared = sharedPaths(config, roles);
 
   if (shared.length)

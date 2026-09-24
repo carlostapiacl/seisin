@@ -15,6 +15,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveSrt } from "../src/commands/run.js";
+import { boxed } from "./_tmp.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI = join(HERE, "..", "src", "cli.js");
@@ -25,7 +26,7 @@ const skip = resolveSrt() === null ? "sandbox runtime not installed"
 
 test("a denial is logged once, against the run that caused it", { skip }, async () => {
   mkdirSync(BOX, { recursive: true });
-  const dir = mkdtempSync(join(BOX, "parallel-"));
+  const dir = boxed("parallel-");
   for (const d of ["a", "b", "c"]) mkdirSync(join(dir, d));
   writeFileSync(join(dir, "seisin.toml"),
     '[roles.ra]\nwrites = ["a/**"]\n\n[roles.rb]\nwrites = ["b/**"]\n\n[roles.rc]\nwrites = ["c/**"]\n');

@@ -26,8 +26,9 @@
  * solved here; the log is evidence of what happened, not proof that nothing
  * else did.
  */
-import { createServer, createConnection } from "node:net";
-import { unlinkSync, existsSync, mkdtempSync, chmodSync } from "node:fs";
+import { createServer, createConnection, Socket } from "node:net";
+import { unlinkSync, existsSync, mkdtempSync, chmodSync, openSync, writeSync, closeSync, constants } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 
@@ -59,29 +60,78 @@ export function spoolPath() {
  * in. The parent decides what that means; the sender does not get to pick a
  * path, which is the other half of why this is not just a slower file write.
  */
+/**
+ * Which channel this platform can use: a unix socket, or a FIFO.
+ *
+ * On Linux the runtime blocks creating ANY unix socket inside the box with a
+ * seccomp filter — it cannot filter by path, so `allowUnixSockets` is ignored
+ * there (its README says so). The socket this file was built on therefore
+ * never carried a line on Linux: measured in Docker on 2026-09-23, with the
+ * code as published in 0.2.0 and after, the hook "sent" and the log stayed
+ * empty. A FIFO is a file, not a socket — seccomp does not see it, bubblewrap
+ * grants it by path, and a write of up to PIPE_BUF bytes is atomic, so lines
+ * from concurrent tool calls do not interleave. Measured the same day: the
+ * role wrote a line through it, could not create anything beside it, and
+ * could not remove it.
+ */
+export const FIFO_SUFFIX = ".fifo";
+export const channelName = (platform = process.platform) => (platform === "linux" ? "s.fifo" : "s.sock");
+
+/** The most a FIFO write carries atomically on Linux (PIPE_BUF). */
+const PIPE_BUF = 4096;
+
+/** Parses newline-separated JSON messages and hands each to `sink`. */
+function lineReader(sink, onTooLong) {
+  let buffer = "";
+  return (chunk) => {
+    buffer += chunk;
+    // A 1 MB line is not a log entry, it is something trying to fill a disk.
+    if (buffer.length > 1_000_000) { buffer = ""; return onTooLong?.(); }
+    let nl;
+    while ((nl = buffer.indexOf("\n")) !== -1) {
+      const line = buffer.slice(0, nl);
+      buffer = buffer.slice(nl + 1);
+      if (!line.trim()) continue;
+      try {
+        const msg = JSON.parse(line);
+        if (msg && (msg.to === "log" || msg.to === "requests")) sink(msg.to, msg.entry);
+      } catch {
+        // Garbage from inside the box is not the parent's emergency.
+      }
+    }
+  };
+}
+
+/**
+ * The FIFO end of the spool. Opened read-write so it never sees end-of-file
+ * when a writer closes — every hook call opens, writes one line and closes —
+ * and read through a net.Socket, which takes a pipe descriptor and reads it
+ * without holding a thread.
+ */
+function fifoSpool(sink, path) {
+  if (existsSync(path)) unlinkSync(path);
+  execFileSync("mkfifo", ["-m", "600", path]);
+  const fd = openSync(path, constants.O_RDWR | constants.O_NONBLOCK);
+  const stream = new Socket({ fd, readable: true, writable: false });
+  stream.setEncoding("utf8");
+  stream.on("data", lineReader(sink));
+  stream.on("error", () => {});
+  return Promise.resolve({
+    path,
+    close() {
+      stream.destroy();
+      try { unlinkSync(path); } catch {}
+    },
+  });
+}
+
 export function spool(sink, path = spoolPath()) {
+  if (path.endsWith(FIFO_SUFFIX)) return fifoSpool(sink, path);
   if (existsSync(path)) unlinkSync(path);
 
   const server = createServer((conn) => {
-    let buffer = "";
     conn.setEncoding("utf8");
-    conn.on("data", (chunk) => {
-      buffer += chunk;
-      // A 1 MB line is not a log entry, it is something trying to fill a disk.
-      if (buffer.length > 1_000_000) return conn.destroy();
-      let nl;
-      while ((nl = buffer.indexOf("\n")) !== -1) {
-        const line = buffer.slice(0, nl);
-        buffer = buffer.slice(nl + 1);
-        if (!line.trim()) continue;
-        try {
-          const msg = JSON.parse(line);
-          if (msg && (msg.to === "log" || msg.to === "requests")) sink(msg.to, msg.entry);
-        } catch {
-          // Garbage from inside the box is not the parent's emergency.
-        }
-      }
-    });
+    conn.on("data", lineReader(sink, () => conn.destroy()));
     conn.on("error", () => {});
   });
 
@@ -136,6 +186,7 @@ const inFlight = new Set();
 
 export function send(to, entry, path = process.env[SOCK_ENV]) {
   if (!path) return false;
+  if (path.endsWith(FIFO_SUFFIX)) return sendFifo(to, entry, path);
   const p = new Promise((done) => {
     let settled = false;
     const finish = () => { if (!settled) { settled = true; done(true); } };
@@ -161,4 +212,31 @@ export function send(to, entry, path = process.env[SOCK_ENV]) {
 /** Waits for everything `send` started. Call it before exiting. */
 export async function flush() {
   await Promise.all([...inFlight]);
+}
+
+/**
+ * One line into the FIFO, synchronously: nothing to flush, nothing to lose to
+ * `process.exit`. Non-blocking, so a parent that is gone (no reader) costs an
+ * ENXIO and not a hung tool call. Longer than PIPE_BUF, the free-text fields
+ * are shortened first — past that size a write is no longer atomic and two
+ * tool calls could interleave their lines.
+ */
+function sendFifo(to, entry, path) {
+  const full = { at: new Date().toISOString(), ...entry };
+  let line = JSON.stringify({ to, entry: full }) + "\n";
+  if (Buffer.byteLength(line) > PIPE_BUF) {
+    const short = { ...full, reason: String(full.reason ?? "").slice(0, 300), target: String(full.target ?? "").slice(0, 1000) };
+    line = JSON.stringify({ to, entry: short }) + "\n";
+    if (Buffer.byteLength(line) > PIPE_BUF) return false;
+  }
+  let fd;
+  try {
+    fd = openSync(path, constants.O_WRONLY | constants.O_NONBLOCK);
+    writeSync(fd, line);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) try { closeSync(fd); } catch {}
+  }
 }

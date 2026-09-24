@@ -14,6 +14,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { boxed } from "./_tmp.js";
 
 import { buildEnv, DEFAULTS } from "../src/env.js";
 import { loadConfig } from "../src/config.js";
@@ -27,7 +28,7 @@ const BUNDLE = "/etc/ssl/cert.pem";
 
 function repoWith(toml) {
   mkdirSync(BOX, { recursive: true });
-  const dir = mkdtempSync(join(BOX, "tls-"));
+  const dir = boxed("tls-");
   writeFileSync(join(dir, "seisin.toml"), toml);
   return dir;
 }

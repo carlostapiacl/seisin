@@ -687,6 +687,38 @@ saved.
 repetition costs nobody typing, only reading. `extends` gets built the day a hand-written policy
 needs it; the constraints above are what it has to meet when it does.
 
+## What the parent trusts is part of the boundary
+
+The sandbox confines the agent. `seisin run` itself runs outside it, as you: it reads the policy,
+runs key providers, reads `file://` keys and starts the runtime. And git, Claude Code and direnv
+run hooks and settings from your projects when you use them. So the threat model has two halves:
+the agent is not trusted, the process that starts it is — and nothing the agent can write may
+decide what that process, or you, run next.
+
+That used to be fixed one file at a time (the policy, then `.seisin/`, then provider scripts), and
+each fix left the next member of the family open. `src/surface.js` now answers it once: a list of
+what the parent reads or executes, with the reason for each entry, denied to every role that
+could write it. `seisin check` prints the part that takes something from a territory.
+
+- **Literal paths first, patterns second.** A literal deny also protects its ancestors. Each
+  literal costs sandbox start-up (measured: 50 cost nothing, 400 took 4.8–7.7 s), so a project
+  costs `.git/hooks`, `.git/config` and `.claude` whole, and patterns anchored to the territory
+  cover the rest.
+- **`~/.claude` is protected file by file**, never whole: Claude Code keeps its sessions there
+  and writes them from inside the box.
+- **Providers are looked up only where no role writes**, and run with that PATH.
+- **Not protected: instructions.** `CLAUDE.md`, memory files and prompts shape what a future
+  session does, but they do not execute. Protecting them would take a role's docs from it.
+- **Not protected: whatever else a program reads from the shared scratch** (`~/.cache`,
+  `~/.local/share`) that is not on PATH. `isolate = "home"` gives each role its own.
+
+Two things considered and not done. **A token on the audit channel**: only this run's box can
+reach its socket or FIFO, and a token would live in the agent's environment, where the agent reads
+it. The parent recomputes everything that decides something (role, owners, whether a request is
+askable) and marks a verdict it disagrees with as `disputed`. **Redaction on a terminal**: it needs
+the output to pass through seisin, which breaks programs that draw their own screen. It stays off
+on a TTY and says so.
+
 ## Still open
 
 - **An MCP tool call has no owner.** The hook judges file tools and `Bash`; any other tool,

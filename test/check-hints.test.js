@@ -17,10 +17,11 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from "node
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { inspect } from "../src/inspect.js";
+import { scratch } from "./_tmp.js";
 
 /** A repo on disk: `files` are created, `dirs` are created, nothing else. */
 function repo(files = [], dirs = []) {
-  const root = mkdtempSync(join(tmpdir(), "seisin-hints-"));
+  const root = scratch("seisin-hints-");
   for (const d of dirs) mkdirSync(join(root, d), { recursive: true });
   for (const f of files) {
     mkdirSync(join(root, f, ".."), { recursive: true });

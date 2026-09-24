@@ -10,17 +10,19 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { parseKey, defaultName, modeOf, resolveRef, resolveKeys, entriesOf, MODES } from "../src/keys.js";
+import { parseKey, defaultName, modeOf, resolveRef, resolveKeys, entriesOf, MODES, readFileRef } from "../src/keys.js";
 import { loadConfig } from "../src/config.js";
 import { settingsFor } from "../src/srt.js";
+import { resolveExecutable, denyFor } from "../src/surface.js";
 import { inspect } from "../src/inspect.js";
+import { scratch } from "./_tmp.js";
 
 /** A repo with a seisin.toml in it, and a .secrets to hold path-keys. */
 function repo(toml) {
-  const dir = mkdtempSync(join(tmpdir(), "seisin-keys-"));
+  const dir = scratch("seisin-keys-");
   mkdirSync(join(dir, ".secrets"), { recursive: true });
   writeFileSync(join(dir, ".secrets", "netlify-token.txt"), "nfp_aaaaaaaaaaaaaaaa\n");
   writeFileSync(join(dir, "seisin.toml"), toml);
@@ -107,7 +109,7 @@ test("a provider without a command is refused", () => {
 });
 
 test("references need no [keys] dir — a config whose secrets are all in a vault is fine", () => {
-  const dir = mkdtempSync(join(tmpdir(), "seisin-keys-"));
+  const dir = scratch("seisin-keys-");
   writeFileSync(join(dir, "seisin.toml"),
     `[keys.providers.keychain]\ncommand = ["security", "{ref}"]\nmode = "env"\n\n` +
     `[roles.frontend]\nwrites = ["src/**"]\nkeys = ["keychain://t"]\n`);
@@ -117,7 +119,7 @@ test("references need no [keys] dir — a config whose secrets are all in a vaul
 });
 
 test("a PATH key with no [keys] dir is still refused, which was the rule before", () => {
-  const dir = mkdtempSync(join(tmpdir(), "seisin-keys-"));
+  const dir = scratch("seisin-keys-");
   writeFileSync(join(dir, "seisin.toml"), `[roles.frontend]\nkeys = ["token.txt"]\n`);
   assert.throws(() => loadConfig(join(dir, "seisin.toml")), /\[keys\] dir is not set/);
   rmSync(dir, { recursive: true, force: true });
@@ -286,7 +288,7 @@ test("check warns when a provider's command is not on PATH, and asks nobody for 
 });
 
 test("a config with only references does not get told its [keys] dir is missing", () => {
-  const dir = mkdtempSync(join(tmpdir(), "seisin-keys-"));
+  const dir = scratch("seisin-keys-");
   writeFileSync(join(dir, "seisin.toml"),
     `[keys.providers.keychain]\ncommand = ["sh", "{ref}"]\nmode = "env"\n\n` +
     `[roles.frontend]\nwrites = ["src/**"]\nkeys = ["keychain://t"]\n`);
@@ -365,9 +367,9 @@ test("a provider script inside the repo is denied to every role, like seisin.tom
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("a provider found on PATH is not denied — that is a machine, not a repo", () => {
-  // Denying "wherever gpg happens to live" would be a rule about somebody's
-  // installation. The repo has nothing to say about it.
+test("a provider found on PATH outside every territory is not in the profile", () => {
+  // No role can write /usr/bin/security, so denying it would be a rule about
+  // somebody's installation that protects nothing.
   const dir = repo(
     `[keys]\ndir = [".secrets"]\n\n[keys.providers.p]\ncommand = ["security", "{ref}"]\nmode = "env"\n\n` +
     `[roles.dev]\nwrites = ["src/**"]\nkeys = ["T=p://x"]\n`);
@@ -376,10 +378,28 @@ test("a provider found on PATH is not denied — that is a machine, not a repo",
   rmSync(dir, { recursive: true, force: true });
 });
 
+test("a provider found on PATH inside a territory is denied to the role that writes there", () => {
+  // Measured before this existed: a role with bin/ in its territory planted
+  // bin/fakeprov, and the next run executed it outside the box.
+  const dir = repo(
+    `[keys.providers.p]\ncommand = ["fakeprov", "{ref}"]\nmode = "env"\n\n` +
+    `[roles.dev]\nwrites = ["bin/**"]\nkeys = ["T=p://x"]\n`);
+  mkdirSync(join(dir, "bin"), { recursive: true });
+  writeFileSync(join(dir, "bin", "fakeprov"), "#!/bin/sh\necho x\n", { mode: 0o755 });
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  const env = { PATH: `${join(dir, "bin")}:/usr/bin` };
+  // A PATH directory a role writes is not trusted for lookups...
+  assert.throws(() => resolveExecutable("fakeprov", cfg, env), /in a directory a role can write/);
+  // ...and when it is on the parent's PATH, the directory itself is denied.
+  const withPath = denyFor(cfg, cfg.roles.dev, { env }).map((e) => e.path);
+  assert.ok(withPath.includes(realpathSync(join(dir, "bin"))), withPath.join("\n"));
+  rmSync(dir, { recursive: true, force: true });
+});
+
 test('an escaped quote names its own cause, not "missing comma"', () => {
   // Every attempt at a one-line shell provider lands here, and the error used
   // to point at a spot in the middle of the pipeline.
-  const dir = mkdtempSync(join(tmpdir(), "seisin-keys-"));
+  const dir = scratch("seisin-keys-");
   writeFileSync(join(dir, "seisin.toml"),
     `[keys.providers.g]\ncommand = ["sh", "-c", "gpg --passphrase \\"$(x)\\" -d {ref}"]\n\n[roles.dev]\nkeys = []\n`);
   assert.throws(() => loadConfig(join(dir, "seisin.toml")), /there are no escapes in this format/);
@@ -390,7 +410,7 @@ test('an escaped quote names its own cause, not "missing comma"', () => {
 
 /** A repo whose secrets are plain files, which is how most repos look. */
 function fileRepo(toml, files = {}) {
-  const dir = mkdtempSync(join(tmpdir(), "seisin-file-"));
+  const dir = scratch("seisin-file-");
   mkdirSync(join(dir, ".secrets"), { recursive: true });
   for (const [name, body] of Object.entries(files)) writeFileSync(join(dir, ".secrets", name), body);
   writeFileSync(join(dir, "seisin.toml"), toml);
@@ -472,7 +492,7 @@ test("a repo with secrets and no [keys] dir is warned — the emitted policy den
   // dir` line and every role reads the credential tree, with a clean `check`.
   // Verified before this existed: keyDirs [], denyRead [], and not one warning
   // about it among the four that did fire.
-  const dir = mkdtempSync(join(tmpdir(), "seisin-floor-"));
+  const dir = scratch("seisin-floor-");
   writeFileSync(join(dir, ".env"), "TOKEN=x\n");
   writeFileSync(join(dir, "seisin.toml"), `[roles.dev]\nwrites = ["src/**"]\n`);
   const cfg = loadConfig(join(dir, "seisin.toml"));
@@ -484,7 +504,7 @@ test("a repo with secrets and no [keys] dir is warned — the emitted policy den
 test("a repo with no secrets in it is not nagged", () => {
   // The whole reason this is a shallow look and not `scan`: warning a project
   // that has no credentials is the noise that teaches people to skip warnings.
-  const dir = mkdtempSync(join(tmpdir(), "seisin-floor-"));
+  const dir = scratch("seisin-floor-");
   writeFileSync(join(dir, "README.md"), "# hi\n");
   writeFileSync(join(dir, "seisin.toml"), `[roles.dev]\nwrites = ["src/**"]\n`);
   const cfg = loadConfig(join(dir, "seisin.toml"));
@@ -493,7 +513,7 @@ test("a repo with no secrets in it is not nagged", () => {
 });
 
 test("and once a key directory is declared, the warning goes away", () => {
-  const dir = mkdtempSync(join(tmpdir(), "seisin-floor-"));
+  const dir = scratch("seisin-floor-");
   mkdirSync(join(dir, ".secrets"), { recursive: true });
   writeFileSync(join(dir, ".env"), "TOKEN=x\n");
   writeFileSync(join(dir, "seisin.toml"), `[keys]\ndir = [".secrets"]\n\n[roles.dev]\nwrites = ["src/**"]\n`);
@@ -552,7 +572,7 @@ test("a credential in a file whose name gives nothing away is still caught", () 
   // The name test misses `credentials.txt`, `tokens.conf`, `config.local`.
   // Found in the field by writing a test file this did not catch — the test
   // was fine, the detector was name-only.
-  const dir = mkdtempSync(join(tmpdir(), "seisin-floor-"));
+  const dir = scratch("seisin-floor-");
   writeFileSync(join(dir, "notas.txt"), "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
   writeFileSync(join(dir, "seisin.toml"), `[roles.dev]\nwrites = ["src/**"]\n`);
   const cfg = loadConfig(join(dir, "seisin.toml"));
@@ -562,10 +582,62 @@ test("a credential in a file whose name gives nothing away is still caught", () 
 });
 
 test("and ordinary prose in the root is still not a credential", () => {
-  const dir = mkdtempSync(join(tmpdir(), "seisin-floor-"));
+  const dir = scratch("seisin-floor-");
   writeFileSync(join(dir, "NOTES.md"), "# how we deploy\n\nRun the thing, then the other thing.\n");
   writeFileSync(join(dir, "seisin.toml"), `[roles.dev]\nwrites = ["src/**"]\n`);
   const cfg = loadConfig(join(dir, "seisin.toml"));
   assert.ok(!inspect(cfg, null, "x").warnings.some((x) => x.kind === "no-key-floor"));
   rmSync(dir, { recursive: true, force: true });
+});
+
+test(".env values read the way dotenv reads them, or are refused where loaders disagree", () => {
+  // Compared against dotenv 16 on the same file: a trailing comment was kept
+  // in the value, a duplicated name gave the first instead of the last, and a
+  // quoted value across lines came back as its first line with the quote.
+  const dir = scratch("seisin-dotenv-");
+  writeFileSync(join(dir, "a.env"),
+    'A=abc # comment\nB="x y" # c\nC=one\nC=two\nD="multi\nline"\nG=tok_#_123\nK=\'a#b\'\n');
+  const read = (k) => readFileRef({ ref: `a.env#${k}`, raw: k }, dir);
+  assert.equal(read("A"), "abc");
+  assert.equal(read("B"), "x y");
+  assert.equal(read("K"), "a#b");
+  assert.throws(() => read("C"), /defined more than once/);
+  assert.throws(() => read("D"), /does not close on its line/);
+  assert.throws(() => read("G"), /contains a # without quotes/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("every .env line seisin reads, it reads exactly as dotenv does", () => {
+  // dotenv is what the application reads the same file with, so a line where
+  // the two differ hands the role a different credential than the app uses.
+  // Found this way, one form at a time: \\n inside double quotes (a PEM key
+  // came back with a backslash and an n), an escaped quote (cut short), and
+  // text after the closing quote. The expected values are dotenv 16.6.1's own
+  // output for each line, recorded so the test needs no dependency.
+  const DOTENV = [["A=plain","plain"],
+    ["A=  spaced  ","spaced"],
+    ["A=abc # c","abc"],
+    ["A=\"x y\"","x y"],
+    ["A=\"x y\" # c","x y"],
+    ["A=\"line1\\nline2\"","line1\nline2"],
+    ["A=\"a\\\"b\"","a\\\"b"],
+    ["A='a\\nb'","a\\nb"],
+    ["A='a#b'","a#b"],
+    ["A=`tick`","tick"],
+    ["export A=exp","exp"],
+    ["A=\"a=b\"","a=b"],
+    ["A=a=b","a=b"],
+    ["A=\"-----BEGIN KEY-----\\nMIIB\\n-----END KEY-----\"","-----BEGIN KEY-----\nMIIB\n-----END KEY-----"],
+    ["A=x\\ny","x\\ny"],
+    ["A=é ñ","é ñ"]];
+  const dir = scratch("seisin-dotenv-");
+  for (const [line, expected] of DOTENV) {
+    writeFileSync(join(dir, "f.env"), line + "\n");
+    assert.equal(readFileRef({ ref: "f.env#A", raw: "A" }, dir), expected, `read ${JSON.stringify(line)} differently`);
+  }
+  // And these are refused rather than read one of two ways.
+  for (const line of ['A="a" b', "A=abc#x", 'A="unterminated'])  {
+    writeFileSync(join(dir, "f.env"), line + "\n");
+    assert.throws(() => readFileRef({ ref: "f.env#A", raw: "A" }, dir), undefined, line);
+  }
 });

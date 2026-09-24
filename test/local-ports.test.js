@@ -10,6 +10,7 @@ import { createRequire } from "node:module";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { boxed } from "./_tmp.js";
 
 import { loadConfig } from "../src/config.js";
 import { settingsFor, loopbackVia, localPortDomains, NO_PROXY_WITHOUT_LOOPBACK } from "../src/srt.js";
@@ -24,7 +25,7 @@ const BOX = join(HERE, ".sandbox-box");
 
 function repoWith(toml) {
   mkdirSync(BOX, { recursive: true });
-  const dir = mkdtempSync(join(BOX, "ports-"));
+  const dir = boxed("ports-");
   writeFileSync(join(dir, "seisin.toml"), toml);
   mkdirSync(join(dir, "app"), { recursive: true });
   return dir;

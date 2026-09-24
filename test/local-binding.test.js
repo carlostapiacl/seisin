@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
+import { boxed } from "./_tmp.js";
 const require_ = createRequire(import.meta.url);
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -26,7 +27,7 @@ const BOX = join(HERE, ".sandbox-box");
 
 function repoWith(toml) {
   mkdirSync(BOX, { recursive: true });
-  const dir = mkdtempSync(join(BOX, "bind-"));
+  const dir = boxed("bind-");
   writeFileSync(join(dir, "seisin.toml"), toml);
   return dir;
 }

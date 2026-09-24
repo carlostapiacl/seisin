@@ -9,6 +9,7 @@ import { createServer } from "node:http";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { boxed } from "./_tmp.js";
 
 import { loadConfig } from "../src/config.js";
 import { notifier, message } from "../src/notify.js";
@@ -24,7 +25,7 @@ const BASE = '[keys]\ndir = ".secrets"\n\n[roles.web]\nwrites = ["src/web/**"]\n
 
 function repo(extra = '[notify]\nurl_file = ".secrets/notify-url.txt"\n', url = "http://127.0.0.1:9/") {
   mkdirSync(BOX, { recursive: true });
-  const dir = mkdtempSync(join(BOX, "notify-"));
+  const dir = boxed("notify-");
   writeFileSync(join(dir, "seisin.toml"), BASE + "\n" + extra);
   mkdirSync(join(dir, ".secrets"), { recursive: true });
   mkdirSync(join(dir, "src", "api"), { recursive: true });
@@ -42,7 +43,7 @@ test("url_file outside a key directory, or held by a role, refuses to load", () 
   const out = repo('[notify]\nurl_file = "notify-url.txt"\n');
   assert.throws(() => loadConfig(join(out, "seisin.toml")), /not inside a key directory/);
   mkdirSync(BOX, { recursive: true });
-  const held = mkdtempSync(join(BOX, "notify-"));
+  const held = boxed("notify-");
   writeFileSync(join(held, "seisin.toml"),
     '[keys]\ndir = ".secrets"\n\n[roles.web]\nwrites = ["src/web/**"]\nkeys = ["notify-url.txt"]\n\n[notify]\nurl_file = ".secrets/notify-url.txt"\n');
   assert.throws(() => loadConfig(join(held, "seisin.toml")), /declared as a key by web/);
@@ -87,7 +88,13 @@ test("a role can neither read nor rewrite the URL file", { skip }, () => {
   const read = as("cat .secrets/notify-url.txt");
   assert.notEqual(read.status, 0, "the role read the URL");
   assert.doesNotMatch(read.stdout, /127\.0\.0\.1/);
-  assert.notEqual(as("echo http://evil.example/ > .secrets/notify-url.txt").status, 0, "the role rewrote the URL");
+  const write = as("echo http://evil.example/ > .secrets/notify-url.txt");
+  // The file on disk is what the parent reads, so that is the assertion. On
+  // Linux the runtime denies reading a directory by mounting an empty tmpfs
+  // over it, and the write lands in that throwaway copy: exit 0 inside the
+  // box, the real file untouched (checked in Docker, 2026-09-23). On macOS the
+  // kernel refuses the write itself.
+  if (process.platform === "darwin") assert.notEqual(write.status, 0, "the role rewrote the URL");
   assert.match(readFileSync(join(dir, ".secrets", "notify-url.txt"), "utf8"), /127\.0\.0\.1:9/);
 });
 

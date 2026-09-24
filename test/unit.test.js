@@ -12,6 +12,7 @@ import { realpathSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSy
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildEnv, DEFAULTS as ENV_DEFAULTS } from "../src/env.js";
+import { scratch } from "./_tmp.js";
 
 /** The names that crossed FROM THE PARENT, which is what these tests are about.
  *  `buildEnv` also SETS a couple of variables the parent never had (see
@@ -737,7 +738,7 @@ test("a key that is a symlink out of its directory is refused", (t) => {
   // hizo que conceder /tmp no concediera nada. Así que .secrets/token.txt →
   // ~/.ssh/id_rsa es una concesión de lectura sobre la clave ssh, escrita en la
   // única lista que nadie audita dos veces.
-  const box = mkdtempSync(join(tmpdir(), "seisin-sym-"));
+  const box = scratch("seisin-sym-");
   t.after(() => rmSync(box, { recursive: true, force: true }));
   mkdirSync(join(box, ".secrets"), { recursive: true });
   const afuera = join(box, "afuera.txt");
@@ -756,7 +757,7 @@ test("a key directory that is a symlink is refused", (t) => {
   // un nivel arriba. denyRead nombra la ruta tal cual y el runtime aplica sobre
   // el destino, así que `.secrets -> /tmp/otro` da un deny que no cubre nada y
   // un allow que sale del repo.
-  const box = mkdtempSync(join(tmpdir(), "seisin-kd-"));
+  const box = scratch("seisin-kd-");
   t.after(() => rmSync(box, { recursive: true, force: true }));
   const afuera = join(box, "afuera");
   mkdirSync(afuera, { recursive: true });
@@ -783,7 +784,7 @@ test("a forged queue entry cannot crash the queue", () => {
   // Leer la cola no puede ser lo que falle: `run` la imprime al salir y la
   // consola la sondea, así que un reventón acá tumba la mitad que usa una
   // persona. Una línea sin `target` llegaba desde el sandbox y lo lograba.
-  const box = mkdtempSync(join(tmpdir(), "seisin-q-"));
+  const box = scratch("seisin-q-");
   const f = join(box, "requests.jsonl");
   writeFileSync(f, JSON.stringify({ kind: "asked", key: "a:write:b", role: "a", action: "write" }) + "\n");
   const q = pending(f);
@@ -876,8 +877,8 @@ test("scan reports a symlink that leaves the repo, and does not open it", (t) =>
   // directorios declarados?", y un link es la única forma de que una credencial
   // esté en el árbol sin ser un archivo del árbol. Se saltaba en silencio
   // porque un symlink no es isFile().
-  const box = mkdtempSync(join(tmpdir(), "seisin-sl-"));
-  const fuera = mkdtempSync(join(tmpdir(), "seisin-out-"));
+  const box = scratch("seisin-sl-");
+  const fuera = scratch("seisin-out-");
   t.after(() => { rmSync(box, { recursive: true, force: true }); rmSync(fuera, { recursive: true, force: true }); });
   writeFileSync(join(fuera, "id_rsa"), "-----BEGIN OPENSSH PRIVATE KEY-----\n");
   mkdirSync(join(box, "src"), { recursive: true });
@@ -915,7 +916,7 @@ test("a role never inherits a setting it did not write down", (t) => {
   Object.prototype.env = ["GITHUB_TOKEN"];
   t.after(() => { delete Object.prototype.writes; delete Object.prototype.env; });
 
-  const box = mkdtempSync(join(tmpdir(), "seisin-pp-"));
+  const box = scratch("seisin-pp-");
   t.after(() => rmSync(box, { recursive: true, force: true }));
   writeFileSync(join(box, "seisin.toml"), "[roles.frontend]\nkeys = []\n");
 
@@ -959,7 +960,7 @@ test("check says when nothing is recording", (t) => {
   // que ocurre sin decir nunca que hay que instalarlo. Así que `seisin log`
   // volvía vacío después de doce corridas reales, y con él watch, requests,
   // grant y review — la historia con la que abre el README.
-  const box = mkdtempSync(join(tmpdir(), "seisin-w-"));
+  const box = scratch("seisin-w-");
   t.after(() => rmSync(box, { recursive: true, force: true }));
   const cfg = { root: box, path: join(box, "seisin.toml"), keyDirs: [], allowedDomains: [],
                 roles: { dev: { name: "dev", writes: ["src/**"], keys: [], network: null } } };
@@ -975,7 +976,7 @@ test("check says when nothing is recording", (t) => {
 test("wiring merges into settings that already exist", (t) => {
   // Los hooks de alguien son suyos. Una herramienta que los pisa para
   // instalarse no tiene segunda oportunidad.
-  const box = mkdtempSync(join(tmpdir(), "seisin-w2-"));
+  const box = scratch("seisin-w2-");
   t.after(() => rmSync(box, { recursive: true, force: true }));
   mkdirSync(join(box, ".claude"), { recursive: true });
   writeFileSync(join(box, ".claude", "settings.json"),
@@ -995,7 +996,7 @@ test("a role name with a dot is a typo, and says so at config time", (t) => {
   // corridas de alguien murieron por esto; las tres que sobrevivieron eran los
   // nombres sin punto. No hay ambigüedad que preservar: una tabla anidada bajo
   // [roles] no significa nada acá.
-  const box = mkdtempSync(join(tmpdir(), "seisin-dot-"));
+  const box = scratch("seisin-dot-");
   t.after(() => rmSync(box, { recursive: true, force: true }));
   const f = join(box, "seisin.toml");
 
@@ -1077,7 +1078,7 @@ test("the hook answers Claude Code with a denial that names the owner", () => {
 
 /** Un registro de mentira con la forma que escribe el hook. */
 function registro(t, lineas) {
-  const box = mkdtempSync(join(tmpdir(), "seisin-rev-"));
+  const box = scratch("seisin-rev-");
   t.after(() => rmSync(box, { recursive: true, force: true }));
   mkdirSync(join(box, ".seisin"), { recursive: true });
   const f = join(box, ".seisin", "log.jsonl");
@@ -1166,7 +1167,9 @@ test("the spool carries an entry to the parent, and the parent picks the file", 
   send("otro-lado", { role: "qa" }, s.path);            // destino inventado
   send("log", "no soy un objeto", s.path);
   await flush();
-  await new Promise((r) => setTimeout(r, 60));
+  // Hasta que lleguen, no 60 ms fijos: con la máquina cargada (load 165) y en
+  // Linux los 60 ms no alcanzaban y la prueba fallaba sin que nada anduviera mal.
+  for (const end = Date.now() + 5000; got.length < 3 && Date.now() < end;) await new Promise((r) => setTimeout(r, 20));
 
   assert.deepEqual(got.map((g) => g[0]), ["log", "requests", "log"]);
   assert.equal(got[0][1].role, "frontend");
@@ -1179,7 +1182,7 @@ test("closing the spool removes the socket and nothing around it", async (t) => 
   // propia ruta hace que dirname sea el temp del sistema, así que cerrar el
   // carrete lo borraba entero. CI lo encontró: todo lo posterior falló con
   // ENOENT sobre mkdtemp.
-  const dir = mkdtempSync(join(tmpdir(), "seisin-vecino-"));
+  const dir = scratch("seisin-vecino-");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const vecino = join(dir, "no-me-toques.txt");
   writeFileSync(vecino, "acá estaba\n");
@@ -1204,7 +1207,7 @@ test("with no parent listening, send says so instead of pretending", () => {
 
 /** Levanta la consola sobre un repo de mentira y devuelve cómo hablarle. */
 async function consola(t) {
-  const box = mkdtempSync(join(tmpdir(), "seisin-ui-"));
+  const box = scratch("seisin-ui-");
   writeFileSync(join(box, "seisin.toml"),
     '[keys]\ndir = ".secrets"\n\n[roles.frontend]\nwrites = ["src/web/**"]\nkeys   = []\n\n[roles.backend]\nwrites = ["src/api/**"]\nkeys   = []\n');
   const q = join(box, ".seisin", "requests.jsonl");
@@ -1726,4 +1729,13 @@ test("a request the role stopped asking for is marked, not moved and not settled
   assert.equal(out[1].stale, undefined, "one run since is not enough");
   assert.equal(out[2].stale, undefined, "another role's runs do not count");
   assert.ok(out.every((r) => r.state === undefined), "nothing is decided");
+});
+
+test("a path outside the repo has no owner, even for writes = [\"**\"]", () => {
+  // The kernel logged a refused write to ~/.claude/plugins as "owned by dev,
+  // wide": `**` matched the absolute path as if it were inside the repo.
+  const config = { root: "/repo", roles: { dev: { name: "dev", writes: ["**"] } } };
+  assert.deepEqual(ownersOf(config, "/Users/x/.claude/plugins/lock"), []);
+  assert.deepEqual(ownersOf(config, "/repo/src/a.ts"), ["dev"]);
+  assert.deepEqual(ownersOf(config, "src/a.ts"), ["dev"]);
 });

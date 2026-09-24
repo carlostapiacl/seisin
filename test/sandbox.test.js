@@ -14,6 +14,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { boxed } from "./_tmp.js";
 
 import { resolveSrt } from "../src/commands/run.js";
 
@@ -35,7 +36,7 @@ before(() => {
   // once, and this is the fix.
   const box = join(dirname(fileURLToPath(import.meta.url)), ".sandbox-box");
   mkdirSync(box, { recursive: true });
-  repo = mkdtempSync(join(box, "repo-"));
+  repo = boxed("repo-");
   mkdirSync(join(repo, "src", "web"), { recursive: true });
   mkdirSync(join(repo, "src", "api"), { recursive: true });
   mkdirSync(join(repo, ".secrets"), { recursive: true });
@@ -195,7 +196,7 @@ test("seisin refuses to run inside seisin, by name", () => {
  */
 test("an isolated role starts, and loses the credentials the ordinary mode leaves open", { skip }, () => {
   const box = join(dirname(fileURLToPath(import.meta.url)), ".sandbox-box");
-  const iso = mkdtempSync(join(box, "iso-"));
+  const iso = boxed("iso-");
   mkdirSync(join(iso, "src"), { recursive: true });
   writeFileSync(join(iso, "seisin.toml"),
     '[network]\nallow = []\n\n[roles.dev]\nwrites = ["src/**"]\n\n[runtime]\nisolate = true\n');
@@ -228,7 +229,7 @@ test("an isolated role starts, and loses the credentials the ordinary mode leave
 
 /** A repo whose policy resolves a key from a command instead of a file. */
 function refRepo(toml) {
-  const dir = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), ".sandbox-box", "refs-"));
+  const dir = boxed("refs-");
   mkdirSync(join(dir, "src"), { recursive: true });
   writeFileSync(join(dir, "seisin.toml"), toml);
   return dir;

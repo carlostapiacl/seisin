@@ -87,6 +87,23 @@ export function renderReport(report) {
     lines.push("\n");
   }
 
+  // What the kernel refuses inside a territory, and why. Shown because each one
+  // takes something from a territory as written; capped because a monorepo has
+  // a hooks directory per package and the reader needs the shape, not all 200.
+  if (report.protected?.length) {
+    const root = report.where ? report.where.replace(/\/[^/]*$/, "/") : "";
+    const show = (p) => (root && p.startsWith(root) ? p.slice(root.length) : p.replace(/^\/Users\/[^/]+|^\/home\/[^/]+/, "~"));
+    lines.push(`  ${C.b}protected${C.off} ${C.dim}— inside a territory, refused anyway: something outside the box runs or reads it${C.off}\n`);
+    const LIMIT = 12;
+    for (const e of report.protected.slice(0, LIMIT)) {
+      const who = e.roles.length > 3 ? `${e.roles.slice(0, 3).join(", ")} +${e.roles.length - 3}` : e.roles.join(", ");
+      lines.push(`  ${show(e.path)}  ${C.dim}${e.why} · ${who}${C.off}\n`);
+    }
+    if (report.protected.length > LIMIT)
+      lines.push(`  ${C.dim}… and ${report.protected.length - LIMIT} more${C.off}\n`);
+    lines.push("\n");
+  }
+
   for (const w of report.warnings) {
     lines.push(`  ${C.yellow}${w.headline}${C.off}\n`);
     if (w.detail) lines.push(`  ${C.dim}${w.detail}${C.off}\n`);

@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { review } from "../src/review.js";
 import { loadConfig } from "../src/config.js";
+import { scratch } from "./_tmp.js";
 
 const POLICY = `[keys]
 dir = [".secrets"]
@@ -28,7 +29,7 @@ keys = []
 
 /** A repo with a policy and a log of exactly these entries. */
 function repo(lines) {
-  const root = mkdtempSync(join(tmpdir(), "seisin-review-"));
+  const root = scratch("seisin-review-");
   writeFileSync(join(root, "seisin.toml"), POLICY);
   mkdirSync(join(root, ".seisin"), { recursive: true });
   writeFileSync(join(root, ".seisin", "log.jsonl"),

@@ -186,10 +186,33 @@ export function pending(file, { includeSettled = false } = {}) {
 export const STALE_RUNS = 3;
 
 /**
- * Two log lines of a role this far apart belong to different runs. The log has
- * no run marker; a gap is the closest thing to one it can show.
+ * Two log lines of a role this far apart belong to different runs — for lines
+ * written before the log had a run marker. Lines with `run` are counted by it.
  */
 export const RUN_GAP_MS = 10 * 60_000;
+
+/**
+ * How many runs produced these lines, strictly after `since` (ms).
+ *
+ * By the `run` id when a line has one (intake.js writes it on every line since
+ * 2026-09-23), by the gap otherwise. The gap guessed: three runs started a
+ * minute apart by an orchestrator counted as one, and one run idle for eleven
+ * minutes counted as two.
+ */
+export function runsAfter(entries, since, gapMs = RUN_GAP_MS) {
+  const ids = new Set();
+  const untagged = [];
+  for (const e of entries) {
+    const t = Date.parse(e.at);
+    if (Number.isNaN(t) || t <= since) continue;
+    if (e.run) ids.add(e.run);
+    else untagged.push(t);
+  }
+  untagged.sort((a, b) => a - b);
+  let n = 0, prev = -Infinity;
+  for (const t of untagged) { if (t - prev > gapMs) n++; prev = t; }
+  return ids.size + n;
+}
 
 /**
  * Marks the requests the role has stopped asking for, read off the log.
@@ -201,18 +224,13 @@ export const RUN_GAP_MS = 10 * 60_000;
  * `entries` are log lines (`read(logPath(root))`); `now` is for the tests.
  */
 export function markStale(queue, entries, { runs = STALE_RUNS, gapMs = RUN_GAP_MS } = {}) {
-  const at = new Map();                 // role -> sorted times of its log lines
+  const byRole = new Map();             // role -> its log lines
   for (const e of entries) {
-    const t = Date.parse(e.at);
-    if (!e.role || Number.isNaN(t)) continue;
-    (at.get(e.role) ?? at.set(e.role, []).get(e.role)).push(t);
+    if (!e.role) continue;
+    (byRole.get(e.role) ?? byRole.set(e.role, []).get(e.role)).push(e);
   }
-  for (const list of at.values()) list.sort((a, b) => a - b);
   for (const r of queue) {
-    const since = Date.parse(r.last);
-    const later = (at.get(r.role) ?? []).filter((t) => t > since);
-    let n = 0, prev = -Infinity;
-    for (const t of later) { if (t - prev > gapMs) n++; prev = t; }
+    const n = runsAfter(byRole.get(r.role) ?? [], Date.parse(r.last), gapMs);
     if (n >= runs) r.stale = { runs: n, since: r.last };
   }
   return queue;
