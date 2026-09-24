@@ -721,13 +721,23 @@ on a TTY and says so.
 
 ## Still open
 
-- **An MCP tool call has no owner.** The hook judges file tools and `Bash`; any other tool,
-  `mcp__supabase__execute_sql` for example, returns no target, so it gets no verdict and no line
-  in the log. The kernel does not see it either when the MCP server runs outside the box. What
-  seisin offers today is narrower: `mcp = [...]` lists which servers a role may load at all.
-  Answering "whose is the table this call touches" would need a resource that is not a path,
-  asked of the same ownership map — and an unknown tool should say it is unknown instead of
-  passing in silence. Not built.
+- ~~**An MCP tool call has no owner.**~~ **Read at the server level, 2026-09-24.** The hook used
+  to judge file tools and `Bash` and return nothing for anything else, so a call like
+  `mcp__supabase__execute_sql` got no verdict and no line in the log; the kernel does not see it
+  either, since the MCP server runs outside the box. Measured first — `PreToolUse` does fire for
+  it, with `tool_name` in the full `mcp__<server>__<tool>` form and `tool_input` set to the tool's
+  own argument object (`{"msg":"hello"}` for a probe tool), not a path, which is exactly why
+  `targetsOf` returned nothing. Now `targetsOf` resolves the call to its **server** and `explain`
+  answers it from the same `mcp = [...]` a role already declares, through the one ownership map. A
+  server the role may not load is denied; a name that is not a real `mcp__server__tool` is closed;
+  the call is always recorded. Nothing is queued — the `mcp` list is a policy change, not a grant,
+  the shape of `never_writes`. The parent recomputes the verdict rather than trust the line from
+  inside the box (`intake.js`).
+
+  Still open, deferred on purpose: the **finer resource** — *which* table or project a call
+  touches, `supabase://project/table` derived from `tool_input`. That needs a per-server adapter,
+  and the moment seisin reads arbitrary tool arguments to decide, it is a tool policy engine, not
+  an answer to "whose is it." Left until a real case needs it.
 
 - ~~**The queue says "refused" and means "asked for".**~~ **Settled 2026-09-14**,
   and it was two problems rather than one.

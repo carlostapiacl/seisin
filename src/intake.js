@@ -30,6 +30,7 @@ import { explain, ownersOf } from "./owners.js";
 import { append, logPath } from "./log.js";
 import { record, requestsPath } from "./requests.js";
 import { inScope, scopeOf, reachedForContent } from "./violations.js";
+import { mcpServer } from "./hook.js";
 
 /** A hash of the policy file as it is now, short: it names a version, it proves nothing. */
 export function policyId(config) {
@@ -73,6 +74,33 @@ export function intake({ config, role, runId, observe = false, settings, notify 
    */
   function fromHook(to, entry) {
     if (!entry || typeof entry !== "object") return;
+
+    /**
+     * An MCP tool call. It names a resource, not a path, so it is recorded and
+     * never queued — which servers a role may load is a change to its `mcp`
+     * list, not a grant a person approves, the same shape as never_writes. The
+     * verdict is recomputed here from the same list rather than believed from
+     * inside the box: the server is parsed from the tool name and asked of the
+     * policy, so a line claiming "allowed" for a server the role may not load
+     * comes back marked `disputed`.
+     */
+    if (to === "log" && entry.action === "use") {
+      if (typeof entry.target !== "string" || !entry.target.trim()) return;
+      if (!["allowed", "denied", "observed"].includes(entry.verdict)) return;
+      const server = mcpServer(entry.target);
+      const v = server ? explain(config, role, "mcp", server) : { allowed: false };
+      const expected = observe ? "observed" : v.allowed ? "allowed" : "denied";
+      return void log({
+        at: entry.at, role,
+        tool: String(entry.tool ?? "").slice(0, 40),
+        action: "use", kind: "tool",
+        target: entry.target.slice(0, 1000),
+        verdict: entry.verdict, owners: [],
+        reason: String(entry.reason ?? "").slice(0, 500),
+        ...(expected !== entry.verdict ? { disputed: expected } : {}),
+      });
+    }
+
     if (entry.action !== "read" && entry.action !== "write") return;
     if (typeof entry.target !== "string" || !entry.target.trim()) return;
 

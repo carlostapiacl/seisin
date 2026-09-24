@@ -406,7 +406,9 @@ export function serve(configPath, port = 4178) {
     });
     server.on("error", (e) =>
       fail(e.code === "EADDRINUSE"
-        ? new Error(`port ${port} is busy — pass another with: seisin ui --port <n>`)
+        // Keep the code on the rejection: `seisin ui` reads it to tell "a
+        // console is already here, reopen its link" from any other failure.
+        ? Object.assign(new Error(`port ${port} is busy — pass another with: seisin ui --port <n>`), { code: "EADDRINUSE" })
         : e));
   });
 }

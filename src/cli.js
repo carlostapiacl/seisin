@@ -57,7 +57,7 @@ ${C.b}seisin${C.off} — give each agent its own folders and its own keys
   seisin log verify                     does the log's hash chain hold
   seisin watch                          follow the log live
   seisin init [--from-observations]     propose a ${CONFIG_NAME} for this repo
-  seisin ui [--port n]                  open the console, live
+  seisin ui [--port n] [--link]         open the console, live (--link reopens a running one)
   seisin mcp                            an MCP server on stdio — read-only
 
 Enforcement comes from @anthropic-ai/sandbox-runtime, which asks the OS.

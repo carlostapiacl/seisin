@@ -1,0 +1,33 @@
+# CodeQL: static analysis over the source, not just the Scorecard SARIF that
+# scorecard.yml already uploads. seisin is plain JavaScript (src/*.js), so one
+# language and the default query suite. Findings land in the repo's Security tab.
+#
+# Actions are pinned to the same commit github/codeql-action already sits at in
+# scorecard.yml, so there is one version of this action across the repo.
+name: codeql
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "27 4 * * 1"   # weekly, off the hour so it does not stampede
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: analyze javascript
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write   # to file findings in the Security tab
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: github/codeql-action/init@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
+        with:
+          languages: javascript-typescript
+      - uses: github/codeql-action/analyze@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
