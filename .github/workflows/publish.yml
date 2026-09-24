@@ -58,4 +58,11 @@ jobs:
       # does not say what it claims to be.
       - name: tag matches package.json
         run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+      # setup-node leaves an NPM_CONFIG_USERCONFIG pointing at a temp .npmrc with
+      # `always-auth=true`, which forces token auth and errors ENEEDAUTH before
+      # OIDC is tried. Empty it so trusted publishing is what runs.
+      - name: clean npm auth config, and show the npm version
+        run: |
+          npm --version
+          : > "${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
       - run: npm publish --provenance --access public
