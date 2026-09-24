@@ -33,6 +33,18 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+      # `npm publish` runs `prepublishOnly: npm test`, and the sandbox half of
+      # the suite needs the real runtime and kernel on this runner too — the
+      # same setup the test job does, or every sandboxed run dies here and the
+      # publish aborts even though the test matrix already passed.
+      - name: system packages
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap ripgrep socat
+      - name: allow unprivileged user namespaces (Ubuntu 24.04+)
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          sudo sysctl -w kernel.unprivileged_userns_clone=1 || true
+      - name: install the sandbox runtime
+        run: npm install -g @anthropic-ai/sandbox-runtime@$(node -p "require('./package.json').dependencies['@anthropic-ai/sandbox-runtime']")
       - run: npm ci
       # The tag has to be the version, or the provenance points at a commit that
       # does not say what it claims to be.
