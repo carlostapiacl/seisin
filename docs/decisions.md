@@ -646,6 +646,27 @@ poll. `/var/run/*` is dropped because every DNS lookup in the box lands there. R
 proxy (a domain not on the list) aren't logged: the `srt` CLI doesn't expose them. That's
 [#582](https://github.com/anthropics/sandbox-runtime/issues/582).
 
+## Experimental `nono`: fixed ports, otherwise keep the current backend
+
+The backend is a capability choice, not a preference toggle. A role may use `nono` only when
+that backend can enforce every capability its policy declares. Falling back is acceptable;
+silently widening the policy is not.
+
+Measured with `nono 0.78.0` on macOS, `network.open_port = [5173]` permits both connecting to
+and binding that exact port, while another port remains closed. That makes fixed ports the
+recommended shape for dev servers. The command must also refuse automatic port fallback — for
+example Vite's `--strictPort` — or a busy port turns into a confusing failure outside the grant.
+
+`network.listen_port` is not the answer in that build. Its profile passes strict schema
+validation, but a real bind is denied with `Operation not permitted`. A dynamic port selected
+with `listen(0)` cannot be enumerated in `open_port` either. Therefore a role with
+`local_binding = true`, or one that genuinely needs a dynamic port, stays on
+`sandbox-runtime`. Once backend selection exists, `seisin check` must state that decision and
+why; explicit `nono` selection must fail before launch for the same role.
+
+The full contract, platform limits and release gate are in
+[nono-backend.md](nono-backend.md).
+
 ## `mcp` per role: declared here, enforced by the launcher
 
 Every MCP server a CLI loads puts its tool schemas in the agent's context, and that context is
