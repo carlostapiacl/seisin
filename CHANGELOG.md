@@ -8,6 +8,16 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **A busy audit log never writes without its lock.** If another writer held the lock beyond
+  the two-second ceiling, seisin used to append anyway and then remove the other writer's lock,
+  allowing the hash chain to fork. The entry is now dropped instead — bookkeeping may fail
+  without taking the agent down, but it may not manufacture evidence.
+- **A misspelt `runtime.isolate` is refused.** Only absent/`false`, `true`/`"home"`, and
+  `"credentials"` load. An unknown value used to silently turn isolation off.
+- **The landing now leads with ownership and coordination**, brings the field measurements and
+  `seisin review` forward, and separates the enforced boundary from the things it does not
+  promise. The console also points at the runtime's current repository.
+
 ## 0.4.0 — 2026-09-24
 
 - **The console's link can be found again.** The token that authorizes the console travels only
