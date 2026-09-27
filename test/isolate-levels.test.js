@@ -31,14 +31,21 @@ const has = (list, p) => list.includes(expand(p));
 
 /* ── what each level reads ────────────────────────────────────────────── */
 
-test("an unknown word is off, never a stronger setting than was meant", () => {
-  // A permission tool must not read a typo as more confinement than the writer
-  // asked for, and never as less than it says either. Off is the safe end.
+test("isolate is off only when it is absent or explicitly false", () => {
   assert.equal(readIsolate("credentials"), "credentials");
   assert.equal(readIsolate("home"), "home");
   assert.equal(readIsolate(true), "home", "what `true` has always meant");
-  for (const v of [false, undefined, "CREDENTIALS", "yes", "credential", 1])
-    assert.equal(readIsolate(v), false, `${JSON.stringify(v)} is off`);
+  assert.equal(readIsolate(false), false);
+  assert.equal(readIsolate(undefined), false);
+});
+
+test("an unknown isolate value is refused instead of turning protection off", () => {
+  for (const v of ["CREDENTIALS", "yes", "credential", 1])
+    assert.throws(
+      () => readIsolate(v),
+      (e) => /runtime\.isolate/.test(e.message) && /credentials/.test(e.message),
+      `${JSON.stringify(v)} must be refused`,
+    );
 });
 
 test("off by default: a role reads your home like any process you run", () => {

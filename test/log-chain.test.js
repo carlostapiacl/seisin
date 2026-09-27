@@ -4,12 +4,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { boxed } from "./_tmp.js";
 
-import { append, verifyChain, verifyLog, logSegments, read, GENESIS } from "../src/log.js";
+import { append, withLock, verifyChain, verifyLog, logSegments, read, GENESIS } from "../src/log.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BOX = join(HERE, ".sandbox-box");
@@ -138,4 +138,18 @@ test("several processes writing at once do not fork the chain", async () => {
   const r = verifyChain(f);
   assert.equal(r.lines, 161);
   assert.deepEqual(r.breaks, [], `the chain forked: ${JSON.stringify(r.breaks.slice(0, 3))}`);
+});
+
+test("a writer that times out never writes through or removes another writer's lock", () => {
+  const f = logFile();
+  mkdirSync(dirname(f), { recursive: true });
+  writeFileSync(f + ".lock", "held by another process\n");
+  let ran = false;
+  assert.throws(
+    () => withLock(f, () => { ran = true; }, { waitMs: 10, staleMs: 5000 }),
+    (e) => e.code === "ELOCKED",
+  );
+  assert.equal(ran, false, "the unprotected write must not run");
+  assert.equal(existsSync(f + ".lock"), true, "only the lock owner may remove it");
+  unlinkSync(f + ".lock");
 });

@@ -158,21 +158,32 @@ function lastLine(file) {
  * same file; two of them reading the same last line would fork the chain.
  * A lock left by a killed process is taken over after a few seconds.
  */
-function withLock(file, fn) {
+export function withLock(file, fn, { waitMs = 2000, staleMs = 5000 } = {}) {
   const lock = file + ".lock";
-  const deadline = Date.now() + 2000;
+  const deadline = Date.now() + waitMs;
+  let acquired = false;
   for (;;) {
     try {
       closeSync(openSync(lock, "wx"));
+      acquired = true;
       break;
     } catch (e) {
       if (e.code !== "EEXIST") throw e;
-      try { if (Date.now() - statSync(lock).mtimeMs > 5000) { unlinkSync(lock); continue; } } catch {}
-      if (Date.now() > deadline) break;          // never block the run over bookkeeping
+      try { if (Date.now() - statSync(lock).mtimeMs > staleMs) { unlinkSync(lock); continue; } } catch {}
+      // Never write without the lock. Doing so forks the hash chain; deleting
+      // the lock in `finally` then admits still more writers while its owner is
+      // active. The log is bookkeeping and append() may fail without taking the
+      // agent down, so dropping this entry is safer than fabricating evidence.
+      if (Date.now() > deadline) {
+        const error = new Error(`could not acquire log lock within ${waitMs} ms`);
+        error.code = "ELOCKED";
+        throw error;
+      }
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
     }
   }
-  try { return fn(); } finally { try { unlinkSync(lock); } catch {} }
+  try { return fn(); }
+  finally { if (acquired) try { unlinkSync(lock); } catch {} }
 }
 
 /**
