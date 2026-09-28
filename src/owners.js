@@ -241,6 +241,12 @@ export function standing(config, entry) {
   if (entry.kind === "key")
     return { kind: "outside", owners: [], why: "a key directory, closed on purpose" };
   const guard = protectedBy(config, target);
+  // A family the policy hands to a role is protected from everybody else and
+  // owned by that role — if it is also that role's territory.
+  if (guard?.family) {
+    const holders = ownersOf(config, target).filter((o) => config.roles[o]?.controlFiles?.includes(guard.family));
+    if (holders.length) return { kind: "owned", owners: holders };
+  }
   if (guard) return { kind: "protected", owners: [], why: guard.why };
   if (target.startsWith("/")) {
     const root = config.root?.endsWith("/") ? config.root : `${config.root}/`;
@@ -446,7 +452,14 @@ export function explain(config, role, action, target) {
    * surface.js has the list and the reasons — so saying "belongs to dev" about
    * `seisin.toml` sent a request to a person that no grant could satisfy.
    */
-  const guard = protectedBy(config, target);
+  const guard = protectedBy(config, target, { role });
+  if (guard?.family)
+    return {
+      allowed: false, owners, protected: guard.why, family: guard.family,
+      reason: `${target} is protected (${guard.why}). A role writes it only when the policy hands it ` +
+        `that family: control_files = ["${guard.family}"] under [roles.${role}], and inside its own ` +
+        `territory. That is a person's decision about the policy, not a grant to request`,
+    };
   if (guard)
     return {
       allowed: false, owners, protected: guard.why,

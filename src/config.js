@@ -371,6 +371,7 @@ export function loadConfig(path) {
     isolate: readIsolate(own(runtime, "isolate")),
     redact: own(runtime, "redact"),
     scanIgnore: asArray(own(own(parsed, "scan"), "ignore"), "scan.ignore"),
+    protect: readProtect(own(parsed, "protect"), path),
     roles: {},
   };
 
@@ -432,6 +433,7 @@ export function loadConfig(path) {
       throw new Error(`${path}: roles.${name}.local_binding must be true or false, not ${JSON.stringify(localBinding)}`);
     const localPorts = readLocalPorts(own(r, "local_ports"), `${path}: roles.${name}.local_ports`);
     const mcp = readMcp(own(r, "mcp"), `${path}: roles.${name}.mcp`);
+    const controlFiles = readControlFiles(own(r, "control_files"), `${path}: roles.${name}.control_files`);
     out.roles[name] = {
       name,
       /**
@@ -505,6 +507,13 @@ export function loadConfig(path) {
        * the role says so. See srt.js for what it costs.
        */
       trustd: trustd === true,
+      /**
+       * The families of control files this role may edit inside its own
+       * territory: "ide" (`.vscode/`, `.cursor/`, `.windsurf/`) and
+       * "instructions" (`CLAUDE.md`, `AGENTS.md`…). surface.js says what each
+       * is and why only these two can be handed out. Absent is none.
+       */
+      controlFiles,
       // Kept so `check` can name a misspelt key instead of ignoring it. An
       // unknown key in a role table used to be dropped silently, and for a
       // subtraction that is failing open: `never_write` would read as a rule
@@ -604,7 +613,46 @@ export function withSidecars(paths) {
 }
 
 /** The keys a `[roles.<name>]` table can hold. Anything else is reported by `check`. */
-export const ROLE_KEYS = ["writes", "keys", "key_mode", "env", "network", "never_writes", "local_binding", "local_ports", "mcp", "trustd"];
+export const ROLE_KEYS = ["writes", "keys", "key_mode", "env", "network", "never_writes", "local_binding", "local_ports", "mcp", "trustd", "control_files"];
+
+/**
+ * `control_files`: which families of control files a role may edit. Refused at
+ * load when it names anything else — `.claude`, git hooks and the rest are not
+ * on the list on purpose, and a word the reader does not know must not load as
+ * a permission it thinks it wrote.
+ */
+export const CONTROL_FAMILIES = ["ide", "instructions"];
+
+function readControlFiles(value, where) {
+  if (value === undefined) return [];
+  const out = [];
+  for (const f of asArray(value, where)) {
+    if (!CONTROL_FAMILIES.includes(f))
+      throw new Error(`${where}: ${JSON.stringify(f)} is not a family of control files. ` +
+        `Known: ${CONTROL_FAMILIES.map((x) => JSON.stringify(x)).join(", ")}. ` +
+        `The others (.claude, git hooks, .mcp.json, .envrc) are never handed to a role.`);
+    if (!out.includes(f)) out.push(f);
+  }
+  return out;
+}
+
+/**
+ * `[protect]` — what is protected beyond the defaults. One key today:
+ * `instructions = true` protects `CLAUDE.md`, `AGENTS.md` and their kin from
+ * every role that is not handed them. Anything else in the table is refused.
+ */
+function readProtect(value, path) {
+  if (value === undefined) return { instructions: false };
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error(`${path}: [protect] must be a table`);
+  for (const k of Object.keys(value))
+    if (k !== "instructions")
+      throw new Error(`${path}: [protect] ${k} is not a setting. Known: instructions.`);
+  const v = own(value, "instructions");
+  if (v !== undefined && typeof v !== "boolean")
+    throw new Error(`${path}: [protect] instructions must be true or false, not ${JSON.stringify(v)}`);
+  return { instructions: v === true };
+}
 
 /**
  * `mcp`: names of MCP servers, as the CLI's config calls them. Absent is null,

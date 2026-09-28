@@ -286,6 +286,32 @@ key means the policy doesn't say. seisin declares this and `explain` answers it
 launcher has to apply it. With Claude Code: `--mcp-config` holding only those servers, plus
 `--strict-mcp-config`.
 
+Some files are not code but still make something happen outside the box, and no territory
+reaches them: git hooks and config, a project's `.claude/`, `.mcp.json`, `.envrc`. Two softer
+families sit beside those, and a policy can hand them to one role:
+
+```toml
+[roles.frontend]
+writes        = ["apps/web/**"]
+control_files = ["ide"]           # keeps apps/web/.vscode/launch.json current
+
+[protect]
+instructions = true               # CLAUDE.md, AGENTS.md… only for roles handed "instructions"
+```
+
+- **`ide`** — `.vscode/`, `.cursor/`, `.windsurf/`. Your editor applies them as soon as they
+  change, which is how an injected agent turns on tool auto-approval. **Protected by default.**
+- **`instructions`** — `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, Cursor and Windsurf rules, Copilot
+  instructions. Nothing runs them; the next agent session reads them as its instructions, so
+  one role writing them reaches another role's context. **Off unless `[protect]` turns it on**:
+  keeping them current is ordinary work for most teams.
+
+A role handed a family writes it only inside its own `writes`, and `seisin check` names it on
+every run. A refusal says which key would change it, and leaves no request: it is a decision
+about the policy, not a grant. Inside `node_modules` neither family is touched, so npm still
+unpacks a package's own `.vscode` or `AGENTS.md`. On Linux only the files that already exist are
+protected: bubblewrap would have to create a missing one to refuse it.
+
 Refused connections are logged too: `connect tcp:<port>` (the kernel gives the port, not the
 host) or the socket path, once per target per run. `seisin walls` says whether the port is
 missing from `local_ports`, listed but dialled directly, or a socket. No request is filed: a
@@ -301,6 +327,11 @@ denied write as a *readonly database*, and an agent that diagnoses file permissi
 answer is ownership.
 
 All four came out of one production window where none of them was the boundary misbehaving.
+
+A fifth comes with protected files: **a role's `git checkout`, `pull` or `rebase` cannot update
+a file the role may not write.** Git exits 0, the branch moves, and the old `.vscode/settings.json`
+stays behind as a modification — which a later `commit -a` would turn into a revert. Switch
+branches outside the box, or hand that role the family if keeping those files is its job.
 
 **[What each one looks like, and what to do →](docs/first-day.md)**
 
@@ -700,12 +731,12 @@ the same kernel or workspace, and which one you want depends on what you are pro
 
 ## Status
 
-`0.4.2`, 500 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
+`0.5.0`, 510 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 those eighteen skipped on Linux for a day, behind a runtime check that looked for the global
 install and missed the bundled one, and hid a defect that broke `seisin run` on that platform
-entirely. **500 tests on macOS 15, 499 passing and 1 skipped** (it is Linux-only) — 2026-09-29;
+entirely. **510 tests on macOS 15, 509 passing and 1 skipped** (it is Linux-only) — 2026-09-29;
 `ubuntu-latest` under bubblewrap runs the same suite, Node 18/20/22/24 in CI at every push — and 225/225 the same way on Debian 12.15
 with bubblewrap 0.8.0, the last time the suite was run in Docker.
 [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),

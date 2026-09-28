@@ -175,6 +175,19 @@ function roleKeyWarnings(roles, config = null) {
             : "Nothing in it takes effect."),
       });
     }
+    // A family handed to a role is a hole in the protection on purpose, and
+    // said on every check so it stays a decision somebody can see.
+    for (const f of r.controlFiles ?? [])
+      warnings.push({
+        kind: "control-files-handed",
+        headline: f === "ide"
+          ? `${r.name}: control_files = ["ide"] — may edit .vscode/, .cursor/ and .windsurf/ in its territory`
+          : `${r.name}: control_files = ["instructions"] — may edit CLAUDE.md, AGENTS.md and their kin in its territory`,
+        detail: f === "ide"
+          ? "Your editor applies what it writes there — tasks, settings, auto-approval, MCP servers — outside the box. " +
+            "Hand it only to a role that maintains those files, and review its changes to them."
+          : "The next agent session reads what it writes there as its instructions, whichever role that session is.",
+      });
     // macOS only, and not by omission: on Linux the runtime removes the network
     // namespace, so every role already has a loopback of its own — it can serve
     // and reach its own server with or without the key, and reaches nothing on
