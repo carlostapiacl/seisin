@@ -10,7 +10,8 @@
  * agents have to read each other's code to do anything useful. Keys are the
  * exception, and they are handled separately below.
  */
-import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { protectedBy } from "./surface.js";
 
@@ -164,6 +165,82 @@ export function ownersOf(config, path) {
   return Object.values(config.roles)
     .filter((r) => r.writes.some((g) => covers(g, path)) && !neverWrites(r, path, config))
     .map((r) => r.name);
+}
+
+/**
+ * Where a refused target stands against the policy as it is now.
+ *
+ * One of four, and only the last one is a decision somebody has to make:
+ *
+ *   outside    not a place in the map at all — a port, a key directory, or a
+ *              path outside the repository, which no `writes` reaches
+ *   protected  closed to every role on purpose (surface.js); the boundary
+ *              working, with nothing to grant
+ *   owned      some role's territory today
+ *   unowned    in the repository, ownable, and nobody claims it
+ *
+ * Computed from the policy, never from the `owners` a log line carries. That
+ * value is what was true the day of the refusal; every grant made since makes
+ * it more wrong, so a screen reading it gets worse the more seisin is used the
+ * way it is meant to be. Measured on one deployment: the console said 1,178 of
+ * 1,486 refused paths had no owner; against the policy of that day it was 316.
+ * The rest had been claimed since, were protected, or were not paths at all.
+ */
+export function standing(config, entry) {
+  const target = entry.target;
+  if (entry.kind === "network")
+    return { kind: "outside", owners: [], why: "a port or a socket, which no role owns" };
+  if (entry.kind === "key")
+    return { kind: "outside", owners: [], why: "a key directory, closed on purpose" };
+  const guard = protectedBy(config, target);
+  if (guard) return { kind: "protected", owners: [], why: guard.why };
+  if (target.startsWith("/")) {
+    const root = config.root?.endsWith("/") ? config.root : `${config.root}/`;
+    if (!config.root || !target.startsWith(root))
+      return { kind: "outside", owners: [], why: "outside the repository, where no role's territory reaches" };
+  }
+  const owners = ownersOf(config, target);
+  return { kind: owners.length ? "owned" : "unowned", owners };
+}
+
+/**
+ * `standing`, remembered while the policy stays the same.
+ *
+ * The console asks for its whole state every two seconds, and a real log has
+ * well over a thousand distinct refused paths: classifying all of them costs
+ * most of a second each time (measured: ~400 ms in protectedBy, ~335 ms in
+ * ownersOf), on a call that already took about that long. What a path's
+ * standing depends on is the policy file, so that is the key. It also depends,
+ * a little, on the disk — on Linux a control file is protected only once it
+ * exists — so the memory is dropped after a minute as well, which bounds how
+ * stale an answer can be without paying for it on every poll.
+ *
+ * A config that was not read from a file (tests, embedders) gets a memory for
+ * this call only.
+ */
+const STANDING_TTL = 60_000;
+let standingMemo = { key: null, at: 0, map: new Map() };
+
+export function standingOf(config, { now = Date.now() } = {}) {
+  let map;
+  let key = null;
+  try {
+    if (config.path) key = `${config.path}\u0000${createHash("sha256").update(readFileSync(config.path)).digest("hex")}`;
+  } catch {
+    key = null;
+  }
+  if (key === null) map = new Map();
+  else {
+    if (standingMemo.key !== key || now - standingMemo.at > STANDING_TTL)
+      standingMemo = { key, at: now, map: new Map() };
+    map = standingMemo.map;
+  }
+  return (entry) => {
+    const k = `${entry.kind ?? ""}\u0000${entry.target}`;
+    let s = map.get(k);
+    if (!s) map.set(k, (s = standing(config, entry)));
+    return s;
+  };
 }
 
 /**

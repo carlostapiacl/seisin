@@ -100,13 +100,22 @@ const TOOLS = [
     name: "seisin_causes",
     description:
       "Denials grouped by what was denied — by path, and one level coarser by the name at " +
-      "the end of it — with how many are on paths no role owns. This is the question " +
-      "`seisin_activity` cannot answer: the raw log has the events, this has them counted " +
-      "against the policy as it stands, so a cause that has been granted since stops " +
-      "counting. Reach for it before proposing a change: a day that is three quarters one " +
-      "filename is a tooling problem, and the same volume spread across unrelated paths is " +
-      "a question about who owns what. Read-only.",
-    inputSchema: { type: "object", properties: { limit: { type: "number" } } },
+      "the end of it — over the whole log, or since an ISO date. The counts are history: " +
+      "what was refused. What is measured against the policy as it stands is where each " +
+      "path is now — `standing`: unowned (a decision nobody has made), owned, protected " +
+      "(closed to every role on purpose, nothing to grant) or outside (a port, a key, or " +
+      "outside the repository) — and, per cause, `stillRefused`, how many of the roles " +
+      "that hit it would hit it today. `seisin_activity` has the raw events; this has " +
+      "them read against the policy. Reach for it before proposing a change: a day that " +
+      "is three quarters one filename is a tooling problem, and the same volume spread " +
+      "across unrelated unowned paths is a question about who owns what. Read-only.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: { type: "number" },
+        since: { type: "string", description: "ISO date; only refusals at or after it" },
+      },
+    },
   },
   {
     name: "seisin_walls",
@@ -203,13 +212,21 @@ const HANDLERS = {
    * and asks it to re-derive the grouping — without the policy, which is the
    * half that makes the grouping mean anything.
    */
-  seisin_causes({ limit }) {
+  seisin_causes({ limit, since }) {
     const cfg = config();
-    const c = causesOf(cfg, read(logPath(cfg.root), { limit: 4000 }));
+    // The whole log, as the console reads it. This read the last 4000 lines
+    // after the console had stopped doing so, and the two then disagreed about
+    // the same log — 3,999 refusals here against 6,630 there, measured — with
+    // nothing telling the agent its window was half of the person's.
+    const t = since ? Date.parse(since) : NaN;
+    const from = Number.isNaN(t) ? null : new Date(t).toISOString();
+    const c = causesOf(cfg, read(logPath(cfg.root), from ? { since: from } : {}));
     return {
       total: c.total,
       distinct: c.distinct,
+      ...(from && { since: from }),
       unowned: c.unowned,
+      standing: c.standing,
       families: c.families,
       causes: typeof limit === "number" ? c.causes.slice(0, limit) : c.causes,
     };

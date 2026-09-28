@@ -155,3 +155,98 @@ test("'all' is never smaller than a window inside it", async () => {
   assert.equal(all.causes.total, 4500, "'all' was capped at the last 4000 lines");
   assert.equal(all.roles[0].blocks, 4500);
 });
+
+// ── where a refused path stands NOW ────────────────────────────────────────
+//
+// The console's "N are on paths no role owns" was computed from the owners
+// each log line recorded the day of the refusal. Measured on one deployment:
+// 1,178 of 1,486 paths shown as nobody's; against that day's policy, 316.
+// Every grant made since, every protected surface, every port and every path
+// outside the repository was being counted as a decision somebody owed.
+
+async function repoWithLog(toml, lines) {
+  const { mkdirSync, writeFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const dir = boxed("standing-");
+  writeFileSync(join(dir, "seisin.toml"), toml);
+  mkdirSync(join(dir, ".seisin"), { recursive: true });
+  // Exists, so it is protected on Linux as well, where only existing control
+  // files are.
+  mkdirSync(join(dir, ".claude"), { recursive: true });
+  writeFileSync(join(dir, ".claude", "settings.json"), "{}");
+  writeFileSync(join(dir, ".seisin", "log.jsonl"), lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+  return { dir, path: join(dir, "seisin.toml") };
+}
+
+const TWO = '[roles.a]\nwrites = ["src/**"]\n\n[roles.b]\nwrites = ["deploy/**"]\n';
+const refused = (target, extra = {}) => ({ at: "2026-09-28T10:00:00.000Z", role: "a", action: "write", kind: "file", target, verdict: "denied", owners: [], ...extra });
+const MIXED = [
+  refused("deploy/x.yml"),                                   // logged as nobody's; b owns it now
+  refused(".claude/settings.json"),                          // protected, for every role
+  refused("tcp:8001", { action: "connect", kind: "network" }),
+  refused("keys", { action: "read", kind: "key" }),
+  refused("/definitely/not/in/the/repo/x.lock"),             // outside every territory
+  refused("legacy/x.ts"),                                    // the one real hole
+];
+
+test("unowned is read from the policy as it is now, not from the log line", async () => {
+  const { loadConfig } = await import("../src/config.js");
+  const { path } = await repoWithLog(TWO, MIXED);
+  const f = causesOf(loadConfig(path), MIXED);
+  assert.equal(f.unowned, 1, "only legacy/x.ts is nobody's");
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(f.standing).map(([k, v]) => [k, v.paths])),
+    { unowned: 1, owned: 1, protected: 1, outside: 3 });
+  const deploy = f.causes.find((c) => c.target === "deploy/x.yml");
+  assert.equal(deploy.standing, "owned");
+  assert.deepEqual(deploy.owners, ["b"], "owners are today's");
+  assert.deepEqual(deploy.ownersThen, [], "what the log said is kept, as evidence");
+  const guarded = f.causes.find((c) => c.target === ".claude/settings.json");
+  assert.equal(guarded.standing, "protected");
+  assert.ok(guarded.why, "a protected cause says why");
+});
+
+test("`seisin review` and the console mean the same thing by unowned", async () => {
+  const { loadConfig } = await import("../src/config.js");
+  const { review } = await import("../src/review.js");
+  const { path } = await repoWithLog(TWO, MIXED);
+  const cfg = loadConfig(path);
+  // review skipped keys and ports and counted protected paths; the console
+  // counted all four. One word, two numbers.
+  assert.deepEqual(review(cfg).unowned, [{ where: "legacy", times: 1 }]);
+  assert.equal(causesOf(cfg, MIXED).unowned, 1);
+});
+
+test("the MCP reads the same window as the console, not the last 4000 lines", async () => {
+  const { HANDLERS } = await import("../src/mcp.js");
+  const { state } = await import("../src/serve.js");
+  const lines = Array.from({ length: 4500 }, (_, i) => refused(`legacy/f${i % 50}.ts`));
+  const { dir, path } = await repoWithLog(TWO, lines);
+  const cwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const m = HANDLERS.seisin_causes({});
+    assert.equal(m.total, 4500);
+    assert.equal(m.total, state(path).causes.total, "an agent and a person see the same log");
+    assert.equal(m.unowned, 50);
+    const since = HANDLERS.seisin_causes({ since: "2026-09-29" });
+    assert.equal(since.total, 0, "since narrows the window, like the console's");
+  } finally { process.chdir(cwd); }
+});
+
+test("a path's standing is remembered while the policy is the same, and not after", async () => {
+  const { loadConfig } = await import("../src/config.js");
+  const { standingOf } = await import("../src/owners.js");
+  const { writeFileSync } = await import("node:fs");
+  const { path } = await repoWithLog(TWO, MIXED);
+  const e = { kind: "file", target: "legacy/x.ts" };
+  const first = standingOf(loadConfig(path))(e);
+  // The console reloads the config every two seconds; a new object for the
+  // same file is the same policy.
+  assert.equal(standingOf(loadConfig(path))(e), first, "same policy, same answer, not recomputed");
+  assert.equal(first.kind, "unowned");
+  writeFileSync(path, TWO + '\n[roles.c]\nwrites = ["legacy/**"]\n');
+  const after = standingOf(loadConfig(path))(e);
+  assert.equal(after.kind, "owned", "a grant is seen at once, not after the memory expires");
+  assert.deepEqual(after.owners, ["c"]);
+});

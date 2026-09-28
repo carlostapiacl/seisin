@@ -886,10 +886,19 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
        person decides who owns them — a decision, not a count. Added after a
        field review pointed out that the percentage above was the console
        reading the log back to somebody who had already read it. */
+    /* Where each path stands against the policy NOW, not what the log wrote the day of the
+       refusal: that was read here once, and every grant made since kept its paths counted as
+       nobody's. Protected paths and ports are said apart, because they ask the opposite of a
+       decision \u2014 there is nothing to grant. */
+    var st = f.standing || {};
     if (f.unowned)
-      lede += " <b>" + f.unowned + "</b> of the " + (f.distinct || f.causes.length).toLocaleString() +
+      lede += " <b>" + f.unowned.toLocaleString() + "</b> of the " + (f.distinct || f.causes.length).toLocaleString() +
               " are on paths <b>no role owns</b> \u2014 a grant cannot settle those until " +
               "somebody claims them.";
+    var closed = (st.protected ? st.protected.paths : 0);
+    if (closed)
+      lede += " <b>" + closed.toLocaleString() + "</b> " + (closed === 1 ? "is" : "are") +
+              " protected on purpose \u2014 the boundary working, nothing to grant.";
     document.getElementById("ca-lede").innerHTML = lede;
     var win = document.getElementById("dn-window");
     if (win) win.textContent = rangeLabel() + " \u00b7 " + f.total.toLocaleString() + " denials \u00b7 " +
@@ -901,12 +910,16 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       // A cause the policy no longer denies is history, not live. It is
       // shown, greyed, rather than dropped: it explains a number somebody may
       // remember from yesterday instead of silently changing it.
-      var cold = c.stillDeclined === 0;
+      // `stillRefused` is what the server sends. This read `stillDeclined`, which it never
+      // did, so nothing was ever greyed.
+      var cold = c.stillRefused === 0;
       var who = c.roles.length === 1 ? c.roles[0] : c.roles.length + " roles";
       return '<div class="bar' + (cold ? ' cold' : '') + '">' +
         '<div class="lbl"><div class="p">' + esc(c.action) + ' ' + esc(c.target) + '</div>' +
         '<div class="who">' + esc(who) +
-          (c.owners && c.owners.length ? ' · owned by ' + esc(c.owners.join(", ")) : ' · owned by nobody') +
+          (c.standing === "protected" ? ' · protected: ' + esc(c.why || "") :
+           c.standing === "outside" ? ' · ' + esc(c.why || "outside the map") :
+           c.owners && c.owners.length ? ' · owned by ' + esc(c.owners.join(", ")) : ' · owned by nobody') +
           (cold ? ' · <b>granted since</b>' : '') + '</div>' +
         '<div class="t"><span class="f" style="width:' + w + '%"></span></div></div>' +
         '<div class="num">' + c.times.toLocaleString() +
