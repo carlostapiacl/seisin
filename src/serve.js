@@ -236,11 +236,22 @@ export function state(configPath, { since = null } = {}) {
  * an exception for loopback. That is what lets the console hold the half the
  * MCP server deliberately does not.
  */
-function decide(configPath, { number, decision, reason }) {
+function decide(configPath, { key, decision, reason }) {
   const cfg = loadConfig(configPath);
   const file = requestsPath(cfg.root);
-  const req = pending(file)[Number(number) - 1];
-  if (!req) throw new Error(`no pending request #${number}`);
+  /**
+   * By the request's id, never by its place in the queue.
+   *
+   * It took a row number, counted against the queue as it stood when the
+   * request arrived — not when the person read the page. Agents keep writing
+   * to that queue, and another channel can settle an entry in between, so
+   * "approve #2" could approve whatever had moved into second place, with the
+   * reason typed for something else. Re-sending the POST approved the next one.
+   * The CLI stopped doing this long ago; the console had not.
+   */
+  if (typeof key !== "string" || !key) throw new Error("key is required — the id of the request on screen");
+  const req = pending(file).find((r) => r.key === key);
+  if (!req) throw new Error(`request ${key} is no longer pending — reload to see the queue as it is now`);
   if (decision !== "granted" && decision !== "denied")
     throw new Error(`decision must be granted or denied`);
 

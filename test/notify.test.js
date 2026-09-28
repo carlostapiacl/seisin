@@ -63,15 +63,16 @@ test("one message per new request, naming the owner and the command that answers
   assert.equal(sent.length, 1);
   assert.equal(sent[0].url, "http://127.0.0.1:9/");
   assert.equal(sent[0].redirect, "error");
-  assert.match(sent[0].body, /web was refused write on src\/api\/x\.ts\. It belongs to api\. Approve: seisin grant 1/);
+  assert.match(sent[0].body, /web was refused write on src\/api\/x\.ts\. It belongs to api\. Approve: seisin grant 'web:write:src\/api'/);
 });
 
 test("formats: slack and json carry the same sentence", () => {
   const cfg = loadConfig(join(repo(), "seisin.toml"));
   const req = { role: "web", action: "write", target: "src/api/x.ts", owners: ["api"] };
-  assert.match(JSON.parse(message(cfg, req, 2, "slack").body).text, /seisin grant 2/);
+  // By id, not by position: the queue moves between the message and the reply.
+  assert.match(JSON.parse(message(cfg, req, 2, "slack").body).text, /seisin grant 'web:write:src\/api'/);
   const j = JSON.parse(message(cfg, req, 2, "json").body);
-  assert.deepEqual([j.number, j.role, j.grant, j.owners], [2, "web", "src/api/**", ["api"]]);
+  assert.deepEqual([j.number, j.id, j.role, j.grant, j.owners], [2, "web:write:src/api", "web", "src/api/**", ["api"]]);
 });
 
 test("the notify URL never reaches the role, even when it names it", () => {

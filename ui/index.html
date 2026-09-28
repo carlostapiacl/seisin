@@ -522,6 +522,9 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
   ];
 
   function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+  // For attribute values: the text an agent chose (a request's id is its path)
+  // must not be able to close the quote it sits in.
+  function escA(s){return esc(s).replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
   function pad(n){return String(n).padStart(2,"0");}
 
   function theme(v){
@@ -1069,7 +1072,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     host.innerHTML = REQS.map(function(r, i){
       var owners = (r.owners && r.owners.length) ? " — belongs to <b>" + esc(r.owners.join(", ")) + "</b>" : "";
       var times = r.times > 1 ? ' · <span class="asked">asked ' + r.times + "×</span>" : "";
-      // Marked, not moved: Approve and Decline post this row's number.
+      // Marked, not moved: Approve and Decline post this row's id.
       var stale = r.stale ? ' · not asked again in ' + Number(r.stale.runs) + ' runs since — likely no longer needed' : "";
       return '<div class="req' + (r.stale ? ' stale' : '') + '">' +
         '<div class="who">' +
@@ -1079,8 +1082,8 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
         "</div>" +
         '<div class="act">' +
           '<input id="why-' + i + '" placeholder="why — this outlives you" aria-label="reason">' +
-          '<button class="btn" data-n="' + (i+1) + '" data-d="granted" type="button">Approve</button>' +
-          '<button class="btn warn" data-n="' + (i+1) + '" data-d="denied" type="button">Decline</button>' +
+          '<button class="btn" data-n="' + i + '" data-k="' + escA(r.key) + '" data-d="granted" type="button">Approve</button>' +
+          '<button class="btn warn" data-n="' + i + '" data-k="' + escA(r.key) + '" data-d="denied" type="button">Decline</button>' +
         "</div>" +
       "</div>";
     }).join("");
@@ -1135,19 +1138,21 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
   /**
    * One decision, sent once.
    *
-   * The buttons go dead on click because a double-approve is not idempotent
-   * here — the second one would be numbered against a queue that already moved.
+   * By the request's id, taken from the row as it was drawn: a position would
+   * be counted against a queue that agents are still writing to. A second click
+   * finds the request already settled and is refused.
    */
   async function act(btn){
-    var n = Number(btn.dataset.n);
-    var why = (document.getElementById("why-" + (n-1)) || {}).value || "";
+    var i = Number(btn.dataset.n);
+    var key = btn.dataset.k;
+    var why = (document.getElementById("why-" + i) || {}).value || "";
     var row = btn.closest(".req");
     row.querySelectorAll("button,input").forEach(function(e){ e.disabled = true; });
     try {
       var r = await fetch("/api/decide", {
         method: "POST",
         headers: { "content-type": "application/json", "x-seisin-token": TOKEN },
-        body: JSON.stringify({ number: n, decision: btn.dataset.d, reason: why })
+        body: JSON.stringify({ key: key, decision: btn.dataset.d, reason: why })
       });
       var out = await r.json();
       if (!r.ok) { var err = new Error(out.error || "denied"); err.status = r.status; throw err; }

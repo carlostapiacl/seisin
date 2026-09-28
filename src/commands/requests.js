@@ -40,16 +40,18 @@ function pick(config, n) {
     return req;
   }
 
-  const hits = queue.filter((r) => r.key === arg || r.key.startsWith(arg));
-  if (hits.length === 1) return hits[0];
-  if (!hits.length)
-    throw new Error(
-      `no pending request matches "${arg}".\n` +
-      "  Use its number, or the id printed under it by `seisin requests`.");
+  // Exactly, never by prefix. A prefix let an id that had just been settled
+  // select a newer request whose id merely starts the same (`lib` → `lib-x`),
+  // and an agent chooses the paths ids are made of.
+  const hit = queue.find((r) => r.key === arg);
+  if (hit) return hit;
+  const near = queue.filter((r) => r.key.startsWith(arg));
   throw new Error(
-    `"${arg}" matches ${hits.length} pending requests:\n` +
-    hits.slice(0, 5).map((r) => `    ${r.key}`).join("\n") +
-    "\n  Name one exactly. Choosing for you is the mistake this avoids.");
+    `no pending request has the id "${arg}".\n` +
+    (near.length
+      ? `  ${near.length} start with it:\n` + near.slice(0, 5).map((r) => `    ${r.key}`).join("\n") +
+        "\n  Name one exactly. Choosing for you is the mistake this avoids."
+      : "  Use its number, or the id printed under it by `seisin requests`."));
 }
 
 export function requests(config) {

@@ -31,7 +31,7 @@ import { loadConfig, findConfig } from "./config.js";
 import { inspect } from "./inspect.js";
 import { explain, ownersOf } from "./owners.js";
 import { settingsFor } from "./srt.js";
-import { pending, requestsPath, grantFor, refuseIfBarred, markStale } from "./requests.js";
+import { pending, requestsPath, grantFor, refuseIfBarred, markStale, shellId } from "./requests.js";
 import { read, logPath } from "./log.js";
 import { causesOf } from "./serve.js";
 import { walls, wasted } from "./walls.js";
@@ -136,8 +136,10 @@ const TOOLS = [
       "does not grant. The approval is a human action in another channel.",
     inputSchema: {
       type: "object",
-      properties: { number: { type: "number", description: "position in seisin_requests" } },
-      required: ["number"],
+      properties: {
+        id: { type: "string", description: "the request's id from seisin_requests — preferred: it does not move when the queue does" },
+        number: { type: "number", description: "position in seisin_requests (legacy; the draft still names the id)" },
+      },
     },
   },
 ];
@@ -191,14 +193,14 @@ const HANDLERS = {
     const queue = markStale(pending(requestsPath(cfg.root)), read(logPath(cfg.root)));
     return {
       pending: queue.map((r, i) => ({
-        number: i + 1, role: r.role, action: r.action,
+        number: i + 1, id: r.key, role: r.role, action: r.action,
         wants: r.grant, ownedBy: r.owners, asked: r.times, lastAsked: r.last,
         ...(r.stale ? { stale: `not asked again in ${r.stale.runs} runs of ${r.role} since` } : {}),
       })),
       // Said in the payload and not only in the tool description, because a
       // model reading this is deciding what to do next.
       note: queue.length
-        ? "Approving is not available through MCP. Tell the operator to run: seisin grant <number>"
+        ? "Approving is not available through MCP. Tell the operator to run: seisin grant '<id>'"
         : "nothing waiting",
     };
   },
@@ -254,12 +256,23 @@ const HANDLERS = {
     return { entries: read(logPath(cfg.root), { role, verdict, limit: n }) };
   },
 
-  seisin_draft_grant({ number }) {
-    if (!Number.isInteger(Number(number)) || Number(number) < 1)
-      throw new Error("number must be a positive integer from seisin_requests");
+  seisin_draft_grant({ id, number } = {}) {
     const cfg = config();
-    const req = pending(requestsPath(cfg.root))[Number(number) - 1];
-    if (!req) throw new Error(`no pending request #${number}`);
+    const queue = pending(requestsPath(cfg.root));
+    let req;
+    if (typeof id === "string" && id) {
+      req = queue.find((r) => r.key === id);
+      if (!req) throw new Error(`request ${id} is not pending`);
+    } else {
+      if (!Number.isInteger(Number(number)) || Number(number) < 1)
+        throw new Error("id (preferred) or number from seisin_requests is required");
+      req = queue[Number(number) - 1];
+      if (!req) throw new Error(`no pending request #${number}`);
+    }
+    // The command is written against the id, whatever was asked with: a
+    // number is a position in a queue agents keep writing to, and the person
+    // runs this later, against the queue as it is then.
+    const ref = shellId(req.key);
 
     // The same refusal `seisin grant` and the console apply, asked here first.
     // Without it this drafted, as approvable, a request that `never_writes`
@@ -272,7 +285,7 @@ const HANDLERS = {
         ownedBy: req.owners,
         applyWith: null,
         note: "Not approvable as it stands: never_writes wins over writes. Decline it with " +
-          `\`seisin decline ${number}\`, or remove the never_writes entry if the subtraction is wrong.`,
+          `\`seisin decline ${ref}\`, or remove the never_writes entry if the subtraction is wrong.`,
       };
     }
     const field = req.action === "read" ? "keys" : "writes";
@@ -280,7 +293,8 @@ const HANDLERS = {
       wouldAdd: { role: req.role, field, value: req.grant },
       preview: `[roles.${req.role}]\n${field} = [ …, "${req.grant}" ]   # asked ${req.times}×`,
       ownedBy: req.owners,
-      applyWith: `seisin grant ${number} --reason "<why>"`,
+      id: req.key,
+      applyWith: `seisin grant ${ref} --reason "<why>"`,
       note: "Not applied. seisin's MCP server writes nothing — a person runs the command above.",
     };
   },
