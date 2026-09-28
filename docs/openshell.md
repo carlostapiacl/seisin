@@ -1,7 +1,10 @@
 # OpenShell compatibility
 
-> Evaluated against OpenShell `0.0.116` on 2026-09-27. This is a compatibility
-> decision, not a security audit of OpenShell.
+> Evaluated against OpenShell `0.0.116` on 2026-09-27. OpenShell `0.1.0`–`0.1.2`
+> shipped in the days around that run; the measurements below were not repeated
+> against them. The filesystem schema was re-read on 2026-09-28 at `0.1.2` and has
+> not changed in the way that decides this page (see below). This is a
+> compatibility decision, not a security audit of OpenShell.
 
 ## Recommendation
 
@@ -18,7 +21,7 @@ Desktop's Linux VM.
 
 ## Why it did not become a backend
 
-Seisin's filesystem contract contains subtraction:
+seisin's filesystem contract contains subtraction:
 
 ```text
 role territory
@@ -31,13 +34,19 @@ It also denies a key directory and reopens only the exact keys a role declares.
 The current OpenShell filesystem schema is an allowlist of `read_only` and
 `read_write` paths enforced with Landlock. Landlock grants are additive. If a
 parent directory is read-write, declaring a child read-only does not remove the
-write grant inherited from the parent. The OpenShell project tracks this exact
-limitation in [issue #698](https://github.com/NVIDIA/OpenShell/issues/698).
+write grant inherited from the parent. That limitation was raised in
+[issue #698](https://github.com/NVIDIA/OpenShell/issues/698), and closed as not
+planned on 2026-04-01: the maintainers treat it as a Landlock invariant working
+as intended and suggest inverting the layout (a read-only parent with writable
+children listed one by one). At `0.1.2` the filesystem schema is still
+`read_only` and `read_write` only; the `deny_rules` it now has apply to network
+endpoints, not to paths. So this is not a gap waiting on a fix — it is the
+design.
 
 That means translating a role with `writes = ["**"]` would make protected files
 writable, while translating the protected files honestly would require
 enumerating every other path in the repo and rebuilding the sandbox whenever
-the tree changes. Neither is the same boundary. Seisin refuses translations
+the tree changes. Neither is the same boundary. seisin refuses translations
 that widen authority, so the backend fails closed.
 
 There is a second architectural difference: an OpenShell sandbox owns its own
@@ -51,14 +60,14 @@ host-process runtime.
 
 | Capability | Result |
 |---|---|
-| pinned CLI, gateway and supervisor `0.0.116` | verified |
+| pinned CLI, gateway and supervisor `0.0.116` | verified (not repeated on `0.1.x`) |
 | Docker/Linux gateway API and sandbox allocation | verified |
 | policy delivery to the supervisor | verified |
 | domain/binary/L7 network policy | supported by the schema; not exercised end to end here |
 | brokered providers/secrets | supported by OpenShell; not exercised with real credentials |
 | explicit port forwarding | supported by OpenShell; different lifecycle from `local_ports` |
 | child exception inside writable parent | **cannot be represented safely** |
-| protected Seisin/Git files inside a writable repo | **cannot be represented safely** |
+| protected seisin/Git files inside a writable repo | **cannot be represented safely** |
 | selective key access under a broadly readable repo | **cannot be represented safely** |
 | workload on this Docker Desktop gateway | provisioning failed with `ContainerExited` after policy load |
 | Apple Silicon microVM | not run; this host is Intel |
@@ -79,6 +88,8 @@ Linux-native and Apple Silicon microVM paths independently.
 Until those conditions hold, OpenShell belongs in the alternatives section,
 not behind the same `seisin run` promise.
 
-Primary references: [policy schema](https://docs.nvidia.com/openshell/reference/policy-schema),
-[compute drivers](https://docs.nvidia.com/openshell/reference/sandbox-compute-drivers),
-[support matrix](https://docs.nvidia.com/openshell/reference/support-matrix).
+Primary references, from the repository's own docs (the docs.nvidia.com pages
+this cited on 2026-09-27 no longer resolve):
+[policy schema](https://github.com/NVIDIA/OpenShell/blob/main/docs/how-it-works/policies/schema.mdx),
+[compute drivers](https://github.com/NVIDIA/OpenShell/blob/main/docs/extensibility/drivers.mdx),
+[support matrix](https://github.com/NVIDIA/OpenShell/blob/main/docs/about/support-matrix.mdx).
