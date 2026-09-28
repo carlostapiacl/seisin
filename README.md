@@ -38,7 +38,7 @@ says why, and a test holds one half of it.
 
 **The honest parts** · [How it holds](#how-it-holds) · [What it is not](#what-it-is-not) · [Why not a container](#why-not-a-container) · [Prior art](#prior-art) · [Status](#status)
 
-**Deeper** · [Keys](docs/keys.md) · [Agents](docs/agents.md) · [Day one](docs/first-day.md) · [Scratch](docs/scratch.md) · [Glossary](docs/glossary.md) · [What it has been put through](docs/what-it-has-been-put-through.md) · [Field notes](docs/field-notes.md) · [Decisions](docs/decisions.md) · [nono backend contract](docs/nono-backend.md) · [Permission requests](docs/permission-requests.md) · [Contributing](CONTRIBUTING.md)
+**Deeper** · [Keys](docs/keys.md) · [Agents](docs/agents.md) · [Day one](docs/first-day.md) · [Scratch](docs/scratch.md) · [Glossary](docs/glossary.md) · [What it has been put through](docs/what-it-has-been-put-through.md) · [Field notes](docs/field-notes.md) · [OpenShell compatibility](docs/openshell.md) · [Decisions](docs/decisions.md) · [nono backend contract](docs/nono-backend.md) · [Permission requests](docs/permission-requests.md) · [Contributing](CONTRIBUTING.md)
 
 </details>
 
@@ -672,7 +672,7 @@ This space already has good work, and seisin is not the first thing here:
 - [`anthropics/sandbox-runtime`](https://github.com/anthropics/sandbox-runtime) — the enforcement. seisin is a thin thing on top of a serious one.
 - [`kornysietsma/claude-code-permissions-hook`](https://github.com/kornysietsma/claude-code-permissions-hook) — granular `PreToolUse` rules, one global policy.
 - [`XuebinMa/agent-guard`](https://github.com/XuebinMa/agent-guard) — a permission-enforcement SDK, also one global policy.
-- [`NVIDIA/OpenShell`](https://github.com/NVIDIA/openshell) — a runtime that sandboxes an agent with Landlock and seccomp, under a declarative policy. Serious, and the closest thing here by weight.
+- [`NVIDIA/OpenShell`](https://github.com/NVIDIA/openshell) — a runtime that sandboxes an agent with Landlock and seccomp, under a declarative policy. Serious, and the closest thing here by weight. It was evaluated as a possible backend; [the measured compatibility decision](docs/openshell.md) explains why it is currently an execution target candidate rather than a drop-in replacement.
 - [`dredozubov/hazmat`](https://github.com/dredozubov/hazmat) — runs the agent as a different system user, with `pf` rules and snapshots.
 - [`nolabs-ai/nono`](https://github.com/nolabs-ai/nono) — a kernel sandbox for agents on the host (Seatbelt, Landlock), with per-tool child sandboxes, a credential proxy with endpoint filtering, approval webhooks and a tamper-evident audit log. The most complete sandbox here, and on a Mac the one that enforces through the same kernel seisin does. `nono why` explains *which rule* denied something and how to allow it; it has no notion of *whose* it was.
 - *Directory ownership* is recommended in half the multi-agent write-ups. As far as I could find, nobody enforces it, and nobody names the owner in the refusal. That gap is the reason for this repo.
@@ -692,15 +692,11 @@ They compose rather than compete: the agent seisin confines could be running ins
 them.
 
 *One detail worth knowing before you compare, and it is about placement rather than quality.
-Read from [OpenShell's support matrix][osm] on 2026-09-21, not measured here: macOS is a
-supported platform, and on it "these kernel modules run inside the Docker Desktop Linux VM,
-not on the host kernel". So on a Mac, OpenShell confines an agent inside a Linux VM, and
-seisin confines a process on the host through Seatbelt. Both are kernel enforcement; they are
-not the same kernel, and which one you want depends on whether the thing you are protecting is
-on the host. seisin [says where each of its own claims was
-measured](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run).*
-
-[osm]: https://docs.nvidia.com/openshell/reference/support-matrix
+OpenShell was [evaluated here on 2026-09-27](docs/openshell.md), through its Docker driver on
+an Intel Mac. That confines an agent inside Docker Desktop's Linux VM; seisin confines a
+process on the host through Seatbelt. OpenShell also offers other drivers, including a local
+microVM path on supported Apple Silicon Macs. These are kernel-enforced boundaries, but not
+the same kernel or workspace, and which one you want depends on what you are protecting.*
 
 ## Status
 
