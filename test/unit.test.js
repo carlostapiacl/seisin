@@ -1796,3 +1796,27 @@ test("SEC-03 the CLI takes an id exactly — a prefix never selects another requ
   declineCmd(cfg, [pending(q)[0].key]);
   assert.equal(pending(q).length, 0);
 });
+
+test("SEC-05 a later [roles] cannot replace a role declared above it", () => {
+  // Antes: `a = true` en un [roles] escrito más abajo reemplazaba el rol entero;
+  // su `network = []` volvía como "no dicho" = la lista global. check: exit 0.
+  const box = scratch("seisin-sec05-");
+  const load = (toml) => { writeFileSync(join(box, "seisin.toml"), toml); return () => loadConfig(join(box, "seisin.toml")); };
+  const role = '[network]\nallow = ["evil.com"]\n\n[roles.a]\nwrites = ["src/**"]\nnetwork = []\n';
+  assert.throws(load(role + '\n[roles]\na = true\n'), /already the table \[roles\.a\]/);
+  assert.throws(load(role + '\n[roles]\na = []\n'), /already the table/);
+  assert.throws(load('[roles]\na = "x"\n\n[roles.a]\nwrites = ["src/**"]\n'), /:4: .*already a value, not a table/);
+  assert.throws(load('roles = "x"\n'), /"roles" must be tables/);
+  assert.throws(load('roles = ["src/**"]\n'), /"roles" must be tables/);
+  assert.throws(load('[roles]\nvalueOf = 1\n'), /a role is a table/);
+  // lo legítimo sigue cargando: la tabla madre declarada después, sin claves
+  assert.deepEqual(load(role + '\n[roles]\n')().roles.a.network, []);
+});
+
+test("an unclosed multi-line array is refused quickly", () => {
+  const box = scratch("seisin-long-");
+  writeFileSync(join(box, "seisin.toml"), '[roles.a]\nwrites = [\n' + '  "x",\n'.repeat(100_000));
+  const t0 = Date.now();
+  assert.throws(() => loadConfig(join(box, "seisin.toml")));
+  assert.ok(Date.now() - t0 < 2000, `took ${Date.now() - t0} ms`);
+});

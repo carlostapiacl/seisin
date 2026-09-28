@@ -52,6 +52,8 @@ function dict() {
   return Object.create(null);
 }
 
+const isTable = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+
 /** Read a property only if the object actually has it. */
 export function own(obj, key) {
   return obj && Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined;
@@ -88,8 +90,12 @@ export function parseToml(text) {
           `A later block would silently override the earlier one — put every setting for ` +
           `${tableName} in one place.`);
       seenTables.add(tableName);
-      table = tableName.split(".").reduce((node, key) => {
+      table = tableName.split(".").reduce((node, key, k, parts) => {
         if (!Object.prototype.hasOwnProperty.call(node, key)) node[key] = dict();
+        else if (!isTable(node[key]))
+          throw new Error(
+            `${CONFIG_NAME}:${i + 1}: [${tableName}] — "${parts.slice(0, k + 1).join(".")}" is already ` +
+            `a value, not a table. One name cannot be both.`);
         return node[key];
       }, out);
       continue;
@@ -99,9 +105,18 @@ export function parseToml(text) {
     if (!pair) throw new Error(`${CONFIG_NAME}:${i + 1}: cannot read "${raw.trim()}"`);
 
     let [, key, value] = pair;
-    // An array may span lines; keep pulling until the brackets balance.
+    // An array may span lines; keep pulling until the brackets balance. Only
+    // the new line is searched: searching the whole growing value made an
+    // unclosed array of 100k lines take 20 s to be refused.
     if (value.startsWith("[") && !value.includes("]")) {
-      while (!value.includes("]") && i + 1 < lines.length) value += " " + stripComment(lines[++i]).trim();
+      const parts = [value];
+      let closed = false;
+      while (!closed && i + 1 < lines.length) {
+        const next = stripComment(lines[++i]).trim();
+        parts.push(next);
+        closed = next.includes("]");
+      }
+      value = parts.join(" ");
     }
     if (FORBIDDEN.has(key))
       throw new Error(`${CONFIG_NAME}:${i + 1}: "${key}" is a reserved name and cannot be a setting.`);
@@ -111,6 +126,20 @@ export function parseToml(text) {
         `${CONFIG_NAME}:${i + 1}: "${key}" is set twice in [${tableName || "the root"}]. ` +
         `The second would win, which is not a thing a permission file should do quietly.`);
     seenKeys.add(seen);
+    /**
+     * A key may not be a table that is declared elsewhere, in either order.
+     *
+     * `[roles.a]` with `network = []`, then `[roles]` and `a = true` forty lines
+     * down, used to replace the whole role with `true`: its `network = []` came
+     * back as "not set", which means the global allow list. `check` said
+     * nothing. It is the "last one wins" this parser refuses everywhere else,
+     * arriving by a different spelling.
+     */
+    if (Object.prototype.hasOwnProperty.call(table, key))
+      throw new Error(
+        `${CONFIG_NAME}:${i + 1}: "${key}" in [${tableName || "the root"}] is already the table ` +
+        `[${tableName ? tableName + "." : ""}${key}]. One name cannot be both — the value would replace ` +
+        `everything that table says.`);
     table[key] = readValue(value, i + 1);
   }
   return out;
@@ -270,6 +299,16 @@ export function loadConfig(path) {
   // they prevent is invisible in review — the config reads one way and the
   // policy is another.
   const roles = own(parsed, "roles") ?? {};
+  // `roles = "x"` or `roles = [...]` at the root, or `[roles]` with `a = true`,
+  // would read as roles named "0", "1" or "a" with no settings of their own —
+  // and a role with nothing set gets the global defaults.
+  if (!isTable(roles))
+    throw new Error(`${path}: "roles" must be tables — [roles.<name>] — not ${JSON.stringify(roles)}`);
+  for (const [name, r] of Object.entries(roles))
+    if (!isTable(r))
+      throw new Error(
+        `${path}: roles.${name} = ${JSON.stringify(r)} — a role is a table, [roles.${name}], ` +
+        `with its settings under it.`);
 
   /**
    * A role is a leaf. `[roles.a.b]` is a typo, with certainty.
