@@ -255,9 +255,10 @@ function readValue(value, lineNo) {
 export function readIsolate(v) {
   if (v === true || v === "home") return "home";
   if (v === "credentials") return "credentials";
-  // Anything else is off, including a misspelling. A permission tool must not
-  // read a word it does not know as a stronger setting than the reader meant.
-  return false;
+  if (v === false || v === undefined) return false;
+  throw new Error(
+    `runtime.isolate must be false, true, "credentials", or "home", not ${JSON.stringify(v)}. ` +
+    `An unknown value cannot silently turn credential isolation off.`);
 }
 
 export function loadConfig(path) {
