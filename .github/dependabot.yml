@@ -2,6 +2,10 @@
 # actions (pinned to SHAs, so a bump is a reviewable line that moves the pin)
 # and the one runtime dependency. Weekly, so a version bump is a small PR rather
 # than a surprise the day something breaks.
+#
+# The actions come as one grouped PR. Five separate ones (2026-09-24) all went
+# red together because they were opened on a main that was red, and each had
+# to be rebased on its own; a group is one rebase and one run.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -10,6 +14,9 @@ updates:
       interval: weekly
     commit-message:
       prefix: "ci"
+    groups:
+      actions:
+        patterns: ["*"]
 
   - package-ecosystem: npm
     directory: "/"
