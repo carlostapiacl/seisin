@@ -487,16 +487,18 @@ test("redefining file:// is refused — one scheme cannot mean two things", () =
 
 // ── the credential floor, or its absence ───────────────────────────────────
 
-test("a repo with secrets and no [keys] dir is warned — the emitted policy denies no reads", () => {
+test("a repo with secrets and no [keys] dir is warned — the repo gets no read floor", () => {
   // The dangerous shape is a policy a script generated. Drop the one `[keys]
   // dir` line and every role reads the credential tree, with a clean `check`.
-  // Verified before this existed: keyDirs [], denyRead [], and not one warning
-  // about it among the four that did fire.
+  // Verified before this existed: keyDirs [], no repo denyRead, and not one
+  // warning about it among the four that did fire. Runtime-owned home paths
+  // may have their own defensive denies and are unrelated to this floor.
   const dir = scratch("seisin-floor-");
   writeFileSync(join(dir, ".env"), "TOKEN=x\n");
   writeFileSync(join(dir, "seisin.toml"), `[roles.dev]\nwrites = ["src/**"]\n`);
   const cfg = loadConfig(join(dir, "seisin.toml"));
-  assert.deepEqual(settingsFor(cfg, "dev").filesystem.denyRead, [], "this is what it costs");
+  assert.ok(!settingsFor(cfg, "dev").filesystem.denyRead.some((p) =>
+    p === dir || p.startsWith(dir + "/")), "this is what it costs");
   assert.ok(inspect(cfg, null, "x").warnings.some((w) => w.kind === "no-key-floor"));
   rmSync(dir, { recursive: true, force: true });
 });

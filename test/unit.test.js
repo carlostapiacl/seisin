@@ -118,8 +118,19 @@ test("the emitted settings carry every field the runtime requires", () => {
 
 test("the key directory is denied wholesale and re-allowed one file at a time", () => {
   const s = settingsFor(cfg, "frontend");
-  assert.deepEqual(s.filesystem.denyRead, ["/repo/.secrets"]);
+  assert.ok(s.filesystem.denyRead.includes("/repo/.secrets"));
   assert.deepEqual(s.filesystem.allowRead, ["/repo/.secrets/netlify.txt"]);
+});
+
+test("sandbox-runtime convenience logs are removed from every role", () => {
+  // The runtime adds these write grants behind the caller's allowWrite list.
+  // A read deny makes it omit that implicit grant; the write deny also closes
+  // .claude/debug beneath Seisin's intentional ~/.claude scratch grant.
+  const { denyRead, denyWrite } = settingsFor(cfg, "frontend").filesystem;
+  for (const suffix of ["/.npm/_logs", "/.claude/debug"]) {
+    assert.ok(denyRead.some((p) => p.endsWith(suffix)), `${suffix} still readable`);
+    assert.ok(denyWrite.some((p) => p.endsWith(suffix)), `${suffix} still writable`);
+  }
 });
 
 test("a write glob becomes a directory, because the kernel grants subtrees", () => {
