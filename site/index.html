@@ -421,7 +421,7 @@ network = [<span class="s">"api.stripe.com"</span>]</code></pre>
         <h3>What it does not promise</h3>
         <ul class="plain">
           <li><b>Not a sandbox.</b> It configures <code>@anthropic-ai/sandbox-runtime</code>; the OS does the enforcing.</li>
-          <li><b>Not hostile-agent containment.</b> An allowed domain is still an allowed exfiltration channel.</li>
+          <li><b>Not hostile-agent containment.</b> An allowed domain is still an allowed exfiltration channel, and while tampering with the log is closed, a hostile agent can still add lines to its own history.</li>
           <li><b>Not complete secret discovery.</b> A secret outside declared key directories remains readable; <code>seisin scan</code> helps find those.</li>
           <li><b>Not an orchestrator.</b> It does not schedule agents or decide who does the work. Windows is not yet tested.</li>
         </ul>

@@ -13,7 +13,7 @@
  * tries the parent's socket first for exactly that reason; writing the file
  * directly is what happens when there is no parent, outside the box.
  */
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, statSync, unlinkSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, statSync, unlinkSync, writeSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 import { STATE_DIR, LOG_NAME } from "./layout.js";
@@ -47,11 +47,25 @@ export function append(file, entry) {
       // sits on disk, so verifying needs nothing but the file.
       const line = JSON.stringify({ at: new Date().toISOString(), ...entry, prev: hashOf(lastLine(file)) });
       appendFileSync(file, line + "\n");
-    });
+    }, { waitMs: envInt("SEISIN_LOG_LOCK_WAIT_MS", 6000) });
     return true;
-  } catch {
+  } catch (e) {
+    // A line that could not get the lock is gone, and a missing line does not
+    // break the chain. Say so beside the log, so `verify` can.
+    if (e?.code === "ELOCKED") {
+      try { appendFileSync(droppedPath(file), JSON.stringify({ at: new Date().toISOString(), role: entry?.role, event: entry?.event }) + "\n"); } catch {}
+    }
     return false;
   }
+}
+
+/** Where entries that could not be written are counted. */
+export function droppedPath(file) {
+  return file + ".dropped";
+}
+
+function countLines(file) {
+  try { return readFileSync(file, "utf8").split("\n").filter((l) => l.trim()).length; } catch { return 0; }
 }
 
 /**
@@ -156,20 +170,29 @@ function lastLine(file) {
 /**
  * One writer at a time. Several roles of a round run at once and write this
  * same file; two of them reading the same last line would fork the chain.
- * A lock left by a killed process is taken over after a few seconds.
+ *
+ * The lock names its holder (pid and a nonce). A lock whose holder is gone is
+ * taken over at once; one whose holder cannot be read is taken over once it is
+ * older than `staleMs`. The wait outlasts that age on purpose: a writer that
+ * died holding the lock can never make the next one give up, so the only entry
+ * ever dropped is one that waited on a writer still alive — and that drop is
+ * counted beside the log (see `append`), because a missing line does not break
+ * the chain and would otherwise not show.
  */
-export function withLock(file, fn, { waitMs = 2000, staleMs = 5000 } = {}) {
+export function withLock(file, fn, { waitMs = 6000, staleMs = 5000 } = {}) {
   const lock = file + ".lock";
   const deadline = Date.now() + waitMs;
+  const mine = `${process.pid} ${createHash("sha256").update(String(Math.random()) + Date.now()).digest("hex").slice(0, 12)}\n`;
   let acquired = false;
   for (;;) {
     try {
-      closeSync(openSync(lock, "wx"));
+      const fd = openSync(lock, "wx");
+      try { writeSync(fd, mine); } finally { closeSync(fd); }
       acquired = true;
       break;
     } catch (e) {
       if (e.code !== "EEXIST") throw e;
-      try { if (Date.now() - statSync(lock).mtimeMs > staleMs) { unlinkSync(lock); continue; } } catch {}
+      if (reapable(lock, staleMs)) continue;
       // Never write without the lock. Doing so forks the hash chain; deleting
       // the lock in `finally` then admits still more writers while its owner is
       // active. The log is bookkeeping and append() may fail without taking the
@@ -183,7 +206,37 @@ export function withLock(file, fn, { waitMs = 2000, staleMs = 5000 } = {}) {
     }
   }
   try { return fn(); }
-  finally { if (acquired) try { unlinkSync(lock); } catch {} }
+  finally {
+    // Remove it only while it is still ours: if it was taken over, it now
+    // belongs to someone else.
+    if (acquired) try { if (readFileSync(lock, "utf8") === mine) unlinkSync(lock); } catch {}
+  }
+}
+
+/** True if the process is still there. EPERM means it is, and not ours to signal. */
+function alive(pid) {
+  try { process.kill(pid, 0); return true; }
+  catch (e) { return e.code !== "ESRCH"; }
+}
+
+/**
+ * Removes a lock whose holder is gone, and says whether it did.
+ *
+ * The content is read again just before removing it, so a waiter that decided
+ * on one lock does not remove a newer one another waiter has just taken.
+ */
+function reapable(lock, staleMs) {
+  let seen, mtime;
+  try { seen = readFileSync(lock, "utf8"); mtime = statSync(lock).mtimeMs; } catch { return true; }
+  const pid = Number(seen.split(" ")[0]);
+  const named = Number.isInteger(pid) && pid > 0;
+  // A named holder that is alive is waited on, however long it takes: its age
+  // says nothing about whether it is done. An unnamed one (an older seisin, or
+  // killed between creating the file and writing its name) goes by age.
+  const gone = named ? !alive(pid) : Date.now() - mtime > staleMs;
+  if (!gone) return false;
+  try { if (readFileSync(lock, "utf8") !== seen) return true; unlinkSync(lock); } catch {}
+  return true;
 }
 
 /**
@@ -241,7 +294,7 @@ export function verifyChain(file, seed = GENESIS) {
  */
 export function verifyLog(file) {
   const segs = logSegments(file);
-  const agg = { lines: 0, unchained: 0, chained: 0, breaks: [], segments: segs.length };
+  const agg = { lines: 0, unchained: 0, chained: 0, breaks: [], segments: segs.length, dropped: countLines(droppedPath(file)) };
   let seed = GENESIS;
   for (const seg of segs) {
     const r = walk(seg, { seed, startLine: agg.lines });
