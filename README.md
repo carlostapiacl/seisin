@@ -38,7 +38,7 @@ says why, and a test holds one half of it.
 
 **The honest parts** · [How it holds](#how-it-holds) · [What it is not](#what-it-is-not) · [Why not a container](#why-not-a-container) · [Prior art](#prior-art) · [Status](#status)
 
-**Deeper** · [Keys](docs/keys.md) · [Agents](docs/agents.md) · [Day one](docs/first-day.md) · [Scratch](docs/scratch.md) · [Glossary](docs/glossary.md) · [What it has been put through](docs/what-it-has-been-put-through.md) · [Field notes](docs/field-notes.md) · [Decisions](docs/decisions.md) · [Experimental nono backend](docs/nono-backend.md) · [Permission requests](docs/permission-requests.md) · [Contributing](CONTRIBUTING.md)
+**Deeper** · [Keys](docs/keys.md) · [Agents](docs/agents.md) · [Day one](docs/first-day.md) · [Scratch](docs/scratch.md) · [Glossary](docs/glossary.md) · [What it has been put through](docs/what-it-has-been-put-through.md) · [Field notes](docs/field-notes.md) · [Decisions](docs/decisions.md) · [nono backend contract](docs/nono-backend.md) · [Permission requests](docs/permission-requests.md) · [Contributing](CONTRIBUTING.md)
 
 </details>
 
