@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>seisin</title>
-<meta name="description" content="Give each AI agent its own folders and its own keys. The kernel enforces it, and when it blocks something it tells you whose file it was.">
+<meta name="description" content="Run multiple coding agents with OS-enforced permissions and explicit ownership. When the kernel blocks one, seisin tells you who owns what it needs.">
 <link rel="icon" href="favicon.svg">
 <meta property="og:title" content="seisin">
-<meta property="og:description" content="The kernel says no. seisin says whose.">
+<meta property="og:description" content="The ownership layer between AI agents and the OS sandbox.">
 <meta property="og:type" content="website">
 <style>
 :root{
@@ -54,6 +54,7 @@ header{padding:64px 0 34px; border-bottom:1px solid var(--line)}
 .defn em{color:var(--ink)}
 .lede{font-size:1.28rem; line-height:1.45; max-width:30ch; font-weight:500; margin:0 0 .2rem}
 .sub{max-width:62ch; color:var(--dim); margin:.8rem 0 1.5rem}
+.position{font-family:var(--mono); color:var(--accent); font-size:.82rem; margin:0 0 1rem}
 .badges{display:flex; flex-wrap:wrap; gap:6px; margin:0 0 20px}
 .badges img{height:20px}
 .cta{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
@@ -144,6 +145,7 @@ dl.reads dd{margin:.15rem 0 0; color:var(--dim); font-size:.92rem}
 ul.plain{padding-left:1.1rem; color:var(--dim)}
 ul.plain li{margin:.35rem 0}
 ul.plain b{color:var(--ink); font-weight:600}
+.metric{font-family:var(--mono); font-size:1.55rem; line-height:1.1; color:var(--ink); display:block; margin:.25rem 0 .45rem}
 
 footer{padding:40px 0 64px; color:var(--dim); font-size:.9rem}
 footer a{margin-right:16px; display:inline-block}
@@ -175,8 +177,9 @@ svg.flow path,svg.flow line{stroke:var(--line); fill:none}
     <div class="name"><img class="mark" src="favicon.svg" alt="" width="44" height="44">seisin</div>
     <p class="defn"><em>seisin</em> <span class="dim">(n.)</span> — the legal possession of a piece of land. Not who owns it on paper: who holds it now.</p>
 
-    <p class="lede">Give each AI agent its own folders and its own keys.</p>
-    <p class="sub">The kernel enforces it. When it blocks something, seisin tells you <b>whose</b> file it was — which turns a dead end into a handoff.</p>
+    <p class="position">OS-enforced permissions and ownership for AI agents.</p>
+    <p class="lede">Run multiple coding agents without letting them overwrite each other’s work.</p>
+    <p class="sub">Each role gets its own files, keys and network access. The OS enforces the boundary. When one agent needs another role’s territory, seisin tells you <b>who owns it</b> — turning a dead end into a handoff.</p>
 
     <div class="badges">
       <a href="https://www.npmjs.com/package/seisin"><img src="https://img.shields.io/npm/v/seisin?color=222" alt="npm version"></a>
@@ -277,6 +280,48 @@ svg.flow path,svg.flow line{stroke:var(--line); fill:none}
 
 <section>
   <div class="wrap">
+    <p class="kicker">Measured in real use</p>
+    <h2>Observe the friction. Remove permissions you do not need.</h2>
+    <p class="dim">In one six-day deployment with four cells of agents, the boundary did more than block writes. It showed what the policy was costing and where the noise came from.</p>
+
+    <div class="cards">
+      <div class="card">
+        <div class="who">Kernel refusals</div>
+        <span class="metric">1,422</span>
+        <p>Every refused read and write recorded during the window.</p>
+      </div>
+      <div class="card">
+        <div class="who">One unnecessary lock</div>
+        <span class="metric">75.9%</span>
+        <p>Were <code>.git/index.lock</code>. The fix was not a wider grant; it was removing an unnecessary write with <code>GIT_OPTIONAL_LOCKS=0</code>.</p>
+      </div>
+      <div class="card">
+        <div class="who">Human attention</div>
+        <span class="metric">1 decision</span>
+        <p>Deduplication collapsed 1,445 recorded asks into one relevant item waiting for a person.</p>
+      </div>
+    </div>
+
+    <p class="small dim">One deployment, not a benchmark. The full method, negative results and numbers that did not reproduce are in the <a href="https://github.com/carlostapiacl/seisin/blob/main/docs/field-notes.md">field notes</a>.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="kicker">Policy review</p>
+    <h2>Permissions can get smaller, with evidence.</h2>
+    <p class="dim"><code>seisin review</code> turns runtime history into questions you can act on: where a role keeps stopping, which grants were never used, and which paths nobody owns.</p>
+
+    <div class="term"><span class="no">Stopped repeatedly</span>   frontend → src/api/**
+<span class="note">Granted, never used</span>  frontend → public/**
+<span class="yes">Owned by nobody</span>       legacy/**</div>
+
+    <p class="small dim">This is not automatic policy mutation. It is evidence for a person deciding whether to narrow, transfer or add ownership.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
     <p class="kicker">How you use it</p>
     <h2>Sixty seconds</h2>
 
@@ -361,12 +406,27 @@ network = [<span class="s">"api.stripe.com"</span>]</code></pre>
 <section>
   <div class="wrap">
     <p class="kicker">The honest parts</p>
-    <h2>What it is not</h2>
-    <ul class="plain">
-      <li><b>Not a sandbox.</b> It sits on top of one. The isolation comes from the OS, via <code>@anthropic-ai/sandbox-runtime</code>; what seisin adds is which role a path belongs to, and therefore who to ask next.</li>
-      <li><b>Not an orchestrator.</b> It does not route work, schedule agents or decide who does what.</li>
-      <li><b>Not a defence against a hostile agent.</b> Tampering with the log is closed; a hostile agent can still add lines to its own history.</li>
-    </ul>
+    <h2>What the boundary does — and what it does not.</h2>
+    <div class="two">
+      <div>
+        <h3>What seisin is for</h3>
+        <ul class="plain">
+          <li><b>OS-enforced write territories.</b> Seatbelt or bubblewrap applies the boundary.</li>
+          <li><b>Declared secret isolation.</b> Roles read only the keys assigned to them.</li>
+          <li><b>Per-role network policy.</b> Egress follows the runtime’s proxy allow list.</li>
+          <li><b>Ownership and human handoffs.</b> A denial names who owns the path; agents cannot approve their own grants.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>What it does not promise</h3>
+        <ul class="plain">
+          <li><b>Not a sandbox.</b> It configures <code>@anthropic-ai/sandbox-runtime</code>; the OS does the enforcing.</li>
+          <li><b>Not hostile-agent containment.</b> An allowed domain is still an allowed exfiltration channel.</li>
+          <li><b>Not complete secret discovery.</b> A secret outside declared key directories remains readable; <code>seisin scan</code> helps find those.</li>
+          <li><b>Not an orchestrator.</b> It does not schedule agents or decide who does the work. Windows is not yet tested.</li>
+        </ul>
+      </div>
+    </div>
 
     <div class="ok-box">
       Two outside reviews went looking for ways past the boundary, and what running four cells of agents behind it actually cost — including the numbers that did not survive a re-check — is published too.
@@ -387,7 +447,7 @@ network = [<span class="s">"api.stripe.com"</span>]</code></pre>
       <a href="https://github.com/carlostapiacl/seisin/blob/main/docs/decisions.md">Decisions</a>
       <a href="https://github.com/carlostapiacl/seisin/blob/main/CONTRIBUTING.md">Contributing</a>
     </div>
-    <p>MIT. Built by <a href="https://github.com/carlostapiacl">carlostapiacl</a>. The kernel does the enforcing; this only explains it.</p>
+    <p>MIT. Built by <a href="https://github.com/carlostapiacl">carlostapiacl</a>. The kernel enforces boundaries. seisin turns those boundaries into ownership.</p>
   </div>
 </footer>
 

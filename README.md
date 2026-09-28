@@ -161,8 +161,8 @@ fixtures:
 
 And three things that outweigh all of the above:
 
-1. **It is days old and has one author.** Around three thousand lines that nobody has
-   audited except its writer and one field report. "Secure" is not a word earned that fast.
+1. **It is young and has one author.** The first public release was September 2026, and the
+   implementation is still moving quickly. "Secure" is not a word earned by size or test count.
 2. **The enforcement is someone else's beta.** `sandbox-runtime` describes itself as a
    research preview with an evolving API. A hole there is a hole here.
 3. **Two platforms tested, by one person, on one machine each.**
@@ -704,7 +704,7 @@ measured](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run
 
 ## Status
 
-`0.4.0`, 474 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
+`0.4.0`, 476 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 those eighteen skipped on Linux for a day, behind a runtime check that looked for the global
