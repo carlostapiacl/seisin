@@ -57,6 +57,17 @@ export function keyOf({ role, action, target }) {
 }
 
 /** The glob a grant would add, derived from what was asked. */
+/**
+ * A request's id as one shell word, for the commands seisin suggests.
+ *
+ * The id carries a path an agent chose, so it is single-quoted whole and any
+ * quote inside it is closed and escaped: pasting the suggestion runs `seisin
+ * grant` on that request and nothing else.
+ */
+export function shellId(key) {
+  return `'${String(key).replace(/'/g, `'\\''`)}'`;
+}
+
 export function grantFor({ action, target }) {
   const t = typeof target === "string" ? target : "";
   // A key keeps its directory when it has one. Stripping it turned a request
@@ -295,9 +306,8 @@ export function applyGrant(toml, request, note = "") {
   const to = next ? from + next.index : toml.length;
   const section = toml.slice(from, to);
 
-  const line = new RegExp(`^(${field}\\s*=\\s*)\\[([^\\]]*)\\]`, "m");
-  const m = line.exec(section);
-  if (!m)
+  const open = new RegExp(`^${field}\\s*=\\s*\\[`, "m").exec(section);
+  if (!open)
     throw new Error(
       `[roles.${request.role}] has no ${field} list to grant into. ` +
       `Add \`${field} = []\` to that section first — seisin will not write it into another role's block.`
@@ -309,18 +319,58 @@ export function applyGrant(toml, request, note = "") {
   // loads, after they approved something, is its own kind of broken.
   tomlString(request.grant);   // refuses what the format cannot hold
 
-  const items = (m[2].match(/"[^"]*"/g) ?? []).map((s) => s.slice(1, -1));
-  if (items.includes(request.grant)) return { toml, changed: false };
+  const start = open.index + open[0].length;
+  const list = scanList(section, start);
+  if (list.items.includes(request.grant)) return { toml, changed: false };
 
+  /**
+   * Appended, never rebuilt.
+   *
+   * The list used to be re-written from every quoted string between its
+   * brackets — comments included. `"src/web/**",  # was "src/**"` came back as
+   * two grants, so approving anything also granted what a comment mentioned,
+   * and the reason an approver typed (quoted in the provenance comment) became
+   * a path on the next approval. Every earlier provenance comment was lost on
+   * the way. Now the items are the strings outside comments, what is there is
+   * left as it is, and the new entry goes last. The reason is set off with
+   * «», never a double quote, so no older reader can take it for a value.
+   */
+  let inner = section.slice(start, list.end).replace(/\s+$/, "");
+  if (list.lastItemEnd !== null && !list.commaAfterLast) {
+    const at = list.lastItemEnd - start;
+    inner = inner.slice(0, at) + "," + inner.slice(at);
+  }
   const stamp = `# granted ${new Date().toISOString().slice(0, 10)} · asked ${request.times}×` +
-                `${note ? ` · "${cleanReason(note)}"` : ""}`;
-  const body = [...items, request.grant]
-    .map((v) => `  "${v}"${v === request.grant ? `,   ${stamp}` : ","}`)
-    .join("\n")
-    .replace(/,(\s*#[^\n]*)?$/, "$1");
-
-  const edited = section.replace(line, `$1[\n${body}\n]`);
+                `${note ? ` · «${cleanReason(note)}»` : ""}`;
+  const edited = section.slice(0, start) + `${inner}\n  "${request.grant}"   ${stamp}\n]` + section.slice(list.end + 1);
   return { toml: toml.slice(0, from) + edited + toml.slice(to), changed: true };
+}
+
+/**
+ * The strings of a TOML array that starts at `start` (just past its `[`),
+ * skipping comments, and where it closes. The subset has no escapes, so a
+ * string runs to the next double quote.
+ */
+function scanList(text, start) {
+  const items = [];
+  let lastItemEnd = null;
+  let commaAfterLast = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (c === "#") { const nl = text.indexOf("\n", i); if (nl === -1) break; i = nl; continue; }
+    if (c === '"') {
+      const close = text.indexOf('"', i + 1);
+      if (close === -1) break;
+      items.push(text.slice(i + 1, close));
+      lastItemEnd = close + 1;
+      commaAfterLast = false;
+      i = close;
+      continue;
+    }
+    if (c === ",") { commaAfterLast = true; continue; }
+    if (c === "]") return { items, end: i, lastItemEnd, commaAfterLast };
+  }
+  throw new Error(`the ${text.slice(0, 40).trim()}… list never closes; fix the config by hand before granting`);
 }
 
 /**

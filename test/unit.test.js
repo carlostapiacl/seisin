@@ -28,10 +28,10 @@ import { inspect, sharedPaths } from "../src/inspect.js";
 import { renderReport, renderVerdict } from "../src/render.js";
 import { renderConfig, renderObserved } from "../src/commands/init.js";
 import * as publica from "../src/index.js";
-import { record, settle, pending, applyGrant, grantFor, cleanReason, recordHandoff } from "../src/requests.js";
+import { record, settle, pending, applyGrant, grantFor, cleanReason, recordHandoff, keyOf } from "../src/requests.js";
 import { Readable } from "node:stream";
 import { decideHandoff, MAX_DEPTH } from "../src/handoff.js";
-import { renderQueue, handoffNote } from "../src/commands/requests.js";
+import { renderQueue, handoffNote, deny as declineCmd } from "../src/commands/requests.js";
 import { serveMcp, TOOLS, HANDLERS, PROTOCOLS } from "../src/mcp.js";
 import { serve } from "../src/serve.js";
 import { review } from "../src/review.js";
@@ -492,9 +492,31 @@ test("a grant lands in the right role, with its provenance", () => {
   const { toml: after, changed } = applyGrant(toml, req, "se lleva el checkout");
   assert.ok(changed);
   assert.match(after, /"src\/web\/\*\*",/);
-  assert.match(after, /"src\/api\/\*\*"\s+# granted .* asked 3× · "se lleva el checkout"/);
+  assert.match(after, /"src\/api\/\*\*"\s+# granted .* asked 3× · «se lleva el checkout»/);
   // y no tocó al otro rol
   assert.match(after, /\[roles\.backend\]\nwrites = \["src\/api\/\*\*"\]/);
+});
+
+test("SEC-02 a grant adds exactly the approved item — not what a comment or a past reason quotes", () => {
+  // Antes: la lista se reconstruía con TODAS las cadenas entre comillas del
+  // bloque, comentarios incluidos. Aprobar docs/** concedía también el "src/**"
+  // de un comentario, y la razón de la aprobación anterior (entre comillas en
+  // su comentario) se volvía una ruta en la siguiente.
+  const toml = '[roles.frontend]\nwrites = [\n  "src/web/**",   # was "src/**" until the split\n]\n\n[roles.backend]\nwrites = ["src/api/**"]\n';
+  let { toml: t } = applyGrant(toml, { role: "frontend", action: "write", grant: "docs/**", times: 1 }, "**");
+  ({ toml: t } = applyGrant(t, { role: "frontend", action: "write", grant: "lib/**", times: 2 }, "ok"));
+  assert.deepEqual(parseToml(t).roles.frontend.writes, ["src/web/**", "docs/**", "lib/**"]);
+  // la procedencia de antes sigue ahí, y el comentario original también
+  assert.match(t, /# was "src\/\*\*" until the split/);
+  assert.match(t, /"docs\/\*\*",?\s+# granted .* asked 1× · «\*\*»/);
+  assert.deepEqual(parseToml(t).roles.backend.writes, ["src/api/**"]);
+});
+
+test("a grant into a one-line or empty list keeps the file loadable", () => {
+  for (const [list, want] of [['[]', ["x/**"]], ['["a/**"]', ["a/**", "x/**"]], ['["a/**", "b/**"]  # two', ["a/**", "b/**", "x/**"]]]) {
+    const { toml } = applyGrant(`[roles.r]\nwrites = ${list}\n`, { role: "r", action: "write", grant: "x/**", times: 1 }, "");
+    assert.deepEqual(parseToml(toml).roles.r.writes, want, list);
+  }
 });
 
 test("granting something a role already has changes nothing", () => {
@@ -1226,26 +1248,27 @@ async function consola(t) {
       headers: { "content-type": "application/json", ...(tok ? { "x-seisin-token": tok } : {}) },
       body: JSON.stringify(body),
     });
-  return { box, port, token, post };
+  const key = pending(q)[0].key;
+  return { box, port, token, post, key, q };
 }
 
 test("the console refuses a write without the token", async (t) => {
   // Loopback no es una frontera contra el navegador: cualquier pestaña abierta
   // puede hacer POST a 127.0.0.1. Lo que no puede es leer este token.
-  const { token, post, box } = await consola(t);
+  const { token, post, box, key } = await consola(t);
   assert.match(token ?? "", /^[a-f0-9]{48}$/);
 
-  const sin = await post({ number: 1, decision: "granted" }, null);
+  const sin = await post({ key, decision: "granted" }, null);
   assert.equal(sin.status, 403);
-  const mal = await post({ number: 1, decision: "granted" }, "0".repeat(48));
+  const mal = await post({ key, decision: "granted" }, "0".repeat(48));
   assert.equal(mal.status, 403);
   // y nada cambió en el disco
   assert.ok(!readFileSync(join(box, "seisin.toml"), "utf8").includes("checkout"));
 });
 
 test("approving in the console writes the policy, with its reason", async (t) => {
-  const { post, box } = await consola(t);
-  const r = await post({ number: 1, decision: "granted", reason: "se lleva el checkout" });
+  const { post, box, key } = await consola(t);
+  const r = await post({ key, decision: "granted", reason: "se lleva el checkout" });
   assert.equal(r.status, 200);
 
   const toml = readFileSync(join(box, "seisin.toml"), "utf8");
@@ -1255,17 +1278,35 @@ test("approving in the console writes the policy, with its reason", async (t) =>
 });
 
 test("refusing in the console settles the request and grants nothing", async (t) => {
-  const { post, box } = await consola(t);
-  assert.equal((await post({ number: 1, decision: "denied", reason: "no es suyo" })).status, 200);
+  const { post, box, key } = await consola(t);
+  assert.equal((await post({ key, decision: "denied", reason: "no es suyo" })).status, 200);
   assert.ok(!readFileSync(join(box, "seisin.toml"), "utf8").includes("checkout"));
   assert.equal(pending(join(box, ".seisin", "requests.jsonl")).length, 0);
 });
 
 test("the console refuses a decision it does not understand", async (t) => {
-  const { post, box } = await consola(t);
-  for (const cuerpo of [{ number: 9, decision: "granted" }, { number: 1, decision: "maybe" }])
+  const { post, box, key } = await consola(t);
+  for (const cuerpo of [{ key: "frontend:write:nope/**", decision: "granted" }, { key, decision: "maybe" }, { number: 1, decision: "granted" }])
     assert.equal((await post(cuerpo)).status, 400);
   assert.ok(!readFileSync(join(box, "seisin.toml"), "utf8").includes("checkout"));
+});
+
+test("SEC-03 the console decides the request on screen, not whatever moved into its place", async (t) => {
+  // Antes: /api/decide tomaba un número de fila contado contra la cola del
+  // momento del POST. Si otro canal resolvía la primera, "aprobar #2" aprobaba
+  // la tercera, con la razón escrita para otra; reenviar aprobaba la siguiente.
+  const { post, box, q } = await consola(t);
+  record(q, { role: "frontend", action: "write", target: "lib/a.ts", owners: [] });
+  record(q, { role: "frontend", action: "write", target: "src/api/orders/b.ts", owners: ["backend"] });
+  const [a, b, c] = pending(q);
+  settle(q, a.key, "denied", "otro canal");             // la cola se movió
+  assert.equal((await post({ key: b.key, decision: "granted", reason: "approving lib" })).status, 200);
+  const toml = readFileSync(join(box, "seisin.toml"), "utf8");
+  assert.match(toml, /"lib\/\*\*"/);
+  assert.ok(!toml.includes("src/api/orders"), "approved the request that moved into its place");
+  // reenviar no aprueba la siguiente
+  assert.equal((await post({ key: b.key, decision: "granted" })).status, 400);
+  assert.deepEqual(pending(q).map((r) => r.key), [c.key]);
 });
 
 test("the page never carries the token, and every /api/ route asks for it", async (t) => {
@@ -1738,4 +1779,20 @@ test("a path outside the repo has no owner, even for writes = [\"**\"]", () => {
   assert.deepEqual(ownersOf(config, "/Users/x/.claude/plugins/lock"), []);
   assert.deepEqual(ownersOf(config, "/repo/src/a.ts"), ["dev"]);
   assert.deepEqual(ownersOf(config, "src/a.ts"), ["dev"]);
+});
+
+test("SEC-03 the CLI takes an id exactly — a prefix never selects another request", () => {
+  // Antes: pick() aceptaba prefijos. Con `lib` ya resuelto, escribir su id
+  // exacto elegía `lib-x`, una request nueva cuyo id solo empieza igual — y los
+  // ids los arman rutas que elige un agente.
+  const box = scratch("seisin-pick-");
+  writeFileSync(join(box, "seisin.toml"), '[roles.frontend]\nwrites = ["src/**"]\nkeys = []\n');
+  const q = join(box, ".seisin", "requests.jsonl");
+  record(q, { role: "frontend", action: "write", target: "lib-x/a.ts", owners: [] });
+  const cfg = loadConfig(join(box, "seisin.toml"));
+  const settled = "frontend:write:lib";
+  assert.throws(() => declineCmd(cfg, [settled]), /no pending request has the id/);
+  assert.equal(pending(q).length, 1, "the other request was touched");
+  declineCmd(cfg, [pending(q)[0].key]);
+  assert.equal(pending(q).length, 0);
 });

@@ -24,7 +24,7 @@
  */
 import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { keyOf, pending, requestsPath, grantFor } from "./requests.js";
+import { keyOf, pending, requestsPath, grantFor, shellId } from "./requests.js";
 
 export const FORMATS = ["text", "json", "slack"];
 export const ENV_URL = "SEISIN_NOTIFY_URL";
@@ -46,13 +46,13 @@ export function message(config, req, number, format = "text") {
   const owner = req.owners?.length ? `It belongs to ${req.owners.join(", ")}.` : "Nobody owns it.";
   const text =
     `seisin (${basename(config.root)}): ${req.role} was refused ${req.action} on ${req.target}. ${owner} ` +
-    `Approve: seisin grant ${number} · decline: seisin decline ${number}`;
+    `Approve: seisin grant ${shellId(keyOf(req))} · decline: seisin decline ${shellId(keyOf(req))}`;
   if (format === "slack") return { type: "application/json", body: JSON.stringify({ text }) };
   if (format === "json")
     return {
       type: "application/json",
       body: JSON.stringify({
-        text, repo: basename(config.root), number, role: req.role, action: req.action,
+        text, repo: basename(config.root), number, id: keyOf(req), role: req.role, action: req.action,
         target: req.target, owners: req.owners ?? [], grant: grantFor(req),
       }),
     };
