@@ -10,7 +10,7 @@
  */
 import { createReadStream, watch as watchDir } from "node:fs";
 import { dirname, relative } from "node:path";
-import { read, logPath, size, verifyLog } from "../log.js";
+import { read, logPath, size, verifyLog, LOG_NAME } from "../log.js";
 import { renderEntry, C, out } from "../render.js";
 
 const flag = (argv, name) => {
@@ -50,14 +50,20 @@ function verify(config) {
   }
   const head = r.unchained ? `${r.unchained} line(s) from before the chain, then ` : "";
   const segs = r.segments > 1 ? ` across ${r.segments} segments` : "";
+  // A dropped entry leaves no hole in the chain, so it is reported on its own
+  // line rather than as a break: nothing was tampered with, but something is
+  // missing, and an intact chain must not read as a complete record.
+  const dropped = r.dropped
+    ? `  ${C.yellow}${r.dropped} entr${r.dropped === 1 ? "y was" : "ies were"} never written${C.off}  another writer held the lock too long; see ${LOG_NAME}.dropped\n`
+    : "";
   if (!r.breaks.length) {
-    out(`\n  ${C.green}intact${C.off}  ${head}${r.chained} chained line(s)${segs}\n\n`);
+    out(`\n  ${C.green}intact${C.off}  ${head}${r.chained} chained line(s)${segs}\n${dropped}\n`);
     return r;
   }
   out(`\n  ${C.red}broken${C.off}  ${head}${r.chained} chained line(s), ${r.breaks.length} break(s):\n`);
   for (const b of r.breaks.slice(0, 10))
     out(`    line ${b.line}: expected prev ${b.expected}, found ${b.found ?? "none"}\n`);
-  out(`  ${C.dim}a line was edited, removed or reordered just before each of these${C.off}\n\n`);
+  out(`  ${C.dim}a line was edited, removed or reordered just before each of these${C.off}\n${dropped}\n`);
   process.exitCode = 1;
   return r;
 }

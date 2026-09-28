@@ -3,13 +3,13 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { boxed } from "./_tmp.js";
 
-import { append, withLock, verifyChain, verifyLog, logSegments, read, GENESIS } from "../src/log.js";
+import { append, withLock, droppedPath, verifyChain, verifyLog, logSegments, read, GENESIS } from "../src/log.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BOX = join(HERE, ".sandbox-box");
@@ -152,4 +152,57 @@ test("a writer that times out never writes through or removes another writer's l
   assert.equal(ran, false, "the unprotected write must not run");
   assert.equal(existsSync(f + ".lock"), true, "only the lock owner may remove it");
   unlinkSync(f + ".lock");
+});
+
+// The regression the lock fix above introduced, and its fix: a writer killed
+// while holding the lock used to leave a fresh lock that made the next writers
+// give up for a few seconds, and the entries they meant to write were lost
+// without `verify` noticing.
+test("a lock whose writer is dead is taken over at once, not waited out", () => {
+  const f = logFile();
+  mkdirSync(dirname(f), { recursive: true });
+  const dead = spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"]).stdout.toString();
+  writeFileSync(f + ".lock", `${dead} deadbeef0000\n`);
+  let ran = false;
+  withLock(f, () => { ran = true; }, { waitMs: 50, staleMs: 60_000 });
+  assert.equal(ran, true, "a dead writer's lock must not block the next one");
+  assert.equal(existsSync(f + ".lock"), false);
+});
+
+test("a lock whose writer is alive is never taken over for its age", () => {
+  const f = logFile();
+  mkdirSync(dirname(f), { recursive: true });
+  writeFileSync(f + ".lock", `${process.pid} cafe00000000\n`);
+  const old = (Date.now() - 60_000) / 1000;
+  utimesSync(f + ".lock", old, old);
+  assert.throws(() => withLock(f, () => {}, { waitMs: 20, staleMs: 10 }), (e) => e.code === "ELOCKED");
+  assert.equal(existsSync(f + ".lock"), true);
+  unlinkSync(f + ".lock");
+});
+
+test("a lock that names nobody is taken over once it is stale, inside the wait", () => {
+  const f = logFile();
+  mkdirSync(dirname(f), { recursive: true });
+  writeFileSync(f + ".lock", "");
+  let ran = false;
+  withLock(f, () => { ran = true; }, { waitMs: 400, staleMs: 50 });
+  assert.equal(ran, true);
+});
+
+test("an entry that could not get the lock is counted, and verify says so", () => {
+  const f = logFile();
+  write(f, 2);
+  writeFileSync(f + ".lock", `${process.pid} cafe00000001\n`);
+  const before = process.env.SEISIN_LOG_LOCK_WAIT_MS;
+  process.env.SEISIN_LOG_LOCK_WAIT_MS = "20";
+  try {
+    assert.equal(append(f, { role: "r", event: "write", verdict: "denied" }), false);
+  } finally {
+    if (before === undefined) delete process.env.SEISIN_LOG_LOCK_WAIT_MS; else process.env.SEISIN_LOG_LOCK_WAIT_MS = before;
+    unlinkSync(f + ".lock");
+  }
+  assert.equal(existsSync(droppedPath(f)), true);
+  const r = verifyLog(f);
+  assert.deepEqual(r.breaks, [], "a drop is not tampering");
+  assert.equal(r.dropped, 1, "but it is not silent either");
 });

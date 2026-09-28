@@ -30,10 +30,16 @@ changed rather than failing on the old spelling.
   "owned by nobody".
 - **A busy audit log never writes without its lock.** If another writer held the lock beyond
   the two-second ceiling, seisin used to append anyway and then remove the other writer's lock,
-  allowing the hash chain to fork. The entry is now dropped instead — bookkeeping may fail
-  without taking the agent down, but it may not manufacture evidence.
-- **A misspelt `runtime.isolate` is refused.** Only absent/`false`, `true`/`"home"`, and
-  `"credentials"` load. An unknown value used to silently turn isolation off.
+  allowing the hash chain to fork. The lock now names its holder: a lock left by a writer that
+  died is taken over at once, and one that names nobody is taken over when stale, inside the
+  wait. Only an entry that waited six seconds on a writer still alive is dropped — bookkeeping
+  may fail without taking the agent down, but it may not manufacture evidence — and a drop is
+  counted in `log.jsonl.dropped` and reported by `seisin log verify`, because a missing line
+  leaves no break in the chain and would otherwise not show.
+- **A misspelt `runtime.isolate` is refused — the config no longer loads.** Only absent/`false`,
+  `true`/`"home"`, and `"credentials"` are accepted. An unknown value (`"yes"`, `1`, `"false"`)
+  used to silently turn isolation off; it is now an error, so a config that loaded under 0.4.0
+  may stop loading. The fix is to write one of the four values.
 - **The landing now leads with ownership and coordination**, brings the field measurements and
   `seisin review` forward, and separates the enforced boundary from the things it does not
   promise. The console also points at the runtime's current repository.
