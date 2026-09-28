@@ -8,6 +8,26 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **A grant adds exactly what was approved.** `seisin grant` and the console rebuilt a role's list
+  from every quoted string between its brackets — including paths written in a comment, and the
+  reason a previous approval had left quoted in its provenance line. Approving one thing could grant
+  another. The list is now read for its real items and the new entry appended; earlier provenance
+  survives, and the reason is set off with «» so no reader takes it for a value.
+- **The console and MCP address a request by its id, not its place in the queue.** The console
+  approved by row number, counted against the queue as it stood when the page was drawn; if another
+  channel settled one in between, the approval landed on whatever had moved into that place, and
+  re-sending approved the next. Now the console, the MCP draft and the notify message all name the
+  request's id (shell-quoted in the suggested command), and the CLI no longer matches an id by
+  prefix.
+- **A key can no longer be replaced by a table declared elsewhere in the file.** A `[roles]` block
+  written below `[roles.a]` replaced the whole role, so a `network = []` came back as the global
+  allow list, with a clean `seisin check`. A name cannot be both a key and a table in either order;
+  `roles` and each role must be tables; and an unclosed array is refused in linear time.
+- **The git files that execute in submodules and worktrees are denied.** `.git/config` and hooks
+  were covered; the files beside them that git also runs or follows — a submodule's own config and
+  hooks, `.git/config.worktree`, a worktree's `commondir` — were not. The rest of `.git` stays
+  writable, so an ordinary commit is untouched.
+
 ## 0.4.1 — 2026-09-28
 
 - **"Paths no role owns" is counted against the policy, as it always said it was.** The console's

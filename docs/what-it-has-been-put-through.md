@@ -324,6 +324,14 @@ declared key, writes inside its territory, and is refused outside it.
 - **Windows.** The runtime has a backend. seisin has never been pointed at it.
 - **No fuzzing.** The parser has a property test over a fixed corpus, which is
   not the same thing.
+- **A planted repository with a different name.** A role can write, inside its own
+  territory, a directory that is a git repository under a name that is not `.git`,
+  and a `.git` *file* pointing at it. A `git status` run there by a person or an
+  IDE — outside the box — then runs what that repository's config names. seisin
+  denies the config and hooks of a `.git` directory, and of submodules and
+  worktrees, but a glob that also caught the pointer file would deny the whole
+  `.git` subtree and stop the agent committing. Closing it needs a runtime
+  primitive or a check after the run; the ask is upstream.
 
 ## The claim this supports
 
