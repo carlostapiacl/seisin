@@ -8,6 +8,27 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **"Paths no role owns" is counted against the policy, as it always said it was.** The console's
+  headline and `seisin_causes` took each path's owners from the log line written the day it was
+  refused. Every grant made since left its paths counted as nobody's, so the number got worse the
+  more seisin was used the way it is meant to be — measured on one deployment, 1,178 of 1,486
+  refused paths shown as unowned where the policy of that day said 316. Protected surfaces, ports,
+  key directories and paths outside the repository were counted too, although nobody can ever own
+  them. Each refused path now has a `standing` — `unowned`, `owned`, `protected` or `outside` —
+  computed from the policy as it stands; `unowned` keeps its name and now means what the page
+  said. The owners the log recorded stay on each cause as `ownersThen`. `seisin review` uses the
+  same classification, so the word means one thing everywhere: it used to skip keys and ports and
+  count protected paths, while the console counted all four.
+- **`seisin_causes` reads the whole log, as the console does.** It still read the last 4000 lines
+  after the console had stopped, so an agent and a person looking at the same log saw different
+  totals (3,999 against 6,630, measured) and the agent was not told. It also takes `since`, like
+  the console. Its description promised that "a cause that has been granted since stops
+  counting"; the counts are history and say so now, and what is measured against today's policy
+  is named: `standing`, and `stillRefused` per cause.
+- **The console greys a cause nobody is refused any more.** It read a field the server never
+  sent, so nothing was ever greyed. Protected causes now say they are protected, instead of
+  "owned by nobody".
+
 ## 0.4.0 — 2026-09-24
 
 - **The console's link can be found again.** The token that authorizes the console travels only

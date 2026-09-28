@@ -20,7 +20,7 @@ import { read, logPath } from "./log.js";
 import { settingsFor } from "./srt.js";
 import { pending, requestsPath, settle, applyGrant, refuseIfBarred, markStale } from "./requests.js";
 import { walls } from "./walls.js";
-import { explain } from "./owners.js";
+import { explain, standingOf } from "./owners.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -54,7 +54,7 @@ export function causesOf(cfg, entries) {
   for (const e of entries) {
     if (e.verdict !== "denied" || !e.target || !e.action) continue;
     const k = `${e.action}\u0000${e.target}`;
-    const g = by.get(k) ?? { action: e.action, target: e.target, times: 0, roles: new Set(), owners: e.owners ?? [] };
+    const g = by.get(k) ?? { action: e.action, target: e.target, kind: e.kind, times: 0, roles: new Set(), ownersThen: e.owners ?? [] };
     g.times++;
     g.roles.add(e.role);
     by.set(k, g);
@@ -99,25 +99,38 @@ export function causesOf(cfg, entries) {
     }));
 
   /**
-   * What a `grep` over the log cannot tell you.
+   * What a `grep` over the log cannot tell you: where each refused path stands
+   * against the policy as it is now.
    *
    * The headline used to be "74% of it is one name", and a field review
    * applied this project's own test to it: *did the number tell you something
-   * you did not know?* For somebody who reads the raw log, no — they had
-   * already counted that. The console was repeating the log back.
+   * you did not know?* For somebody who reads the raw log, no. So the console
+   * added how many causes are on paths no role owns — a decision rather than a
+   * number — and then computed it from the `owners` each log line carried,
+   * which is the one thing the log already had. It said the policy and read
+   * the past: every grant made since left its refusals counted as "nobody's",
+   * and protected surfaces, ports and paths outside the repository, which
+   * nobody can ever own, were counted as waiting for somebody to claim them.
    *
-   * These two are different, because they need the **policy** and the log does
-   * not contain it. `unowned` is the count of causes on paths no role claims:
-   * no grant resolves those until somebody decides who owns them, which is a
-   * decision rather than a number. `settled` is friction that has since been
-   * granted — real yesterday, noise today.
+   * Now every cause is classified by `standing` (owners.js), and the four
+   * piles are reported in paths and in refusals. `unowned` keeps its name and
+   * now means what the page always said it meant. The owners the log recorded
+   * are kept on each cause as `ownersThen`: evidence of what was true, not
+   * authority over what is.
    */
-  const live = [...by.values()];
-  const unowned = live.filter((g) => !(g.owners ?? []).length).length;
+  const standOf = standingOf(cfg);
+  const piles = Object.fromEntries(["unowned", "owned", "protected", "outside"].map((k) => [k, { paths: 0, denials: 0 }]));
+  for (const g of by.values()) {
+    const s = standOf({ kind: g.kind, target: g.target });
+    g.standing = s;
+    piles[s.kind].paths++;
+    piles[s.kind].denials += g.times;
+  }
 
   return {
     total,
-    unowned,
+    unowned: piles.unowned.paths,
+    standing: piles,
     // The real number of distinct causes, not the length of the list below.
     // The page says "over N distinct paths" and the list is capped at twelve,
     // so taking N from the list reported the cap as if it were the count —
@@ -133,7 +146,10 @@ export function causesOf(cfg, entries) {
         times: g.times,
         share: total ? g.times / total : 0,
         roles: [...g.roles].sort(),
-        owners: g.owners,
+        standing: g.standing.kind,
+        ...(g.standing.why && { why: g.standing.why }),
+        owners: g.standing.owners,
+        ownersThen: g.ownersThen,
         // How many of the roles that hit this would still hit it. `some` and
         // not `every`: two roles out of three still blocked is still friction,
         // and requiring all of them would quietly retire a live cause the day

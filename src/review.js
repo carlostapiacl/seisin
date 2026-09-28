@@ -28,7 +28,7 @@
  * means nothing without "…in how long".
  */
 import { read, logPath } from "./log.js";
-import { covers, ownersOf } from "./owners.js";
+import { covers, standingOf } from "./owners.js";
 
 /**
  * One reading of the log against the policy.
@@ -144,12 +144,17 @@ function findings(config, entries, minDenials) {
 
   /* ── 3. what nobody owns ────────────────────────────────────────────── */
 
+  // The same classification the console and `seisin_causes` use, so the word
+  // means one thing everywhere. A key directory is closed on purpose, a port is
+  // not a path, a protected file is closed to every role and a path outside
+  // the repository is outside every territory: none of them is a hole in the
+  // map. This used to skip keys and ports and count the rest, protected ones
+  // included, while the console counted all four — one word, two numbers.
   const unowned = new Map();
+  const standOf = standingOf(config);
   for (const e of entries) {
-    // A key directory is closed on purpose; a port or a socket is not a path
-    // anybody could own. Neither is a hole in the map.
-    if (!e.target || e.kind === "key" || e.kind === "network") continue;
-    if (ownersOf(config, e.target).length) continue;
+    if (!e.target) continue;
+    if (standOf(e).kind !== "unowned") continue;
     const dir = dirOf(e.target);
     unowned.set(dir, (unowned.get(dir) ?? 0) + 1);
   }
