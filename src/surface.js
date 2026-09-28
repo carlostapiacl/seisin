@@ -447,6 +447,15 @@ function computeDenies(config, role, { env, platform, observe }) {
     ? repoDirs.flatMap((d) => [
         `${d}/**/.claude`, `${d}/**/.claude/**`,
         `${d}/**/.git/hooks/**`, `${d}/**/.git/config`,
+        // What git runs that lives beside, not in, `.git/config`: a submodule's
+        // own config and hooks, and the files that redirect a worktree to
+        // another gitdir or config. Ordinary commits never write these, so
+        // denying them costs a working role nothing; a role that could write
+        // one would leave a command for the next `git` outside the box. The
+        // subtree of `.git` stays writable on purpose, so the agent can commit.
+        `${d}/**/.git/config.worktree`,
+        `${d}/**/.git/modules/**/config`, `${d}/**/.git/modules/**/hooks/**`,
+        `${d}/**/.git/worktrees/**/config.worktree`, `${d}/**/.git/worktrees/**/commondir`,
         `${d}/**/.mcp.json`, `${d}/**/.envrc`, `${d}/**/.codex/config.toml`,
       ]).map((path) => ({ path, why: "any project's control files in this territory, by pattern" }))
     : [];

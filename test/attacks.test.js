@@ -115,6 +115,19 @@ test("ATTACK-005 the home's Claude settings cannot be opened for writing", { ski
   assert.notEqual(r.status, 0);
 });
 
+test("ATTACK-012 a role cannot write the git files that run in a submodule or worktree", { skip: skip || macOnly }, () => {
+  // .git/config and hooks are denied; so are the files beside them that git also
+  // runs or follows — a submodule's own config/hooks, and the files that point a
+  // worktree at another gitdir. The subtree of .git stays writable, so an
+  // ordinary commit (.git/index) is not caught.
+  const g = join(repo, "src", "nested", ".git");
+  mkdirSync(join(g, "modules", "sub", "hooks"), { recursive: true });
+  mkdirSync(join(g, "worktrees", "w"), { recursive: true });
+  for (const f of ["modules/sub/config", "modules/sub/hooks/pre-commit", "worktrees/w/commondir", "config.worktree"])
+    assert.notEqual(as("narrow", `echo x > src/nested/.git/${f}`).status, 0, f);
+  assert.equal(as("narrow", "echo x > src/nested/.git/index").status, 0, "an ordinary commit must still work");
+});
+
 test("ATTACK-006 a failing provider's stderr does not carry the secret out", () => {
   // A provider that prints the value and then fails used to have it echoed
   // back through the error meant to explain the failure.
