@@ -104,6 +104,19 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
   const level = config.isolate === true ? "home" : config.isolate;
   const shielded = level === "credentials" || level === "home";
   const isolated = level === "home";
+  /**
+   * `sandbox-runtime` silently makes these writable as conveniences even when
+   * they are absent from `allowWrite`. That gives every role a shared host
+   * directory outside its territory. A denyRead makes the runtime drop its
+   * implicit grant; denyWrite also wins over Seisin's explicit `~/.claude`
+   * runtime scratch grant for the nested debug directory.
+   *
+   * On Linux bubblewrap may create a temporary mount point for a missing deny
+   * target and removes it after the run. Naming it anyway matters: otherwise a
+   * process could create ~/.claude/debug after the profile was built.
+   */
+  const runtimeConvenience = ["~/.npm/_logs", "~/.claude/debug"]
+    .map(expand);
 
   /**
    * Refuse before the runtime does, because the runtime's refusal says nothing.
@@ -127,6 +140,7 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
   const home = isolated ? roleHome(config, roleName) : null;
   const denyRead = [];
   const allowRead = [];
+  denyRead.push(...runtimeConvenience);
 
   // Every declared directory is denied, then each key the role names is
   // re-allowed. A key written without a directory resolves against the first
@@ -301,6 +315,7 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
        * relying on someone else's implementation detail staying put.
        */
       denyWrite: [
+        ...runtimeConvenience,
         /**
          * The role's own subtractions, `never_writes`.
          *
@@ -366,4 +381,3 @@ export function providerPaths(config) {
   }
   return [...new Set(out)];
 }
-
