@@ -60,11 +60,65 @@ test("a project's control files are named literally, and cheaply", () => {
   for (let i = 0; i < 20; i++) execFileSync("git", ["init", "-q", join(dir, "pkgs", `p${i}`)]);
   const role = loadConfig(join(dir, "seisin.toml")).roles.a;
   const config = loadConfig(join(dir, "seisin.toml"));
-  const literals = denyFor(config, role, { platform: "darwin", env: { PATH: "/usr/bin" } })
-    .filter((e) => !e.path.includes("*") && e.path.startsWith(dir + "/pkgs/"));
+  const all = denyFor(config, role, { platform: "darwin", env: { PATH: "/usr/bin" } })
+    .filter((e) => e.path.startsWith(dir + "/pkgs/"));
+  const literals = all.filter((e) => !/[*?[\]]/.test(e.path));
   assert.ok(literals.length <= 20 * 3 + 3, `${literals.length} literals for 20 projects`);
   assert.ok(literals.some((e) => e.path === join(dir, "pkgs", "p7", ".git", "hooks")));
   assert.ok(literals.some((e) => e.path === join(dir, "pkgs", "p7", ".claude")));
+  // A .vscode that is not there costs no literal: creating it is refused by an
+  // exact pattern at the project's root, which costs nothing at start-up.
+  assert.ok(all.some((e) => e.path === join(dir, "pkgs", "p7", ".vscod[e]")));
+});
+
+test("the editor and instruction families: never by ** and never inside node_modules", () => {
+  const dir = repo('[roles.a]\nwrites = ["**"]\n\n[protect]\ninstructions = true\n');
+  mkdirSync(join(dir, "node_modules", "pkg", ".vscode"), { recursive: true });
+  writeFileSync(join(dir, "node_modules", "pkg", "AGENTS.md"), "x\n");
+  mkdirSync(join(dir, ".vscode"), { recursive: true });
+  const config = loadConfig(join(dir, "seisin.toml"));
+  const entries = denyFor(config, config.roles.a, { platform: "darwin", env: { PATH: "/usr/bin" } });
+  const fam = entries.filter((e) => e.family);
+  assert.ok(fam.length, "the families are protected");
+  assert.ok(fam.every((e) => !e.path.includes("**")), "no family entry is a ** pattern");
+  assert.ok(!entries.some((e) => e.path.includes("/node_modules/")), "npm must be able to unpack a package's .vscode or AGENTS.md");
+  assert.ok(fam.some((e) => e.path === join(dir, ".vscode")), "an existing .vscode is literal");
+  assert.ok(fam.some((e) => e.path === join(dir, "AGENTS.m[d]")), "a missing AGENTS.md is a pattern");
+});
+
+test("control_files hands a family to one role, and only that role", () => {
+  const dir = repo('[roles.front]\nwrites = ["**"]\ncontrol_files = ["ide"]\n\n[roles.back]\nwrites = ["**"]\n');
+  mkdirSync(join(dir, ".vscode"), { recursive: true });
+  const config = loadConfig(join(dir, "seisin.toml"));
+  const opts = { platform: "darwin", env: { PATH: "/usr/bin" } };
+  assert.ok(!denyFor(config, config.roles.front, opts).some((e) => e.family === "ide"));
+  assert.ok(denyFor(config, config.roles.back, opts).some((e) => e.path === join(dir, ".vscode")));
+  assert.equal(protectedBy(config, ".vscode/tasks.json", { platform: "darwin", role: "front" }), null);
+  assert.equal(protectedBy(config, ".vscode/tasks.json", { platform: "darwin", role: "back" }).family, "ide");
+});
+
+test("instructions are not protected unless the policy says so", () => {
+  const dir = repo('[roles.a]\nwrites = ["**"]\n');
+  const config = loadConfig(join(dir, "seisin.toml"));
+  assert.equal(protectedBy(config, "CLAUDE.md", { platform: "darwin" }), null);
+  assert.ok(!denyFor(config, config.roles.a, { platform: "darwin", env: { PATH: "/usr/bin" } }).some((e) => e.family === "instructions"));
+});
+
+test("on Linux a family is protected only where it exists, and only in its own spelling", () => {
+  const dir = repo('[roles.a]\nwrites = ["**"]\n\n[protect]\ninstructions = true\n');
+  writeFileSync(join(dir, "AGENTS.md"), "x\n");
+  const config = loadConfig(join(dir, "seisin.toml"));
+  assert.ok(protectedBy(config, "AGENTS.md", { platform: "linux" }));
+  assert.equal(protectedBy(config, "agents.md", { platform: "linux" }), null, "ext4 does not fold case");
+  assert.equal(protectedBy(config, "sub/AGENTS.md", { platform: "linux" }), null, "bubblewrap cannot refuse creating it");
+  assert.ok(protectedBy(config, "sub/AGENTS.md", { platform: "darwin" }));
+});
+
+test("control_files and [protect] refuse what they do not know", () => {
+  const bad = (toml) => { const dir = repo(toml); return () => loadConfig(join(dir, "seisin.toml")); };
+  assert.throws(bad('[roles.a]\nwrites = ["**"]\ncontrol_files = [".claude"]\n'), /not a family of control files/);
+  assert.throws(bad('[roles.a]\nwrites = ["**"]\n\n[protect]\ninstruction = true\n'), /not a setting/);
+  assert.throws(bad('[roles.a]\nwrites = ["**"]\n\n[protect]\ninstructions = "yes"\n'), /true or false/);
 });
 
 test("explain's protection matches control files in any case, at any depth", () => {

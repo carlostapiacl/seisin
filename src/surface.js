@@ -301,12 +301,69 @@ const CONTROL_RE = new RegExp(
 /** Does this path name a control file, at any depth? What `explain` asks. */
 export const isControlPath = (p) => CONTROL_RE.test(p);
 
+/**
+ * Two more families of control files, which a role may be let to edit.
+ *
+ * The ones above make a program outside the box *execute* something, and no
+ * role writes them. These two are softer, and that is why a policy can hand
+ * them to a role (`control_files = ["ide"]`, `["instructions"]`) where the
+ * others cannot be handed to anybody:
+ *
+ * - **ide** — `.vscode/`, `.cursor/`, `.windsurf/`. The editor applies them as
+ *   soon as they change: tasks, terminal profiles, settings that turn on tool
+ *   auto-approval or add an MCP server. GitHub Security Lab showed an injected
+ *   agent doing exactly that to `.vscode/settings.json`; the editor reloads
+ *   before a person can choose Undo. Protected by default — but a front-end
+ *   role that maintains its project's launch configs has a real reason to edit
+ *   them, and a boundary with no way to say so gets switched off whole.
+ * - **instructions** — `CLAUDE.md`, `AGENTS.md` and their kin. Nothing runs
+ *   them; the next agent session *reads* them, as instructions. One role
+ *   writing them is how it reaches another role's context. Off by default
+ *   (`[protect] instructions = true` turns it on), because keeping them current
+ *   is ordinary work for most teams, and git then fights the protection: a
+ *   role's `git checkout` cannot update a file it may not write, git exits 0,
+ *   and the old version stays behind as a modification.
+ */
+export const FAMILIES = {
+  ide: [".vscode", ".cursor", ".windsurf"],
+  instructions: ["CLAUDE.md", "AGENTS.md", "GEMINI.md", ".cursorrules", ".windsurfrules",
+    ".github/copilot-instructions.md", ".github/instructions"],
+};
+
+const EDITOR = { ".vscode": "VS Code", ".cursor": "Cursor", ".windsurf": "Windsurf" };
+const familyWhy = (family, name) => family === "ide"
+  ? `${name}, whose settings and tasks ${EDITOR[name]} applies outside the box`
+  : `${name}, which the next agent session reads as its instructions`;
+
+/** The families this role's profile protects: the defaults, minus what the policy hands it. */
+export function familiesFor(config, role) {
+  const mine = new Set(role?.controlFiles ?? []);
+  const out = [];
+  if (!mine.has("ide")) out.push("ide");
+  if (config.protect?.instructions && !mine.has("instructions")) out.push("instructions");
+  return out;
+}
+
+/**
+ * A pattern that matches exactly `name` under `root`, and only there.
+ *
+ * `**\/.vscode` would also match inside `node_modules`, and npm would then
+ * drop those files from the packages it unpacks, with `EPERM` in a warning and
+ * exit 0. Anchored at the project root it cannot. The last character goes in a
+ * one-letter class so the runtime treats the entry as a pattern — which costs
+ * nothing at start-up — and not as a literal, which costs a rule for each of
+ * its ancestors and would be paid for every project whether the file is there
+ * or not.
+ */
+const exactly = (root, name) => `${root}/${name.slice(0, -1)}[${name.slice(-1)}]`;
+
 /** Where no control file is looked for: dependencies and build output. */
 const PRUNE = new Set(["node_modules", ".git", "vendor", "dist", "build", ".venv", "venv",
   "__pycache__", ".next", "target", ".turbo", ".cache", "Pods", ".gradle", ".dart_tool"]);
 
 /** A directory holding one of these is where somebody opens a project. */
-const MARKERS = new Set([".git", ".claude", ".mcp.json", ".envrc", ".codex"]);
+const MARKERS = new Set([".git", ".claude", ".mcp.json", ".envrc", ".codex",
+  ...FAMILIES.ide, ...FAMILIES.instructions.filter((f) => !f.includes("/"))]);
 
 /**
  * How deep under a territory to look for projects.
@@ -344,7 +401,7 @@ function projectRoots(dir, depth = SCAN_DEPTH) {
  * (never_writes has the measurement). A `.git` that is a file is a worktree
  * pointing at its repository, and the pointer is what gets protected.
  */
-function controlsOf(dir, platform) {
+function controlsOf(dir, platform, families = []) {
   const out = [];
   let git = null;
   try { git = statSync(join(dir, ".git")); } catch {}
@@ -371,6 +428,14 @@ function controlsOf(dir, platform) {
     const p = join(dir, f);
     if (existsSync(p)) out.push({ path: p, why: `${f}, run by ${RUNNER(f)} outside the box` });
   }
+  // The families literally only where they exist, on every platform. Where
+  // they do not, macOS gets a pattern for creating them (computeDenies) and
+  // Linux gets nothing: bubblewrap would create the path to mount over it.
+  for (const family of families)
+    for (const f of FAMILIES[family]) {
+      const p = join(dir, f);
+      if (existsSync(p)) out.push({ path: p, why: familyWhy(family, f), family });
+    }
   return out;
 }
 
@@ -432,7 +497,9 @@ function computeDenies(config, role, { env, platform, observe }) {
 
   const dirs = mine.filter((p) => { try { return statSync(p).isDirectory(); } catch { return false; } });
   const repoDirs = dirs.filter((p) => under(p, config.root));
-  const controls = repoDirs.flatMap((d) => rootsUnder(config, d)).flatMap((d) => controlsOf(d, platform));
+  const families = familiesFor(config, role);
+  const roots = [...new Set(repoDirs.flatMap((d) => rootsUnder(config, d)))];
+  const controls = roots.flatMap((d) => controlsOf(d, platform, families));
   // The home is a project too, for Claude Code and Codex: ~/.claude/settings.json
   // is read by every session. Not walked — only its own control files.
   if (["~/.claude", "~/.codex"].some((h) => inMine(join(homedir(), h.slice(2)))))
@@ -464,6 +531,14 @@ function computeDenies(config, role, { env, platform, observe }) {
         `${d}/**/.mcp.json`, `${d}/**/.envrc`, `${d}/**/.codex/config.toml`,
       ]).map((path) => ({ path, why: "any project's control files in this territory, by pattern" }))
     : [];
+  // Creating one of the families where it is not there yet: one exact pattern
+  // per project root, never `**` (see `exactly`).
+  if (platform === "darwin")
+    for (const root of roots)
+      for (const family of families)
+        for (const f of FAMILIES[family])
+          if (!existsSync(join(root, f)))
+            globs.push({ path: exactly(root, f), why: `${familyWhy(family, f)}, if it is created`, family });
 
   // The policy, `.seisin/` and the key directories are denied whatever the
   // territory, as they always were. What the providers and `file://` keys
@@ -482,7 +557,7 @@ function computeDenies(config, role, { env, platform, observe }) {
  * to be filed as "belongs to dev" for a role with `writes = ["**"]`, and
  * granting it would have granted nothing.
  */
-export function protectedBy(config, target, { platform = process.platform } = {}) {
+export function protectedBy(config, target, { platform = process.platform, role = null } = {}) {
   /**
    * A project's `.claude/`, any file in it, and the other control files — the
    * same rule the kernel is given. On Linux the kernel only holds the ones
@@ -498,6 +573,22 @@ export function protectedBy(config, target, { platform = process.platform } = {}
       : `${f}, run by ${RUNNER(f)} outside the box`;
     return { path: target, why };
   }
+  /**
+   * The two families, as the kernel is given them. Case-insensitive on macOS
+   * only: APFS folds case and the kernel refuses `.VSCODE/`, ext4 does not, and
+   * saying "protected" about a spelling the kernel lets through is the one
+   * direction this project refuses. With a role, what the policy hands that
+   * role is not protected for it; without one, the answer carries the family
+   * so the caller can ask whose it is.
+   */
+  const active = role ? familiesFor(config, config.roles?.[role]) : familiesFor(config, null);
+  for (const family of active)
+    for (const name of FAMILIES[family]) {
+      const re = new RegExp(`(^|/)${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(/|$)`, platform === "darwin" ? "i" : "");
+      if (!re.test(target)) continue;
+      if (platform === "linux" && !existsSync(isAbsolute(target) ? target : join(config.root, target))) continue;
+      return { path: target, why: familyWhy(family, name), family };
+    }
   const full = realOrSelf(isAbsolute(target) ? target : join(config.root, target));
   return parentInputs(config)
     .find((e) => under(full, realOrSelf(e.path)) || under(join(config.root, target), e.path)) ?? null;
@@ -520,7 +611,7 @@ export function protections(config, roles = Object.values(config.roles), opts = 
     let entries;
     try { entries = denyFor(config, role, opts); } catch { continue; }
     for (const e of entries) {
-      if (always.has(e.why) || e.path.includes("*")) continue;
+      if (always.has(e.why) || /[*?[\]]/.test(e.path)) continue;
       // Only what the role could otherwise write: a literal control-file path
       // is listed for every project in the territory whether it exists or not,
       // and the ones that do not exist are shown only if their project does.

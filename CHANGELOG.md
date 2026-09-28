@@ -6,6 +6,38 @@ history; what changed for someone who installs it is here.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## 0.5.0 — 2026-09-29
+
+**Breaking for a policy whose roles edit editor settings.** A role that writes a project's
+`.vscode/`, `.cursor/` or `.windsurf/` is refused from this version on, unless the policy hands it
+`control_files = ["ide"]`. `seisin check` names every role that has it.
+
+- **Editor settings are control files.** `.vscode/`, `.cursor/` and `.windsurf/` are protected in
+  every project inside a role's territory, like `.claude/` and git hooks: the editor applies them
+  outside the box as soon as they change — tasks, auto-approval, MCP servers. `sandbox-runtime`
+  protects `.vscode` only under the directory a run starts in
+  ([#432](https://github.com/anthropics/sandbox-runtime/issues/432)), so anywhere else it was the
+  role's to change.
+- **Instruction files, when the policy asks.** `[protect] instructions = true` protects
+  `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursorrules`, `.windsurfrules`,
+  `.github/copilot-instructions.md` and `.github/instructions/`. Off by default: nothing runs
+  them, and keeping them current is ordinary work for most teams.
+- **`control_files = ["ide", "instructions"]` hands a family to one role**, inside its own
+  territory. Nothing else can be handed: `.claude`, git hooks, `.mcp.json` and `.envrc` stay closed
+  to every role, and an unknown value refuses to load. `explain` says which key would change a
+  refusal and files no request, because it is a decision about the policy, not a grant.
+- **Never by `**`, never in `node_modules`.** Both families are denied literally where they exist
+  and, on macOS, by one exact pattern per project root where they do not, so npm still unpacks a
+  package's own `.vscode` or `AGENTS.md`, and the literal count — which is what start-up pays
+  for — grows only with the files that are really there. On Linux only existing ones are
+  protected, and `explain` says so; it also stops calling a different spelling protected there,
+  since ext4 does not fold case.
+- **The runtime's own log directories are closed.** The pinned `sandbox-runtime` makes
+  `~/.npm/_logs` and `~/.claude/debug` writable behind the caller's back; a confined role created a
+  file in the first while its printed territory said nothing of it. Both are denied to every role.
+- A role's `git checkout` cannot update a protected file it may not write; git exits 0 and leaves
+  the old version as a modification. The README's first-day section says what to do.
+
 ## 0.4.2 — 2026-09-29
 
 - **Small hardening across the launcher.** A `--observe` written after the command

@@ -6,7 +6,7 @@
 
 ## The suite
 
-**500 tests** (2026-09-29), on macOS and on Linux under bubblewrap, and in CI on
+**510 tests** (2026-09-29), on macOS and on Linux under bubblewrap, and in CI on
 Node 18/20/22/24 at every push ([workflow](../.github/workflows/test.yml)).
 
 Twenty-six of them are not unit tests: they run real commands through the real
@@ -37,6 +37,55 @@ a green run that quietly tested nothing looks exactly like a real one.
 ✔ an isolated role starts, and loses the credentials the ordinary mode leaves open
 ```
 
+## Public agent attacks, turned into boundary tests
+
+GitHub Security Lab showed an indirect prompt injection changing
+`.vscode/settings.json` to turn on tool auto-approval and reconfigure an MCP
+server. The detail that matters is timing: VS Code reloads the file at once, so
+asking a person to Keep or Undo afterwards is not a boundary.
+
+seisin already treated `.mcp.json`, `.claude/`, git hooks and Codex's config as
+files that make a program outside the sandbox act. `.vscode/` was not in that
+family. `sandbox-runtime` protects it on its own, but only under the directory
+the run starts in ([#432](https://github.com/anthropics/sandbox-runtime/issues/432)),
+so a project's `.vscode` anywhere else in a role's territory was that role's to
+change. ATTACK-009 runs from a sibling directory for exactly that reason — from
+the repository root it passed before seisin did anything, which made it a test
+of the runtime, not of this.
+
+Since 0.5.0 `.vscode/`, `.cursor/` and `.windsurf/` are protected by default,
+and `CLAUDE.md`, `AGENTS.md` and their kin when the policy turns that on. A
+policy can hand either family to a role that maintains those files; the first
+version of this change could not, and blocked every `CLAUDE.md` a working team
+edits several times a week. That, and three other costs found before it
+shipped — npm dropping those files from the packages it unpacks, a role's
+`git checkout` leaving them stale without a word, and `check` listing hundreds
+of paths that did not exist — are why the families are protected by exact
+patterns at each project's root and literally only where they exist.
+
+What the kernel tests do, and each fails with the protection switched off:
+
+| id | tries | result |
+|---|---|---|
+| ATTACK-009 | rewrite a nested project's `.vscode/settings.json`, move it aside, create a `.cursor/` | refused |
+| ATTACK-009b | the same edit, by a role handed `control_files = ["ide"]` | written |
+| ATTACK-010 | rewrite a nested `AGENTS.md`, create a `CLAUDE.md` | refused |
+| ATTACK-011 | append to `~/.npm/_logs` and `~/.claude/debug` | refused |
+
+The last one is a different finding. The pinned runtime makes those two
+directories writable by itself, even though neither appears in the territory
+seisin prints; a confined process created a file in the first. Both are now
+denied.
+
+Two things this does not solve. Output passes through byte for byte, terminal
+escape sequences included; hardening that belongs to the terminal or the agent's
+UI. And allowing an MCP server controls whether it may be called, not whether
+its description or its output can steer a model. seisin confines what such
+steering can do; it does not judge prompt content.
+
+Source: [GitHub Security Lab, *Safeguarding VS Code against prompt
+injections*](https://github.blog/security/vulnerability-research/safeguarding-vs-code-against-prompt-injections/).
+
 ### Where each claim was actually run
 
 Two platforms enforce differently — Seatbelt on macOS, bubblewrap on Linux — so
@@ -45,7 +94,7 @@ what has not.
 
 | | macOS 15 · Seatbelt | Linux · bubblewrap |
 |---|---|---|
-| the suite | **500 tests, 499 pass, 1 skipped** (Linux-only) — 2026-09-29 | `ubuntu-latest` in CI at every push, and CI fails if the twenty-six sandbox tests skip. Last full count measured here: 326/326 — 2026-09-21, Node 22. Last full Docker run: 225/225 — 2026-09-14, Debian 12.15, bwrap 0.8.0, `--privileged` (bubblewrap mounts `/proc`) |
+| the suite | **510 tests, 509 pass, 1 skipped** (Linux-only) — 2026-09-29 | `ubuntu-latest` in CI at every push, and CI fails if the twenty-six sandbox tests skip. Last full count measured here: 326/326 — 2026-09-21, Node 22. Last full Docker run: 225/225 — 2026-09-14, Debian 12.15, bwrap 0.8.0, `--privileged` (bubblewrap mounts `/proc`) |
 | CI, every push | Node 18/20/22/24 | `ubuntu-latest`, Node 18/20/22/24 |
 | `[runtime] isolate = "home"` (`= true`) | ✅ — and it did not start here at all until the 104-byte socket fix | ✅ — `tmpdir()` is `/tmp`, so the path never came close |
 | `[runtime] isolate = "credentials"` | ✅ — no role home, so the socket limit cannot reach it | ✅ |
