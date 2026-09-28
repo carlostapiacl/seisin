@@ -8,6 +8,8 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+## 0.4.1 — 2026-09-28
+
 - **"Paths no role owns" is counted against the policy, as it always said it was.** The console's
   headline and `seisin_causes` took each path's owners from the log line written the day it was
   refused. Every grant made since left its paths counted as nobody's, so the number got worse the
