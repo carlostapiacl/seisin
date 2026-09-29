@@ -1874,3 +1874,17 @@ test("SEC-07 two concurrent grants both land — neither is lost", async () => {
   assert.match(toml, /xtwo\/\*\*/, "role b's grant was lost");
   assert.equal(pending(q).length, 0, "both requests should be settled");
 });
+
+test("SEC-15b/09 a territory cannot be absolute, but .. is allowed (used for sibling dirs)", () => {
+  const dir = scratch("seisin-terr-");
+  const load = (toml) => { writeFileSync(join(dir, "seisin.toml"), toml); return () => loadConfig(join(dir, "seisin.toml")); };
+  assert.throws(load('[roles.a]\nwrites = ["/etc/**"]\n'), /absolute/);
+  // .. stays legal: the team writes ../bitacora/... on purpose
+  assert.ok(load('[roles.a]\nwrites = ["../bitacora/**"]\n')());
+});
+
+test("SEC-14 role names that differ only in case are refused", () => {
+  const dir = scratch("seisin-case-");
+  writeFileSync(join(dir, "seisin.toml"), '[roles.dev]\nwrites = ["a/**"]\n\n[roles.Dev]\nwrites = ["b/**"]\n');
+  assert.throws(() => loadConfig(join(dir, "seisin.toml")), /differ only in case/);
+});
