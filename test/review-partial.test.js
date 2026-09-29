@@ -119,3 +119,15 @@ test("grouping keys cannot collide, because role names cannot hold a separator",
   const r = review(config);
   assert.equal(r.friction.length, 2, "two different places, two rows");
 });
+
+test("SEC-17c a disputed 'allowed' line does not count as legitimate use", () => {
+  // A process in the box can send an allowed line for a territory it never used;
+  // the parent marks it disputed. review must not treat it as evidence of use.
+  const cfg = repo([
+    { role: "frontend", action: "write", target: "src/web/real.ts", verdict: "allowed" },
+    { role: "backend", action: "write", target: "src/api/forged.ts", verdict: "allowed", disputed: "denied" },
+  ]);
+  const r = review(cfg, { minDenials: 1 });
+  // backend's src/api/** was only "used" by a disputed line, so it stays unused.
+  assert.ok(r.unused.some((u) => u.glob.includes("src/api")), "a disputed line marked a territory used");
+})

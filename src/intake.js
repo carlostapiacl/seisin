@@ -161,7 +161,10 @@ export function intake({ config, role, runId, observe = false, settings, notify 
     // The owners explain found: for a key that is who declares it, not who
     // writes the directory it sits in — the queue said "owned by dev" about
     // backend's key because dev writes `**`.
-    ask({ role, action: entry.action, target: entry.target, owners: v.owners });
+    // Capped like the log line above: a request's target is a path, and an
+    // uncapped one (5k+ chars were accepted) is a way to bloat the queue a
+    // person reads. 1000 is more than any real path and matches the log.
+    ask({ role, action: entry.action, target: entry.target.slice(0, 1000), owners: v.owners });
   }
 
   function fromKernel(d) {

@@ -122,7 +122,10 @@ function findings(config, entries, minDenials) {
    * than full — a consumer that has never heard of `unusedKnowable` then reports
    * nothing instead of everything, which is the direction this has to fail in.
    */
-  const knowable = entries.some((e) => e.verdict === "allowed");
+  // A disputed line is the parent saying the verdict did not match the policy
+  // — often a forged line. It is not evidence of legitimate use, so it neither
+  // makes the window knowable nor marks a territory used.
+  const knowable = entries.some((e) => e.verdict === "allowed" && !e.disputed);
 
   // Only writes. A key that is declared and not read is ordinary — most roles
   // hold a credential for the one turn a month that needs it — but a folder a
@@ -130,7 +133,7 @@ function findings(config, entries, minDenials) {
   // miss, and the only evidence anyone will ever have for removing it.
   const used = new Set();
   for (const e of entries) {
-    if (e.verdict !== "allowed" || e.action !== "write" || !e.target) continue;
+    if (e.verdict !== "allowed" || e.disputed || e.action !== "write" || !e.target) continue;
     for (const role of Object.values(config.roles))
       for (const glob of role.writes)
         if (role.name === e.role && covers(glob, e.target)) used.add(`${role.name} ${glob}`);

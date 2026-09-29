@@ -235,8 +235,13 @@ function dedupe(entries) {
  */
 export function parentInputs(config, { env = process.env } = {}) {
   const abs = (p) => (isAbsolute(p) ? p : join(config.root, p));
+  const policy = abs(config.path ?? CONFIG_NAME);
   const out = [
-    { path: abs(config.path ?? CONFIG_NAME), why: "the policy" },
+    { path: policy, why: "the policy" },
+    // `seisin.toml.observed` is the proposal `init --from-observations` writes
+    // for a person to diff and move onto the policy; a role that could write it
+    // could plant a policy the operator then promotes in good faith.
+    { path: policy + ".observed", why: "the policy" },
     { path: abs(STATE_DIR), why: "seisin's log and request queue" },
     ...(config.keyDirs ?? []).map((d) => ({ path: abs(d), why: "a key directory" })),
   ];

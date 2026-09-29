@@ -108,3 +108,20 @@ test("runs are counted by id, not guessed from gaps", () => {
   // Lines from before the marker existed still count the old way.
   assert.equal(runsAfter([{ at: at(1) }, { at: at(2) }, { at: at(30) }], t0), 2);
 });
+
+test("SEC-18 a request's target is capped, not stored unbounded", () => {
+  const { config, queue } = setup();
+  const take = intake({ config, role: "web", runId: "r", settings });
+  const huge = "api/" + "a".repeat(5000) + ".ts";   // outside web's territory, so it queues
+  take.fromHook("queue", { at: new Date().toISOString(), tool: "Write", action: "write", target: huge, verdict: "denied" });
+  const q = queue();
+  assert.equal(q.length, 1);
+  assert.ok(q[0].target.length <= 1000, `target was ${q[0].target.length} chars`);
+});
+
+test("SEC-19 seisin.toml.observed is protected from every role", async () => {
+  const { config } = setup();
+  const { protectedBy } = await import("../src/surface.js");
+  // dev writes ** — the .observed proposal a person promotes must still be denied.
+  assert.ok(protectedBy(config, "seisin.toml.observed"), ".observed was writable");
+});
