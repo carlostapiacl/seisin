@@ -6,8 +6,7 @@
  * person acting in a channel the agent does not have. That is the invariant the
  * whole feature rests on — see docs/permission-requests.md.
  */
-import { readFileSync, writeFileSync } from "node:fs";
-import { pending, settle, applyGrant, refuseIfBarred, requestsPath, markStale } from "../requests.js";
+import { pending, settle, applyGrant, refuseIfBarred, requestsPath, markStale, editPolicy } from "../requests.js";
 import { read, logPath } from "../log.js";
 import { C, out } from "../render.js";
 
@@ -125,11 +124,18 @@ export function grant(config, argv = []) {
   const reason = i === -1 ? "" : argv[i + 1] ?? "";
 
   refuseIfBarred(config, req);
-  const before = readFileSync(config.path, "utf8");
-  const { toml, changed } = applyGrant(before, req, reason);
+  // Under a lock, and written atomically: a concurrent grant (another terminal
+  // or the console) must not clobber this one. See editPolicy.
+  let changed;
+  try {
+    ({ changed } = editPolicy(config, (before) => applyGrant(before, req, reason)));
+  } catch (e) {
+    if (e.code === "ELOCKED")
+      throw new Error("another grant is in progress — run this again in a moment");
+    throw e;
+  }
   if (!changed) throw new Error(`${req.role} already has ${req.grant} — nothing to add`);
 
-  writeFileSync(config.path, toml);
   settle(requestsPath(config.root), req.key, "granted", reason);
   out(
     `\n  ${C.green}granted${C.off}  ${req.role} → ${C.b}${req.grant}${C.off}\n` +

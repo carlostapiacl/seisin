@@ -1852,3 +1852,25 @@ test("SEC-22a covers() does not backtrack catastrophically on a crafted glob", (
   assert.equal(covers(glob, path), false);
   assert.ok(Date.now() - t0 < 500, `took ${Date.now() - t0} ms`);
 });
+
+test("SEC-07 two concurrent grants both land — neither is lost", async () => {
+  const { spawn } = await import("node:child_process");
+  const { fileURLToPath } = await import("node:url");
+  const CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "cli.js");
+  const box = scratch("seisin-race-");
+  writeFileSync(join(box, "seisin.toml"),
+    '[roles.a]\nwrites = ["a/**"]\nkeys = []\n\n[roles.b]\nwrites = ["b/**"]\nkeys = []\n');
+  const q = join(box, ".seisin", "requests.jsonl");
+  record(q, { role: "a", action: "write", target: "xone/f.ts", owners: [] });
+  record(q, { role: "b", action: "write", target: "xtwo/f.ts", owners: [] });
+  const [r1, r2] = pending(q);
+  const run = (key) => new Promise((res) => {
+    const c = spawn(process.execPath, [CLI, "grant", key], { cwd: box, encoding: "utf8" });
+    c.on("exit", (code) => res(code));
+  });
+  await Promise.all([run(r1.key), run(r2.key)]);
+  const toml = readFileSync(join(box, "seisin.toml"), "utf8");
+  assert.match(toml, /xone\/\*\*/, "role a's grant was lost");
+  assert.match(toml, /xtwo\/\*\*/, "role b's grant was lost");
+  assert.equal(pending(q).length, 0, "both requests should be settled");
+});

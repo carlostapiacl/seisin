@@ -12,13 +12,13 @@
  */
 import { createServer } from "node:http";
 import { randomBytes } from "node:crypto";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
 import { read, logPath } from "./log.js";
 import { settingsFor } from "./srt.js";
-import { pending, requestsPath, settle, applyGrant, refuseIfBarred, markStale } from "./requests.js";
+import { pending, requestsPath, settle, applyGrant, refuseIfBarred, markStale, editPolicy } from "./requests.js";
 import { walls } from "./walls.js";
 import { explain, standingOf } from "./owners.js";
 
@@ -260,8 +260,14 @@ function decide(configPath, { key, decision, reason }) {
     // before the queue is settled: if this throws, the request is still open
     // rather than marked done against a file that never changed.
     refuseIfBarred(cfg, req);
-    const { toml, changed } = applyGrant(readFileSync(cfg.path, "utf8"), req, reason);
-    if (changed) writeFileSync(cfg.path, toml);
+    // Locked and atomic, so a grant from another channel is serialised with
+    // this one instead of one silently overwriting the other. See editPolicy.
+    try {
+      editPolicy(cfg, (before) => applyGrant(before, req, reason));
+    } catch (e) {
+      if (e.code === "ELOCKED") throw new Error("another grant is in progress — try again in a moment");
+      throw e;
+    }
   }
   settle(file, req.key, decision, reason ?? "");
   return { ok: true, role: req.role, grant: req.grant, decision };
