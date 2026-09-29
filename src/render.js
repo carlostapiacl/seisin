@@ -25,6 +25,17 @@ export const C =
       }
     : { dim: "", b: "", off: "", red: "", green: "", yellow: "", blue: "" };
 
+/**
+ * A value chosen by an agent (a target, a grant, an id) made safe to print.
+ *
+ * `target` and the id built from it are strings the agent picked, and they were
+ * written to the terminal raw. Terminal escape sequences (ESC, CR, other C0
+ * controls) let such a string repaint the line a person reads before approving.
+ * On disk they are already JSON-escaped; this is for the screen. Stripped, not
+ * rendered, so what shows is the literal path with the control bytes removed.
+ */
+export const safe = (s) => String(s ?? "").replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
+
 export const out = (s) => process.stdout.write(s);
 export const err = (s) => process.stderr.write(s);
 
@@ -125,7 +136,7 @@ export function renderReport(report) {
 /** The `explain` answer, as text. Takes what `owners.explain()` returns. */
 export function renderVerdict(role, action, target, verdict) {
   const head = verdict.allowed ? `${C.green}allowed${C.off}` : `${C.yellow}denied${C.off}`;
-  return `\n  ${head}  ${C.b}${role}${C.off} ${action} ${target}\n  ${C.dim}${verdict.reason}${C.off}\n\n`;
+  return `\n  ${head}  ${C.b}${role}${C.off} ${action} ${safe(target)}\n  ${C.dim}${safe(verdict.reason)}${C.off}\n\n`;
 }
 
 /* ── the log ──────────────────────────────────────────────────────────── */
@@ -149,7 +160,7 @@ export function renderEntry(e) {
   // about a run, a reader needs to know which line is which without going to
   // the file — so the one that carries more weight is the one that is marked.
   const from = e.source === "kernel" ? `  ${C.dim}[kernel]${C.off}` : "";
-  return `  ${C.dim}${(e.at ?? "").slice(11, 19)}${C.off}  ${mark}  ${C.b}${e.role}${C.off} ${e.action} ${e.target}${owners}${from}\n`;
+  return `  ${C.dim}${(e.at ?? "").slice(11, 19)}${C.off}  ${mark}  ${C.b}${e.role}${C.off} ${e.action} ${safe(e.target)}${owners}${from}\n`;
 }
 
 /* ── the scan ─────────────────────────────────────────────────────────── */

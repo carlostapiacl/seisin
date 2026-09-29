@@ -177,6 +177,8 @@ const HANDLERS = {
     // not enforced is documentation.
     if (action !== "read" && action !== "write" && action !== "mcp")
       throw new Error(`action must be "read", "write" or "mcp", got ${JSON.stringify(action)}`);
+    if (typeof role !== "string" || !role)
+      throw new Error("role must be a non-empty string");
     if (typeof target !== "string" || !target)
       throw new Error("target must be a non-empty path");
     const cfg = config();
@@ -315,7 +317,10 @@ function handle(message, { write, version }) {
   const reply = (id, result) => send({ jsonrpc: "2.0", id, result });
   const fail = (id, code, msg) => send({ jsonrpc: "2.0", id, error: { code, message: msg } });
 
-  const { id, method, params = {} } = message;
+  const { id, method } = message;
+  // `?? {}` so an explicit null params (not just missing) does not crash the
+  // dispatcher and leave the request unanswered.
+  const params = message.params ?? {};
 
   // A notification has no id and takes no answer. Replying to one is a protocol
   // error that some clients tolerate and others hang on.
@@ -341,8 +346,11 @@ function handle(message, { write, version }) {
     case "tools/list":
       return reply(id, { tools: TOOLS });
     case "tools/call": {
-      const fn = HANDLERS[params.name];
-      if (!fn) return fail(id, -32602, `unknown tool "${params.name}"`);
+      // hasOwn, not a bare lookup: `params.name` of "constructor" or
+      // "hasOwnProperty" would otherwise resolve to a function on Object's
+      // prototype and be invoked as a tool.
+      const fn = Object.hasOwn(HANDLERS, params.name) ? HANDLERS[params.name] : null;
+      if (typeof fn !== "function") return fail(id, -32602, `unknown tool ${JSON.stringify(params.name)}`);
       try {
         const result = fn(params.arguments ?? {});
         // Content, not a bare object: every client renders `content`, and only
