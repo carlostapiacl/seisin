@@ -6,7 +6,7 @@ history; what changed for someone who installs it is here.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
-## Unreleased
+## 0.4.2 — 2026-09-29
 
 - **Small hardening across the launcher.** A `--observe` written after the command
   (with no `--`) is the command's flag, not seisin's. The console token is compared
