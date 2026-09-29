@@ -8,6 +8,21 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **`init --from-observations` ignores observations the parent disputed**, so a
+  `verdict:"observed"` line an agent sent for a path outside its territory can no
+  longer be proposed as its policy.
+- **Concurrent grants are serialized and the policy is written atomically.** Two
+  approvals racing (two terminals, or a terminal and the console) used to lose
+  one edit while the queue marked both done; they now take a lock and a
+  temp-file + rename.
+- **A leading-slash CODEOWNERS path maps to a repo-relative territory** (`/apps/`
+  → `apps/**`), so `explain` and the kernel agree instead of one naming the
+  machine's absolute `/apps`.
+- **Glob matching no longer backtracks catastrophically.** `covers()` used a
+  regex whose adjacent `.*` hung on a crafted path (nine `**` took ~26 s); it now
+  uses a memoised linear matcher. A request's target becomes a glob here, so this
+  was a denial of service on the hook and on `explain`.
+
 - **A grant adds exactly what was approved.** `seisin grant` and the console rebuilt a role's list
   from every quoted string between its brackets — including paths written in a comment, and the
   reason a previous approval had left quoted in its provenance line. Approving one thing could grant
