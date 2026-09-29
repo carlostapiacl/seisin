@@ -52,7 +52,7 @@ The suite is `node --test`, no framework, and it runs with `npm test`.
 1. **A test must be able to fail.** `assert.equal(SOME_CONSTANT, 2)` restates the
    implementation and will be removed. Two were, after they had been written by the same
    person who wrote this paragraph.
-2. **A test of the boundary must exercise the boundary.** Twenty-five of the tests run real
+2. **A test of the boundary must exercise the boundary.** Twenty-six of the tests run real
    commands through the real kernel, and **CI fails if they skip** — because a green run that
    quietly tested nothing looks exactly like a real one, and once did for eighteen of them
    across a whole platform. Those live in `test/sandbox.test.js` and need

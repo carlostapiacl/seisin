@@ -31,7 +31,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest]
-        node: [18, 20, 22]
+        node: [18, 20, 22, 24]
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -77,7 +77,8 @@ jobs:
       - name: the documented counts are the real ones
         if: matrix.os == 'macos-latest' && matrix.node == 22
         run: |
-          total=$(npm test 2>&1 | grep -oE '^. pass [0-9]+' | grep -oE '[0-9]+')
+          # The total, not the passes: one test is Linux-only and skips on macOS.
+          total=$(npm test 2>&1 | grep -oE '^. tests [0-9]+' | grep -oE '[0-9]+')
           sandbox=$(node --test test/sandbox.test.js 2>&1 | grep -oE '^. pass [0-9]+' | grep -oE '[0-9]+')
           echo "suite=$total sandbox=$sandbox"
           for f in README.md docs/what-it-has-been-put-through.md; do

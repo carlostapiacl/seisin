@@ -7,12 +7,12 @@
 ## The suite
 
 **480 tests** (2026-09-28), on macOS and on Linux under bubblewrap, and in CI on
-Node 18/20/22 at every push ([workflow](../.github/workflows/test.yml)).
+Node 18/20/22/24 at every push ([workflow](../.github/workflows/test.yml)).
 
 Twenty-six of them are not unit tests: they run real commands through the real
 sandbox and check what the kernel did — and they skip themselves when `srt` is
-not installed, so on a machine without it the suite reports 300 passing and 26
-skipped rather than failing. That distinction matters enough that CI **fails if
+not installed, so on a machine without it the suite reports them skipped rather than
+failing. That distinction matters enough that CI **fails if
 those twenty-six skip** — `srt` missing makes them skip themselves, and
 a green run that quietly tested nothing looks exactly like a real one.
 
@@ -45,8 +45,8 @@ what has not.
 
 | | macOS 15 · Seatbelt | Linux · bubblewrap |
 |---|---|---|
-| the suite | **326/326, nothing skipped** — 2026-09-21 | **326/326, nothing skipped** — 2026-09-21, `ubuntu-latest` in CI, Node 22, the twenty-six sandbox tests confirmed run. Last full Docker run: 225/225 — 2026-09-14, Debian 12.15, bwrap 0.8.0, `--privileged` (bubblewrap mounts `/proc`) |
-| CI, every push | Node 18/20/22 | `ubuntu-latest`, Node 18/20/22 |
+| the suite | **500 tests, 499 pass, 1 skipped** (Linux-only) — 2026-09-29 | `ubuntu-latest` in CI at every push, and CI fails if the twenty-six sandbox tests skip. Last full count measured here: 326/326 — 2026-09-21, Node 22. Last full Docker run: 225/225 — 2026-09-14, Debian 12.15, bwrap 0.8.0, `--privileged` (bubblewrap mounts `/proc`) |
+| CI, every push | Node 18/20/22/24 | `ubuntu-latest`, Node 18/20/22/24 |
 | `[runtime] isolate = "home"` (`= true`) | ✅ — and it did not start here at all until the 104-byte socket fix | ✅ — `tmpdir()` is `/tmp`, so the path never came close |
 | `[runtime] isolate = "credentials"` | ✅ — no role home, so the socket limit cannot reach it | ✅ |
 | Claude Code 2.1.270 | ✅ | not run |
