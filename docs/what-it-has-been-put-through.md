@@ -324,6 +324,14 @@ declared key, writes inside its territory, and is refused outside it.
 - **Windows.** The runtime has a backend. seisin has never been pointed at it.
 - **No fuzzing.** The parser has a property test over a fixed corpus, which is
   not the same thing.
+- **A hard link made from outside the box.** Ownership is by path, and the kernel
+  enforces it by path, so two names for one inode are two territories' worth of
+  access to the same bytes. A role cannot *create* a hard link that crosses its
+  territory (the kernel refuses it, measured), but a hard link placed inside its
+  territory by something outside the box — the operator, another tool — lets the
+  role write the inode it points at, whatever path that inode also has. Closing
+  it would need the kernel to key on inode, which the runtime does not; the honest
+  fix is not to hard-link a sensitive file into an agent's territory.
 - **A planted repository with a different name.** A role can write, inside its own
   territory, a directory that is a git repository under a name that is not `.git`,
   and a `.git` *file* pointing at it. A `git status` run there by a person or an

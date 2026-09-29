@@ -49,6 +49,10 @@ arguing them is welcome in a normal issue:
 - **Redaction being defeated.** It masks a literal value passing through the launcher. A
   value written straight to a file, or transformed first, never passes through it. The README
   says so; it narrows a careless print and is not a containment boundary.
+- **A hard link into a territory, made from outside the sandbox.** Ownership is by
+  path; a second name for a sensitive inode, placed in a role's territory by
+  something outside the box, is writable by that role. Creating such a link from
+  inside is refused. Do not hard-link a sensitive file into an agent's territory.
 - **A key stored outside the declared key directories.** Nothing covers those. `seisin scan`
   exists to find them.
 
