@@ -42,11 +42,19 @@ export function discover(root) {
     if (paths.length)
       return {
         source: p,
-        roles: [...new Set(paths)].slice(0, 8).map((g, i) => ({
-          name: g.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "") || `role-${i + 1}`,
-          writes: [g.endsWith("/") ? g + "**" : g],
-          keys: [],
-        })),
+        roles: [...new Set(paths)].slice(0, 8).map((g, i) => {
+          // CODEOWNERS anchors a leading "/" at the repo root; seisin's writes
+          // are already repo-relative, so a literal "/apps/**" would ask the
+          // kernel for the machine's /apps and make `explain` (which reads it as
+          // outside the repo) disagree with what the profile grants. Strip the
+          // anchor. A trailing "/" means a directory, so it becomes "/**".
+          const rel = g.replace(/^\/+/, "");
+          return {
+            name: rel.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "") || `role-${i + 1}`,
+            writes: [rel.endsWith("/") ? rel + "**" : rel],
+            keys: [],
+          };
+        }),
       };
   }
 

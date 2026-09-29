@@ -46,7 +46,7 @@ export function covers(glob, path) {
   // The path itself, or anything beneath it. The `/` is load-bearing: without
   // it `src/api` would also cover `src/apifoo.ts`, which the kernel does not.
   if (m.prefix !== null) return p === m.prefix || p.startsWith(m.prefix + "/");
-  return m.re.test(p);
+  return matchGlob(m.glob, p);
 }
 
 /**
@@ -69,7 +69,7 @@ function matcherOf(glob) {
   if (m) return m;
   let g = normalize(glob);
   if (glob.endsWith("/")) g += "/**";
-  m = WILD.test(g) ? { prefix: null, re: toRegExp(g) } : { prefix: g, re: null };
+  m = WILD.test(g) ? { prefix: null, glob: g } : { prefix: g, glob: null };
   if (GLOBS.size >= MAX_CACHED) GLOBS.clear();
   GLOBS.set(glob, m);
   return m;
@@ -127,18 +127,66 @@ export function normalize(s) {
  * must not: covering one file too many costs an argument, covering one too few
  * is the hole. When the two readings disagree, this one takes the wider set.
  */
-function toRegExp(glob) {
-  const out = glob
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\/\*\*$/, "\u0001")
-    .replace(/\*\*\//g, "\u0002")
-    .replace(/\*\*/g, "\u0003")
-    .replace(/\*/g, "[^/]*")
-    .replace(/\?/g, "[^/]")
-    .replace(/\u0001/g, "(?:/.*)?")
-    .replace(/\u0002/g, "(?:.*/)?")
-    .replace(/\u0003/g, ".*");
-  return new RegExp("^" + out + "$");
+/**
+ * Does `glob` cover `path`? A linear matcher, not a regular expression.
+ *
+ * The regex form (`**` → `.*`, `**\/` → `(?:.*\/)?`) put several unbounded `.*`
+ * next to literals, and on a long path that does not match, the engine
+ * backtracks catastrophically: measured on a crafted glob, 9 `**` took ~26 s
+ * and 11 hung for over a minute. Since a request's target — which an agent
+ * chooses — becomes a glob here (`grantFor`), that is a denial-of-service on the
+ * hook and on `explain`. This matcher is memoised on (glob index, path index),
+ * so its cost is bounded by their product and no input backtracks.
+ *
+ * Same wildcards as before: `?` one non-`/`, `*` a run of non-`/`, `**` any run
+ * including `/`, `**\/` zero or more whole directories, a trailing `/**` the
+ * subtree. Characters are compared literally; nothing is treated as regex.
+ */
+function matchGlob(glob, path) {
+  const G = glob.length, P = path.length;
+  // memo[gi * (P+1) + pi]: 0 unknown, 1 true, 2 false. One flat array, reused.
+  const memo = new Uint8Array((G + 1) * (P + 1));
+  const at = (gi, pi) => {
+    for (;;) {
+      const key = gi * (P + 1) + pi;
+      const seen = memo[key];
+      if (seen) return seen === 1;
+      let res;
+      if (gi === G) { res = pi === P; }
+      else if (glob[gi] === "*" && glob[gi + 1] === "*") {
+        if (glob[gi + 2] === "/") {
+          // `**/` = zero or more whole directories: empty, or any chars ending
+          // at a `/` then the rest.
+          if (at(gi + 3, pi)) res = true;
+          else if (pi < P) {
+            if (path[pi] === "/" && at(gi + 3, pi + 1)) res = true;
+            else { memo[key] = 2; pi++; continue; }   // consume one char, stay on `**/`
+          } else res = false;
+        } else {
+          // `**` = any run including `/` (also covers `**` at the very end,
+          // where `at(gi+2, pi)` requires pi to reach the end).
+          if (at(gi + 2, pi)) res = true;
+          else if (pi < P) { memo[key] = 2; pi++; continue; }  // consume one char, stay on `**`
+          else res = false;
+        }
+      } else if (glob[gi] === "/" && glob[gi + 1] === "*" && glob[gi + 2] === "*" && gi + 3 === G) {
+        // trailing `/**`: the directory itself, or anything beneath it.
+        res = pi === P || path[pi] === "/";
+      } else if (glob[gi] === "*") {
+        // `*` = a run of non-`/`.
+        if (at(gi + 1, pi)) res = true;
+        else if (pi < P && path[pi] !== "/") { memo[key] = 2; pi++; continue; }
+        else res = false;
+      } else if (glob[gi] === "?") {
+        res = pi < P && path[pi] !== "/" && at(gi + 1, pi + 1);
+      } else {
+        res = pi < P && glob[gi] === path[pi] && at(gi + 1, pi + 1);
+      }
+      memo[key] = res ? 1 : 2;
+      return res;
+    }
+  };
+  return at(0, 0);
 }
 
 /** Is this path inside a `.git` directory (git's metadata, not a working file)? */

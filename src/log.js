@@ -349,6 +349,14 @@ export function observed(entries) {
   const roles = new Map();
   for (const e of entries) {
     if (!e.role || !e.target) continue;
+    // A line the parent flagged as `disputed` is one whose verdict did not
+    // match the policy the run started with — either the config changed under
+    // it, or the line was not written by the hook at all. Either way it is not
+    // evidence of what the role legitimately reached for, so it must not become
+    // policy: `init --from-observations` builds `writes`/`keys` from here, and a
+    // process inside the box could otherwise send `verdict:"observed"` lines for
+    // paths outside its territory and have them proposed as its own.
+    if (e.disputed) continue;
     const r = roles.get(e.role) ?? { writes: new Set(), keys: new Set() };
     if (e.action === "read" && e.kind === "key") r.keys.add(e.target);
     else if (e.action === "write") r.writes.add(e.target);

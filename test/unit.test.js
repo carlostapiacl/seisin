@@ -26,7 +26,7 @@ import { read, generalise } from "../src/log.js";
 import { tmpdir } from "node:os";
 import { inspect, sharedPaths } from "../src/inspect.js";
 import { renderReport, renderVerdict } from "../src/render.js";
-import { renderConfig, renderObserved } from "../src/commands/init.js";
+import { renderConfig, renderObserved, discover } from "../src/commands/init.js";
 import * as publica from "../src/index.js";
 import { record, settle, pending, applyGrant, grantFor, cleanReason, recordHandoff, keyOf } from "../src/requests.js";
 import { Readable } from "node:stream";
@@ -1819,4 +1819,36 @@ test("an unclosed multi-line array is refused quickly", () => {
   const t0 = Date.now();
   assert.throws(() => loadConfig(join(box, "seisin.toml")));
   assert.ok(Date.now() - t0 < 2000, `took ${Date.now() - t0} ms`);
+});
+
+test("SEC-06 init --from-observations ignores lines the parent disputed", () => {
+  // A process in the box can send verdict:"observed" lines for paths outside its
+  // territory; the parent marks them disputed. They must not become policy.
+  const entries = [
+    { role: "web", action: "write", target: "src/web/app.ts", verdict: "observed" },
+    { role: "web", action: "write", target: "src/api/steal.ts", verdict: "observed", disputed: "denied" },
+    { role: "web", action: "read", kind: "key", target: "db.txt", verdict: "observed", disputed: "denied" },
+  ];
+  const cfg = { root: "/x", keyDirs: [], allowedDomains: [], roles: {} };
+  const { toml } = renderObserved(cfg, entries);
+  assert.match(toml, /writes = \["src\/web\/\*\*"\]/);   // the legit observation, generalised
+  assert.ok(!toml.includes("api"), "a disputed write became policy");
+  assert.ok(!toml.includes("db.txt"), "a disputed key read became policy");
+});
+
+test("SEC-09 a leading-slash CODEOWNERS path maps to a repo-relative territory", () => {
+  const dir = scratch("seisin-codeowners-");
+  writeFileSync(join(dir, "CODEOWNERS"), "/apps/ @team\nlib/ @team\n");
+  const found = discover(dir);
+  const apps = found.roles.find((r) => r.writes[0].includes("apps"));
+  assert.deepEqual(apps.writes, ["apps/**"], "leading slash must be stripped");
+  assert.ok(!found.roles.some((r) => r.writes.some((w) => w.startsWith("/"))), "no absolute territory");
+});
+
+test("SEC-22a covers() does not backtrack catastrophically on a crafted glob", () => {
+  const glob = "**/a/".repeat(15) + "**/*.zz";
+  const path = "a/".repeat(40) + "b.ts";
+  const t0 = Date.now();
+  assert.equal(covers(glob, path), false);
+  assert.ok(Date.now() - t0 < 500, `took ${Date.now() - t0} ms`);
 });
