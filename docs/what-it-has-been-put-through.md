@@ -324,6 +324,23 @@ declared key, writes inside its territory, and is refused outside it.
 - **Windows.** The runtime has a backend. seisin has never been pointed at it.
 - **No fuzzing.** The parser has a property test over a fixed corpus, which is
   not the same thing.
+- **Processes an agent leaves running.** A command that double-forks or uses
+  `nohup`/`setsid` outlives the run: it stays confined (its territory does not
+  widen), but nothing is watching it any more, and if it was started under a
+  wider grant it keeps that profile after the grant is narrowed. If `seisin run`
+  itself is `SIGKILL`ed, the runtime and the agent are reparented to init and
+  keep running, confined but unaudited. seisin does not yet kill the process
+  group on exit; until it does, treat a run as done only once its children are.
+- **`explain` on the wrong platform's spelling.** On a case-insensitive or
+  NFC/NFD-normalising disk the kernel matches a path that `explain` spells
+  differently, so `explain` can be stricter than the boundary (never looser).
+  The safe direction, but a mismatch: read `check` for what the kernel is given.
+- **A network deny by resolved address.** The runtime blocks loopback, link-local
+  and cloud-metadata IPs by default, so an allowed domain cannot be rebound to
+  the metadata endpoint. It does not block private-LAN ranges (RFC1918) by
+  default, and seisin does not add them, so an allowed domain whose DNS an
+  attacker controls could still reach a host on your LAN. An allowed domain sees
+  every port, too — the allow list is per host, not per port.
 - **A hard link made from outside the box.** Ownership is by path, and the kernel
   enforces it by path, so two names for one inode are two territories' worth of
   access to the same bytes. A role cannot *create* a hard link that crosses its

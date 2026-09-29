@@ -8,6 +8,15 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **Small hardening across the launcher.** A `--observe` written after the command
+  (with no `--`) is the command's flag, not seisin's. The console token is compared
+  in constant time. Agent-chosen strings (a target, a grant, an id) are stripped of
+  terminal control characters before they are printed, so they cannot repaint the
+  line a person approves. `tools/call` ignores inherited property names, answers a
+  null `params`, and `seisin_explain` refuses a non-string role. A request's target
+  is capped like the log. `seisin.toml.observed` is denied to every role, and
+  `seisin review` no longer counts a disputed line as use.
+
 - **`init --from-observations` ignores observations the parent disputed**, so a
   `verdict:"observed"` line an agent sent for a path outside its territory can no
   longer be proposed as its policy.
