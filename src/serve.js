@@ -11,7 +11,7 @@
  * key each role can read, which is a map of where the credentials live.
  */
 import { createServer } from "node:http";
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -348,7 +348,16 @@ export function serve(configPath, port = 4178) {
    * from there, keeps it for the tab, and removes it from the address bar and
    * the history entry. Anything that fetches `/` gets a page with no token in it.
    */
-  const authorized = (req) => req.headers["x-seisin-token"] === token;
+  // Constant-time compare: `===` on a secret leaks its length and a prefix
+  // through timing. Loopback with a Host check makes it near-theoretical, but a
+  // role with local_binding can reach this port, so it is not free.
+  const tokenBuf = Buffer.from(token);
+  const authorized = (req) => {
+    const got = req.headers["x-seisin-token"];
+    if (typeof got !== "string") return false;
+    const gotBuf = Buffer.from(got);
+    return gotBuf.length === tokenBuf.length && timingSafeEqual(gotBuf, tokenBuf);
+  };
 
   /**
    * The Host header has to name this server.

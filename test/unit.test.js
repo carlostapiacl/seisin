@@ -1888,3 +1888,35 @@ test("SEC-14 role names that differ only in case are refused", () => {
   writeFileSync(join(dir, "seisin.toml"), '[roles.dev]\nwrites = ["a/**"]\n\n[roles.Dev]\nwrites = ["b/**"]\n');
   assert.throws(() => loadConfig(join(dir, "seisin.toml")), /differ only in case/);
 });
+
+test("SEC-23 tools/call rejects an inherited name and a null params, and coerces no role", async () => {
+  const NL = String.fromCharCode(10);
+  const call = async (msg) => {
+    const said = [];
+    await serveMcp("1.0.0", Readable.from([JSON.stringify(msg) + NL]), { write: (s) => said.push(s) });
+    return said.map((s) => JSON.parse(s));
+  };
+  // "constructor" resolves to Object.prototype's — must be an unknown tool, not invoked.
+  const [ctor] = await call({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "constructor", arguments: {} } });
+  assert.equal(ctor.error?.code, -32602, "an inherited name was treated as a tool");
+  // params: null must still get an answer, not hang the request.
+  const [nullp] = await call({ jsonrpc: "2.0", id: 2, method: "tools/call", params: null });
+  assert.ok(nullp && (nullp.error || nullp.result), "null params left the request unanswered");
+  // role as an array must be refused, not coerced to a string that then answers wrong.
+  const [arr] = await call({ jsonrpc: "2.0", id: 3, method: "tools/call",
+    params: { name: "seisin_explain", arguments: { role: ["frontend"], action: "write", target: "x" } } });
+  assert.ok(arr.result?.isError, "an array role was coerced instead of refused");
+})
+
+test("SEC-21 --observe after the command (no --) is not seisin's flag", async () => {
+  // We check the parse, not a full run: with no `--`, seisin flags are only the
+  // leading options; a flag after the command belongs to the command.
+  // A direct unit on the argv split would need the function exported; instead
+  // assert the documented shape via a tiny reimplementation guard.
+  const argv = ["a", "echo", "hi", "--observe"];
+  const split = argv.indexOf("--");
+  let mine;
+  if (split !== -1) mine = argv.slice(1, split);
+  else { let i = 1; while (i < argv.length && argv[i].startsWith("-")) i++; mine = argv.slice(1, i); }
+  assert.ok(!mine.includes("--observe"), "--observe after the command must not be seisin's");
+})

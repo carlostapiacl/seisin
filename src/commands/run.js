@@ -75,8 +75,21 @@ export async function run(config, argv) {
    */
   const split = argv.indexOf("--");
   const role = argv[0];
-  const mine = split === -1 ? argv.slice(1) : argv.slice(1, split);
-  const cmd = split === -1 ? argv.slice(1) : argv.slice(split + 1);
+  let mine, cmd;
+  if (split !== -1) {
+    mine = argv.slice(1, split);
+    cmd = argv.slice(split + 1);
+  } else {
+    // No `--`: seisin's own flags are the leading `-options` only. From the
+    // first token that is not an option, everything is the command — its own
+    // flags are its business. `seisin run x echo hi --observe` used to read
+    // `--observe` as seisin's and put the run in observe mode; now that flag
+    // belongs to `echo`, and observe needs `seisin run x --observe -- echo hi`.
+    let i = 1;
+    while (i < argv.length && argv[i].startsWith("-")) i++;
+    mine = argv.slice(1, i);
+    cmd = argv.slice(i);
+  }
   if (!role || cmd.length === 0) throw new Error("usage: seisin run <role> -- <command...>");
   if (!config.roles[role])
     throw new Error(`unknown role "${role}". Known: ${Object.keys(config.roles).join(", ")}`);

@@ -8,7 +8,7 @@
  */
 import { pending, settle, applyGrant, refuseIfBarred, requestsPath, markStale, editPolicy } from "../requests.js";
 import { read, logPath } from "../log.js";
-import { C, out } from "../render.js";
+import { C, out, safe } from "../render.js";
 
 /**
  * Which request you meant — by position, or by the identity it carries.
@@ -67,11 +67,11 @@ export function renderQueue(queue) {
   queue.forEach((r, i) => {
     const owners = r.owners.length ? ` ${C.dim}(owned by ${r.owners.join(", ")})${C.off}` : ` ${C.dim}(unowned)${C.off}`;
     const times = r.times > 1 ? ` ${C.dim}· asked ${r.times}×${C.off}` : "";
-    lines.push(`    ${C.b}#${i + 1}${C.off}  ${r.role} wants ${r.action} on ${C.b}${r.grant}${C.off}${owners}${times}\n`);
-    lines.push(`        ${C.dim}first asked over ${r.target}${C.off}\n`);
+    lines.push(`    ${C.b}#${i + 1}${C.off}  ${safe(r.role)} wants ${r.action} on ${C.b}${safe(r.grant)}${C.off}${owners}${times}\n`);
+    lines.push(`        ${C.dim}first asked over ${safe(r.target)}${C.off}\n`);
       // The stable way to name it: a number is a position in a queue that agents
       // are still writing to, and this does not move when the queue does.
-      lines.push(`        ${C.dim}id ${r.key}${C.off}\n`);
+      lines.push(`        ${C.dim}id ${safe(r.key)}${C.off}\n`);
     // Marked, not moved: the number above is what `grant <n>` is typed against.
     if (r.stale)
       lines.push(`        ${C.dim}not asked again in ${r.stale.runs} runs of ${r.role} since — likely no longer needed${C.off}\n`);
