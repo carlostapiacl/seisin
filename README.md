@@ -700,7 +700,7 @@ the same kernel or workspace, and which one you want depends on what you are pro
 
 ## Status
 
-`0.4.1`, 500 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
+`0.4.2`, 500 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 those eighteen skipped on Linux for a day, behind a runtime check that looked for the global
