@@ -335,6 +335,19 @@ export function loadConfig(path) {
   }
   const names = Object.keys(roles);
   if (names.length === 0) throw new Error(`${path}: no [roles.<name>] sections found`);
+  // Case-colliding names would share a HOME under `isolate = "home"` on a
+  // case-insensitive disk (APFS), so `dev` and `Dev` would read each other's
+  // secrets while `check` said nothing. Refuse the ambiguity at load.
+  {
+    const byLower = new Map();
+    for (const n of names) {
+      const k = n.toLowerCase();
+      if (byLower.has(k))
+        throw new Error(`${path}: roles "${byLower.get(k)}" and "${n}" differ only in case. ` +
+          `On a case-insensitive disk they would share an isolated HOME. Rename one.`);
+      byLower.set(k, n);
+    }
+  }
 
   // One directory or several. Several is the common case once a repo has more
   // than one kind of secret, and making people flatten them to satisfy the tool
@@ -363,7 +376,7 @@ export function loadConfig(path) {
 
   for (const name of names) {
     const r = own(roles, name);
-    const writes = asArray(own(r, "writes"), `roles.${name}.writes`);
+    const writes = assertNotAbsolute(asArray(own(r, "writes"), `${path}: roles.${name}.writes`), `${path}: roles.${name}.writes`);
     const keys = asArray(own(r, "keys"), `roles.${name}.keys`);
     // Read once, here, so every consumer sees the same answer about what an
     // entry is. `keys` itself stays the array of strings that was written: it
@@ -650,6 +663,25 @@ function readNeverWrites(value, where) {
       throw new Error(`${where}: "${g}" is absolute. never_writes is relative to the repo root, like writes.`);
     if (g.split("/").includes(".."))
       throw new Error(`${where}: "${g}" contains "..". never_writes names paths inside the repo.`);
+  }
+  return list;
+}
+
+/**
+ * A territory is relative to the repo root. An absolute one would ask the kernel
+ * for a path on the machine and make `explain` (which reads absolute as outside
+ * the repo) disagree with what the profile grants — see the CODEOWNERS `/apps/`
+ * case. `..` is allowed on purpose: a role legitimately writes a sibling
+ * directory (`../bitacora/...`), and it is resolved relative to the root, so a
+ * territory that climbs above it grants what it resolves to, by the operator's
+ * choice.
+ */
+function assertNotAbsolute(list, where) {
+  for (const g of list) {
+    if (typeof g !== "string" || g.trim() === "")
+      throw new Error(`${where}: every entry must be a non-empty string`);
+    if (g.startsWith("/"))
+      throw new Error(`${where}: "${g}" is absolute. Territories are relative to the repo root.`);
   }
   return list;
 }
