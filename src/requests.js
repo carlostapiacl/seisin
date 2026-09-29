@@ -27,10 +27,11 @@
  * deleted — it is followed by a line saying what happened to it.
  */
 import { neverWrites, isGitMetadata, covers } from "./owners.js";
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { STATE_DIR, tomlString } from "./layout.js";
 import { send } from "./spool.js";
+import { withLock } from "./log.js";
 
 export const REQUESTS_NAME = "requests.jsonl";
 
@@ -292,6 +293,32 @@ export function refuseIfBarred(config, request) {
     throw new Error(
       `${request.target} is git's own bookkeeping, not a territory: granting it lets ${request.role} ` +
       `rewrite another owner's history. Decline it; a role that needs to commit gets a worktree of its own.`);
+}
+
+/**
+ * Apply one policy edit under a lock, and write it atomically.
+ *
+ * `grant` and the console both did read → applyGrant → write with no lock, so
+ * two approvals racing (a person at the CLI and one on the console, or two
+ * terminals) lost one edit: the queue marked both granted while `seisin.toml`
+ * kept only the last writer's change (measured: 39 of 40 concurrent pairs). The
+ * lock serialises them — it already survives a writer that died holding it
+ * (see log.js) — and the write goes to a temp file then renames over the config,
+ * so a crash mid-write cannot leave a half-written, partly-privileged policy.
+ *
+ * `mutate(toml)` returns `{ toml, changed }`. Nothing is written when unchanged.
+ */
+export function editPolicy(config, mutate, { waitMs = 10000 } = {}) {
+  return withLock(config.path, () => {
+    const before = readFileSync(config.path, "utf8");
+    const result = mutate(before);
+    if (result.changed) {
+      const tmp = `${config.path}.tmp-${process.pid}`;
+      writeFileSync(tmp, result.toml);
+      renameSync(tmp, config.path);
+    }
+    return result;
+  }, { waitMs });
 }
 
 export function applyGrant(toml, request, note = "") {
