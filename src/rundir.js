@@ -85,7 +85,7 @@ export function openRun({ base = tmpdir(), id = randomUUID() } = {}) {
     dir,
     root,
     // A socket on macOS, a FIFO on Linux, where the runtime blocks every unix
-    // socket inside the box (spool.js).
+    // socket inside the sandbox (spool.js).
     sock: join(dir, channelName()),
     keys: join(dir, "keys"),
     /**

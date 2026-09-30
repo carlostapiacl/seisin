@@ -56,7 +56,7 @@ const WRITERS = /(?:^|\s|;|&&|\|\|)(?:cp|mv|install|tee|touch|mkdir|rm|rmdir|tru
  * The split is on the double underscore: a server name carries single ones
  * (`claude_ai_Gmail`) and so does a tool name (`execute_sql`), so the server is
  * everything between `mcp__` and the next `__`. Shared with the parent's intake,
- * which recomputes the same verdict rather than trusting the line from the box.
+ * which recomputes the same verdict rather than trusting the line from the sandbox.
  */
 export function mcpServer(tool) {
   const m = typeof tool === "string" && /^mcp__(.+?)__(.+)$/.exec(tool);
@@ -76,7 +76,7 @@ export function targetsOf(tool, input = {}) {
   /**
    * An MCP tool call names a resource, not a path: `mcp__<server>__<tool>`.
    *
-   * The kernel never sees it — the MCP server runs outside the box — so a call
+   * The kernel never sees it — the MCP server runs outside the sandbox — so a call
    * that goes unrecorded here goes unrecorded everywhere. Measured 2026-09-24:
    * the event reaches PreToolUse with the tool's own arguments as `tool_input`,
    * which is exactly why the file-tool code above returns nothing for it. We
@@ -148,7 +148,7 @@ function kindOf(config, path) {
 }
 
 /**
- * The half of the refusal that nothing inside the box could otherwise know.
+ * The half of the refusal that nothing inside the sandbox could otherwise know.
  *
  * `ask()` has already filed a request by the time this sentence is built — and
  * until now it did so silently, so an agent could not tell the person who sent
@@ -304,7 +304,7 @@ export function decide(config, role, event, { observe = false, now = append, ask
           : denied.gitMetadata || denied.protected
           ? `${denied.reason}. Nothing was queued.` + again
           : denied.mcp
-          ? `${denied.reason}. Nothing was queued: which MCP servers a role may load is set in its mcp list, a policy change a person makes, not a grant they approve.` + again
+          ? `${denied.reason}. Nothing was queued: which MCP servers a role may load is set in its mcp list, a policy change a person makes, not something they grant from the queue.` + again
           : (denied.owners?.length
           ? wasRead
             ? `${denied.target} is declared for ${denied.owners.join(", ")}, not ${role}. Ask for what you need from it rather than reading the key.`

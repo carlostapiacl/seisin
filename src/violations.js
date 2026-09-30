@@ -98,7 +98,7 @@ export function actionOf(operation) {
  *   - `remote:*:<port>` — a TCP dial the profile refused. The kernel does not
  *     name the host, so the target is the port and nothing more.
  *   - a unix socket path — except under /var/run, where the system daemons
- *     live: every DNS lookup inside the box is a refused connect to
+ *     live: every DNS lookup inside the sandbox is a refused connect to
  *     mDNSResponder, and recording those would bury everything else.
  *   - anything else (an empty detail, which the kernel also writes) — dropped.
  */

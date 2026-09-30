@@ -499,7 +499,7 @@ export function explain(config, role, action, target) {
    *
    * The policy, seisin's state, the key directories, what the parent executes
    * or reads for a key, and the files that make git or Claude Code run
-   * something outside the box. The kernel denies all of them to every role —
+   * something outside the sandbox. The kernel denies all of them to every role —
    * surface.js has the list and the reasons — so saying "belongs to dev" about
    * `seisin.toml` sent a request to a person that no grant could satisfy.
    */
@@ -530,7 +530,7 @@ export function explain(config, role, action, target) {
     return {
       allowed: false, owners, neverWrites: barred,
       reason: `${target} is denied by never_writes of ${role} ("${barred}") — ` +
-        `a subtraction written into the policy, not a missing permission`,
+        `a subtraction written into the policy, not a missing grant`,
     };
   if (owners.includes(role)) return { allowed: true, owners, reason: `${target} is inside ${role}'s territory` };
   /**
@@ -541,14 +541,14 @@ export function explain(config, role, action, target) {
    * else's history. Codex keeps `.git` read-only under a writable root for the
    * same reason; nono and Gemini grant the whole of it. Here it stays refused
    * and is said for what it is — not "belongs to X, ask them", which filed a
-   * request per lock file (327 of them for one index.lock on one portfolio)
+   * request per lock file (327 of them for one index.lock in one multi-repo workspace)
    * that nobody could sensibly approve. The requests side skips it too.
    */
   if (isGitMetadata(target))
     return {
       allowed: false, owners, gitMetadata: true,
       reason: `${target} is git's own bookkeeping in a repository ${role} does not write — ` +
-        `not a permission to ask for. Read what you need (git log, git show, git ls-remote) ` +
+        `not something to request. Read what you need (git log, git show, git ls-remote) ` +
         `or work in a worktree of your own`,
     };
   if (owners.length === 0)

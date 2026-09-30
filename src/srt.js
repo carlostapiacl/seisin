@@ -80,7 +80,7 @@ export const NO_PROXY_WITHOUT_LOOPBACK = "169.254.0.0/16,10.0.0.0/8,172.16.0.0/1
  *
  * An `env` in front and not a variable in the environment seisin passes: the
  * runtime sets NO_PROXY itself, after seisin's environment, so the only place
- * that wins is inside the box. Clients that ignore HTTP_PROXY — a MySQL driver,
+ * that wins is inside the sandbox. Clients that ignore HTTP_PROXY — a MySQL driver,
  * Chromium, which exempts loopback on its own — still get refused. They need
  * to be pointed at the proxy, or the port needs `local_binding`, which opens
  * every port.
@@ -97,7 +97,7 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
   const abs = (p) => (p.startsWith("/") ? p : join(config.root, p));
   // "credentials" closes the places credentials live; "home" does that and
   // gives the role a home of its own. Only the second one needs a new HOME,
-  // and only the second one signs every CLI in the box out. See config.js.
+  // and only the second one signs every CLI in the sandbox out. See config.js.
   //
   // `true` is normalised here as well as in the config reader, because a caller
   // embedding the library builds this object itself and `isolate: true` has
@@ -119,9 +119,9 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
    * see it — and a run that is killed leaves it behind. So a missing one is
    * either not needed or made first:
    * - its parent is not one a role may write (`~/.npm`): nothing can create
-   *   it inside the box, and there is nothing to deny;
+   *   it inside the sandbox, and there is nothing to deny;
    * - its parent is (`~/.claude`, the runtime scratch every role gets): a role
-   *   could create it, so it is created here, outside the box, and denied like
+   *   could create it, so it is created here, outside the sandbox, and denied like
    *   any directory that exists. It is the directory Claude Code itself logs
    *   to; making it empty changes nothing for anyone.
    */
@@ -345,7 +345,7 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
           .flatMap((p) => { const r = realAncestor(p); return r === p ? [p] : [p, r]; }),
         /**
          * Everything the parent reads or executes, and every file that tells a
-         * program outside the box what to run — the policy, `.seisin/`, the key
+         * program outside the sandbox what to run — the policy, `.seisin/`, the key
          * directories, the key providers, `file://` targets, programs on PATH
          * installed where a role writes, and each project's hooks and settings.
          * One list with a reason per entry, built in surface.js, which says why
@@ -370,7 +370,7 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
      * verify through the Security framework — Go before 1.27 (gh, kubectl,
      * terraform) and every Dart/Flutter. The runtime ships it as
      * `enableWeakerNetworkIsolation` and warns it is an exfiltration path:
-     * trustd fetches, outside the box, the URLs a certificate carries. Per role
+     * trustd fetches, outside the sandbox, the URLs a certificate carries. Per role
      * and off by default, so the answer is written next to the role that needs it.
      */
     ...(role.trustd === true ? { enableWeakerNetworkIsolation: true } : {}),

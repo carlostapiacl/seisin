@@ -3,7 +3,7 @@
  *
  * ── Why this exists ──
  * `.seisin/` used to be in every role's allowWrite, because the hook runs
- * inside the box and has to record what it decided. That made the log and the
+ * inside the sandbox and has to record what it decided. That made the log and the
  * request queue writable by the process they are a record of: an agent could
  * truncate `log.jsonl`, rewrite a decision, or invent a request that had never
  * been refused. The files said "append-only" in their own comments and nothing
@@ -34,7 +34,7 @@ import { execFileSync } from "node:child_process";
 export const SOCK_ENV = "SEISIN_SPOOL";
 
 /**
- * Listens for lines from inside the box and hands each to `sink`.
+ * Listens for lines from inside the sandbox and hands each to `sink`.
  *
  * One line is one JSON object with a `to` field naming which file it belongs
  * in. The parent decides what that means; the sender does not get to pick a
@@ -43,7 +43,7 @@ export const SOCK_ENV = "SEISIN_SPOOL";
 /**
  * Which channel this platform can use: a unix socket, or a FIFO.
  *
- * On Linux the runtime blocks creating ANY unix socket inside the box with a
+ * On Linux the runtime blocks creating ANY unix socket inside the sandbox with a
  * seccomp filter — it cannot filter by path, so `allowUnixSockets` is ignored
  * there (its README says so). The socket this file was built on therefore
  * never carried a line on Linux: measured in Docker on 2026-09-23, with the
@@ -76,7 +76,7 @@ function lineReader(sink, onTooLong) {
         const msg = JSON.parse(line);
         if (msg && (msg.to === "log" || msg.to === "requests")) sink(msg.to, msg.entry);
       } catch {
-        // Garbage from inside the box is not the parent's emergency.
+        // Garbage from inside the sandbox is not the parent's emergency.
       }
     }
   };
@@ -123,7 +123,7 @@ export function spool(sink, path) {
    * too long for a unix socket, a directory that is not there — left an awaited
    * promise pending forever. What the user saw was Node's "Detected unsettled
    * top-level await" and rc=13: no error, no path, nothing naming the spool.
-   * Measured while running seisin inside seisin, where the outer box refuses
+   * Measured while running seisin inside seisin, where the outer sandbox denies
    * the inner bind; but nothing about it is particular to that case, which is
    * the reason it is fixed here rather than beside the nesting check.
    *

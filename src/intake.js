@@ -2,8 +2,8 @@
  * The parent's intake: what arrives during a run, checked, and written down.
  *
  * Two sources, and they are not equally trustworthy. The hook runs inside the
- * box, so everything it sends is a claim by the process being recorded. The
- * kernel is the thing that actually refused. Both end up as log lines and,
+ * sandbox, so everything it sends is a claim by the process being recorded. The
+ * kernel is the thing that actually denied. Both end up as log lines and,
  * sometimes, as requests in front of a person; this module is where each is
  * recomputed from the policy rather than believed.
  *
@@ -50,7 +50,7 @@ export function policyId(config) {
  */
 export function intake({ config, role, runId, observe = false, settings, notify }) {
   const stamp = { run: runId.slice(0, 8), policy: policyId(config) };
-  // No `at` from here or from the box: append() stamps the parent's clock and
+  // No `at` from here or from the sandbox: append() stamps the parent's clock and
   // ignores any other. The confined process chose the time of its own lines —
   // it could date them into or out of every `since` window, or make its
   // requests look old enough to be passed over.
@@ -63,7 +63,7 @@ export function intake({ config, role, runId, observe = false, settings, notify 
   const stats = { offPolicy: 0, walks: 0 };
 
   /**
-   * Nothing from inside the box is taken at its word.
+   * Nothing from inside the sandbox is taken at its word.
    *
    * The sender is the process being recorded, so every field it supplies is
    * a claim. Two of them matter. `role` decides whose request this is — left
@@ -84,7 +84,7 @@ export function intake({ config, role, runId, observe = false, settings, notify 
      * never queued — which servers a role may load is a change to its `mcp`
      * list, not a grant a person approves, the same shape as never_writes. The
      * verdict is recomputed here from the same list rather than believed from
-     * inside the box: the server is parsed from the tool name and asked of the
+     * inside the sandbox: the server is parsed from the tool name and asked of the
      * policy, so a line claiming "allowed" for a server the role may not load
      * comes back marked `disputed`.
      */
@@ -110,7 +110,7 @@ export function intake({ config, role, runId, observe = false, settings, notify 
 
     if (to === "log") {
       // The same treatment the queue already got. The role was overwritten but
-      // everything else was passed through, so a process inside the box could
+      // everything else was passed through, so a process inside the sandbox could
       // write "allowed" lines for paths it never touched — which would not move
       // the boundary, but would move `review`, and `init --from-observations`
       // builds a policy out of exactly this.
@@ -142,7 +142,7 @@ export function intake({ config, role, runId, observe = false, settings, notify 
     /**
      * The policy has to actually refuse it, or it does not belong in a queue.
      *
-     * Nothing checked. A process inside the box could file a request for a path
+     * Nothing checked. A process inside the sandbox could file a request for a path
      * its own role already owns, and the queue would print *first refused on
      * …* about something that was never refused — a sentence placed in front of
      * a person for approval, describing an event that did not happen.

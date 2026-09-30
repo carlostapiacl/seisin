@@ -15,7 +15,7 @@
  *     refusals from the last moments and hand the agent the same sentence the
  *     PreToolUse hook would have — whose it is, how many times, and that it
  *     should hand it over rather than retry. The kernel's line reaches the log
- *     about 30 ms after the refusal (measured inside the box), so this reads it.
+ *     about 30 ms after the refusal (measured inside the sandbox), so this reads it.
  *   - when a session starts, resumes or is compacted (SessionStart): the role's
  *     territory and what it keeps being refused, before the first refusal —
  *     and right after compaction, which is when an agent forgets what it was
@@ -97,7 +97,7 @@ function sentence(config, role, file, e) {
 }
 
 const PREFACE =
-  "seisin — the sandbox this agent runs in — refused part of that. This is not a Unix permission " +
+  "The sandbox this agent runs in, set up by seisin, denied part of that. This is not a Unix permission " +
   "or a macOS privacy prompt: chmod, sudo or a different path to the same file will not change it.";
 
 /**
@@ -165,7 +165,7 @@ export function atSessionStart(config, role, event, { file } = {}) {
   if (r.keys.length) lines.push(`Keys you hold: ${r.keys.join(", ")}.`);
   const w = file ? walls(config, role, { file, limit: 5, fresh: true }) : [];
   if (w.length) {
-    lines.push("Already refused more than once, and still refused — do not try again, hand it over:");
+    lines.push("Already denied more than once, and still denied — do not try again, hand it over:");
     for (const x of w)
       lines.push(`- ${x.action} ${x.target} (${x.times}×) — ${x.owners?.length ? `belongs to ${x.owners.join(", ")}` : x.reason}`);
   }

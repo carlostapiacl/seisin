@@ -10,7 +10,7 @@
      16px, where a favicon actually lives. Also in ui/favicon.svg for anyone who wants
      the file; inline here so the console needs no second route to serve it. -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%231f2328%22%2F%3E%3Cpath%20d%3D%22M16%205.5C8%205.5%208%2016%2016%2016S24%2026.5%2016%2026.5H26.5V5.5Z%22%20fill%3D%22%232da44e%22%2F%3E%3Cpath%20d%3D%22M16%205.5C8%205.5%208%2016%2016%2016S24%2026.5%2016%2026.5%22%20fill%3D%22none%22%20stroke%3D%22%23fff%22%20stroke-width%3D%222.8%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E">
-<meta name="description" content="Which folders each agent writes, which keys it may read, and whose a path is when the answer is no.">
+<meta name="description" content="Which territory each role writes, which keys it may read, and whose a path is when the answer is no.">
 <meta name="color-scheme" content="light dark">
 <style>
 /* Nothing moves on its own: fixed widths on the columns that change,
@@ -91,7 +91,7 @@ button.btn{font:inherit;font-size:12px;font-weight:600;cursor:pointer;padding:6p
   border:1px solid var(--line2);background:var(--panel);color:var(--fg)}
 button.btn:hover{background:var(--hover)}
 button.btn.warn{border-color:var(--amber);color:var(--amber)}
-/* The consequential action is the filled one. Decline was amber and Approve plain, so the eye
+/* The consequential action is the filled one. Decline was amber and Grant plain, so the eye
    went to the safe button and read the one that edits the policy as secondary. */
 button.btn.primary{background:var(--blue);border-color:var(--blue);color:var(--on-blue)}
 button.btn.primary:hover{filter:brightness(1.08);background:var(--blue)}
@@ -217,7 +217,7 @@ pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pr
 .ev{display:flex;align-items:baseline;gap:8px;padding:9px 14px;border-bottom:1px solid var(--line)}
 .ev:last-child{border-bottom:0}
 .ev b{font-weight:600;font-size:12px;flex:0 0 auto;width:52px}
-.ev.deny b{color:var(--amber)} .ev.allow b{color:var(--green)} .ev.admin b{color:var(--blue)}
+.ev.deny b{color:var(--amber)} .ev.allow b{color:var(--green)} .ev.admin b{color:var(--blue)} .ev.observed b{color:var(--dim)}
 .ev .body{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}
 .ev .what{font:11px ui-monospace,SFMono-Regular,monospace;color:var(--dim);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -367,7 +367,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
   .notice a{color:var(--blue)}
   .notice button{flex:none;border:0;background:none;color:var(--mid);cursor:pointer;font:inherit;font-size:12px;text-decoration:underline}
 
-  /* A request: who, what was asked, what approving grants — in that order. */
+  /* A request: who, what was asked, what granting covers — in that order. */
   .req .scope{font-size:12.5px;margin-top:4px;color:var(--fg)}
   .req .scope.wide>b{color:var(--amber)}
   .req .scope .own{display:block;color:var(--mid);font-size:12px;margin-top:2px}
@@ -455,11 +455,11 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     </div>
     <div class="list">
       <div class="cap">Policy</div>
-      <a class="on" href="#requests" id="nav-req" aria-current="page" title="Permissions an agent asked for and cannot have"><i>⚖</i>Waiting on you<span class="pin" id="req-pin"></span></a>
-      <a href="#denied" title="Every denial in the window: what an agent tried and the OS refused"><i>⊘</i>Denied<span class="pin" id="dn-pin"></span></a>
+      <a class="on" href="#requests" id="nav-req" aria-current="page" title="Requests: access an agent asked for and cannot have"><i>⚖</i>Waiting on you<span class="pin" id="req-pin"></span></a>
+      <a href="#denied" title="Every denial in the window: what an agent tried and the OS denied"><i>⊘</i>Denied<span class="pin" id="dn-pin"></span></a>
       <a href="#walls" title="A wall: something a role was denied twice or more and would still be denied today"><i>▦</i>Walls<span class="pin" id="wl-pin"></span></a>
       <a href="#policy" title="Each role's territory (the folders it may write) and the keys it may read"><i>⚷</i>Roles<span class="pin" id="pin"></span></a>
-      <a href="#activity" title="The log: every decision, newest first"><i>◷</i>Activity</a>
+      <a href="#activity" title="The log: every entry, newest first"><i>◷</i>Activity</a>
       <a href="#configfile" title="seisin.toml, the policy file"><i>⚙</i>Config file</a>
       <div class="cap">Docs</div>
       <a href="https://github.com/carlostapiacl/seisin#readme" target="_blank" rel="noopener"><i>↗</i>seisin README</a>
@@ -486,9 +486,9 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     <div class="head">
       <div>
         <h1 id="v-title">Roles</h1>
-        <p id="v-sub">Which folders each agent writes, which keys it may read, and whether it runs sandboxed.</p>
+        <p id="v-sub">Which territory each role writes, and which keys it may read.</p>
       </div>
-      <button class="btn warn" id="kill" type="button">Unsandbox everything</button>
+      <button class="btn warn" id="kill" type="button">Run every role unconfined</button>
     </div>
 
     <!-- The window filters what is read from the log. Not the request queue: that is what is
@@ -513,8 +513,10 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     <div class="cards" id="kpis">
       <a class="card kpi" href="#requests" id="k-wait">
         <h2>waiting on you</h2><div class="n" id="c-wait">0</div><div class="s" id="c-wait-s">nothing to decide</div></a>
-      <a class="card kpi" href="#policy" id="k-open" title="Roles running with no OS sandbox: nothing enforces their territory">
-        <h2>unsandboxed</h2><div class="n" id="c-off">0</div><div class="s" id="c-off-s">none are open</div></a>
+      <!-- Example only: seisin.toml cannot express an unconfined role, so live this card would
+           always say 0 and is removed with the what-if button. -->
+      <a class="card kpi" href="#policy" id="k-open" title="Roles run without a sandbox in this example: nothing enforces their territory">
+        <h2>unconfined</h2><div class="n" id="c-off">0</div><div class="s" id="c-off-s">every role confined</div></a>
       <a class="card kpi" href="#denied" id="k-ref">
         <h2>denied</h2><div class="n" id="c-blocks">0</div><div class="s" id="c-blocks-s">in this window</div></a>
       <a class="card kpi" href="#causes" id="k-conc" title="How much of the window's denials share one file name">
@@ -542,7 +544,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       <div class="scrollx">
         <table class="roles">
           <thead><tr>
-            <th>role</th><th class="terr" title="Territory: the paths a role may write">writes (territory)</th><th title="Credentials the role may read">keys</th><th class="st" title="Whether the OS enforces this role's territory">sandbox</th><th class="num">denials</th>
+            <th>role</th><th class="terr" title="Territory: the paths a role may write">writes (territory)</th><th title="Credentials the role may read">keys</th><th class="st" title="Whether the OS enforces this role's territory">confined</th><th class="num">denials</th>
           </tr></thead>
           <tbody id="rows"></tbody>
         </table>
@@ -578,7 +580,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       <div class="box" id="requests">
         <header>
           <h2>Pending decisions</h2>
-          <span class="note" id="req-note">approving edits seisin.toml · here or in the terminal, never through MCP</span>
+          <span class="note" id="req-note">granting edits seisin.toml · here or in the terminal, never through MCP</span>
           <span class="bulk" id="bulk" hidden>
             <input id="why-all" placeholder="reason, for all of them (required)" aria-label="Reason for declining all">
             <button class="btn" id="decline-all" type="button" data-write>Decline all</button>
@@ -758,9 +760,9 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
   var KIND_HINTS = {
     credential: "credential-shaped: never grant a write to it; if a role needs to read it, declare it as a key",
     git: "git's own bookkeeping, not territory: grant the repository to the role that runs git there, never the file",
-    temporary: "scratch a tool or a test makes while it runs: point it at $TMPDIR (already writable through [runtime] writes), or fix it; do not grant it in the repo",
+    temporary: "temporary files a tool or a test makes while it runs: point it at $TMPDIR (already writable through [runtime] writes), or fix it; do not grant it in the repo",
     build: "build output or installed dependencies: grant the folder to the role that builds it, or build outside the repo",
-    territory: "a normal path no role claims: a real decision — give it an owner, or tell the agent not to write there"
+    territory: "an ownable path no role claims: a real decision — give it an owner, or tell the agent not to write there"
   };
   function demoKind(p){
     var name = p.split("/").pop();
@@ -913,7 +915,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     if(vacio) vacio.hidden=!(FILTER&&!shown.length);
     if(vacio&&FILTER&&!shown.length)
       vacio.innerHTML="No role writes anything matching <b>"+esc(FILTER)+"</b>. "+
-                      "If an agent needs it, that is a request nobody can approve yet — "+
+                      "If an agent needs it, that is a request nobody can grant yet — "+
                       "no role owns the path.";
     document.getElementById("roles-note").textContent = LIVE
       ? "read-only here — change territories and keys in seisin.toml"
@@ -990,19 +992,19 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       });
       c3.appendChild(t3); tr.appendChild(c3);
 
-      var c4=document.createElement("td"); c4.className="st"; c4.setAttribute("data-label","sandbox");
+      var c4=document.createElement("td"); c4.className="st"; c4.setAttribute("data-label","confined");
       if (LIVE) {
         // `seisin run` always sandboxes; there is nothing to switch here.
-        c4.innerHTML='<span class="state"><i></i>sandboxed</span>';
+        c4.innerHTML='<span class="state"><i></i>confined</span>';
       } else {
         var sw=document.createElement("button"); sw.type="button"; sw.className="sw";
-        var txt=r.sandbox?"sandboxed":"unsandboxed";
+        var txt=r.sandbox?"confined":"unconfined";
         sw.setAttribute("data-on",r.sandbox?"true":"false");
         sw.setAttribute("aria-pressed",r.sandbox?"true":"false");
         sw.setAttribute("aria-label",txt+" — "+r.name);
-        sw.title = r.sandbox ? "The OS enforces this role's territory" : "Unsandboxed: nothing stops a write outside its territory";
+        sw.title = r.sandbox ? "The OS enforces this role's territory" : "Unconfined: nothing stops a write outside its territory";
         sw.innerHTML="<i></i>"+txt;
-        sw.onclick=function(){ r.sandbox=!r.sandbox; note(r.sandbox?"sandboxed":"unsandboxed",r.name); };
+        sw.onclick=function(){ r.sandbox=!r.sandbox; note(r.sandbox?"confined":"unconfined",r.name); };
         c4.appendChild(sw);
       }
       tr.appendChild(c4);
@@ -1017,9 +1019,9 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
 
     var off=ROLES.filter(function(r){return !r.sandbox;}).length;
     drawKpis();
-    pill("pin", off, off === 1 ? "role unsandboxed" : "roles unsandboxed");
+    pill("pin", off, off === 1 ? "role unconfined" : "roles unconfined");
     var k=document.getElementById("kill");
-    k.textContent=off?"Sandbox everything":"Unsandbox everything";
+    k.textContent=off?"Confine every role":"Run every role unconfined";
     k.classList.toggle("warn",off===0);
   }
 
@@ -1047,7 +1049,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     var L=[];
     L.push('<span class="c">// illustrative: seisin run '+esc(r.name)+' -- claude -p "…"</span>');
     if(!r.sandbox){
-      L.push('<span class="d">// UNSANDBOXED. seisin still names the owner, but</span>');
+      L.push('<span class="d">// UNCONFINED. seisin still names the owner, but</span>');
       L.push('<span class="d">// nothing stops the write. Only the log will know.</span>');
     }
     L.push("{");
@@ -1123,14 +1125,14 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     if(!LOG.length){
       var z=document.createElement("p"); z.className="blank";
       z.innerHTML="No decisions recorded yet.<br><span>The log fills when an agent actually "+
-                  "runs inside the box — <code>seisin run &lt;role&gt; -- …</code>. "+
+                  "runs inside the sandbox — <code>seisin run &lt;role&gt; -- …</code>. "+
                   "Asking <code>seisin explain</code> or reading this console does not write to it.</span>";
       c.appendChild(z); return;
     }
     LOG.forEach(function(e){
       var d=document.createElement("div");
       d.className="ev "+e.kind;
-      var label=e.kind==="admin"?"you":(e.kind==="deny"?"denied":"allowed");
+      var label=e.kind==="admin"?"you":e.kind==="deny"?"denied":e.kind==="observed"?"observed":"allowed";
       var line,who="";
       if(e.kind==="admin"){
         line=esc(e.act)+"  <em>"+esc(e.target)+"</em>";
@@ -1157,12 +1159,12 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
 
   /**
    * A what-if, and only where a what-if is honest: the example. seisin.toml cannot
-   * express an unsandboxed role, so live this button does not exist.
+   * express an unconfined role, so live this button does not exist.
    */
   document.getElementById("kill").onclick=function(){
     var anyOpen=ROLES.some(function(r){return !r.sandbox;});
     ROLES.forEach(function(r){r.sandbox=anyOpen;});
-    note(anyOpen?"sandboxed":"unsandboxed","every role");
+    note(anyOpen?"confined":"unconfined","every role");
   };
 
   /* ── control files ────────────────────────────────────────────────────── */
@@ -1177,7 +1179,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
    */
   var FAM = {
     ide: { label: "Editor settings", files: ".vscode/ · .cursor/ · .windsurf/",
-           what: "Tasks, terminal profiles and settings the editor applies the moment they change, outside the box." },
+           what: "Tasks, terminal profiles and settings the editor applies the moment they change, outside the sandbox." },
     instructions: { label: "Instruction files", files: "CLAUDE.md · AGENTS.md · GEMINI.md · .cursorrules …",
            what: "What the next agent session reads as its instructions — how one role reaches another’s context." }
   };
@@ -1213,7 +1215,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     pw.appendChild(ctlRow({
       glob: true, id: "ctl-sw-protect", title: "Protect instruction files", code: "[protect] instructions",
       desc: prot
-        ? "On: instruction files are refused to every role not handed them below."
+        ? "On: instruction files are denied to every role not handed them below."
         : "Off: every role may edit instruction files inside its own territory.",
       open: !prot, pressed: prot, text: prot ? "protected" : "not protected",
       aria: "instruction files, for every role",
@@ -1224,9 +1226,9 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       var mine = (r.controlFiles || []).indexOf(f) !== -1;
       var idle = f === "instructions" && !prot;
       var desc = idle
-        ? "Nothing to hand over while <code>[protect] instructions</code> is off: no role is refused these. Turn protection on under Policy-wide first."
+        ? "Nothing to hand over while <code>[protect] instructions</code> is off: no role is denied these. Turn protection on under Policy-wide first."
         : (mine ? esc(r.name) + " may edit these inside its own territory. "
-                : "Protected: " + esc(r.name) + " is refused writing them. ") + esc(FAM[f].what);
+                : "Protected: " + esc(r.name) + " is denied writing them. ") + esc(FAM[f].what);
       host.appendChild(ctlRow({
         id: "ctl-sw-" + f, title: FAM[f].label + " (" + f + ")", code: FAM[f].files, desc: desc,
         open: mine || idle, pressed: mine, text: idle ? "not protected" : mine ? "may edit" : "protected",
@@ -1250,7 +1252,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       body: JSON.stringify(body)
     });
     var out = await r.json();
-    if (!r.ok) { var err = new Error(out.error || "refused"); err.status = r.status; throw err; }
+    if (!r.ok) { var err = new Error(out.error || "the console did not accept that"); err.status = r.status; throw err; }
     return out;
   }
 
@@ -1316,7 +1318,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     });
     var what = FAM[fam] ? FAM[fam].label.toLowerCase().replace(/s$/, "") : "control file";
     var h = "";
-    [["shut", "become denied", "an agent that edits these today will be refused"],
+    [["shut", "become denied", "an agent that edits these today will be denied"],
      ["open", "become writable", "the role may edit them inside its territory"]].forEach(function(d){
       var g = dirs[d[0]]; if (!g.n) return;
       var exist = g.n - g.created;
@@ -1352,8 +1354,8 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       if (p.busy) h += "<p>Asking the server what this changes…</p>";
       else if (p.error) h += '<p class="err">' + esc(p.error) + "</p>";
       else if (p.demo) {
-        h += "<p>This is the example, and nothing here is saved. Run by <code>seisin ui</code>, this box lists " +
-             "what each role’s sandbox profile gains or loses — computed by the server from the edited " +
+        h += "<p>This is the example, and nothing here is saved. Run by <code>seisin ui</code>, this panel lists " +
+             "what each role’s sandbox settings gain or lose — computed by the server from the edited " +
              "policy — and the exact line written to seisin.toml, and nothing is written until you confirm.</p>";
         buttons = '<button class="btn primary" id="ctl-save" type="button">Apply to the example</button>' + buttons;
       } else if (p.plan && !p.plan.changed) {
@@ -1445,13 +1447,17 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
   var WALLS = {};      // per role, what it keeps being denied and still would be
   var SHOW_ALL = false; // Denied: every cause, not the first twelve
 
+  /** The kind as a person reads it. The stored value "territory" reads as its opposite — a
+   *  path nobody owns — so it is said "ownable"; the value itself is a published field. */
+  function kindSays(k){ return k === "territory" ? "ownable" : k; }
+
   /** One cause's line under its path: whose it is, or what kind of thing it is. */
   function causeSays(c){
     if (c.about && c.about !== "file") return unownedSays(c.about);
     if (c.standing === "protected") return "protected: " + (c.why || "");
     if (c.standing === "outside") return c.why || "outside the map";
     if (c.owners && c.owners.length) return "owned by " + c.owners.join(", ");
-    return "owned by nobody" + (c.kind ? " · " + c.kind + (c.kind !== "territory" && c.hint ? ": " + c.hint : "") : "");
+    return "unowned" + (c.kind ? " · " + kindSays(c.kind) + (c.kind !== "territory" && c.hint ? ": " + c.hint : "") : "");
   }
 
   function bar(c, max){
@@ -1582,7 +1588,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
   function wallSays(w){
     if (w.owners && w.owners.length) return "belongs to " + w.owners.join(", ");
     if (w.about && w.about !== "file") return unownedSays(w.about);
-    if (w.kind) return "no role owns it · " + w.kind + (w.kind !== "territory" && w.hint ? ": " + w.hint : " — " + (w.hint || ""));
+    if (w.kind) return "no role owns it · " + kindSays(w.kind) + (w.kind !== "territory" && w.hint ? ": " + w.hint : " — " + (w.hint || ""));
     if (w.standing === "protected") return "protected: " + (w.why || "");
     return w.reason || "";
   }
@@ -1672,20 +1678,20 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     pill("wl-pin", retry, retry === 1 ? "retry on a wall" : "retries on walls");
   }
 
-  /** What approving grants, said before the click: the file that was asked for, the folder
+  /** What granting covers, said before the click: the file that was asked for, the folder
    *  that would be granted, and whose it is. It said "wants to write docs/**" for a request
    *  over docs/api.md, and the widening was a detail in grey under it. */
   function scopeOf(r){
     var owners = r.owners || [];
     var own = owners.length
-      ? '<span class="own">' + esc(r.grant) + " belongs to <b>" + esc(owners.join(", ")) + "</b>. Approving lets <b>" +
+      ? '<span class="own">' + esc(r.grant) + " belongs to <b>" + esc(owners.join(", ")) + "</b>. Granting lets <b>" +
         esc(r.role) + "</b> write it too.</span>"
       : '<span class="own">No role owns it today.</span>';
     if (r.action === "read")
-      return '<div class="scope">Approving lets <b>' + esc(r.role) + "</b> read the key <code>" + esc(r.grant) + "</code>.</div>";
+      return '<div class="scope">Granting lets <b>' + esc(r.role) + "</b> read the key <code>" + esc(r.grant) + "</code>.</div>";
     if (r.grant === r.target)
-      return '<div class="scope">Approving grants exactly <code>' + esc(r.grant) + "</code>." + own + "</div>";
-    return '<div class="scope wide">Asked for <code>' + esc(r.target) + "</code> → approving grants <b>all of <code>" +
+      return '<div class="scope">Granting covers exactly <code>' + esc(r.grant) + "</code>." + own + "</div>";
+    return '<div class="scope wide">Asked for <code>' + esc(r.target) + "</code> → granting covers <b>all of <code>" +
       esc(r.grant) + "</code></b>, not only that file." + own + "</div>";
   }
 
@@ -1714,8 +1720,8 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
         '<div class="act">' +
           '<input id="why-' + i + '" placeholder="reason (required)" aria-label="Reason for ' +
             escA(r.role) + '’s request" aria-describedby="err-' + i + '">' +
-          '<button class="btn primary" data-n="' + i + '" data-k="' + escA(r.key) + '" data-d="granted" type="button" data-write>Approve</button>' +
-          '<button class="btn" data-n="' + i + '" data-k="' + escA(r.key) + '" data-d="denied" type="button" data-write>Decline</button>' +
+          '<button class="btn primary" data-n="' + i + '" data-k="' + escA(r.key) + '" data-d="granted" type="button" data-write>Grant</button>' +
+          '<button class="btn" data-n="' + i + '" data-k="' + escA(r.key) + '" data-d="declined" type="button" data-write>Decline</button>' +
         "</div>" +
       "</div>";
     }).join("");
@@ -1744,9 +1750,9 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
   /**
    * Decline every request on screen — two clicks, with the reason in view.
    *
-   * There is no "approve all" on purpose: a grant is read one at a time. The
+   * There is no "grant all" on purpose: a grant is read one at a time. The
    * keys sent are the ones drawn now, so a request that arrives in between is
-   * not refused unseen. A reason is required; an empty box is filled with a
+   * not declined unseen. A reason is required; an empty box is filled with a
    * default on the first click, so what is sent is on screen before it is sent.
    */
   function drawBulk(){
@@ -1777,7 +1783,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
           body: JSON.stringify({ keys: REQS.map(function(q){ return q.key; }), reason: why.value.trim() })
         });
         var out = await r.json();
-        if (!r.ok) { var err = new Error(out.error || "refused"); err.status = r.status; throw err; }
+        if (!r.ok) { var err = new Error(out.error || "the console did not accept that"); err.status = r.status; throw err; }
         decided("Declined " + plural(out.declined, "request") + " · reason «" + esc(why.value.trim()) +
                 "», recorded in the request queue. The policy was not changed.");
         why.value = "";
@@ -1804,7 +1810,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
    * One decision, sent once.
    *
    * By the request's id, taken from the row as it was drawn. A reason is required
-   * for either answer. Approving a path that is another role's takes a second
+   * for either answer. Granting a path that is another role's takes a second
    * click that names what is shared; declining with an empty box fills in the
    * default and asks again, so what is recorded is on screen before it is.
    */
@@ -1816,7 +1822,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     var input = document.getElementById("why-" + i);
     var err = document.getElementById("err-" + i);
     var row = btn.closest(".req");
-    var rest = granting ? "Approve" : "Decline";
+    var rest = granting ? "Grant" : "Decline";
     function fail(msg){ err.hidden = false; err.textContent = msg; }
     err.hidden = true;
     input.removeAttribute("aria-invalid");
@@ -1864,7 +1870,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
         body: JSON.stringify({ key: key, decision: btn.dataset.d, reason: why })
       });
       var out = await r.json();
-      if (!r.ok) { var e2 = new Error(out.error || "denied"); e2.status = r.status; throw e2; }
+      if (!r.ok) { var e2 = new Error(out.error || "the console did not accept that"); e2.status = r.status; throw e2; }
       if (granting) {
         MARK = out.line ? out.line.number : null;
         decided("Granted <code>" + esc(out.grant) + "</code> to <b>" + esc(out.role) + "</b>" +
@@ -1923,7 +1929,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
 
   /* ── offline ──────────────────────────────────────────────────────────────
    * The header said "live" in green for as long as the tab was open, whether or
-   * not anything was answering, and Approve stayed clickable against a server
+   * not anything was answering, and Grant stayed clickable against a server
    * that was gone or had a new token. After two failed polls in a row the page
    * says which of the two it is, since when, and turns the writes off. */
   var FAILS = 0, OFFLINE = null;
@@ -2161,12 +2167,14 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     LIVE_LABEL = s.config.replace(/^.*\//, "") + " · live";
     label.textContent = LIVE_LABEL;
     label.style.color = "var(--green)";
-    // Live, the what-if button goes for good: "unsandbox everything" against a real repo is
+    // Live, the what-if button goes for good: "run every role unconfined" against a real repo is
     // not a preview. `dataset.live` is what `show()` reads.
     document.getElementById("kill").dataset.live = "1";
     document.getElementById("range").hidden = false;
     drawRange();
     document.getElementById("kill").hidden = true;
+    // And so does the card that counts what the button would do: live it could only say 0.
+    document.getElementById("k-open").style.display = "none";
     document.getElementById("toml-note").textContent = "the file on disk, as it stands";
     document.getElementById("foot-mode").textContent = "Live.";
     document.getElementById("foot-text").innerHTML =
@@ -2194,7 +2202,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
                    sub:"Each role's territory — the folders it may write — and the keys it may read. " +
                        (LIVE ? "Read-only here: the policy is seisin.toml." : "In this example you can edit them; nothing is saved.")},
       requests:   {view:"requests", title:"Waiting on you",
-                   sub:"Permissions an agent asked for and cannot have. Approving one adds a line to seisin.toml."},
+                   sub:"Requests: access an agent asked for and cannot have. Granting one adds a line to seisin.toml."},
       denied:     {view:"denied",   title:"Denied", tab:"path",
                    sub:"Everything an agent tried in the window and the OS denied, grouped by what it was about."},
       causes:     {view:"denied",   title:"Denied", tab:"name",
@@ -2202,7 +2210,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       walls:      {view:"walls",    title:"Walls",
                    sub:"A wall is something a role was denied twice or more and would still be denied today. Retrying one costs a call every time."},
       activity:   {view:"activity", title:"Activity",
-                   sub:"Every decision the sandbox made, newest first, each denial with whose it was."},
+                   sub:"Every log entry, newest first — hook and kernel — each denial with whose it was."},
       configfile: {view:"config",   title:"Config file",
                    sub: LIVE ? "The policy as it stands on disk. Decisions and control-files saves write here, stamped."
                              : "The example policy, generated in this page. Live, this is your seisin.toml as it is on disk."}
@@ -2259,7 +2267,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
   function fromServer(entries){
     return (entries || []).map(e => ({
       at: e.at || "",
-      kind: e.verdict === "denied" ? "deny" : (e.verdict === "observed" || e.verdict === "admin") ? "admin" : "allow",
+      kind: e.verdict === "denied" ? "deny" : e.verdict === "observed" ? "observed" : e.verdict === "admin" ? "admin" : "allow",
       role: e.role,
       act: e.action,
       target: e.target,

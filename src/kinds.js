@@ -28,11 +28,11 @@ export const KINDS = {
   git:
     "git's own bookkeeping, not territory: grant the repository to the role that runs git there, never the file",
   temporary:
-    "scratch a tool or a test makes while it runs: point it at $TMPDIR (already writable through [runtime] writes), or fix it; do not grant it in the repo",
+    "temporary files a tool or a test makes while it runs: point it at $TMPDIR (already writable through [runtime] writes), or fix it; do not grant it in the repo",
   build:
     "build output or installed dependencies: grant the folder to the role that builds it, or build outside the repo",
   territory:
-    "a normal path no role claims: a real decision — give it an owner, or tell the agent not to write there",
+    "an ownable path no role claims: a real decision — give it an owner, or tell the agent not to write there",
 };
 
 /** A lock file inside `.git` gets a more precise line than the rest of git's metadata. */

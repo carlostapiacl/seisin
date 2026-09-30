@@ -407,7 +407,7 @@ export function applyGrant(toml, request, note = "") {
   if (!open)
     throw new Error(
       `[roles.${request.role}] has no ${field} list to grant into. ` +
-      `Add \`${field} = []\` to that section first — seisin will not write it into another role's block.`
+      `Add \`${field} = []\` to that section first — seisin will not write it into another role's table.`
     );
 
   // The subset has no escapes, so a value carrying a quote or a newline cannot

@@ -352,7 +352,7 @@ export function readFileRef(entry, root = ".") {
  * of these:
  *
  *   - **What seisin itself injects.** `SEISIN_ROLE` is how the hook inside the
- *     box learns which role it is. A key called that would let a policy tell
+ *     sandbox learns which role it is. A key called that would let a policy tell
  *     the hook it is somebody else — privilege confusion written in the one
  *     file that is supposed to prevent it. Same for the config path and the
  *     audit socket.
@@ -427,8 +427,10 @@ export function entriesOf(role) {
  * runtime. A mode called `file` sitting ten centimetres from a runtime field
  * called `files` that fails that way is a trap with a date on it.
  *
- * `scratch` also says what actually happens: the value lands in scratch space
- * for the turn and is removed after it, which `file` does not say at all.
+ * `scratch` said what happened when it was named: the value landed in scratch
+ * space and was removed after the run, which `file` does not say at all. Since
+ * the 2026-09-23 fix it lands in the run's private directory instead (rundir.js),
+ * and the name is a breaking rename listed in docs/glossary.md, not made here.
  */
 export const MODES = ["env", "scratch", "inject"];
 
@@ -442,8 +444,8 @@ export const MODES = ["env", "scratch", "inject"];
  * tables — and growing the parser to hold one field is the trade this repo has
  * already decided against out loud.
  *
- * The important half survives that limit. The encargo's argument for declaring
- * the mode beside the permission is that a reader of `seisin.toml` can say
+ * The important half survives that limit. The argument for declaring
+ * the mode beside the key is that a reader of `seisin.toml` can say
  * "this role sees the value" without opening any code, and a per-role setting
  * answers exactly that question.
  *
@@ -465,9 +467,9 @@ export function modeOf(config, role, entry) {
         `[keys.providers.${entry.scheme}] mode = "env".`;
     throw new Error(
       `roles.${role.name}: key "${entry.raw}" has no delivery mode.\n` +
-      `  Declare one beside the permission: [roles.${role.name}] key_mode = "env".${second}\n` +
-      `  "env" passes the value as ${entry.name}; "scratch" writes it to a file inside the ` +
-      `role's scratch space, grants that one path, and removes it when the turn ends.`);
+      `  Declare one beside the key: [roles.${role.name}] key_mode = "env".${second}\n` +
+      `  "env" passes the value as ${entry.name}; "scratch" writes it to a file in the ` +
+      `run's private directory, grants that one path, and removes it when the run ends.`);
   }
   if (mode === "inject")
     throw new Error(
@@ -497,8 +499,8 @@ export function modeOf(config, role, entry) {
  * Three properties, each of which was a requirement before it was code:
  *
  *   - **The parent runs it, never the confined process.** Same reason `owners`
- *     recomputes instead of believing what it is told: the inside of the box
- *     cannot be allowed to reach the thing that decides what the box contains.
+ *     recomputes instead of believing what it is told: the inside of the sandbox
+ *     cannot be allowed to reach the thing that decides what the sandbox contains.
  *     A provider command spawned from within the sandbox would need the vault's
  *     own credential in there with it, which is the problem this feature exists
  *     to remove.
@@ -521,7 +523,7 @@ export function resolveRef(entry, provider, { run = spawnSync, root = ".", confi
    *
    * `spawnSync("fakeprov")` searched the parent's PATH, and a PATH directory
    * inside a territory made the next run execute whatever that role had put
-   * there — outside the box, as you. Measured on 2026-09-23 with a marker file.
+   * there — outside the sandbox, as you. Measured on 2026-09-23 with a marker file.
    * The provider's own PATH is narrowed the same way, because a provider that
    * is a script starts with `#!/usr/bin/env bash` and looks its interpreter up
    * again. Without a config (a caller embedding seisin), or with a `run` of the

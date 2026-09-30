@@ -104,7 +104,7 @@ export function renderReport(report) {
   if (report.protected?.length) {
     const root = report.where ? report.where.replace(/\/[^/]*$/, "/") : "";
     const show = (p) => (root && p.startsWith(root) ? p.slice(root.length) : p.replace(/^\/Users\/[^/]+|^\/home\/[^/]+/, "~"));
-    lines.push(`  ${C.b}protected${C.off} ${C.dim}— inside a territory, refused anyway: something outside the box runs or reads it${C.off}\n`);
+    lines.push(`  ${C.b}protected${C.off} ${C.dim}— inside a territory, denied anyway: something outside the sandbox runs or reads it${C.off}\n`);
     const LIMIT = 12;
     for (const e of report.protected.slice(0, LIMIT)) {
       const who = e.roles.length > 3 ? `${e.roles.slice(0, 3).join(", ")} +${e.roles.length - 3}` : e.roles.join(", ");

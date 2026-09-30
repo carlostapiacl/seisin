@@ -18,7 +18,7 @@ export { findConfig, loadConfig, parseToml } from "./config.js";
 /** Where seisin's own files live. */
 export { CONFIG_NAME, STATE_DIR, LOG_NAME } from "./layout.js";
 
-/** Who owns a path, and the sentence to hand a blocked agent. */
+/** Who owns a path, and the sentence to hand a denied agent. */
 export { covers, ownersOf, keyHolders, explain } from "./owners.js";
 
 /** A policy, resolved into sandbox settings and a child environment. */
@@ -34,7 +34,7 @@ export { buildEnv, BASE as BASE_ENV, DEFAULTS as DEFAULT_ENV } from "./env.js";
  */
 export { parseKey, defaultName, entriesOf, MODES, RESERVED_ENV } from "./keys.js";
 
-/** What a role keeps being refused, recomputed against the policy as it stands. */
+/** What a role keeps being denied, recomputed against the policy as it stands. */
 export { walls, wasted, MIN_HITS } from "./walls.js";
 
 /** The report `check` prints, without the printing. */
@@ -47,11 +47,11 @@ export { scan, SHAPES, DEFAULT_IGNORE } from "./scan.js";
 export { read as readLog, logPath, observed, generalise } from "./log.js";
 
 /**
- * The queue of refusals waiting on a person.
+ * The queue of requests waiting on a person.
  *
  * `pending` and `grantFor` are public because reading the queue and drafting a
  * proposal are things a caller — including an MCP server — legitimately does.
- * `settle` and `applyGrant` are NOT exported: approving is not a tool call, and
+ * `settle` and `applyGrant` are NOT exported: granting is not a tool call, and
  * the surface should make that hard to get wrong rather than merely document
  * it. See docs/permission-requests.md.
  */

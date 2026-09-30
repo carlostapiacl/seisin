@@ -45,8 +45,8 @@ function notifyUrl(config, env = process.env) {
 export function message(config, req, number, format = "text") {
   const owner = req.owners?.length ? `It belongs to ${req.owners.join(", ")}.` : "Nobody owns it.";
   const text =
-    `seisin (${basename(config.root)}): ${req.role} was refused ${req.action} on ${req.target}. ${owner} ` +
-    `Approve: seisin grant ${shellId(keyOf(req))} · decline: seisin decline ${shellId(keyOf(req))}`;
+    `seisin (${basename(config.root)}): ${req.role} was denied ${req.action} on ${req.target}. ${owner} ` +
+    `Grant: seisin grant ${shellId(keyOf(req))} · decline: seisin decline ${shellId(keyOf(req))}`;
   // Slack reads `<url|label>` as a link and `<!channel>` as a mention, and the
   // path is chosen by the agent: `<https://evil|approve here>` in a target
   // would arrive as a clickable link in the channel a person approves from.
@@ -146,6 +146,6 @@ export function readNotify(table, { path, root, keyDirs, roles, own }) {
   if (holders.length)
     throw new Error(
       `${path}: [notify] url_file "${urlFile}" is declared as a key by ${holders.join(", ")} — ` +
-      `that role could read it and send the person a fake "approve". No role may hold it.`);
+      `that role could read it and send the person a fake "grant this". No role may hold it.`);
   return { urlFile, format };
 }

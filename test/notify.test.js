@@ -57,7 +57,7 @@ test("one message per new request, naming the owner and the command that answers
   assert.equal(sent.length, 1);
   assert.equal(sent[0].url, "http://127.0.0.1:9/");
   assert.equal(sent[0].redirect, "error");
-  assert.match(sent[0].body, /web was refused write on src\/api\/x\.ts\. It belongs to api\. Approve: seisin grant 'web:write:src\/api'/);
+  assert.match(sent[0].body, /web was denied write on src\/api\/x\.ts\. It belongs to api\. Grant: seisin grant 'web:write:src\/api'/);
 });
 
 test("formats: slack and json carry the same sentence", () => {
@@ -105,5 +105,5 @@ test("a real refusal sends one message, from the parent, saying whose it is", { 
   });
   assert.notEqual(code, 0, "the kernel let it through");
   assert.equal(got.length, 1, `expected one message, got ${got.length}`);
-  assert.match(got[0], /web was refused write on src\/api\/real\.ts\. It belongs to api/);
+  assert.match(got[0], /web was denied write on src\/api\/real\.ts\. It belongs to api/);
 });

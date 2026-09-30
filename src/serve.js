@@ -215,13 +215,20 @@ function decide(configPath, { key, decision, reason }) {
    * It took a row number, counted against the queue as it stood when the
    * request arrived — not when the person read the page. Agents keep writing
    * to that queue, and another channel can settle an entry in between, so
-   * "approve #2" could approve whatever had moved into second place, with the
-   * reason typed for something else. Re-sending the POST approved the next one.
+   * "grant #2" could grant whatever had moved into second place, with the
+   * reason typed for something else. Re-sending the POST granted the next one.
    * The CLI stopped doing this long ago; the console had not.
    */
   if (typeof key !== "string" || !key) throw bad("key is required — the id of the request on screen");
-  if (decision !== "granted" && decision !== "denied")
-    throw bad(`decision must be granted or denied`);
+  /**
+   * A person declines; the boundary denies. The console sends "declined".
+   * "denied" is still accepted from anything that scripted against the old
+   * value, and is what the queue stores either way — renaming a stored value
+   * is a breaking change, listed in docs/glossary.md, not made here.
+   */
+  if (decision === "denied") decision = "declined";
+  if (decision !== "granted" && decision !== "declined")
+    throw bad(`decision must be granted or declined`);
   /**
    * A reason, always. A decision from the console used to be one click with an
    * optional box beside it, so most grants reached seisin.toml with no word of
@@ -241,7 +248,7 @@ function decide(configPath, { key, decision, reason }) {
    * Looked up, applied and settled under one lock — the policy's, the one
    * every grant takes (editPolicy). The lookup used to happen before it and
    * the settle after it, so the console and `seisin grant` could both find the
-   * same request pending and both act on it. A refusal takes the lock as well,
+   * same request pending and both act on it. A decline takes the lock as well,
    * though it writes no policy, for the same reason.
    *
    * The config is edited as text, so comments and order survive, and it is
@@ -257,7 +264,7 @@ function decide(configPath, { key, decision, reason }) {
       if (decision !== "granted") return { toml: before, changed: false };
       refuseIfBarred(cfg, req);
       return applyGrant(before, req, reason);
-    }, { after: () => settle(file, req.key, decision, reason) });
+    }, { after: () => settle(file, req.key, decision === "granted" ? "granted" : "denied", reason) });
   } catch (e) {
     if (e.code === "ELOCKED") throw Object.assign(new Error("another grant is in progress — try again in a moment"), { status: 503 });
     throw e;
@@ -265,7 +272,7 @@ function decide(configPath, { key, decision, reason }) {
   return {
     ok: true, role: req.role, grant: req.grant, decision,
     // The line the grant wrote, and where, so the page can say exactly what
-    // changed instead of "done". Null when nothing was written (a refusal, or
+    // changed instead of "done". Null when nothing was written (a decline, or
     // a grant the policy already held).
     line: decision === "granted" && result?.changed ? grantLine(result.toml, req.grant) : null,
   };
@@ -395,12 +402,12 @@ function readBody(req, max = 4096) {
 }
 
 /**
- * Refuse every request the page was showing, in one go.
+ * Decline every request the page was showing, in one go.
  *
- * Only refusing. There is no "approve all" and there will not be: a grant is a
+ * Only declining. There is no "grant all" and there will not be: a grant is a
  * decision about one path and one owner, and doing forty of them without
  * reading them is the permissive default this tool exists to stand against.
- * Refusing in bulk is safe — it grants nothing and changes no policy — and it
+ * Declining in bulk is safe — it grants nothing and changes no policy — and it
  * is what a queue full of noise from a bug already fixed needs.
  *
  * By key, not "whatever is pending now": a request that arrived after the page

@@ -64,7 +64,7 @@ export const DEFAULTS = {
   GIT_OPTIONAL_LOCKS: "0",
   /**
    * Node's built-in `fetch()` ignores HTTP_PROXY/HTTPS_PROXY unless told
-   * otherwise, so inside the box it tries DNS directly and dies with ENOTFOUND
+   * otherwise, so inside the sandbox it tries DNS directly and dies with ENOTFOUND
    * while `npm`, which reads the proxy itself, works. Measured on Node 24.2:
    * ENOTFOUND without it, 200 with it. It only makes Node use the proxy the
    * sandbox already routes everything through — nothing is widened. Older

@@ -3,7 +3,7 @@
  *
  * The sandbox confines the agent. It does not confine the process that decides
  * what the agent gets: `seisin run` reads the policy, runs the key providers,
- * reads `file://` secrets and starts the runtime, all of it outside the box and
+ * reads `file://` secrets and starts the runtime, all of it outside the sandbox and
  * as you. Every file that process reads or executes is therefore part of the
  * boundary, and a role that can write one of them does not need to escape — it
  * waits for the next run, or for you to type the command yourself.
@@ -19,7 +19,7 @@
  *   - a role swapped a `file://` target for a symlink to another role's key,
  *     and the next run read that key and handed it over;
  *   - every role could create files in `~/.local/share/claude/versions/`, where
- *     the Claude Code binary you run outside the box lives, because the shared
+ *     the Claude Code binary you run outside the sandbox lives, because the shared
  *     runtime scratch includes `~/.local/share`.
  *
  * So this module answers the question once, for the family: **which paths does
@@ -167,7 +167,7 @@ function packageRoot(p, root) {
 }
 
 /**
- * Programs that run outside the box and live where a role can write.
+ * Programs that run outside the sandbox and live where a role can write.
  *
  * Two ways in. A PATH directory inside a writable area: anything a role drops
  * there shadows a real command the next time anybody types it. And a PATH
@@ -280,7 +280,7 @@ function computeParentInputs(config, env) {
     // A provider that does not resolve here is not denied here: the run that
     // needs it fails at resolution, with the message resolveExecutable gives.
     try { path = resolveExecutable(cmd, config, env); } catch { continue; }
-    out.push({ path, why: `the ${scheme}:// key provider, run outside the box` });
+    out.push({ path, why: `the ${scheme}:// key provider, run outside the sandbox` });
   }
   for (const { path, raw } of fileRefTargets(config))
     out.push({ path, why: `read by the parent for key "${raw}"` });
@@ -295,13 +295,13 @@ function computeParentInputs(config, env) {
 }
 
 /**
- * Files that tell a program running outside the box what to execute.
+ * Files that tell a program running outside the sandbox what to execute.
  *
  * Git runs `.git/hooks/*` and whatever `.git/config` names (core.hooksPath,
  * core.fsmonitor). Claude Code runs the hooks, plugins and skills its settings
  * declare, and the MCP servers in `.mcp.json`. direnv runs `.envrc` on `cd`.
  * Codex starts what `config.toml` lists. A role that writes one of these does
- * not escape the box; it leaves a command for you to run the next time you
+ * not escape the sandbox; it leaves a command for you to run the next time you
  * open that project — measured on 2026-09-23: every role could open
  * `~/.claude/settings.json` for writing through the shared runtime scratch.
  *
@@ -336,7 +336,7 @@ const CONTROL_RES = CONTROL_FILES.map((c) => [c, segment(c, "i")]);
 /**
  * Two more families of control files, which a role may be let to edit.
  *
- * The ones above make a program outside the box *execute* something, and no
+ * The ones above make a program outside the sandbox *execute* something, and no
  * role writes them. These two are softer, and that is why a policy can hand
  * them to a role (`control_files = ["ide"]`, `["instructions"]`) where the
  * others cannot be handed to anybody:
@@ -370,7 +370,7 @@ const FAMILY_RES = {
 };
 
 const familyWhy = (family, name) => family === "ide"
-  ? `${name}, whose settings and tasks ${EDITOR[name]} applies outside the box`
+  ? `${name}, whose settings and tasks ${EDITOR[name]} applies outside the sandbox`
   : `${name}, which the next agent session reads as its instructions`;
 
 /** The families this role's profile protects: the defaults, minus what the policy hands it. */
@@ -446,7 +446,7 @@ function controlsOf(dir, platform, families = []) {
   if (git?.isFile()) out.push({ path: join(dir, ".git"), why: "a worktree's pointer to its repository, read by git" });
   if (git?.isDirectory())
     for (const f of [".git/hooks", ".git/config"])
-      out.push({ path: join(dir, f), why: `${f}, run by git outside the box`, ifPresent: true });
+      out.push({ path: join(dir, f), why: `${f}, run by git outside the sandbox`, ifPresent: true });
   /**
    * `.claude` whole, as one entry, rather than its seven control files.
    *
@@ -459,12 +459,12 @@ function controlsOf(dir, platform, families = []) {
    * directory Claude Code reads its instructions to itself from.
    */
   if (platform !== "linux" || existsSync(join(dir, ".claude")))
-    out.push({ path: join(dir, ".claude"), why: ".claude, whose settings, hooks and skills Claude Code runs outside the box" });
+    out.push({ path: join(dir, ".claude"), why: ".claude, whose settings, hooks and skills Claude Code runs outside the sandbox" });
   // The single files only where they exist: where they do not, the patterns
   // refuse creating them, and a literal each would be start-up for nothing.
   for (const f of [".mcp.json", ".envrc", ".codex/config.toml"]) {
     const p = join(dir, f);
-    if (existsSync(p)) out.push({ path: p, why: `${f}, run by ${RUNNER(f)} outside the box`, ifPresent: true });
+    if (existsSync(p)) out.push({ path: p, why: `${f}, run by ${RUNNER(f)} outside the sandbox`, ifPresent: true });
   }
   // The families literally only where they exist, on every platform. Where
   // they do not, macOS gets a pattern for creating them (computeDenies) and
@@ -481,7 +481,7 @@ function controlsOf(dir, platform, families = []) {
  * The home's control files, one by one — never `~/.claude` whole.
  *
  * That directory is also where Claude Code keeps its sessions, todos and
- * history, and it writes them from inside the box on every turn. Denying the
+ * history, and it writes them from inside the sandbox on every turn. Denying the
  * directory would stop the agent; denying what it executes does not (checked
  * with `claude -p` under the new profile: it answered, and what it was refused
  * were lock and cache files under plugins/, which it tolerates).
@@ -492,7 +492,7 @@ function homeControls(platform) {
     ".claude/settings.json", ".claude/settings.local.json", ".claude/hooks", ".claude/plugins",
     ".claude/skills", ".claude/commands", ".claude/agents", ".codex/config.toml",
   ]
-    .map((f) => ({ path: join(home, f), why: `${f}, run by ${RUNNER(f)} outside the box`, ifPresent: true }))
+    .map((f) => ({ path: join(home, f), why: `${f}, run by ${RUNNER(f)} outside the sandbox`, ifPresent: true }))
     .filter((e) => platform !== "linux" || existsSync(e.path));
 }
 
@@ -561,7 +561,7 @@ function computeDenies(config, role, { env, platform, observe }) {
         // own config and hooks, and the files that redirect a worktree to
         // another gitdir or config. Ordinary commits never write these, so
         // denying them costs a working role nothing; a role that could write
-        // one would leave a command for the next `git` outside the box. The
+        // one would leave a command for the next `git` outside the sandbox. The
         // subtree of `.git` stays writable on purpose, so the agent can commit.
         `${d}/**/.git/config.worktree`,
         `${d}/**/.git/modules/**/config`, `${d}/**/.git/modules/**/hooks/**`,
@@ -607,8 +607,8 @@ export function protectedBy(config, target, { platform = process.platform, role 
   const re = f === ".claude" ? CLAUDE_DIR : CONTROL_RES.find(([name]) => name === f)?.[1];
   if (f && (platform !== "linux" || heldOnLinux(config, target, re))) {
     const why = f === ".claude"
-      ? ".claude, whose settings, hooks and skills Claude Code runs outside the box"
-      : `${f}, run by ${RUNNER(f)} outside the box`;
+      ? ".claude, whose settings, hooks and skills Claude Code runs outside the sandbox"
+      : `${f}, run by ${RUNNER(f)} outside the sandbox`;
     return { path: target, why };
   }
   /**
