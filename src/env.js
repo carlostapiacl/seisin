@@ -90,12 +90,15 @@ export const DEFAULTS = {
 };
 
 /**
- * Names that must never ride along, even if a role asks for them by pattern.
+ * Names that ride along only when the role names them itself.
  *
  * A role can name a variable explicitly and get it — that is the point of the
- * `env` list. What this blocks is a wildcard quietly sweeping up a credential,
- * which is how "pass through what the build needs" becomes "pass through
- * everything" three commits later.
+ * `env` list. Everything else that crosses comes from BASE or from a caller's
+ * `extra`, and this keeps a credential-shaped name out of both. Today it
+ * filters nothing: no BASE name matches it and `run` passes no `extra`. It is
+ * kept, not deleted, as the guard for the day either list grows — a
+ * `SSH_AUTH_SOCK` added "for git" would otherwise cross for every role
+ * silently — and for embedders who pass `extra`.
  */
 const NEVER = /(^|_)(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|AUTH|SESSION|COOKIE|PRIVATE)(_|$)/i;
 

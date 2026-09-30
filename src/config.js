@@ -31,7 +31,6 @@ export function findConfig(from = process.cwd()) {
 const RE_TABLE = /^\[([A-Za-z0-9_.\-]+)\]$/;
 const RE_PAIR = /^([A-Za-z0-9_\-]+)\s*=\s*(.+)$/;
 
-/** Minimal TOML subset -> plain object. Throws with a line number on bad input. */
 /**
  * Names a table or key may not have.
  *
@@ -68,6 +67,7 @@ export function own(obj, key) {
  */
 const LINES = new WeakMap();
 
+/** Minimal TOML subset -> plain object. Throws with a line number on bad input. */
 export function parseToml(text) {
   const out = dict();
   const where = new Map();
@@ -271,14 +271,6 @@ function readValue(value, lineNo) {
 }
 
 /**
- * Turns the parsed file into the shape the rest of the program uses, and
- * rejects anything ambiguous.
- *
- * Rejecting is the point. The sandbox runtime refuses to start on an invalid
- * settings file rather than falling back to a permissive default, and seisin
- * matches that: a permission tool that guesses is worse than no permission tool.
- */
-/**
  * `[runtime] isolate` — one setting, two levels, because they were one and
  * should not have been.
  *
@@ -319,6 +311,14 @@ export function readIsolate(v) {
     `An unknown value cannot silently turn credential isolation off.`);
 }
 
+/**
+ * Turns the parsed file into the shape the rest of the program uses, and
+ * rejects anything ambiguous.
+ *
+ * Rejecting is the point. The sandbox runtime refuses to start on an invalid
+ * settings file rather than falling back to a permissive default, and seisin
+ * matches that: a permission tool that guesses is worse than no permission tool.
+ */
 export function loadConfig(path) {
   const parsed = parseToml(readFileSync(path, "utf8"));
   checkShape(parsed, SHAPE, "", path, LINES.get(parsed));

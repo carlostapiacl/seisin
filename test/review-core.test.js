@@ -5,7 +5,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, mkdirSync, symlinkSync } from "node:fs";
+import { writeFileSync, mkdirSync, symlinkSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { covers, ownersOf, keyHolders, explain } from "../src/owners.js";
 import { loadConfig } from "../src/config.js";
@@ -14,6 +14,8 @@ import { scan } from "../src/scan.js";
 import { inspect, sharedPaths } from "../src/inspect.js";
 import { parentInputs, denyFor, protections, writableRoots, protectedBy } from "../src/surface.js";
 import { review } from "../src/review.js";
+import { toRepoRelative } from "../src/paths.js";
+import { realOrSelf } from "../src/grants.js";
 import { scratch } from "./_tmp.js";
 
 /** A policy on disk, loaded. */
@@ -311,4 +313,36 @@ writes = ["src/**"]
     [line("a", "src/x.ts"), line("a", "src/x.ts"), line("ghost", "docs/y.md")].join("\n") + "\n");
   const { unused } = review(cfg);
   assert.deepEqual(unused.map((u) => `${u.role} ${u.glob}`).sort(), ["a docs/**", "b src/**"]);
+});
+
+// ── one realpath, the disk's own case ───────────────────────────────────────
+
+test("an absolute path spelled in another case is inside the repo on a case-folding disk", (t) => {
+  const base = scratch("seisin-case-");
+  const repo = join(base, "Repo");
+  mkdirSync(join(repo, "src"), { recursive: true });
+  if (!existsSync(join(base, "repo"))) return t.skip("case-sensitive filesystem");
+  writeFileSync(join(repo, "seisin.toml"), `[roles.a]\nwrites = ["src/**"]\n`);
+  const cfg = loadConfig(join(repo, "seisin.toml"));
+  assert.equal(toRepoRelative(cfg, join(base, "repo", "src", "x.ts")), "src/x.ts");
+  assert.equal(realOrSelf(join(base, "repo")), realOrSelf(repo));
+  assert.ok(realOrSelf(join(base, "repo")).endsWith("/Repo"));
+});
+
+test("check does not call a provider missing when it is only where a role writes", () => {
+  const dir = scratch("seisin-prov-");
+  mkdirSync(join(dir, "bin"));
+  writeFileSync(join(dir, "bin", "miprov"), "#!/bin/sh\n", { mode: 0o755 });
+  writeFileSync(join(dir, "seisin.toml"),
+    `[keys.providers.p]\ncommand = ["miprov", "{ref}"]\n[roles.a]\nwrites = ["**"]\nkeys = ["p://x"]\n`);
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  const before = process.env.PATH;
+  process.env.PATH = `${join(dir, "bin")}:${before}`;
+  try {
+    const kinds = inspect(cfg).warnings.map((w) => w.kind);
+    assert.ok(kinds.includes("provider-in-territory"));
+    assert.ok(!kinds.includes("provider-missing"));
+  } finally {
+    process.env.PATH = before;
+  }
 });

@@ -113,7 +113,7 @@ export function scan(root, protectedDirs = [], ignore = [], limit = 500) {
   // The real root, so a symlink's destination is compared like with like: on
   // macOS a tree under /tmp is really under /private/tmp, and every link
   // inside it pointed "out of the repo" until both sides were resolved.
-  try { root = realpathSync(root); } catch { /* scanned as written */ }
+  try { root = realpathSync.native(root); } catch { /* scanned as written */ }
   // `.secrets/` and `.secrets` are one directory. With the slash kept, the
   // prefix test below never matched and the protected directory was scanned.
   const safe = protectedDirs.map((d) => join(root, d.replace(/\/+$/, "") || "."));
@@ -161,7 +161,7 @@ export function scan(root, protectedDirs = [], ignore = [], limit = 500) {
       if (e.isSymbolicLink()) {
         let real;
         try {
-          real = realpathSync(full);
+          real = realpathSync.native(full);
         } catch {
           continue;                       // a broken link has nothing to leak
         }

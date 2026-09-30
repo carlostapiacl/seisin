@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { realpathSync, lstatSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { WILD } from "./paths.js";
 
 /**
  * What every agent needs to write no matter which role it is.
@@ -145,10 +146,18 @@ export function isLink(p) {
   }
 }
 
-/** The path with symlinks followed, or the path itself if it is not on disk. */
+/**
+ * The path with symlinks followed, or the path itself if it is not on disk.
+ *
+ * `.native` is realpath(3): one call instead of an lstat per component, and on
+ * a case-insensitive disk (APFS) it answers with the case the disk has. The JS
+ * version keeps whatever case it was given, so `/users/x` and `/Users/x` —
+ * one directory — compared as two, and a path spelled the other way came out
+ * "outside the repo" while the kernel treated it as inside.
+ */
 export function realOrSelf(p) {
   try {
-    return realpathSync(p);
+    return realpathSync.native(p);
   } catch {
     return p;
   }
@@ -159,7 +168,7 @@ export function expand(p) {
   if (p === "$TMPDIR") out = tmpdir();
   else if (p === "~" || p.startsWith("~/")) out = join(homedir(), p.slice(2));
   try {
-    return realpathSync(out);
+    return realpathSync.native(out);
   } catch {
     return out; // not on disk yet; hand the literal through rather than drop it
   }
@@ -195,7 +204,6 @@ export function toWritePath(glob, key = "writes") {
  * prefixes, and "one level down" is not a prefix. Refusing is not a placeholder
  * here, it is the answer.
  */
-const WILD = /[*?[\]]/;                       // owners.js treats all four as wildcards
 const EXPRESSIBLE = (g) =>
   g === "**" ||                               // the whole repo
   !WILD.test(g) ||                            // a literal path
