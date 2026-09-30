@@ -237,3 +237,65 @@ test("review: wired but nothing allowed yet is said as that, not as 'run seisin 
   assert.match(r.out, /wired, but no allowed action logged yet/);
   assert.doesNotMatch(r.out, /Run `seisin wire`/);
 });
+
+/* ── 6, 11, 16. init ──────────────────────────────────────────────────────── */
+
+function tree(prefix, files) {
+  const dir = boxed(prefix);
+  for (const f of files) {
+    if (f.endsWith("/")) { mkdirSync(join(dir, f), { recursive: true }); continue; }
+    mkdirSync(join(dir, f, ".."), { recursive: true });
+    writeFileSync(join(dir, f), "");
+  }
+  return dir;
+}
+
+test("init on a blank repo proposes the folders that hold code, and declares a key dir that is there", () => {
+  const dir = tree("ux-init-", ["web/src/a.ts", "api/main.py", "docs/a.md", "node_modules/x/i.js", ".tools/t.js", ".secrets/", ".gitignore"]);
+  const r = sh(dir, "init");
+  assert.equal(r.code, 0, r.all);
+  const toml = readFileSync(join(dir, "seisin.toml"), "utf8");
+  assert.match(toml, /\[roles\.web\]\nwrites = \["web\/\*\*"\]/);
+  assert.match(toml, /\[roles\.api\]\nwrites = \["api\/\*\*"\]/);
+  assert.doesNotMatch(toml, /src\/web|src\/api|roles\.docs|node_modules|tools/);
+  assert.match(toml, /^\[keys\]\ndir = "\.secrets"/m);
+  assert.match(toml, /Each role runs as its own process/);
+  assert.match(toml, /subagent runs inside its parent's process/);
+  assert.match(readFileSync(join(dir, ".gitignore"), "utf8"), /^\.seisin\/$/m);
+  assert.match(r.out, /added \.seisin\/ to \.gitignore/);
+  assert.match(r.out, /earns its setup at two roles/);
+  assert.equal(sh(dir, "check").code, 0, "the proposal loads");
+});
+
+test("init from CODEOWNERS makes one role per owner, with every path, and does not stop at eight", () => {
+  const lines = ["/apps/web/ @org/web", "/lib/ @org/web", "* @org/all"];
+  for (let i = 1; i <= 10; i++) lines.push(`/p${i}/ @o${i}`);
+  const dir = tree("ux-init-", []);
+  writeFileSync(join(dir, "CODEOWNERS"), lines.join("\n") + "\n");
+  assert.equal(sh(dir, "init").code, 0);
+  const toml = readFileSync(join(dir, "seisin.toml"), "utf8");
+  assert.match(toml, /\[roles\.web\]\nwrites = \["apps\/web\/\*\*", "lib\/\*\*"\]/);
+  assert.equal(toml.match(/^\[roles\./gm).length, 11);
+});
+
+test("a second init suggests --force, which keeps the old policy as .bak", () => {
+  const dir = tree("ux-init-", ["app/a.js"]);
+  assert.equal(sh(dir, "init").code, 0);
+  writeFileSync(join(dir, "seisin.toml"), readFileSync(join(dir, "seisin.toml"), "utf8") + "# mine\n");
+  const again = sh(dir, "init");
+  assert.equal(again.code, 2);
+  assert.match(again.err, /already exists here\. seisin init --force replaces it/);
+  const forced = sh(dir, "init", "--force");
+  assert.equal(forced.code, 0, forced.all);
+  assert.match(readFileSync(join(dir, "seisin.toml.bak"), "utf8"), /# mine/);
+  assert.doesNotMatch(readFileSync(join(dir, "seisin.toml"), "utf8"), /# mine/);
+});
+
+test("init --from-observations with nothing observed says where observations come from", () => {
+  const dir = demo();
+  const r = sh(dir, "init", "--from-observations");
+  assert.equal(r.code, 2);
+  assert.match(r.err, /observations come from the hook: run `seisin wire`/);
+  assert.match(r.err, /a plain shell command goes through no hook/);
+  assert.match(r.err, /keys stay denied/);
+});

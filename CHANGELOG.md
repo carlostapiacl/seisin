@@ -229,6 +229,20 @@ From a first-run review with a small sample repo.
 - **`seisin <command> --help`** lists that command's flags, one or two examples and its exit
   codes. The README has the exit codes too.
 
+- **`init` proposes what is there.** In a repo with no `.claude/agents` and no CODEOWNERS it
+  proposed `src/web/**` and `src/api/**` whatever the repo held; now it is one role per top-level
+  folder that holds code (dot-folders, dependencies and build output skipped), and `[keys] dir` is
+  written when `.secrets/`, `secrets/` or `.keys/` exists. From CODEOWNERS it makes one role per
+  owner with all of that owner's paths, instead of one per line cut at eight. The file says each
+  role runs as its own `seisin run`, and that a Claude Code subagent has its parent's role. A
+  second `init` points at `--force`, which keeps the old policy as `seisin.toml.bak`; `.seisin/` is
+  added to an existing `.gitignore`, and said. With one agent or none, one line says what seisin
+  adds over the agent's own sandbox and that it earns its setup at two roles.
+- **`--observe` is described as what it does.** The README said it "records, denies nothing"; the
+  key dirs, the policy and the network stay shut, and what is recorded comes from the hook. `init
+  --from-observations` with nothing observed says so: run `seisin wire`, observe an agent, not a
+  plain shell command.
+
 ## 0.4.2 — 2026-09-29
 
 - **Small hardening across the launcher.** A `--observe` written after the command
