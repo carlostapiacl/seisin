@@ -398,7 +398,8 @@ export function keyName(config, target) {
  * send every read through the key question, so `explain dev read .env` said
  * "denied — no role declares .env" about a file every role could read. A wrong
  * no from the tool whose job is saying what the kernel will do. Now a path
- * inside a key directory is a key question; anything else is answered as the open read it is, with how to make it a key.
+ * inside a key directory is a key question; anything else is answered as the
+ * open read it is, with how to make it a key.
  */
 export function explainFileRead(config, role, rel, credentialHomes = []) {
   // Only a key directory makes a key: settingsFor refuses a key declared

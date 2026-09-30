@@ -71,13 +71,16 @@ export function fromCwd(config, target, cwd = process.cwd()) {
   if (typeof target !== "string" || isAbsolute(target)) return target;
   const root = config.root;
   const inside = (r, t) => t === r || t.startsWith(r + sep);
-  const here = inside(root, cwd) ? cwd : inside(realAncestor(root), realAncestor(cwd)) ? realAncestor(cwd) : null;
-  if (!here) return target;
-  const base = here === cwd ? root : realAncestor(root);
-  const abs = join(here, target);
-  // Normalised against the same spelling of the root the cwd matched.
-  const rel = relative(base, abs);
-  if (rel === "" ) return root;
-  if (rel.startsWith("..")) return abs;
+  // The cwd and the root compared in the same spelling: as written, or both
+  // through their symlinks (on macOS /tmp is /private/tmp).
+  let base = root, here = cwd;
+  if (!inside(root, cwd)) {
+    base = realAncestor(root);
+    here = realAncestor(cwd);
+    if (!inside(base, here)) return target;
+  }
+  const rel = relative(base, join(here, target));
+  if (rel === "") return root;
+  if (rel === ".." || rel.startsWith(".." + sep)) return join(here, target);
   return join(root, rel);
 }
