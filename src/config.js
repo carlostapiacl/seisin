@@ -164,7 +164,7 @@ export function parseToml(text) {
 }
 
 /** Is there a `]` on this line outside a quoted string? Strings do not span lines. */
-function closesArray(line) {
+export function closesArray(line) {
   let quoted = false;
   for (let i = 0; i < line.length; i++) {
     const c = line[i];
@@ -175,7 +175,7 @@ function closesArray(line) {
 }
 
 /** Strips a trailing `#` comment, but not one inside a quoted string. */
-function stripComment(line) {
+export function stripComment(line) {
   let quoted = false;
   for (let i = 0; i < line.length; i++) {
     const c = line[i];
@@ -319,8 +319,10 @@ export function readIsolate(v) {
  * settings file rather than falling back to a permissive default, and seisin
  * matches that: a permission tool that guesses is worse than no permission tool.
  */
-export function loadConfig(path) {
-  const parsed = parseToml(readFileSync(path, "utf8"));
+export function loadConfig(path, text = readFileSync(path, "utf8")) {
+  // `text` lets a caller validate an edit before writing it — the console
+  // previews a policy that does not exist on disk yet, against the real root.
+  const parsed = parseToml(text);
   checkShape(parsed, SHAPE, "", path, LINES.get(parsed));
   // Read only what the file actually declared. The parser refuses the names
   // that make inheritance possible, and this is the second half of the same

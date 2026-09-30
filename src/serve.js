@@ -20,6 +20,7 @@ import { read, logPath, logSegments } from "./log.js";
 import { settingsFor } from "./srt.js";
 import { pending, requestsPath, settle, applyGrant, refuseIfBarred, editPolicy } from "./requests.js";
 import { causesOf, parseSince, queue, verdicts, wallsByRole } from "./views.js";
+import { planEdit, hashOf } from "./controls.js";
 
 // Moved to views.js, which the MCP server shares; kept importable from here.
 export { causesOf } from "./views.js";
@@ -133,6 +134,7 @@ export function state(configPath, { since = null, snap = snapshot(configPath) } 
     localPorts: r.localPorts ?? [],
     mcp: r.mcp ?? null,
     trustd: r.trustd === true,
+    controlFiles: r.controlFiles ?? [],
     // Counted over the same window as the causes, so the KPI and the screen it
     // links to agree.
     blocks: derived.blocks.get(r.name) ?? 0,
@@ -153,6 +155,10 @@ export function state(configPath, { since = null, snap = snapshot(configPath) } 
     // paste away the provenance a grant just wrote.
     toml: text,
     keyDirs: cfg.keyDirs,
+    protect: { instructions: cfg.protect?.instructions === true },
+    // What the control-files preview is computed against; a save sends it back
+    // so a policy edited in between is not overwritten by a stale decision.
+    base: hashOf(text),
     allowedDomains: cfg.allowedDomains,
     roles,
     causes: derived.causes,
@@ -241,6 +247,56 @@ function decide(configPath, { key, decision, reason }) {
   return { ok: true, role: req.role, grant: req.grant, decision };
 }
 
+/**
+ * Hand a role a family of control files, or protect instruction files — the
+ * second thing a person can change from the console, and the same kind of
+ * write as a grant: through editPolicy, under the policy's lock, atomically,
+ * with a stamp saying it came from here and when.
+ *
+ * `dryRun` answers what the edit would do — the denyWrite entries each role's
+ * profile gains or loses, and who could then write each family — and writes
+ * nothing. The page shows that and asks before it sends the real one. `base`
+ * is the hash of the text the preview was computed from: a policy that moved
+ * in between (a grant, an editor) is a 409, not a save over a decision the
+ * person never saw.
+ *
+ * One edit per call: `{ role, families }` for a role, or `{ protect }` for
+ * `[protect] instructions`. The families are config.js's own list; asking
+ * for `.claude` or git hooks is a 400, as it is in the file.
+ */
+function controlFiles(configPath, args, { lockWaitMs = 10000 } = {}) {
+  const { role, families, protect, reason, dryRun, base } = args;
+  const forRole = role !== undefined || families !== undefined;
+  if (forRole === (protect !== undefined))
+    throw bad("send either { role, families } or { protect } — one edit at a time");
+  if (reason !== undefined && typeof reason !== "string") throw bad("reason must be text");
+  // Strictly a boolean: "true" as a string must not be read as a save.
+  if (dryRun !== undefined && typeof dryRun !== "boolean") throw bad("dryRun must be true or false");
+  if (base !== undefined && typeof base !== "string") throw bad("base must be the hash the preview returned");
+  const edit = forRole ? { kind: "role", role, families, reason } : { kind: "protect", on: protect, reason };
+  const cfg = loadConfig(configPath);
+  if (dryRun === true) {
+    const { toml, ...plan } = planEdit(cfg, readFileSync(configPath, "utf8"), edit);
+    return { ok: true, dryRun: true, ...plan };
+  }
+  let plan = null;
+  try {
+    editPolicy(cfg, (before) => {
+      if (base !== undefined && hashOf(before) !== base)
+        throw Object.assign(new Error("the policy changed since this preview — look at it again before saving"), { status: 409 });
+      // Planned against the text under the lock, and against a config loaded
+      // from it: a grant that landed a moment ago is kept, not overwritten.
+      plan = planEdit(loadConfig(configPath, before), before, edit);
+      return { toml: plan.toml, changed: plan.changed };
+    }, { waitMs: lockWaitMs });
+  } catch (e) {
+    if (e.code === "ELOCKED") throw Object.assign(new Error("another edit of the policy is in progress — try again in a moment"), { status: 503 });
+    throw e;
+  }
+  const { toml, ...rest } = plan;
+  return { ok: true, dryRun: false, ...rest };
+}
+
 /** An error that is the request's fault. */
 function bad(message) {
   return Object.assign(new Error(message), { status: 400 });
@@ -321,7 +377,7 @@ function declineAll(configPath, { keys, reason }) {
   return { ok: true, declined };
 }
 
-export function serve(configPath, port = 4178) {
+export function serve(configPath, port = 4178, { lockWaitMs = 10000 } = {}) {
   const page = join(HERE, "..", "ui", "index.html");
   if (!existsSync(page)) throw new Error("the console is missing from this install");
 
@@ -421,6 +477,8 @@ export function serve(configPath, port = 4178) {
       return post(1024 * 1024, (args) => declineAll(configPath, args));
     if (req.method === "POST" && pathOf(req.url) === "/api/decide")
       return post(4096, (args) => decide(configPath, args));
+    if (req.method === "POST" && pathOf(req.url) === "/api/control-files")
+      return post(4096, (args) => controlFiles(configPath, args, { lockWaitMs }));
     if (req.method !== "GET" && req.method !== "HEAD") {
       res.writeHead(405).end("method not allowed");
       return;

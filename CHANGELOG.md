@@ -146,6 +146,15 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
   file in the first while its printed territory said nothing of it. Both are denied to every role.
 - A role's `git checkout` cannot update a protected file it may not write; git exits 0 and leaves
   the old version as a modification. The README's first-day section says what to do.
+- **Both settings can be changed from the console.** Each role's panel has a toggle per family,
+  and there is one for `[protect] instructions` (the `instructions` toggle is disabled, and says
+  why, while nothing protects them). A toggle saves nothing: the console first shows the
+  `denyWrite` entries each sandbox profile gains or loses — computed by the server from the edited
+  policy — and who could then write each family; a second button saves. The edit touches only that
+  role's table (or creates `[protect]` above the first role), keeps every comment, is stamped
+  `# set in the console <date>`, and goes through the grants' lock. A policy that moved since the
+  preview is a 409, a held lock a 503, an unknown role or family a 400. The MCP server still
+  writes nothing.
 
 ### Granting and declining
 
