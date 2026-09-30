@@ -12,16 +12,12 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveSrt } from "../src/commands/run.js";
-import { boxed } from "./_tmp.js";
+import { boxed, CLI, srtSkip } from "./_tmp.js";
 
-const CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "cli.js");
-const skip = resolveSrt() ? false : "sandbox runtime not installed";
+const skip = srtSkip();
 
 let repo;
 before(() => {
-  const box = join(dirname(fileURLToPath(import.meta.url)), ".sandbox-box");
-  mkdirSync(box, { recursive: true });
   repo = boxed("exit-");
   mkdirSync(join(repo, "src"), { recursive: true });
   writeFileSync(join(repo, "token.txt"), "a-token-long-enough-to-redact\n");

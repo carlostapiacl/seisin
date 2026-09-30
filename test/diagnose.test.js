@@ -12,7 +12,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, appendFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { boxed } from "./_tmp.js";
+import { boxed, CLI, repoWith } from "./_tmp.js";
 
 import { loadConfig } from "../src/config.js";
 import { afterTool, atSessionStart, recentKernelDenials } from "../src/diagnose.js";
@@ -20,19 +20,9 @@ import { wire, wired } from "../src/commands/wire.js";
 import { logPath } from "../src/log.js";
 import { resolveSrt } from "../src/commands/run.js";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const CLI = join(HERE, "..", "src", "cli.js");
-const BOX = join(HERE, ".sandbox-box");
 const TOML = '[roles.web]\nwrites = ["src/web/**"]\n\n[roles.api]\nwrites = ["src/api/**"]\n';
 
-function repo(toml = TOML) {
-  mkdirSync(BOX, { recursive: true });
-  const dir = boxed("diag-");
-  writeFileSync(join(dir, "seisin.toml"), toml);
-  mkdirSync(join(dir, "src", "api"), { recursive: true });
-  mkdirSync(join(dir, "src", "web"), { recursive: true });
-  return dir;
-}
+const repo = (toml = TOML) => repoWith("diag-", toml, ["src/api/", "src/web/"]);
 
 function kernelLine(dir, role, target, agoMs = 0) {
   mkdirSync(join(dir, ".seisin"), { recursive: true });

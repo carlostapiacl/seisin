@@ -14,11 +14,10 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { boxed } from "./_tmp.js";
+import { boxed, CLI } from "./_tmp.js";
 
 import { resolveSrt } from "../src/commands/run.js";
 
-const CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "cli.js");
 // Resolved the way `seisin run` resolves it, not the way a shell would. This
 // asked `command -v srt` — the global install only — so a checkout whose
 // bundled runtime was right there skipped fourteen tests and reported green.
@@ -34,8 +33,6 @@ before(() => {
   // space to every role, so a repo living inside it is writable by all of them —
   // which would let "a role cannot write outside it" pass by accident. It did,
   // once, and this is the fix.
-  const box = join(dirname(fileURLToPath(import.meta.url)), ".sandbox-box");
-  mkdirSync(box, { recursive: true });
   repo = boxed("repo-");
   mkdirSync(join(repo, "src", "web"), { recursive: true });
   mkdirSync(join(repo, "src", "api"), { recursive: true });
@@ -195,7 +192,6 @@ test("seisin refuses to run inside seisin, by name", () => {
  * the arithmetic; only this can check that it runs.
  */
 test("an isolated role starts, and loses the credentials the ordinary mode leaves open", { skip }, () => {
-  const box = join(dirname(fileURLToPath(import.meta.url)), ".sandbox-box");
   const iso = boxed("iso-");
   mkdirSync(join(iso, "src"), { recursive: true });
   writeFileSync(join(iso, "seisin.toml"),

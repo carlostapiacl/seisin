@@ -15,13 +15,11 @@ import { fileURLToPath } from "node:url";
 import { writeUiLink, readUiLink, clearUiLink } from "../src/uilink.js";
 import { serve } from "../src/serve.js";
 import { RUNS_NAME } from "../src/rundir.js";
+import { boxed } from "./_tmp.js";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const BOX = join(HERE, ".sandbox-box");
-function base() {
-  mkdirSync(BOX, { recursive: true });
-  return mkdtempSync(join(BOX, "uilink-"));
-}
+// Under test/.sandbox-box through boxed(), which removes it when this file's
+// process ends: made by hand here, every run left its directories behind.
+const base = () => boxed("uilink-");
 const URL_ = "http://127.0.0.1:4178/#t=deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
 
 test("a link round-trips, and its writer reads as alive", () => {

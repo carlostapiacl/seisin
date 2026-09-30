@@ -10,26 +10,16 @@ import { createRequire } from "node:module";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { boxed } from "./_tmp.js";
+import { boxed, CLI, srtSkip, repoWith as shared } from "./_tmp.js";
 
 import { loadConfig } from "../src/config.js";
 import { settingsFor, loopbackVia, localPortDomains, NO_PROXY_WITHOUT_LOOPBACK } from "../src/srt.js";
 import { inspect } from "../src/inspect.js";
 import { renderReport } from "../src/render.js";
-import { resolveSrt } from "../src/commands/run.js";
 
 const require_ = createRequire(import.meta.url);
-const HERE = dirname(fileURLToPath(import.meta.url));
-const CLI = join(HERE, "..", "src", "cli.js");
-const BOX = join(HERE, ".sandbox-box");
 
-function repoWith(toml) {
-  mkdirSync(BOX, { recursive: true });
-  const dir = boxed("ports-");
-  writeFileSync(join(dir, "seisin.toml"), toml);
-  mkdirSync(join(dir, "app"), { recursive: true });
-  return dir;
-}
+const repoWith = (toml) => shared("ports-", toml, ["app/"]);
 const load = (toml) => loadConfig(join(repoWith(toml), "seisin.toml"));
 
 const TWO =
@@ -90,7 +80,7 @@ test("check shows the ports, and says so when local_binding makes them moot", ()
   assert.equal(both.warnings.some((w) => w.kind === "local-ports-moot"), process.platform === "darwin");
 });
 
-const skip = resolveSrt() !== null ? false : "sandbox runtime not installed";
+const skip = srtSkip();
 
 test("against the kernel: the named port answers, the next one does not", { skip }, async (t) => {
   const servers = await Promise.all([0, 1].map(() => new Promise((ok) => {

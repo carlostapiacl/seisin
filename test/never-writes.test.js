@@ -14,38 +14,24 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, symlinkSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { boxed } from "./_tmp.js";
+import { boxed, CLI, srtSkip, repoWith as shared } from "./_tmp.js";
 
 import { loadConfig } from "../src/config.js";
 import { explain, ownersOf } from "../src/owners.js";
 import { inspect } from "../src/inspect.js";
 import { renderReport } from "../src/render.js";
 import { settingsFor } from "../src/srt.js";
-import { resolveSrt } from "../src/commands/run.js";
 import { decide } from "../src/hook.js";
 import { pending } from "../src/requests.js";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const CLI = join(HERE, "..", "src", "cli.js");
-// Outside the system temp dir for the same reason sandbox.test.js is: scratch
-// is writable by every role, so a repo there passes "cannot write" by accident.
-const BOX = join(HERE, ".sandbox-box");
-
-function repoWith(toml, touch = []) {
-  mkdirSync(BOX, { recursive: true });
-  const dir = boxed("never-");
-  writeFileSync(join(dir, "seisin.toml"), toml);
-  // What a subtraction names has to exist for it to be enforced on Linux (see
-  // enforcedNeverWrites), so the tests that are about enforcement create it —
-  // and then say the same thing on both kernels. The Linux-only test below is
-  // the one about a path that does not exist.
-  for (const f of touch) {
-    if (f.endsWith("/")) { mkdirSync(join(dir, f), { recursive: true }); continue; }
-    mkdirSync(dirname(join(dir, f)), { recursive: true });
-    writeFileSync(join(dir, f), "");
-  }
-  return dir;
-}
+// Outside the system temp dir (boxed) for the same reason sandbox.test.js is:
+// scratch is writable by every role, so a repo there passes "cannot write" by
+// accident.
+// What a subtraction names has to exist for it to be enforced on Linux (see
+// enforcedNeverWrites), so the tests that are about enforcement create it —
+// and then say the same thing on both kernels. The Linux-only test below is
+// the one about a path that does not exist.
+const repoWith = (toml, touch = []) => shared("never-", toml, touch);
 const LOCK = ["app/.git/index.lock"];
 
 const WORKTREE_ROLE =
@@ -141,7 +127,7 @@ for (const [bad, why] of [["/etc/passwd", /absolute/], ["app/../x", /\.\./], [""
 }
 
 // End to end: the one test that can tell the subtraction actually lands.
-const skip = resolveSrt() !== null ? false : "sandbox runtime not installed";
+const skip = srtSkip();
 
 test("the real sandbox refuses the write, and the rest of the territory still works", { skip }, () => {
   const dir = repoWith(WORKTREE_ROLE, LOCK);

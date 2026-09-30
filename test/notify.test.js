@@ -9,22 +9,17 @@ import { createServer } from "node:http";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { boxed } from "./_tmp.js";
+import { boxed, CLI, srtSkip } from "./_tmp.js";
 
 import { loadConfig } from "../src/config.js";
 import { notifier, message } from "../src/notify.js";
 import { record, requestsPath } from "../src/requests.js";
 import { buildEnv } from "../src/env.js";
-import { resolveSrt } from "../src/commands/run.js";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const CLI = join(HERE, "..", "src", "cli.js");
-const BOX = join(HERE, ".sandbox-box");
 
 const BASE = '[keys]\ndir = ".secrets"\n\n[roles.web]\nwrites = ["src/web/**"]\n\n[roles.api]\nwrites = ["src/api/**"]\n';
 
 function repo(extra = '[notify]\nurl_file = ".secrets/notify-url.txt"\n', url = "http://127.0.0.1:9/") {
-  mkdirSync(BOX, { recursive: true });
   const dir = boxed("notify-");
   writeFileSync(join(dir, "seisin.toml"), BASE + "\n" + extra);
   mkdirSync(join(dir, ".secrets"), { recursive: true });
@@ -42,7 +37,6 @@ test("a URL written into seisin.toml refuses to load: every role can read that f
 test("url_file outside a key directory, or held by a role, refuses to load", () => {
   const out = repo('[notify]\nurl_file = "notify-url.txt"\n');
   assert.throws(() => loadConfig(join(out, "seisin.toml")), /not inside a key directory/);
-  mkdirSync(BOX, { recursive: true });
   const held = boxed("notify-");
   writeFileSync(join(held, "seisin.toml"),
     '[keys]\ndir = ".secrets"\n\n[roles.web]\nwrites = ["src/web/**"]\nkeys = ["notify-url.txt"]\n\n[notify]\nurl_file = ".secrets/notify-url.txt"\n');
@@ -81,7 +75,7 @@ test("the notify URL never reaches the role, even when it names it", () => {
   assert.ok(dropped.includes("SEISIN_NOTIFY_URL"));
 });
 
-const skip = resolveSrt() !== null ? false : "sandbox runtime not installed";
+const skip = srtSkip();
 
 test("a role can neither read nor rewrite the URL file", { skip }, () => {
   const dir = repo();
