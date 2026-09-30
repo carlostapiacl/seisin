@@ -13,6 +13,7 @@
  *      back to its defaults. Emitting the whole object removes that class of
  *      error, which is most of what this file is for.
  */
+import { existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { STATE_DIR, CONFIG_NAME } from "./layout.js";
 import { entriesOf } from "./keys.js";
@@ -111,12 +112,23 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
    * implicit grant; denyWrite also wins over Seisin's explicit `~/.claude`
    * runtime scratch grant for the nested debug directory.
    *
-   * On Linux bubblewrap may create a temporary mount point for a missing deny
-   * target and removes it after the run. Naming it anyway matters: otherwise a
-   * process could create ~/.claude/debug after the profile was built.
+   * On macOS both are named whether they exist or not: the profile is a set of
+   * patterns, and a missing directory costs nothing. On Linux only the ones
+   * that exist are. bubblewrap denies a missing path by placing something on
+   * the host for the length of the run, in the user's home, where other tools
+   * see it — and a run that is killed leaves it behind. So a missing one is
+   * either not needed or made first:
+   * - its parent is not one a role may write (`~/.npm`): nothing can create
+   *   it inside the box, and there is nothing to deny;
+   * - its parent is (`~/.claude`, the runtime scratch every role gets): a role
+   *   could create it, so it is created here, outside the box, and denied like
+   *   any directory that exists. It is the directory Claude Code itself logs
+   *   to; making it empty changes nothing for anyone.
    */
+  const scratch = writePathsOf(config, config.roles[roleName] ?? { name: roleName, writes: [] });
   const runtimeConvenience = ["~/.npm/_logs", "~/.claude/debug"]
-    .map(expand);
+    .map(expand)
+    .filter((p) => process.platform !== "linux" || existsSync(p) || madeFirst(p, scratch));
 
   /**
    * Refuse before the runtime does, because the runtime's refusal says nothing.
@@ -363,4 +375,11 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
      */
     ...(role.trustd === true ? { enableWeakerNetworkIsolation: true } : {}),
   };
+}
+
+/** Creates `p` when its parent exists and a role may write there; says whether it now exists. */
+function madeFirst(p, writable) {
+  const parent = dirname(p);
+  if (!existsSync(parent) || !writable.some((w) => parent === w || parent.startsWith(w + "/"))) return false;
+  try { mkdirSync(p, { recursive: true }); return true; } catch { return false; }
 }
