@@ -72,6 +72,12 @@ function config() {
   return loadConfig(path);
 }
 
+/** The policy here, or null — for a command that can answer without one. */
+function maybeConfig() {
+  const path = findConfig();
+  return path ? loadConfig(path) : null;
+}
+
 /**
  * Commands that need a config get it; commands that make one do not.
  *
@@ -93,7 +99,9 @@ const COMMANDS = {
     const { init, initFromObservations } = await import("./commands/init.js");
     void (argv.includes("--from-observations") ? initFromObservations(config()) : init(process.cwd(), { force: argv.includes("--force") }));
   },
-  ui: async () => (await import("./commands/ui.js")).ui(config(), argv),
+  // --link only reads a record; it answers without a policy here too, and
+  // says so when the console it finds serves another one.
+  ui: async () => (await import("./commands/ui.js")).ui(argv.includes("--link") ? maybeConfig() : config(), argv),
   whose: async () => void (await import("./commands/whose.js")).whose(config(), argv),
   wire: async () => void (await import("./commands/wire.js")).wire(config()),
   review: async () => ((await import("./commands/review.js")).reviewCommand(config(), argv).friction.length ? 1 : 0),

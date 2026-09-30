@@ -255,6 +255,11 @@ From a first-run review with a small sample repo.
   says which. An existing bare `seisin hook` with no seisin on PATH is repointed. Outside a git
   repository it no longer says to commit the file.
 
+- **`ui --link` says which policy it serves.** The link record is per port, so in one repo it
+  returned the console another repo had started. The record now carries the policy's path;
+  `--link` prints it and warns when it is not this directory's, and `ui` prints the full path of
+  the policy it reads.
+
 ## 0.4.2 — 2026-09-29
 
 - **Small hardening across the launcher.** A `--observe` written after the command
