@@ -33,8 +33,7 @@
  * A window is still accepted, and still useful for a different reason: a
  * refusal from three weeks ago is noise even if it is still refused today.
  */
-import { openSync, readSync, closeSync, statSync } from "node:fs";
-import { read } from "./log.js";
+import { read, readEntries } from "./log.js";
 import { explain } from "./owners.js";
 import { STALE_RUNS, RUN_GAP_MS, runsAfter } from "./requests.js";
 
@@ -89,9 +88,9 @@ export function walls(config, role, { file, entries = null, min = MIN_HITS, sinc
 /**
  * How much of the log `timesHit` will look at.
  *
- * The log is append-only and never rotates — that is the storage design and it
- * is the right one — so "read the file" is O(everything you have ever done),
- * on a path that runs inside the hook. Measured on a 372 KB log: 3 ms per
+ * The log is append-only and a segment only rotates at 8 MiB, so "read the
+ * file" is O(everything since the last rotation), on a path that runs inside
+ * the hook. Measured on a 372 KB log: 3 ms per
  * call, which is nothing, and 300 ms at 37 MB, which is not, on every refusal
  * of every turn forever.
  *
@@ -99,7 +98,8 @@ export function walls(config, role, { file, entries = null, min = MIN_HITS, sinc
  * lifetime repetition, and recent is the one the sentence is about anyway: an
  * agent being told "you have hit this three times" means this session, not
  * last month. 4 MB is thousands of entries — far more than a turn produces,
- * and bounded.
+ * and bounded. Right after a rotation the tail is short, and so is the count:
+ * the current segment only, on purpose.
  */
 const TAIL_BYTES = 4 * 1024 * 1024;
 
@@ -113,39 +113,14 @@ const TAIL_BYTES = 4 * 1024 * 1024;
  * call.
  */
 export function timesHit(file, role, action, target) {
-  let text;
-  try {
-    const { size } = statSync(file);
-    const from = Math.max(0, size - TAIL_BYTES);
-    const fd = openSync(file, "r");
-    try {
-      const buf = Buffer.alloc(size - from);
-      readSync(fd, buf, 0, buf.length, from);
-      text = buf.toString("utf8");
-    } finally {
-      closeSync(fd);
-    }
-  } catch {
-    return 0;                       // no log yet is not an error; it is a first turn
-  }
-  const lines = text.split("\n");
-  // The first line of a tail read is usually half an entry. Dropping it costs
-  // one count at most and keeps a truncated line from being parsed as if it
-  // were whole.
-  if (from0(text, file)) lines.shift();
+  // The line the tail cut lands in is dropped (readLines checks the byte before
+  // the cut, so a cut on a boundary keeps it). Comparing the file's byte size
+  // with the text's UTF-16 length used to decide that, and with any multibyte
+  // character in the tail it kept the fragment of a line or dropped a whole one.
   let n = 0;
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    let e;
-    try { e = JSON.parse(line); } catch { continue; }
+  for (const e of readEntries(file, { tail: TAIL_BYTES }))
     if (e.role === role && e.verdict === "denied" && e.action === action && e.target === target) n++;
-  }
   return n;
-}
-
-/** Did we start mid-file? Then the first line is a fragment. */
-function from0(text, file) {
-  try { return statSync(file).size > text.length; } catch { return false; }
 }
 
 /**
