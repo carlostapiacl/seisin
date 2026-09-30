@@ -235,20 +235,50 @@ export function descends(pid, root, snapshot) {
   return false;
 }
 
-/** pid → ppid for every process this user can see. */
+/**
+ * pid → ppid for every process this user can see, and in `tree.roots` the
+ * pids that are a sandbox run's root: an `srt`, or a `seisin run`.
+ *
+ * The roots are what makes "not ours" provable. A process outside our tree is
+ * someone else's only if its ancestry reaches another run; one whose ancestry
+ * ends at init was orphaned — `cmd &`, a build daemon, git's fsmonitor — and
+ * may well be ours, reparented when the shell that started it exited.
+ */
 export function processTree(run = execFileSync) {
   const tree = new Map();
+  tree.roots = new Set();
   try {
-    const out = run("/bin/ps", ["-Ao", "pid=,ppid="], { encoding: "utf8" });
+    const out = run("/bin/ps", ["-Ao", "pid=,ppid=,args="], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
     for (const line of out.split("\n")) {
-      const m = line.trim().match(/^(\d+)\s+(\d+)$/);
-      if (m) tree.set(Number(m[1]), Number(m[2]));
+      const m = line.trim().match(/^(\d+)\s+(\d+)(?:\s+(.*))?$/);
+      if (!m) continue;
+      tree.set(Number(m[1]), Number(m[2]));
+      if (m[3] && RUN_ROOT.test(m[3])) tree.roots.add(Number(m[1]));
     }
   } catch {
     // No tree means nothing can be attributed, which the caller handles by
     // recording nothing. A permission tool does not invent an owner.
   }
   return tree;
+}
+
+/** The command line of an `srt` (however it was installed) or of `seisin run`. */
+const RUN_ROOT = /(?:^|[\s/])srt(?:\s|$)|sandbox-runtime\/dist\/cli\.js(?:\s|$)|(?:^|[\s/])(?:seisin|cli\.js)\s+run\s/;
+
+/**
+ * Does `pid` descend from a run root other than `root`?
+ *
+ * A table without command lines (`roots` absent) cannot tell an orphan from a
+ * stranger, and answers as before: alive and not ours is someone else's.
+ */
+export function underAnotherRun(pid, root, snapshot) {
+  if (!snapshot.roots) return true;
+  const seen = new Set();
+  for (let at = pid; at && at !== 1 && !seen.has(at); at = snapshot.get(at)) {
+    if (at !== root && snapshot.roots.has(at)) return true;
+    seen.add(at);
+  }
+  return false;
 }
 
 /**
@@ -425,13 +455,16 @@ export function watchDenials(onDeny, { pid = null, argv = null, platform = proce
       // moments ago, and then look again later rather than refresh now. A pid
       // it does have is answered: its parents do not change into ours.
       if (treeAt < d.seen && !tree.has(d.pid)) {
-        if (now() - treeAt < TREE_MS) { later(); return false; }
+        if (now() - treeAt < TREE_MS) { later(); return LATER; }
         snapshot();
       }
       if (!descends(d.pid, root, tree)) {
-        // Alive, and not ours by either anchor — the tag did not match above.
-        // Every later line from that `srt` is someone else's without asking.
-        if (d.suffix && tree.has(d.pid)) foreignSuffixes.add(d.suffix);
+        // Alive, not ours by either anchor, and under another run — the tag
+        // did not match above. Every later line from that `srt` is someone
+        // else's without asking. Alive but under no run at all is an orphan
+        // (`cmd &`, a daemon): possibly ours, so its suffix stays undecided
+        // rather than turning this run's own later lines into strangers.
+        if (d.suffix && tree.has(d.pid) && underAnotherRun(d.pid, root, tree)) foreignSuffixes.add(d.suffix);
         return false;
       }
     }
@@ -464,7 +497,8 @@ export function watchDenials(onDeny, { pid = null, argv = null, platform = proce
   };
 
   const consider = (d) => {
-    if (attribute(d)) {
+    const verdict = attribute(d);
+    if (verdict === true) {
       stats.attributed++;
       onDeny(d);
       // Learning the suffix makes every held line decidable. Without this,
@@ -477,7 +511,9 @@ export function watchDenials(onDeny, { pid = null, argv = null, platform = proce
     // child whose pid anchors attribution, or the process died before `ps`
     // could see it. Either way a foreign sandbox and one of ours look the same
     // from here, so hold the line rather than credit or discard it.
-    if (!suffix && d.suffix && !foreignSuffixes.has(d.suffix)) {
+    // A line put off to the next snapshot is held with or without a suffix:
+    // the look it is waiting for is the only thing that can decide it.
+    if (verdict === LATER || (!suffix && d.suffix && !foreignSuffixes.has(d.suffix))) {
       stats.unattributed++;
       held.push(d);
       // Bounded, because the common case on a busy machine is a run that is
@@ -599,6 +635,9 @@ const QUIET_MS = 60;
  * anyone reads the log.
  */
 const TREE_MS = 250;
+
+/** What `attribute` answers for a line it has put off to the next snapshot. */
+const LATER = "later";
 
 /**
  * How many undecided denials to keep while waiting to learn our own suffix.

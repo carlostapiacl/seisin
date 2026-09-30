@@ -57,18 +57,37 @@ function verify(config) {
     ? `  ${C.yellow}${r.dropped} entr${r.dropped === 1 ? "y was" : "ies were"} never written${C.off}  another writer held the lock too long; see ${LOG_NAME}.dropped\n`
     : "";
   // Where the chain starts is only checked once it has been recorded. Until
-  // then a log whose chain was stripped whole reads like one that never had it.
-  const genesis = r.unchained && r.genesis === "unrecorded"
-    ? `  ${C.dim}where the chain starts is not recorded yet — it will be on the next entry${C.off}\n`
-    : r.genesis === "pruned" ? `  ${C.dim}the oldest segments were rotated away; the chain is checked from the oldest one kept${C.off}\n` : "";
+  // then a log whose chain was stripped or rewritten whole reads like an
+  // intact one — so with chained lines and no record this is a warning, not a
+  // footnote. A record made after chained lines already stood pins whatever
+  // they said by then, and says so.
+  let genesis = "";
+  if (r.genesis === "unrecorded" && r.chained)
+    genesis = `  ${C.yellow}where the chain starts is not recorded${C.off} — a chain stripped or rewritten from its first line would not show here.\n` +
+      `  ${C.dim}the next entry records it, marked late: tampering before that cannot be excluded${C.off}\n`;
+  else if (r.genesis === "unrecorded" && r.unchained)
+    genesis = `  ${C.dim}where the chain starts is not recorded yet — it will be on the next entry${C.off}\n`;
+  else if (r.genesis === "pruned")
+    genesis = `  ${C.dim}the oldest segments were rotated away; the chain is checked from the oldest one kept${C.off}\n`;
+  else if (r.late)
+    genesis = `  ${C.yellow}start recorded late${C.off}${r.late.at ? ` (${r.late.at})` : ""}, after ${r.late.after ?? "some"} chained line(s) — earlier tampering cannot be excluded\n`;
   if (!r.breaks.length) {
     out(`\n  ${C.green}intact${C.off}  ${head}${r.chained} chained line(s)${segs}\n${genesis}${dropped}\n`);
     return r;
   }
   out(`\n  ${C.red}broken${C.off}  ${head}${r.chained} chained line(s), ${r.breaks.length} break(s):\n`);
-  for (const b of r.breaks.slice(0, 10))
-    out(`    line ${b.line}: expected prev ${b.expected}, found ${b.found ?? "none"}\n`);
-  out(`  ${C.dim}a line was edited, removed or reordered just before each of these${C.off}\n${dropped}\n`);
+  const foreign = r.breaks.find((b) => b.foreign);
+  for (const b of r.breaks.slice(0, 10)) {
+    if (b.foreign) out(`    the genesis record belongs to another log: it pins a different start (${LOG_NAME}.genesis)\n`);
+    else out(`    line ${b.line}: expected prev ${b.expected}, found ${b.found ?? "none"}\n`);
+  }
+  if (foreign)
+    out(`  ${C.dim}if ${LOG_NAME} was archived or replaced by hand, move ${LOG_NAME}.genesis along with the archived log;\n` +
+      `  or remove it, and the next entry records this log's start (marked late). If nobody replaced the log,\n` +
+      `  it was rewritten from its first line.${C.off}\n`);
+  if (r.breaks.some((b) => !b.foreign))
+    out(`  ${C.dim}a line was edited, removed or reordered just before each of these${C.off}\n`);
+  out(`${genesis}${dropped}\n`);
   process.exitCode = 1;
   return r;
 }

@@ -18,7 +18,7 @@
  * to skip. Three things were wrong and all three are handled below.
  */
 import { readdirSync, readFileSync, statSync, realpathSync, existsSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { join, relative, sep, dirname } from "node:path";
 import { covers } from "./owners.js";
 
 /**
@@ -96,13 +96,24 @@ const NUL = "\u0000";
  * the finding the command exists for, so the walk always finishes and every
  * one of them is kept; what the cap drops is counted in `omitted`.
  *
- * ── Nested checkouts are not walked ──
- * A directory below the root with its own `.git` (a clone, a submodule, a
- * worktree) is another repository, and is skipped whole and counted in
- * `skipped.nested`. Measured on a real tree: two such directories held 207k
+ * ── Nested checkouts: pruned inside a repo, walked outside one ──
+ * When the root is inside a git repository, a directory below it with its own
+ * `.git` (a clone, a submodule, a worktree, an agent's work copy) is somebody
+ * else's repository, and is skipped whole: counted in `skipped.nested`, named
+ * in `nestedPaths`. Measured on a real tree: two such directories held 207k
  * files, and scanning them took 145 s and 413 MB for findings that belong to
- * somebody else's policy. They are still readable by every role, so run
- * `seisin scan` from inside one to look at it.
+ * somebody else's policy.
+ *
+ * When the root is NOT a repository, the same rule made the command blind: a
+ * folder that holds projects (a portfolio, a workspace) is nothing BUT nested
+ * checkouts, so every one of them was pruned, the scan read almost nothing
+ * and exited 0 with "nothing credential-shaped". There is no "somebody else"
+ * there — the checkouts are the tree — so they are walked. A tree of work
+ * copies that is too big to walk goes in `[scan] ignore`.
+ *
+ * Either way a pruned checkout is still readable by every role; the renderer
+ * says so in yellow and says how to scan it, so a pruned tree never reads as
+ * a clean one.
  *
  * `.gitignore` is deliberately NOT honoured (no `git ls-files`): the files a
  * repository ignores are precisely where credentials sit — `.env`, a local
@@ -120,6 +131,8 @@ export function scan(root, protectedDirs = [], ignore = [], limit = 500) {
   const patterns = [...DEFAULT_IGNORE, ...ignore];
   const hits = [];
   const skipped = { ignored: 0, protectedDirs: 0, reference: 0, placeholder: 0, nested: 0 };
+  const nestedPaths = [];
+  const prune = insideRepo(root);
   let capped = 0;                         // review lines and links counted against `limit`
   let omitted = 0;                        // … and the ones dropped because of it
   const keep = (hit) => {
@@ -171,7 +184,7 @@ export function scan(root, protectedDirs = [], ignore = [], limit = 500) {
       }
 
       if (e.isDirectory()) {
-        if (existsSync(join(full, ".git"))) { skipped.nested++; continue; }
+        if (prune && existsSync(join(full, ".git"))) { skipped.nested++; nestedPaths.push(rel); continue; }
         walk(full);
         continue;
       }
@@ -205,5 +218,17 @@ export function scan(root, protectedDirs = [], ignore = [], limit = 500) {
     }
   })(root);
 
-  return { hits, skipped, truncated: omitted > 0, omitted };
+  return { hits, skipped, nestedPaths, truncated: omitted > 0, omitted };
+}
+
+/**
+ * Whether `dir` is inside a git checkout: a `.git` (directory, or the file a
+ * worktree or submodule has) at `dir` or at any directory above it. Read from
+ * the filesystem, not from `git`, so a machine without git scans the same way.
+ */
+export function insideRepo(dir) {
+  for (let d = dir; ; d = dirname(d)) {
+    if (existsSync(join(d, ".git"))) return true;
+    if (dirname(d) === d) return false;
+  }
 }
