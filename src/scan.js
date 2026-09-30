@@ -17,7 +17,7 @@
  * than no scanner: it converts a real risk into a wall of noise someone learns
  * to skip. Three things were wrong and all three are handled below.
  */
-import { readdirSync, readFileSync, statSync, realpathSync } from "node:fs";
+import { readdirSync, readFileSync, statSync, realpathSync, existsSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { covers } from "./owners.js";
 
@@ -74,7 +74,7 @@ export const DEFAULT_IGNORE = [
   "**/*.min.js", "**/*.min.css", "**/*-lock.json", "**/*.lock",
 ];
 
-const SKIP_EXT = /\.(png|jpe?g|gif|webp|ico|svg|pdf|zip|gz|tgz|bz2|xz|mp[34]|mov|wav|woff2?|ttf|otf|eot|so|dylib|a|o|class|jar|wasm|sqlite3?|db)$/i;
+const SKIP_EXT = /\.(png|jpe?g|gif|webp|ico|svg|pdf|zip|gz|tgz|bz2|xz|mp[34]|mov|wav|woff2?|ttf|otf|eot|so|dylib|a|o|class|jar|wasm|sqlite3?|db|pyc|pyo)$/i;
 const MAX_BYTES = 512 * 1024;
 // Written as an escape, not as the byte itself. A literal NUL in the source
 // makes git classify this file as binary, and a file with no readable diff
@@ -88,17 +88,50 @@ const NUL = "\u0000";
  * `protectedDirs` are the declared key directories: a hit inside one is the
  * system working, not a finding. `ignore` adds to DEFAULT_IGNORE rather than
  * replacing it, so a user's list stays short.
+ *
+ * `limit` caps the `review` lines and the links, never the `certain` ones.
+ * It used to cap all of them together, and the walk stopped at the cap: 500
+ * ordinary `PASSWORD =` lines early in the tree hid a `ghp_` token after them,
+ * `certain` came back empty and a CI job gated on it exited 0. A certain hit is
+ * the finding the command exists for, so the walk always finishes and every
+ * one of them is kept; what the cap drops is counted in `omitted`.
+ *
+ * ── Nested checkouts are not walked ──
+ * A directory below the root with its own `.git` (a clone, a submodule, a
+ * worktree) is another repository, and is skipped whole and counted in
+ * `skipped.nested`. Measured on a real tree: two such directories held 207k
+ * files, and scanning them took 145 s and 413 MB for findings that belong to
+ * somebody else's policy. They are still readable by every role, so run
+ * `seisin scan` from inside one to look at it.
+ *
+ * `.gitignore` is deliberately NOT honoured (no `git ls-files`): the files a
+ * repository ignores are precisely where credentials sit — `.env`, a local
+ * config — and every role can read them all the same. Skipping them would
+ * make the command quiet about the case it was written for.
  */
 export function scan(root, protectedDirs = [], ignore = [], limit = 500) {
-  const safe = protectedDirs.map((d) => join(root, d));
+  // The real root, so a symlink's destination is compared like with like: on
+  // macOS a tree under /tmp is really under /private/tmp, and every link
+  // inside it pointed "out of the repo" until both sides were resolved.
+  try { root = realpathSync(root); } catch { /* scanned as written */ }
+  // `.secrets/` and `.secrets` are one directory. With the slash kept, the
+  // prefix test below never matched and the protected directory was scanned.
+  const safe = protectedDirs.map((d) => join(root, d.replace(/\/+$/, "") || "."));
   const patterns = [...DEFAULT_IGNORE, ...ignore];
   const hits = [];
-  const skipped = { ignored: 0, protectedDirs: 0, reference: 0, placeholder: 0 };
+  const skipped = { ignored: 0, protectedDirs: 0, reference: 0, placeholder: 0, nested: 0 };
+  let capped = 0;                         // review lines and links counted against `limit`
+  let omitted = 0;                        // … and the ones dropped because of it
+  const keep = (hit) => {
+    if (hit.level === "certain") return hits.push(hit);
+    if (capped >= limit) return omitted++;
+    capped++;
+    hits.push(hit);
+  };
 
   const isIgnored = (rel) => patterns.some((p) => covers(p, rel));
 
   (function walk(dir) {
-    if (hits.length >= limit) return;
     let entries;
     try {
       entries = readdirSync(dir, { withFileTypes: true });
@@ -106,7 +139,6 @@ export function scan(root, protectedDirs = [], ignore = [], limit = 500) {
       return; // an unreadable directory is a permission, not a finding
     }
     for (const e of entries) {
-      if (hits.length >= limit) return;
       const full = join(dir, e.name);
       const rel = relative(root, full);
 
@@ -134,13 +166,15 @@ export function scan(root, protectedDirs = [], ignore = [], limit = 500) {
           continue;                       // a broken link has nothing to leak
         }
         if (!real.startsWith(root + sep) && real !== root)
-          hits.push({
-            file: rel, line: 0, level: "link", shape: real,
-          });
+          keep({ file: rel, line: 0, level: "link", shape: real });
         continue;
       }
 
-      if (e.isDirectory()) { walk(full); continue; }
+      if (e.isDirectory()) {
+        if (existsSync(join(full, ".git"))) { skipped.nested++; continue; }
+        walk(full);
+        continue;
+      }
       if (!e.isFile() || SKIP_EXT.test(e.name)) continue;
 
       let text;
@@ -153,7 +187,7 @@ export function scan(root, protectedDirs = [], ignore = [], limit = 500) {
       if (text.includes(NUL)) continue; // binary
 
       const lines = text.split(/\r?\n/);
-      for (let i = 0; i < lines.length && hits.length < limit; i++) {
+      for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         for (const [level, shape, re] of SHAPES) {
           const m = re.exec(line);
@@ -164,12 +198,12 @@ export function scan(root, protectedDirs = [], ignore = [], limit = 500) {
             if (REFERENCE.test(line)) { skipped.reference++; break; }
             if (m[1] && PLACEHOLDER.test(m[1])) { skipped.placeholder++; break; }
           }
-          hits.push({ file: rel, line: i + 1, shape, level });
+          keep({ file: rel, line: i + 1, shape, level });
           break; // one finding per line; the first shape is the most specific
         }
       }
     }
   })(root);
 
-  return { hits, skipped, truncated: hits.length >= limit };
+  return { hits, skipped, truncated: omitted > 0, omitted };
 }
