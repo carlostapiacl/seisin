@@ -130,10 +130,61 @@ function version() {
   return JSON.parse(readFileSync(join(HERE, "..", "package.json"), "utf8")).version;
 }
 
+/**
+ * `--help` is a question, never an instruction to do the thing.
+ *
+ * No command looked for it, so each one took it as an argument: `ui --help`
+ * started a server on 4178, `wire --help` wrote .claude/settings.json, `watch
+ * --help` followed the log until ctrl-c, `mcp --help` sat waiting on stdin, and
+ * `seisin --help` printed the usage and exited 2. Answered here, before any
+ * command is loaded or any policy read, so it works in a directory with none.
+ *
+ * Only seisin's own part of the line is searched: after `--` the words are the
+ * agent's, and so is everything after `run <role> <command>` without one —
+ * `seisin run dev -- ls --help` asks `ls`. The value of a flag that takes one
+ * (`--reason -h`) is a value.
+ */
+const HELP = new Set(["--help", "-h"]);
+const TAKES_VALUE = new Set(["--port", "--role", "--verdict", "--limit", "--min", "--since", "--reason"]);
+
+function asksHelp(name, args) {
+  const split = args.indexOf("--");
+  let ours = split === -1 ? args : args.slice(0, split);
+  if (name === "run" && split === -1) {
+    let i = 1;
+    while (i < args.length && args[i].startsWith("-")) i++;
+    ours = args.slice(0, i);
+  }
+  for (let i = 0; i < ours.length; i++) {
+    if (TAKES_VALUE.has(ours[i])) i++;
+    else if (HELP.has(ours[i])) return true;
+  }
+  return false;
+}
+
+/** The lines of USAGE about one command, or the whole of it. */
+function helpFor(name) {
+  const alias = name === "deny" ? "decline" : name;
+  const lines = USAGE.split("\n").filter((l) => l.startsWith(`  seisin ${alias} `) || l === `  seisin ${alias}`);
+  if (alias === "hook") lines.push("  seisin hook                           Claude Code's hook: one event on stdin, a decision on stdout. `seisin wire` installs it");
+  if (!lines.length) return USAGE;
+  return `\nusage:\n${lines.join("\n")}\n\n  ${C.dim}seisin --help for every command${C.off}\n\n`;
+}
+
+if (command === undefined || command === "help" || HELP.has(command)) {
+  const about = command === "help" && COMMANDS[argv[0]] && !argv[0].startsWith("-") ? argv[0] : null;
+  out(about ? helpFor(about) : USAGE);
+  process.exit(0);
+}
+
 const chosen = COMMANDS[command];
 if (!chosen) {
   out(USAGE);
-  process.exit(command ? 2 : 0);
+  process.exit(2);
+}
+if (!command.startsWith("-") && asksHelp(command, argv)) {
+  out(helpFor(command));
+  process.exit(0);
 }
 
 try {

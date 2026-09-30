@@ -37,6 +37,11 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
   too big to walk go in `[scan] ignore`).
 - **A denial is counted with this attempt included** under `seisin run` too; the count was one
   behind when the entry went through the socket.
+- **`--help` is a question.** No command looked for it, so each took it as an argument: `ui --help`
+  started the console on 4178, `wire --help` wrote `.claude/settings.json`, `watch` and `mcp` sat
+  waiting, and `seisin --help` exited 2. Every command now prints its own usage for `--help` or
+  `-h` and exits 0 without reading a policy; `seisin help <command>` does the same. Words after
+  `--`, or after `run <role> <command>`, are still the agent's.
 
 ### The audit trail
 
