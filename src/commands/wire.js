@@ -16,6 +16,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { C, out } from "../render.js";
+import { TOOL_MATCHER } from "../hook.js";
 
 const SETTINGS = join(".claude", "settings.json");
 
@@ -39,7 +40,7 @@ export function hookEntry(command = "seisin hook") {
 export function hookEntries(command = "seisin hook") {
   const h = [{ type: "command", command }];
   return {
-    PreToolUse: [{ matcher: "*", hooks: h }],
+    PreToolUse: [{ matcher: TOOL_MATCHER, hooks: h }],
     PostToolUse: [{ matcher: "Bash", hooks: h }],
     PostToolUseFailure: [{ matcher: "*", hooks: h }],
     SessionStart: [{ matcher: "startup|resume|compact", hooks: h }],
@@ -61,6 +62,27 @@ export function wired(root) {
   }
 }
 
+/**
+ * Narrows seisin's own `"*"` PreToolUse entry to {@link TOOL_MATCHER}. True if
+ * it changed anything.
+ *
+ * Only an entry that holds nothing but `seisin hook`: a `"*"` entry that also
+ * runs somebody else's command is theirs as much as ours, and narrowing it
+ * would silently stop their hook on every other tool.
+ */
+function narrow(settings) {
+  let changed = false;
+  for (const entry of settings.hooks?.PreToolUse ?? []) {
+    const ours = Array.isArray(entry?.hooks) && entry.hooks.length > 0 &&
+      entry.hooks.every((h) => typeof h?.command === "string" && h.command.includes("seisin hook"));
+    if (ours && (entry.matcher === "*" || entry.matcher === "" || entry.matcher === undefined)) {
+      entry.matcher = TOOL_MATCHER;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 export function wire(config) {
   const file = join(config.root, SETTINGS);
 
@@ -76,6 +98,15 @@ export function wire(config) {
   }
 
   if (wired(config.root)) {
+    // Wired before the matcher was narrowed: still correct, just slow, so
+    // `wired()` keeps saying yes and nobody is told to redo anything. Running
+    // `wire` again is the way to pick up the narrower one, in place.
+    if (narrow(settings)) {
+      writeFileSync(file, JSON.stringify(settings, null, 2) + "\n");
+      out(`\n  ${C.green}narrowed${C.off}  ${SETTINGS}\n` +
+        `  ${C.dim}PreToolUse now runs "seisin hook" only for the tools it reads, not for every tool${C.off}\n\n`);
+      return { changed: true, file };
+    }
     out(`\n  ${C.dim}already wired — ${SETTINGS} runs "seisin hook"${C.off}\n\n`);
     return { changed: false, file };
   }
@@ -85,6 +116,7 @@ export function wire(config) {
     settings.hooks[ev] ??= [];
     if (!JSON.stringify(settings.hooks[ev]).includes("seisin hook")) settings.hooks[ev].push(...entries);
   }
+  narrow(settings);                     // an older PreToolUse entry that was kept
 
   mkdirSync(join(config.root, ".claude"), { recursive: true });
   writeFileSync(file, JSON.stringify(settings, null, 2) + "\n");

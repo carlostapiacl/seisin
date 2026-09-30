@@ -8,12 +8,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { scratch } from "./_tmp.js";
 
-import { targetsOf } from "../src/hook.js";
+import { targetsOf, TOOL_MATCHER } from "../src/hook.js";
+import { loadConfig } from "../src/config.js";
+import { wire, wired } from "../src/commands/wire.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI = join(HERE, "..", "src", "cli.js");
@@ -65,4 +67,42 @@ test("a well-formed denial still comes back as a decision through the CLI", () =
   const r = hook(env, { hook_event_name: "PreToolUse", tool_name: "Write", tool_input: { file_path: "src/api/x.ts" } });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, "deny");
+});
+
+/* ── P1-9: the PreToolUse matcher ──────────────────────────────────────── */
+
+test("wire installs PreToolUse for the tools the hook reads, not for every tool (review P1-9)", () => {
+  const { dir } = policy();
+  wire(loadConfig(join(dir, "seisin.toml")));
+  const pre = JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf8")).hooks.PreToolUse;
+  assert.equal(pre.length, 1);
+  assert.equal(pre[0].matcher, TOOL_MATCHER);
+  const m = new RegExp(pre[0].matcher);
+  for (const t of ["Write", "Edit", "MultiEdit", "NotebookEdit", "Read", "NotebookRead", "Bash", "mcp__supabase__execute_sql"])
+    assert.ok(m.test(t), `${t} must reach the hook`);
+  for (const t of ["Grep", "Glob", "TodoWrite", "BashOutput", "WebFetch"])
+    assert.ok(!m.test(t), `${t} starts a Node process for nothing`);
+  // Every tool the matcher lets through is one targetsOf can answer for.
+  assert.deepEqual(targetsOf("Grep", { pattern: "x", path: "src" }), []);
+  assert.deepEqual(targetsOf("TodoWrite", { todos: [] }), []);
+  assert.ok(wired(dir));
+});
+
+test("an install with the old '*' matcher is still wired, and wire narrows it in place", () => {
+  const { dir } = policy();
+  wire(loadConfig(join(dir, "seisin.toml")));
+  const file = join(dir, ".claude", "settings.json");
+  const old = JSON.parse(readFileSync(file, "utf8"));
+  old.hooks.PreToolUse[0].matcher = "*";
+  // Somebody else's catch-all beside ours is theirs, and stays as it was.
+  old.hooks.PreToolUse.push({ matcher: "*", hooks: [{ type: "command", command: "mine --audit" }] });
+  writeFileSync(file, JSON.stringify(old));
+
+  assert.ok(wired(dir), "an old install must not be told it is unwired");
+  assert.equal(wire(loadConfig(join(dir, "seisin.toml"))).changed, true);
+  const pre = JSON.parse(readFileSync(file, "utf8")).hooks.PreToolUse;
+  assert.equal(pre.length, 2, "narrowing must not add an entry");
+  assert.equal(pre[0].matcher, TOOL_MATCHER);
+  assert.equal(pre[1].matcher, "*", "another tool's hook was narrowed");
+  assert.equal(wire(loadConfig(join(dir, "seisin.toml"))).changed, false, "a second wire has nothing to do");
 });
