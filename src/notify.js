@@ -26,11 +26,11 @@ import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { keyOf, pending, requestsPath, grantFor, shellId } from "./requests.js";
 
-export const FORMATS = ["text", "json", "slack"];
-export const ENV_URL = "SEISIN_NOTIFY_URL";
+const FORMATS = ["text", "json", "slack"];
+const ENV_URL = "SEISIN_NOTIFY_URL";
 
 /** The URL to notify, or null. Read in the parent only. */
-export function notifyUrl(config, env = process.env) {
+function notifyUrl(config, env = process.env) {
   if (env[ENV_URL]) return env[ENV_URL].trim();
   if (!config.notify?.urlFile) return null;
   try {
@@ -47,7 +47,12 @@ export function message(config, req, number, format = "text") {
   const text =
     `seisin (${basename(config.root)}): ${req.role} was refused ${req.action} on ${req.target}. ${owner} ` +
     `Approve: seisin grant ${shellId(keyOf(req))} · decline: seisin decline ${shellId(keyOf(req))}`;
-  if (format === "slack") return { type: "application/json", body: JSON.stringify({ text }) };
+  // Slack reads `<url|label>` as a link and `<!channel>` as a mention, and the
+  // path is chosen by the agent: `<https://evil|approve here>` in a target
+  // would arrive as a clickable link in the channel a person approves from.
+  // Its own escaping, and only these three characters, is what it asks for.
+  if (format === "slack")
+    return { type: "application/json", body: JSON.stringify({ text: text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") }) };
   if (format === "json")
     return {
       type: "application/json",
