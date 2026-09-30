@@ -5,11 +5,12 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, mkdirSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { covers, ownersOf, keyHolders, explain } from "../src/owners.js";
 import { loadConfig } from "../src/config.js";
 import { redactor } from "../src/redact.js";
+import { scan } from "../src/scan.js";
 import { scratch } from "./_tmp.js";
 
 /** A policy on disk, loaded. */
@@ -116,4 +117,56 @@ test("an emoji at the cut is not split into two halves", async () => {
   const chunks = [...Buffer.from(text)].map((b) => Buffer.from([b]));
   const out = await through(redactor(["s".repeat(30)]), chunks);
   assert.equal(out, text);
+});
+
+// ── scan: the cap never hides a certain finding ─────────────────────────────
+
+test("certain findings after the review cap are still reported, and the cap says so", () => {
+  const box = scratch("seisin-scan-");
+  // Sorted first by readdir on every filesystem this runs on: "a" < "z".
+  writeFileSync(join(box, "a-noise.py"),
+    Array.from({ length: 30 }, (_, i) => `DB_PASSWORD_${i} = "literal-value-${i}-xxxx"`).join("\n"));
+  writeFileSync(join(box, "z-token.txt"), "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
+  const { hits, truncated, omitted } = scan(box, [], [], 10);
+  assert.equal(hits.filter((h) => h.level === "certain").length, 1);
+  assert.equal(hits.filter((h) => h.level === "review").length, 10);
+  assert.equal(truncated, true);
+  assert.equal(omitted, 20);
+});
+
+test("a key directory written with a trailing slash is still not scanned", () => {
+  const box = scratch("seisin-scan-");
+  mkdirSync(join(box, ".secrets"));
+  writeFileSync(join(box, ".secrets", "gh.txt"), "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
+  const { hits, skipped } = scan(box, [".secrets/"]);
+  assert.deepEqual(hits, []);
+  assert.equal(skipped.protectedDirs, 1);
+});
+
+test("scan resolves its root, so a link inside a linked root is not 'out of the repo'", () => {
+  const real = scratch("seisin-scan-");
+  mkdirSync(join(real, "tree"));
+  writeFileSync(join(real, "tree", "a.txt"), "nada\n");
+  symlinkSync(join(real, "tree", "a.txt"), join(real, "tree", "link"));
+  const alias = join(scratch("seisin-scan-"), "alias");
+  symlinkSync(join(real, "tree"), alias);
+  const { hits } = scan(alias, []);
+  assert.deepEqual(hits.filter((h) => h.level === "link"), []);
+});
+
+test("scan skips compiled python and nested checkouts, and counts the checkouts", () => {
+  const box = scratch("seisin-scan-");
+  writeFileSync(join(box, "mod.pyc"), "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
+  mkdirSync(join(box, "otro", ".git"), { recursive: true });
+  writeFileSync(join(box, "otro", "k.txt"), "ghp_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB\n");
+  // A worktree: `.git` is a file, and it is still another checkout.
+  mkdirSync(join(box, "wt"));
+  writeFileSync(join(box, "wt", ".git"), "gitdir: /elsewhere\n");
+  writeFileSync(join(box, "wt", "k.txt"), "ghp_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC\n");
+  // The root's own .git is not a reason to skip the root.
+  mkdirSync(join(box, ".git"));
+  writeFileSync(join(box, "own.txt"), "ghp_DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD\n");
+  const { hits, skipped } = scan(box, []);
+  assert.deepEqual(hits.map((h) => h.file), ["own.txt"]);
+  assert.equal(skipped.nested, 2);
 });
