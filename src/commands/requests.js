@@ -130,8 +130,17 @@ export function grant(config, argv = []) {
     req = pick(config, argv[0]);
     refuseIfBarred(config, req);
     return applyGrant(before, req, reason);
-  }, { after: (r) => { if (r.changed) settle(requestsPath(config.root), req.key, "granted", reason); } }));
-  if (!changed) throw new Error(`${req.role} already has ${req.grant} — nothing to add`);
+  }, { after: () => settle(requestsPath(config.root), req.key, "granted", reason) }));
+  // Already in the policy: the request is answered all the same, as the
+  // console answers it. Throwing here left it pending forever — the person had
+  // said yes, the role had the path, and the queue kept asking.
+  if (!changed) {
+    out(
+      `\n  ${C.green}already granted${C.off}  ${req.role} → ${C.b}${req.grant}${C.off}\n` +
+      `  ${C.dim}${config.path} already gives it; nothing written, the request is closed.${C.off}\n\n`
+    );
+    return { request: req, grant: req.grant, changed: false };
+  }
 
   out(
     `\n  ${C.green}granted${C.off}  ${req.role} → ${C.b}${req.grant}${C.off}\n` +

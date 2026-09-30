@@ -112,6 +112,27 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
 - A role's `git checkout` cannot update a protected file it may not write; git exits 0 and leaves
   the old version as a modification. The README's first-day section says what to do.
 
+### Granting and declining
+
+- **The policy's lock and temp file moved into `.seisin/`.** Both sat beside `seisin.toml` under
+  names anyone could predict, in a directory an `--observe` run or `writes = ["**"]` can write.
+  A symlink planted at the temp name made the next approval turn the policy into a link into the
+  role's territory; a `seisin.toml.lock` holding a live pid blocked every grant and decline. The
+  temp name is now random and opened exclusively, and no role can reach either.
+- **No request for a protected file, and no grant of one.** The hook still queued a refusal of
+  `.vscode/` or `.claude/` outside `seisin run`, and approving it added `web/.vscode/**` to
+  `writes` while the kernel kept refusing it. The hook now says nothing was queued, and `grant`
+  and the console refuse such a request: a family names `control_files`, the rest can never be
+  granted.
+- **"Already has it" closes the request everywhere.** The console settled it as granted;
+  `seisin grant` threw and left it pending for good. It now says it was already granted, closes
+  it, and exits 0.
+- **The console's memory expires after a minute.** It kept the loaded policy, and everything
+  derived from it, for as long as the files it hashes stayed the same — so what depends on the
+  disk around them (a key file that became a link, a provider that was installed, a control file
+  that now exists) showed as first seen for the server's life. The state's tag and body also
+  come from one reading now, not two.
+
 ## 0.4.2 — 2026-09-29
 
 - **Small hardening across the launcher.** A `--observe` written after the command
