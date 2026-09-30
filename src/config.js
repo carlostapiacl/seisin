@@ -98,7 +98,7 @@ export function parseToml(text) {
       if (seenTables.has(tableName))
         throw new Error(
           `${CONFIG_NAME}:${i + 1}: [${tableName}] appears twice. ` +
-          `A later block would silently override the earlier one — put every setting for ` +
+          `A later table would silently override the earlier one — put every setting for ` +
           `${tableName} in one place.`);
       seenTables.add(tableName);
       tableName.split(".").forEach((_, k, parts) => {

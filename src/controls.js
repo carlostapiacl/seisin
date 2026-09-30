@@ -5,17 +5,17 @@
  * Both settings were only reachable by opening seisin.toml in an editor. That
  * is fine for whoever wrote the policy and a wall for whoever inherited it:
  * the console showed the refusal ("protected: .vscode, whose settings … VS
- * Code applies outside the box") and offered no way to act on it except
+ * Code applies outside the sandbox") and offered no way to act on it except
  * approving a request that a grant can never satisfy (refuseIfBarred says so).
  *
  * What this module does not do is widen the menu. The families are exactly
  * config.js's CONTROL_FAMILIES; `.claude/`, git hooks, `.mcp.json` and `.envrc`
- * are never offered, because they are what a program outside the box executes
+ * are never offered, because they are what a program outside the sandbox executes
  * and no role writes them — not from the file, not from here.
  *
  * Every edit is text, bounded to one table, like applyGrant: comments and the
  * order a person gave the file survive, and a change for one role can never
- * land in another role's block.
+ * land in another role's table.
  */
 import { createHash } from "node:crypto";
 import { loadConfig, CONTROL_FAMILIES, stripComment, closesArray } from "./config.js";

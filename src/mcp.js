@@ -53,7 +53,7 @@ const TOOLS = [
   {
     name: "seisin_state",
     description:
-      "The permission map: every role, the folders it may write, the keys it may read, " +
+      "The map: every role, its territory (the folders it may write), the keys it may read, " +
       "and every way the policy silently does not hold. Read-only.",
     inputSchema: {
       type: "object",
@@ -78,15 +78,15 @@ const TOOLS = [
   {
     name: "seisin_requests",
     description:
-      "Permissions agents asked for and cannot have yet, waiting on a human, with how many " +
-      "times each was asked. A refusal files one of these automatically, so this is where " +
-      "to look after being denied rather than retrying. Read-only — approving is not " +
+      "Requests: access agents asked for and cannot have yet, waiting on a person, with how many " +
+      "times each was asked. A denial files one of these automatically, so this is where " +
+      "to look after being denied rather than retrying. Read-only — granting is not " +
       "available here, by design.",
     inputSchema: { type: "object", properties: {} },
   },
   {
     name: "seisin_activity",
-    description: "Recent allow/deny decisions, newest last. Read-only.",
+    description: "Recent log entries — allowed, denied or observed — newest last. Read-only.",
     inputSchema: {
       type: "object",
       properties: {
@@ -101,7 +101,7 @@ const TOOLS = [
     description:
       "Denials grouped by what was denied — by path, and one level coarser by the name at " +
       "the end of it — over the whole log, or since an ISO date. The counts are history: " +
-      "what was refused. What is measured against the policy as it stands is where each " +
+      "what was denied. What is measured against the policy as it stands is where each " +
       "path is now — `standing`: unowned (a decision nobody has made), owned, protected " +
       "(closed to every role on purpose, nothing to grant) or outside (a port, a key, or " +
       "outside the repository) — and, per cause, `stillRefused`, how many of the roles " +
@@ -118,7 +118,7 @@ const TOOLS = [
       type: "object",
       properties: {
         limit: { type: "number" },
-        since: { type: "string", description: "ISO date; only refusals at or after it" },
+        since: { type: "string", description: "ISO date; only denials at or after it" },
       },
     },
   },
@@ -135,10 +135,10 @@ const TOOLS = [
     name: "seisin_draft_grant",
     description:
       "Draft the change a pending request would make, as text, plus the command a person " +
-      "runs to apply it. Reach for this after a refusal: the denial is already in " +
-      "seisin_requests, and this turns it into a concrete proposal someone can approve. " +
+      "runs to apply it. Reach for this after a denial: it is already in " +
+      "seisin_requests, and this turns it into a concrete proposal a person can grant. " +
       "Read-only, and it is the tool where that matters most: the name says grant and it " +
-      "does not grant. The approval is a human action in another channel.",
+      "does not grant. Granting is a person's action, in another channel.",
     inputSchema: {
       type: "object",
       properties: {
@@ -207,7 +207,7 @@ const HANDLERS = {
       // Said in the payload and not only in the tool description, because a
       // model reading this is deciding what to do next.
       note: queue.length
-        ? "Approving is not available through MCP. Tell the operator to run: seisin grant '<id>'"
+        ? "Granting is not available through MCP. Ask a person to run: seisin grant '<id>'"
         : "nothing waiting",
     };
   },
@@ -339,9 +339,9 @@ function handle(message, { write, version }) {
         capabilities: { tools: {} },
         serverInfo: { name: "seisin", title: "seisin — folders and keys per agent", version },
         instructions:
-          "Read-only view of this repo's agent permissions. Ask seisin_explain before " +
+          "Read-only view of this repo's roles, territories and keys. Ask seisin_explain before " +
           "suggesting an agent edit a file it may not own. Granting is not available " +
-          "here: surface seisin_requests and let the operator run `seisin grant`.",
+          "here: surface seisin_requests and let a person run `seisin grant`.",
       });
     }
     case "ping":

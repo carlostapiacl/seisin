@@ -11,7 +11,7 @@
  * what an agent tried last night reads the same today — and since the change in
  * spool.js, nothing inside the sandbox can rewrite one either. append() below
  * tries the parent's socket first for exactly that reason; writing the file
- * directly is what happens when there is no parent, outside the box.
+ * directly is what happens when there is no parent, outside the sandbox.
  */
 import { appendFileSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -539,7 +539,7 @@ export function observed(entries) {
     // it, or the line was not written by the hook at all. Either way it is not
     // evidence of what the role legitimately reached for, so it must not become
     // policy: `init --from-observations` builds `writes`/`keys` from here, and a
-    // process inside the box could otherwise send `verdict:"observed"` lines for
+    // process inside the sandbox could otherwise send `verdict:"observed"` lines for
     // paths outside its territory and have them proposed as its own.
     if (e.disputed) continue;
     const r = roles.get(e.role) ?? { writes: new Set(), keys: new Set() };

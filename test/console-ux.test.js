@@ -81,9 +81,9 @@ test("an approval answers with the line it wrote and where", async (t) => {
   assert.match(out.line.text, /^"docs\/\*\*"\s+# granted .*«backend keeps the API docs»$/);
 });
 
-test("a refusal answers with no line: nothing was written", async (t) => {
+test("a decline answers with no line: nothing was written", async (t) => {
   const { call, keyOf, toml } = await shop(t);
-  const out = await (await call("/api/decide", { key: keyOf("docs/api.md"), decision: "denied", reason: "not backend's" })).json();
+  const out = await (await call("/api/decide", { key: keyOf("docs/api.md"), decision: "declined", reason: "not backend's" })).json();
   assert.equal(out.line, null);
   assert.equal(toml(), POLICY);
 });
@@ -202,16 +202,16 @@ test("the example has requests, denials and walls, and names no real credential"
   assert.match(HTML, /id="demo-banner"[\s\S]{0,400}seisin ui/);
 });
 
-test("approve and decline need a reason, and approving another role's path takes a second click", () => {
+test("grant and decline need a reason, and granting another role's path takes a second click", () => {
   const act = JS.slice(JS.indexOf("async function act(btn)"), JS.indexOf("function draw()"));
   assert.match(act, /Write a reason first/);
   assert.match(act, /Click again to share/);
   assert.match(act, /granting \? \(req\.owners \|\| \[\]\)\.length > 0 : filled/);
   // The widening is said before the click, not in grey under it.
-  assert.match(JS, /approving grants <b>all of <code>/);
-  // Approve is the filled button; Decline is neutral, not amber.
+  assert.match(JS, /granting covers <b>all of <code>/);
+  // Grant is the filled button; Decline is neutral, not amber.
   assert.match(JS, /class="btn primary"[^>]*data-d="granted"/);
-  assert.ok(!/class="btn warn"[^>]*data-d="denied"/.test(JS));
+  assert.ok(!/class="btn warn"[^>]*data-d="declined"/.test(JS));
 });
 
 test("live, the roles table offers no edit that would be thrown away", () => {
@@ -228,7 +228,7 @@ test("two failed polls turn the writes off and say which failure it is", () => {
   assert.match(JS, /if \(FAILS >= 2\) setOffline\(got\.status === 401 \|\| got\.status === 403 \? "expired" : "down"\)/);
   assert.match(JS, /seisin ui --link/);
   assert.match(JS, /document\.querySelectorAll\("\[data-write\]"\)/);
-  for (const id of ["Approve", "Decline"]) assert.match(JS, new RegExp(`data-write>${id}<`));
+  for (const id of ["Grant", "Decline"]) assert.match(JS, new RegExp(`data-write>${id}<`));
   assert.match(HTML, /id="decline-all" type="button" data-write/);
 });
 

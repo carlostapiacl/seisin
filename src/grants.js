@@ -225,7 +225,7 @@ function unexpressible(glob, key = "writes") {
  * grants the whole repo, so `observe: true` answers for that case.
  *
  * `.seisin/` is deliberately NOT here. It used to be, because the hook runs
- * inside the box and has to record what it decided — which made the log and
+ * inside the sandbox and has to record what it decided — which made the log and
  * the queue writable by the process they are a record of. The hook now sends
  * its lines to the parent over a socket and the parent holds the file. See
  * spool.js.
