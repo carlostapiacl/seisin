@@ -18,8 +18,8 @@ import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
 import { read, logPath, logSegments } from "./log.js";
 import { settingsFor } from "./srt.js";
-import { pending, requestsPath, settle, applyGrant, refuseIfBarred, editPolicy } from "./requests.js";
-import { causesOf, parseSince, queue, verdicts, wallsByRole } from "./views.js";
+import { pending, requestsPath, settle, applyGrant, refuseIfBarred, editPolicy, cleanReason } from "./requests.js";
+import { causesOf, describeWalls, parseSince, queue, verdicts, wallsByRole } from "./views.js";
 import { planEdit, hashOf } from "./controls.js";
 
 // Moved to views.js, which the MCP server shares; kept importable from here.
@@ -60,6 +60,9 @@ const memo = { path: null, hash: null, bucket: null, cfg: null, logSig: null, al
  * A minute is that memory's own span.
  */
 const MEMO_SPAN = 60_000;
+
+/** How many causes the page is sent; it shows twelve and says how many more. */
+const CAUSES_SHOWN = 200;
 
 function statSig(p) {
   try { const s = statSync(p); return `${p}:${s.ino}:${s.size}:${s.mtimeMs}`; } catch { return `${p}:-`; }
@@ -117,10 +120,12 @@ export function state(configPath, { since = null, snap = snapshot(configPath) } 
       // The whole window, not a tail. "All" used to mean the last 4000 lines, so a
       // 30-day window could show more denials than "all" did (6k against 4k on a
       // real log). Every count on the page comes from this list.
-      causes: causesOf(cfg, win, { ask }),
+      // More than the MCP's twelve: the page lists twelve and offers the rest,
+      // rather than cutting the list without saying so.
+      causes: causesOf(cfg, win, { ask, limit: CAUSES_SHOWN }),
       // What each role keeps being refused AND would still be refused today.
       // Empty for a role that has hit nothing twice, which is most of them.
-      walls: wallsByRole(cfg, win, { ask }),
+      walls: describeWalls(cfg, wallsByRole(cfg, win, { ask }), win),
     };
   })());
 
@@ -217,6 +222,18 @@ function decide(configPath, { key, decision, reason }) {
   if (typeof key !== "string" || !key) throw bad("key is required — the id of the request on screen");
   if (decision !== "granted" && decision !== "denied")
     throw bad(`decision must be granted or denied`);
+  /**
+   * A reason, always. A decision from the console used to be one click with an
+   * optional box beside it, so most grants reached seisin.toml with no word of
+   * why — and the provenance comment is the only record a later reader has.
+   * The CLI can still be terse; a click is too easy to be.
+   */
+  if (typeof reason !== "string" || !cleanReason(reason))
+    throw bad("a reason is required — it is written next to the decision");
+  // It grants the folder the request is keyed by (docs/api.md asked, docs/**
+  // granted), and the page says so before the click. Granting the one file
+  // instead would need the queue to key by file: a later ask for a sibling
+  // folds into this settled request and would never reach the queue.
   const cfg = loadConfig(configPath);
   const file = requestsPath(cfg.root);
 
@@ -232,19 +249,48 @@ function decide(configPath, { key, decision, reason }) {
    * still open rather than marked done against a file that never changed.
    */
   let req = null;
+  let result = null;
   try {
-    editPolicy(cfg, (before) => {
+    result = editPolicy(cfg, (before) => {
       req = pending(file).find((r) => r.key === key);
       if (!req) throw bad(`request ${key} is no longer pending — reload to see the queue as it is now`);
       if (decision !== "granted") return { toml: before, changed: false };
       refuseIfBarred(cfg, req);
       return applyGrant(before, req, reason);
-    }, { after: () => settle(file, req.key, decision, reason ?? "") });
+    }, { after: () => settle(file, req.key, decision, reason) });
   } catch (e) {
     if (e.code === "ELOCKED") throw Object.assign(new Error("another grant is in progress — try again in a moment"), { status: 503 });
     throw e;
   }
-  return { ok: true, role: req.role, grant: req.grant, decision };
+  return {
+    ok: true, role: req.role, grant: req.grant, decision,
+    // The line the grant wrote, and where, so the page can say exactly what
+    // changed instead of "done". Null when nothing was written (a refusal, or
+    // a grant the policy already held).
+    line: decision === "granted" && result?.changed ? grantLine(result.toml, req.grant) : null,
+  };
+}
+
+/** Where a grant landed in the policy: the text of its line and its number. */
+function grantLine(toml, grant) {
+  const lines = toml.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--)
+    if (lines[i].includes(`"${grant}"`) && lines[i].includes("# granted")) return { text: lines[i].trim(), number: i + 1 };
+  return null;
+}
+
+/**
+ * The lines an edit changes, and where: what the preview shows before a save
+ * and the confirmation names after it. The file is edited in one place, so a
+ * common head and tail leave exactly the lines that moved.
+ */
+export function lineDiff(before, after) {
+  const a = before.split("\n"), b = after.split("\n");
+  let head = 0;
+  while (head < a.length && head < b.length && a[head] === b[head]) head++;
+  let tail = 0;
+  while (tail < a.length - head && tail < b.length - head && a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail++;
+  return { at: head + 1, removed: a.slice(head, a.length - tail), added: b.slice(head, b.length - tail) };
 }
 
 /**
@@ -275,11 +321,18 @@ function controlFiles(configPath, args, { lockWaitMs = 10000 } = {}) {
   if (base !== undefined && typeof base !== "string") throw bad("base must be the hash the preview returned");
   const edit = forRole ? { kind: "role", role, families, reason } : { kind: "protect", on: protect, reason };
   const cfg = loadConfig(configPath);
+  // The roles an edit reaches, and of those the ones whose profile it leaves
+  // as it is — named, so a preview that lists two roles does not read as
+  // "the other five were forgotten".
+  const reached = () => edit.kind === "role" ? [edit.role] : Object.keys(cfg.roles);
+  const unaffected = (p) => p.changed ? reached(p).filter((r) => !p.diff.some((d) => d.role === r)) : [];
   if (dryRun === true) {
-    const { toml, ...plan } = planEdit(cfg, readFileSync(configPath, "utf8"), edit);
-    return { ok: true, dryRun: true, ...plan };
+    const before = readFileSync(configPath, "utf8");
+    const { toml, ...plan } = planEdit(cfg, before, edit);
+    return { ok: true, dryRun: true, ...plan, unaffected: unaffected(plan), lines: plan.changed ? lineDiff(before, toml) : null };
   }
   let plan = null;
+  let lines = null;
   try {
     editPolicy(cfg, (before) => {
       if (base !== undefined && hashOf(before) !== base)
@@ -287,6 +340,7 @@ function controlFiles(configPath, args, { lockWaitMs = 10000 } = {}) {
       // Planned against the text under the lock, and against a config loaded
       // from it: a grant that landed a moment ago is kept, not overwritten.
       plan = planEdit(loadConfig(configPath, before), before, edit);
+      if (plan.changed) lines = lineDiff(before, plan.toml);
       return { toml: plan.toml, changed: plan.changed };
     }, { waitMs: lockWaitMs });
   } catch (e) {
@@ -294,7 +348,7 @@ function controlFiles(configPath, args, { lockWaitMs = 10000 } = {}) {
     throw e;
   }
   const { toml, ...rest } = plan;
-  return { ok: true, dryRun: false, ...rest };
+  return { ok: true, dryRun: false, ...rest, unaffected: unaffected(plan), lines };
 }
 
 /** An error that is the request's fault. */
@@ -356,6 +410,8 @@ function readBody(req, max = 4096) {
  */
 function declineAll(configPath, { keys, reason }) {
   if (!Array.isArray(keys) || !keys.length) throw bad("keys must list the requests on screen");
+  if (typeof reason !== "string" || !cleanReason(reason))
+    throw bad("a reason is required — it is written next to every request declined");
   const cfg = loadConfig(configPath);
   const file = requestsPath(cfg.root);
   const wanted = new Set(keys.map(String));
@@ -365,7 +421,7 @@ function declineAll(configPath, { keys, reason }) {
       after: () => {
         for (const req of pending(file)) {
           if (!wanted.has(req.key)) continue;
-          settle(file, req.key, "denied", reason ?? "");
+          settle(file, req.key, "denied", reason);
           declined++;
         }
       },

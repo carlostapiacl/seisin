@@ -1304,7 +1304,7 @@ test("refusing in the console settles the request and grants nothing", async (t)
 
 test("the console refuses a decision it does not understand", async (t) => {
   const { post, box, key } = await consola(t);
-  for (const cuerpo of [{ key: "frontend:write:nope/**", decision: "granted" }, { key, decision: "maybe" }, { number: 1, decision: "granted" }])
+  for (const cuerpo of [{ key: "frontend:write:nope/**", decision: "granted", reason: "x" }, { key, decision: "maybe", reason: "x" }, { number: 1, decision: "granted", reason: "x" }])
     assert.equal((await post(cuerpo)).status, 400);
   assert.ok(!readFileSync(join(box, "seisin.toml"), "utf8").includes("checkout"));
 });
@@ -1323,7 +1323,7 @@ test("SEC-03 the console decides the request on screen, not whatever moved into 
   assert.match(toml, /"lib\/\*\*"/);
   assert.ok(!toml.includes("src/api/orders"), "approved the request that moved into its place");
   // reenviar no aprueba la siguiente
-  assert.equal((await post({ key: b.key, decision: "granted" })).status, 400);
+  assert.equal((await post({ key: b.key, decision: "granted", reason: "again" })).status, 400);
   assert.deepEqual(pending(q).map((r) => r.key), [c.key]);
 });
 
