@@ -4,8 +4,9 @@ Issue for [anthropics/sandbox-runtime][repo]. Kept here because seisin's README
 tells users SSH does not work, and a documented gap should say whose it is and
 what is being asked.
 
-Verified against **0.0.76** (installed) and **0.0.77** (current) on 2026-09-21.
-Every command below was run.
+Verified against **0.0.76** and **0.0.77** on 2026-09-21, re-verified against **0.0.78** on
+2026-09-30 (the handshake still fails the same way). Every command below was run, on macOS.
+The gap is macOS's: on Linux the runtime routes SSH through its HTTP proxy with credentials.
 
 [repo]: https://github.com/anthropics/sandbox-runtime
 
@@ -27,7 +28,7 @@ Every command below was run.
 ````markdown
 ## Summary
 
-The sandbox sets, for every confined command:
+On macOS, the sandbox sets, for every confined command:
 
 ```
 GIT_SSH_COMMAND=ssh -o ControlMaster=no -o ControlPath=none \

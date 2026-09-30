@@ -518,8 +518,8 @@ and the source settled it.
 
 **What is actually there.** The runtime ships a **SOCKS5 proxy**, starts it by default, and
 filters it by `(port, host)` — so arbitrary TCP to a declared host, port 22 included, is
-exactly the shape it already supports. It even wires SSH up for you: every confined turn
-gets
+exactly the shape it already supports. It even wires SSH up for you. On macOS every confined
+turn gets
 
 ```
 GIT_SSH_COMMAND=ssh -o ControlMaster=no -o ControlPath=none \
@@ -534,7 +534,12 @@ the `ProxyCommand` cannot send credentials. Its own source says so, in as many w
 > — e.g. BSD `nc -X 5`, the stock macOS ssh ProxyCommand). Such a connection is **NEVER
 > tunnelled**."*
 
-So the chain is wired end to end and snaps at its own last link.
+So the chain is wired end to end and snaps at its own last link. On Linux the runtime wires
+`GIT_SSH_COMMAND` through `socat` to its HTTP proxy with credentials instead, and the gap is
+macOS's alone (read from the 0.0.78 source; not re-measured on Linux here). The runtime is not
+silent about it in its source — a comment there says `nc` cannot authenticate and points to
+HTTPS, and the proxy answers such a client with an SSH-protocol refusal — but what a person sees
+at the terminal is still only the broken pipe below.
 
 **Measured, with `github.com` in the role's allow list:**
 
@@ -548,9 +553,11 @@ The two failures are different and the difference is the whole diagnosis: the fi
 client that does not know about the proxy, the second is a client that found it and could
 not authenticate.
 
-**What would fix it** is a `ProxyCommand` helper that speaks SOCKS5 with credentials —
-`ncat --proxy-auth`, or socat. Neither is installed on the machine this was measured on, so
-**the fix is untested and this section does not claim it works.**
+**What would fix it** on macOS is a `ProxyCommand` helper that authenticates — the route the
+runtime already takes on Linux (`socat` to its HTTP proxy with credentials), or what
+[PR #516](https://github.com/anthropics/sandbox-runtime/pull/516) does with the stock `nc`: an
+HTTP `CONNECT` carrying a Basic header. seisin has not run either on macOS, so **this section
+does not claim a fix works.**
 
 **What seisin should do.** Not invent a protocol: this is upstream-shaped. The runtime wires
 a `ProxyCommand` around a tool it documents as unable to authenticate to its own proxy, and

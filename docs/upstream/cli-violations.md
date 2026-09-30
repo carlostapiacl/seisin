@@ -5,7 +5,9 @@ Issue for [anthropics/sandbox-runtime][repo]. Split out of
 no platform debate, and it was diluting the other one.
 
 Verified against **0.0.76**, re-verified against **0.0.77** on 2026-09-20 and against **0.0.78** on
-2026-09-30: the CLI still reads no violations.
+2026-09-30: the CLI still reads no violations. Line numbers below are 0.0.77's, as filed; in
+0.0.78 the call is at `cli.js:347` and `annotateStderrWithSandboxFailures` at
+`sandbox-manager.js:1836`.
 
 [repo]: https://github.com/anthropics/sandbox-runtime
 

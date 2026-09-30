@@ -12,7 +12,9 @@ Not in 0.0.76, 0.0.77 or 0.0.78 as of 2026-09-30.
 - The author applied both and added a warning (`43dca4c`): `srt` now warns when
   `allowMachRegister` has no `allowMachLookup` covering it. He asked whether register should
   imply the lookup; [we answered no](https://github.com/anthropics/sandbox-runtime/pull/598#issuecomment-5802898145),
-  keep it explicit, and confirmed the warning in the four cases with Chromium.
+  keep it explicit, and confirmed the warning in the four cases with Chromium. On 2026-09-24 the
+  author thanked us for the four-case table, which he could not produce without Playwright's
+  Chromium.
 - Full suite on macOS 15.7 x86_64: 1216 pass, 680 skip, 1 fail (environmental, fails on `main`
   too).
 

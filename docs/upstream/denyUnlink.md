@@ -5,8 +5,8 @@ Issue for [anthropics/sandbox-runtime][repo]. Kept here because
 is being done about it.
 
 Verified against **0.0.76** on 2026-09-13; every command below was run.
-(`srt --version` reports `1.0.0`, which does not match `package.json` — trust
-the package version when reproducing.)
+(Up to 0.0.77 `srt --version` reported `1.0.0`, which did not match `package.json`;
+from 0.0.78 it reports the package version.)
 
 [repo]: https://github.com/anthropics/sandbox-runtime
 
