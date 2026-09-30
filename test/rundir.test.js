@@ -5,7 +5,7 @@
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runsRoot, runsRootOf, openRun } from "../src/rundir.js";
@@ -92,6 +92,7 @@ test("a run directory left by a killed run is swept, keys and all", () => {
     assert.ok(readdirSync(root).includes(run.dir.split("/").pop()));
   } finally {
     run.close();
+    rmSync(dead, { recursive: true, force: true });   // only there if the sweep failed
   }
 });
 

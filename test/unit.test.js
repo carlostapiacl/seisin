@@ -241,7 +241,7 @@ test("a secret split across two chunks is still masked", () => {
 });
 
 test("scan reports loose credentials and skips the protected directory", () => {
-  const box = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), "scan-"));
+  const box = scratch("seisin-scan-");
   mkdirSync(join(box, ".secrets"), { recursive: true });
   writeFileSync(join(box, ".secrets", "ok.txt"), "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
   writeFileSync(join(box, "loose.env"), "API_TOKEN=abcdefghijklmnop\n");
@@ -254,7 +254,7 @@ test("scan reports loose credentials and skips the protected directory", () => {
 test("a value read from the environment is not a finding", () => {
   // Measured on a real tree: 46 of 159 loose findings were exactly this, so the
   // scanner was flagging the correct way to handle a secret.
-  const box = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), "scan-"));
+  const box = scratch("seisin-scan-");
   writeFileSync(join(box, "good.py"), 'API_TOKEN = os.environ["API_TOKEN"]\n');
   writeFileSync(join(box, "good.ts"), "const API_TOKEN = process.env.API_TOKEN;\n");
   writeFileSync(join(box, "bad.env"), "API_TOKEN=abcdefghijklmnop\n");
@@ -268,7 +268,7 @@ test("a value read from the environment is not a finding", () => {
 });
 
 test("findings are split by how much the shape alone proves", () => {
-  const box = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), "scan-"));
+  const box = scratch("seisin-scan-");
   writeFileSync(join(box, "issued.txt"), "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
   writeFileSync(join(box, "maybe.env"), "DB_PASSWORD=hunter2hunter2hunter2\n");
   const { hits } = scan(box, []);
@@ -280,7 +280,7 @@ test("findings are split by how much the shape alone proves", () => {
 test("caches and .bak copies are ignored by default", () => {
   // Both were most of the noise in the first real run: a scraped page carrying
   // someone else's API key, and one config repeated across five backups.
-  const box = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), "scan-"));
+  const box = scratch("seisin-scan-");
   mkdirSync(join(box, "_cache"), { recursive: true });
   writeFileSync(join(box, "_cache", "page.html"), "AIzaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
   writeFileSync(join(box, "settings.json.bak-2026"), "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
@@ -331,7 +331,7 @@ test("observed paths collapse to directories, not to the whole tree", () => {
 });
 
 test("a half-written log line is skipped, not fatal", () => {
-  const box = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), "log-"));
+  const box = scratch("seisin-log-");
   const f = join(box, "log.jsonl");
   writeFileSync(f, '{"role":"a","target":"x","action":"write","verdict":"denied"}\n{"role":"b",\n');
   const entries = read(f);
@@ -468,7 +468,7 @@ test("the public API exposes decisions, not rendering", () => {
 test("many denials in one directory are one request, not many", () => {
   // Un agente frenado en a.ts y después en b.ts no hace dos preguntas, y una
   // cola que dice que sí se vuelve una cola que nadie lee.
-  const box = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), "req-"));
+  const box = scratch("seisin-req-");
   const f = join(box, "requests.jsonl");
   for (const t of ["src/api/a.ts", "src/api/b.ts", "src/api/a.ts"])
     record(f, { role: "frontend", action: "write", target: t, owners: ["backend"] });
@@ -482,7 +482,7 @@ test("many denials in one directory are one request, not many", () => {
 
 test("a settled request leaves the queue but not the file", () => {
   // Append-only: una decisión que se puede reescribir no es evidencia.
-  const box = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), "req-"));
+  const box = scratch("seisin-req-");
   const f = join(box, "requests.jsonl");
   record(f, { role: "qa", action: "write", target: "docs/x.md", owners: [] });
   const [req] = pending(f);
@@ -1611,7 +1611,7 @@ test("handoff · deciding changes no policy and settles no request", () => {
 
 /** A queue file with one denial already in it, for the handoff-visibility tests. */
 function queueWithOneDenial() {
-  const box = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), "req-"));
+  const box = scratch("seisin-req-");
   const f = join(box, "requests.jsonl");
   record(f, { role: "frontend", action: "write", target: "src/api/orders.ts", owners: ["backend"] });
   return { box, f };
