@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>seisin</title>
-<meta name="description" content="Run multiple coding agents with OS-enforced permissions and explicit ownership. When the kernel blocks one, seisin tells you who owns what it needs.">
+<meta name="description" content="Run multiple coding agents with OS-enforced permissions and explicit ownership. When the kernel denies one, seisin tells you who owns what it needs.">
 <link rel="icon" href="favicon.svg">
 <meta property="og:title" content="seisin">
 <meta property="og:description" content="The ownership layer between AI agents and the OS sandbox.">
@@ -204,8 +204,8 @@ svg.flow path,svg.flow line{stroke:var(--line); fill:none}
     <p class="dim">Other permission layers answer <i>yes</i> or <i>no</i>, and the good ones say which rule it was. Answering <b>“no, and it belongs to <code>backend</code>”</b> is the part an operating system cannot know.</p>
 
     <figure>
-      <img src="img/demo.gif" alt="A terminal: an agent running as the frontend role tries to write a file under src/api, the kernel refuses it, and seisin prints that the path belongs to backend and queues a request.">
-      <figcaption>An agent running as <code>frontend</code> reaches into <code>src/api/</code>. The kernel refuses; seisin names the owner and leaves a request behind.</figcaption>
+      <img src="img/demo.gif" alt="A terminal: an agent running as the frontend role tries to write a file under src/api, the kernel denies it, and seisin prints that the path belongs to backend and queues a request.">
+      <figcaption>An agent running as <code>frontend</code> reaches into <code>src/api/</code>. The kernel denies it; seisin names the owner and leaves a request behind.</figcaption>
     </figure>
 
     <div class="term"><span class="p">$</span> <span class="cmd">seisin run frontend -- sh -c 'echo // fix &gt;&gt; src/api/orders.ts'</span>
@@ -219,7 +219,7 @@ svg.flow path,svg.flow line{stroke:var(--line); fill:none}
 
     <span class="note">seisin grant &lt;n&gt; [--reason "…"]   ·   seisin decline &lt;n&gt; [--reason "…"]</span></div>
 
-    <p class="small dim">The agent can ask before it reaches, too — <code>seisin whose src/api/orders.ts</code> answers from inside the box.</p>
+    <p class="small dim">The agent can ask before it reaches, too — <code>seisin whose src/api/orders.ts</code> answers from inside the sandbox.</p>
   </div>
 </section>
 
@@ -227,10 +227,10 @@ svg.flow path,svg.flow line{stroke:var(--line); fill:none}
   <div class="wrap">
     <p class="kicker">The loop</p>
     <h2>Denied → whose → a person decides</h2>
-    <p class="dim">Nothing is approved by an agent, and nothing is approved through the MCP server. Granting happens in a terminal or in the console, by a person.</p>
+    <p class="dim">Nothing is granted by an agent, and nothing is granted through the MCP server. Granting happens in a terminal or in the console, by a person.</p>
 
     <div class="flow-wrap">
-    <svg class="flow" viewBox="0 0 840 250" role="img" aria-label="Flow diagram: an agent running as a role writes a path; the kernel denies it; seisin reads the refusal and looks up the policy, producing both the owner's name and a queued request; a person grants or declines, editing seisin.toml, which produces the settings the kernel enforces.">
+    <svg class="flow" viewBox="0 0 840 250" role="img" aria-label="Flow diagram: an agent running as a role writes a path; the kernel denies it; seisin reads the denial and looks up the policy, producing both the owner's name and a queued request; a person grants or declines, editing seisin.toml, which produces the settings the kernel enforces.">
       <defs>
         <marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
           <path d="M0 0 L8 4 L0 8 z" fill="currentColor" stroke="none" style="color:var(--dim)"/>
@@ -253,7 +253,7 @@ svg.flow path,svg.flow line{stroke:var(--line); fill:none}
 
       <rect x="380" y="88" width="132" height="54" rx="9"/>
       <text x="446" y="110" text-anchor="middle">seisin</text>
-      <text x="446" y="126" text-anchor="middle" class="sm">reads the refusal</text>
+      <text x="446" y="126" text-anchor="middle" class="sm">reads the denial</text>
 
       <path d="M514 104 L570 62" marker-end="url(#a)"/>
       <path d="M514 126 L570 168" marker-end="url(#a)"/>
@@ -281,14 +281,14 @@ svg.flow path,svg.flow line{stroke:var(--line); fill:none}
 <section>
   <div class="wrap">
     <p class="kicker">Measured in real use</p>
-    <h2>Observe the friction. Remove permissions you do not need.</h2>
-    <p class="dim">In one six-day deployment with four cells of agents, the boundary did more than block writes. It showed what the policy was costing and where the noise came from.</p>
+    <h2>See where the policy costs you. Remove grants you do not need.</h2>
+    <p class="dim">In one six-day deployment with four teams of agents, the boundary did more than deny writes. It showed what the policy was costing and where the noise came from.</p>
 
     <div class="cards">
       <div class="card">
-        <div class="who">Kernel refusals</div>
+        <div class="who">Kernel denials</div>
         <span class="metric">1,422</span>
-        <p>Every refused read and write recorded during the window.</p>
+        <p>Every denied read and write recorded during the window.</p>
       </div>
       <div class="card">
         <div class="who">One unnecessary lock</div>
@@ -296,21 +296,21 @@ svg.flow path,svg.flow line{stroke:var(--line); fill:none}
         <p>Were <code>.git/index.lock</code>. The fix was not a wider grant; it was removing an unnecessary write with <code>GIT_OPTIONAL_LOCKS=0</code>.</p>
       </div>
       <div class="card">
-        <div class="who">Human attention</div>
+        <div class="who">A person's attention</div>
         <span class="metric">1 decision</span>
         <p>Deduplication collapsed 1,445 recorded asks into one relevant item waiting for a person.</p>
       </div>
     </div>
 
-    <p class="small dim">One deployment, not a benchmark. The full method, negative results and numbers that did not reproduce are in the <a href="https://github.com/carlostapiacl/seisin/blob/main/docs/field-notes.md">field notes</a>.</p>
+    <p class="small dim">One deployment, not a benchmark. The full method and the numbers that did not reproduce are in the <a href="https://github.com/carlostapiacl/seisin/blob/main/docs/field-notes.md">field notes</a>.</p>
   </div>
 </section>
 
 <section>
   <div class="wrap">
     <p class="kicker">Policy review</p>
-    <h2>Permissions can get smaller, with evidence.</h2>
-    <p class="dim"><code>seisin review</code> turns runtime history into questions you can act on: where a role keeps stopping, which grants were never used, and which paths nobody owns.</p>
+    <h2>A policy can get smaller, with evidence.</h2>
+    <p class="dim"><code>seisin review</code> turns runtime history into questions you can act on: where a role keeps being denied, which grants were never used, and which paths nobody owns.</p>
 
     <div class="term"><span class="no">Stopped repeatedly</span>   frontend → src/api/**
 <span class="note">Granted, never used</span>  frontend → public/**
@@ -329,7 +329,7 @@ svg.flow path,svg.flow line{stroke:var(--line); fill:none}
       <li><code>npm install -g seisin</code><span class="why">On Linux, three system packages first — the README lists them.</span></li>
       <li><code>seisin init</code><span class="why">Proposes a policy from what your repo already says: <code>.claude/agents/</code>, then <code>CODEOWNERS</code>, then a blank start. It <b>proposes</b> — a generated policy you did not read is not a policy.</span></li>
       <li><code>seisin check</code><span class="why">The map, and every way it does not hold. Read it before you trust it.</span></li>
-      <li><code>seisin wire</code><span class="why">Lets the agent record what it does, so a refusal can be explained afterwards.</span></li>
+      <li><code>seisin wire</code><span class="why">Lets the agent record what it does, so a denial can be explained afterwards.</span></li>
       <li><code>seisin run frontend -- claude -p "…"</code><span class="why">Runs the agent inside its own territory. Anything not listed is denied — there is no permissive default.</span></li>
     </ol>
   </div>
@@ -414,7 +414,7 @@ network = [<span class="s">"api.stripe.com"</span>]</code></pre>
           <li><b>OS-enforced write territories.</b> Seatbelt or bubblewrap applies the boundary.</li>
           <li><b>Declared secret isolation.</b> Roles read only the keys assigned to them.</li>
           <li><b>Per-role network policy.</b> Egress follows the runtime’s proxy allow list.</li>
-          <li><b>Ownership and human handoffs.</b> A denial names who owns the path; agents cannot approve their own grants.</li>
+          <li><b>Ownership, and handoffs to a person.</b> A denial names who owns the path; agents cannot grant themselves anything.</li>
         </ul>
       </div>
       <div>
@@ -429,7 +429,7 @@ network = [<span class="s">"api.stripe.com"</span>]</code></pre>
     </div>
 
     <div class="ok-box">
-      Two outside reviews went looking for ways past the boundary, and what running four cells of agents behind it actually cost — including the numbers that did not survive a re-check — is published too.
+      Two outside reviews went looking for ways past the boundary, and what running four teams of agents behind it actually cost — including the numbers that did not survive a re-check — is published too.
       <a href="https://github.com/carlostapiacl/seisin/blob/main/docs/what-it-has-been-put-through.md">What it has been put through →</a>
       <a href="https://github.com/carlostapiacl/seisin/blob/main/docs/field-notes.md">Field notes →</a>
     </div>

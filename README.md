@@ -11,13 +11,13 @@
 
 > **seisin** *(n.)* — the legal possession of a piece of land. Not who owns it on paper: who holds it now.
 
-**Give each AI agent its own folders and its own keys.** The kernel enforces it, and when it blocks something it tells you *whose* file it was.
+**Give each AI agent its own folders and its own keys.** The kernel enforces it, and when it denies something, seisin tells you *whose* file it was.
 
 A **permission layer**, not a sandbox — it sits on top of one. The isolation comes from the OS; what seisin adds is the part an OS cannot know: which role a path belongs to, and therefore who to ask next.
 
 *Two outside reviews went looking for ways past the boundary. [What they found, what broke, and what is still open →](docs/what-it-has-been-put-through.md)*
 
-*And what running four cells of agents behind it actually cost — including the numbers that did not survive a re-check. [Field notes →](docs/field-notes.md)*
+*And what running four teams of agents behind it actually cost — including the numbers that did not survive a re-check. [Field notes →](docs/field-notes.md)*
 
 **Three ways in, and they say the same thing.** The **CLI** is what a person types and what
 every agent runs under. The **console** (`seisin ui`) is for a person deciding something. The
@@ -38,7 +38,7 @@ says why, and a test holds one half of it.
 
 **The honest parts** · [How it holds](#how-it-holds) · [What it is not](#what-it-is-not) · [Why not a container](#why-not-a-container) · [Prior art](#prior-art) · [Status](#status)
 
-**Deeper** · [Keys](docs/keys.md) · [Agents](docs/agents.md) · [Day one](docs/first-day.md) · [Scratch](docs/scratch.md) · [Glossary](docs/glossary.md) · [What it has been put through](docs/what-it-has-been-put-through.md) · [Field notes](docs/field-notes.md) · [OpenShell compatibility](docs/openshell.md) · [Decisions](docs/decisions.md) · [nono backend contract](docs/nono-backend.md) · [Permission requests](docs/permission-requests.md) · [Contributing](CONTRIBUTING.md)
+**Deeper** · [Keys](docs/keys.md) · [Agents](docs/agents.md) · [Day one](docs/first-day.md) · [Scratch](docs/scratch.md) · [Glossary](docs/glossary.md) · [What it has been put through](docs/what-it-has-been-put-through.md) · [Field notes](docs/field-notes.md) · [OpenShell compatibility](docs/openshell.md) · [Decisions](docs/decisions.md) · [nono backend contract](docs/nono-backend.md) · [Requests](docs/permission-requests.md) · [Contributing](CONTRIBUTING.md)
 
 </details>
 
@@ -46,7 +46,7 @@ says why, and a test holds one half of it.
 flowchart LR
     A["agent<br/>running as a role"] -->|writes src/api/orders.ts| K{{"the kernel<br/>Seatbelt · bubblewrap"}}
     K -->|not this role's| D["denied"]
-    D --> S["seisin reads the refusal<br/>and looks up the policy"]
+    D --> S["seisin reads the denial<br/>and looks up the policy"]
     S --> W["<b>whose it was</b><br/>belongs to backend"]
     S --> Q["a request, queued"]
     Q --> H(["a person<br/>grants or declines"])
@@ -60,7 +60,7 @@ flowchart LR
 
 **The kernel says no. seisin says whose.** That second half is the whole thing: other
 permission layers in this space answer *yes* or *no*, or at best *which rule* said no — and a
-refusal that also names an owner turns a dead end into a handoff.
+denial that also names an owner turns a dead end into a handoff.
 
 ![seisin denying a write outside a role's territory, then naming the owner](docs/img/demo.gif)
 
@@ -77,11 +77,11 @@ $ seisin run frontend -- sh -c 'echo // fix >> src/api/orders.ts'
     seisin grant <n> [--reason "…"]   ·   seisin decline <n> [--reason "…"]
 ```
 
-**Whose it was, at the moment it was denied.** Other permission layers answer *yes* or *no*, and the good ones say which rule it was and how to widen it. Answering **"no, and it belongs to `backend`"** turns a block into a handoff — and one a person can approve in a command, rather than a line somebody has to remember to go and read.
+**Whose it was, at the moment it was denied.** Other permission layers answer *yes* or *no*, and the good ones say which rule it was and how to widen it. Answering **"no, and it belongs to `backend`"** turns a denial into a handoff — and one a person can grant in a command, rather than a line somebody has to remember to go and read.
 
-The kernel is what denies; the name comes from the policy. That first line is all the boundary itself can say — no path, no reason, nothing to read afterwards — so seisin reads the refusal out of the kernel's own log and answers the question it leaves open. On Linux only the hook can do that; [the ask is upstream](docs/upstream/cli-violations.md) as [issue #582](https://github.com/anthropics/sandbox-runtime/issues/582).
+The kernel is what denies; the name comes from the policy. That first line is all the boundary itself can say — no path, no reason, nothing to read afterwards — so seisin reads the denial out of the kernel's own log and answers the question it leaves open. On Linux only the hook can do that; [the ask is upstream](docs/upstream/cli-violations.md) as [issue #582](https://github.com/anthropics/sandbox-runtime/issues/582).
 
-The agent can ask directly too, from inside the box:
+The agent can ask directly too, from inside the sandbox:
 
 ```
 $ seisin run frontend -- seisin whose src/api/orders.ts
@@ -157,7 +157,7 @@ fixtures:
 | it can write anything inside its own territory | including staging an exfiltration, or destroying its own uncommitted work with `rm` |
 | `base64` defeats the redaction | only the literal value is masked, and only on stdout and stderr |
 | an allowed domain is an allowed channel | if the agent's own API is reachable, so is everything that goes through it |
-| the hook is text-based and evadable | on purpose — what escapes it goes **unblocked by nothing**: the kernel still refuses. On macOS it is no longer unexplained either, because [the kernel's own refusals are recorded](#seeing-what-happened); on Linux it is. Either way, attribution is not a control |
+| the hook is text-based and evadable | on purpose — what escapes it goes **past the hook, not past the kernel**: the kernel still denies. On macOS it is no longer unexplained either, because [the kernel's own denials are recorded](#seeing-what-happened); on Linux it is. Either way, attribution is not a control |
 
 And three things that outweigh all of the above:
 
@@ -247,7 +247,7 @@ role, including the ones whose whole job is to have nothing to reach.
 > cannot resolve the hostname, and `git ls-remote git@github.com:…` reaches the proxy and
 > dies at the handshake.
 >
-> **Use an HTTPS remote for git**, and run SSH deploys outside the confined turn.
+> **Use an HTTPS remote for git**, and run SSH deploys outside the confined run.
 > [Why, exactly, and whose gap it is →](docs/decisions.md#ssh-does-not-work-and-it-is-not-seisin-that-decided-that)
 
 A role can also give something back. `never_writes` subtracts from its own `writes`, and it
@@ -260,8 +260,8 @@ never_writes = ["services/api/.git/index.lock"]   # works in a worktree; the can
 ```
 
 It is per role on purpose — there is no global version, because a global deny on a lock file
-breaks every role that legitimately commits there. A refusal it causes says so by name and
-leaves **no request** in the queue: approving one would undo a subtraction somebody wrote. An
+breaks every role that legitimately commits there. A denial it causes says so by name and
+leaves **no request** in the queue: granting one would undo a subtraction somebody wrote. An
 entry that no `writes` of the same role covers, or a misspelling like `never_write`, is named
 by `seisin check` instead of being ignored.
 
@@ -275,8 +275,8 @@ private loopback, serves without the key, and reaches nothing on the host either
 If a role only needs to *reach* a local service, name the ports instead:
 `local_ports = [8001, 8081]`. The role reaches those and nothing else on localhost, on macOS
 and Linux. The sandbox's proxy enforces the list, so the client has to use the proxy. curl,
-Node's `fetch` and Python's `urllib` do. A database driver or a raw socket don't, and get
-refused. For Chromium, pass Playwright's `proxy` option from `HTTP_PROXY`; on macOS it also
+Node's `fetch` and Python's `urllib` do. A database driver or a raw socket don't, and are
+denied. For Chromium, pass Playwright's `proxy` option from `HTTP_PROXY`; on macOS it also
 needs `--single-process` to start. A listed port is open to anything that speaks `CONNECT`, not
 just HTTP, so list the service, not the protocol.
 
@@ -286,7 +286,7 @@ key means the policy doesn't say. seisin declares this and `explain` answers it
 launcher has to apply it. With Claude Code: `--mcp-config` holding only those servers, plus
 `--strict-mcp-config`.
 
-Some files are not code but still make something happen outside the box, and no territory
+Some files are not code but still make something happen outside the sandbox, and no territory
 reaches them: git hooks and config, a project's `.claude/`, `.mcp.json`, `.envrc`. Two softer
 families sit beside those, and a policy can hand them to one role:
 
@@ -307,12 +307,12 @@ instructions = true               # CLAUDE.md, AGENTS.md… only for roles hande
   keeping them current is ordinary work for most teams.
 
 A role handed a family writes it only inside its own `writes`, and `seisin check` names it on
-every run. A refusal says which key would change it, and leaves no request: it is a decision
+every run. A denial says which setting would change it, and leaves no request: it is a decision
 about the policy, not a grant. Inside `node_modules` neither family is touched, so npm still
 unpacks a package's own `.vscode` or `AGENTS.md`. On Linux only the files that already exist are
-protected: bubblewrap would have to create a missing one to refuse it.
+protected: bubblewrap would have to create a missing one to deny it.
 
-Refused connections are logged too: `connect tcp:<port>` (the kernel gives the port, not the
+Denied connections are logged too: `connect tcp:<port>` (the kernel gives the port, not the
 host) or the socket path, once per target per run. `seisin walls` says whether the port is
 missing from `local_ports`, listed but dialled directly, or a socket. No request is filed: a
 port isn't anyone's territory. macOS only.
@@ -331,7 +331,7 @@ All four came out of one production window where none of them was the boundary m
 A fifth comes with protected files: **a role's `git checkout`, `pull` or `rebase` cannot update
 a file the role may not write.** Git exits 0, the branch moves, and the old `.vscode/settings.json`
 stays behind as a modification — which a later `commit -a` would turn into a revert. Switch
-branches outside the box, or hand that role the family if keeping those files is its job.
+branches outside the sandbox, or hand that role the family if keeping those files is its job.
 
 **[What each one looks like, and what to do →](docs/first-day.md)**
 
@@ -375,7 +375,7 @@ reason: nobody can prove a line is dead, so the safe move is to leave it. Here
 the log can prove it — `public/**` was granted and nothing was written there in
 three weeks. That is the only direction that makes a policy *smaller*.
 
-The first is the one that changes how a denial reads. Forty blocks on one
+The first is the one that changes how a denial reads. Forty denials on one
 directory is not an agent misbehaving; it is a policy that is wrong, and until
 you add them up it looks like forty tidy amber lines.
 
@@ -423,7 +423,7 @@ The grant writes its own provenance next to the line it adds:
 writes = ["src/api/**"]   # granted 2026-09-12 · asked 3× · "frontend owns checkout now"
 ```
 
-**Approving is never a tool call.** An agent can read the queue and draft the change; only a
+**Granting is never a tool call.** An agent can read the queue and draft the change; only a
 person applies it, in a terminal or in the console. That asymmetry is deliberate and it is
 the reason the MCP server exists at all.
 
@@ -431,7 +431,7 @@ the reason the MCP server exists at all.
 request — the role, the path, whose it is, and `seisin grant <n>` — to ntfy, Slack or any
 webhook. The URL lives in a key directory no role declares (`url_file`) or in the parent's
 `SEISIN_NOTIFY_URL`; written plainly into `seisin.toml`, which every role can read, it refuses to
-load, because whoever reads it can send you a fake "approve".
+load, because whoever reads it can send you a fake "grant this".
 
 ```toml
 [notify]
@@ -440,8 +440,8 @@ format   = "text"                      # or "slack", "json"
 ```
 
 **And so does the agent.** `seisin wire` installs the hook for four events. Before a tool call
-it explains a refusal it can see coming; after a command fails it reads the kernel's own refusal
-from the log and tells the agent whose the path was and how many times it has been refused —
+it explains a denial it can see coming; after a command fails it reads the kernel's own denial
+from the log and tells the agent whose the path was and how many times it has been denied —
 the half PreToolUse never sees; and when a session starts, resumes or is compacted it hands the
 agent its territory and its walls, before the first one.
 
@@ -489,26 +489,26 @@ database, and `watch` is a tail.
 **The agent cannot reach that file.** `.seisin/` is in no role's territory, because a record
 the recorded process can edit is not a record. The hook sends each line to `seisin run` over
 a unix socket granted by path and the parent does the writing, so the only verb available
-from inside the box is *append one line*. A hostile agent can still add noise to its own
+from inside the sandbox is *append one line*. A hostile agent can still add noise to its own
 history; what it cannot do is change what is already there.
 
 **Two writers, and they see different things.** The **hook** reports the attempt before it
 happens — which is how an *allowed* action gets recorded at all — and it is text-based and
 evadable, on purpose. The **kernel** reports what it actually denied, and is not fooled by
-anything. What escapes the hook goes unexplained, never unblocked.
+anything. What escapes the hook goes unexplained, never unenforced.
 
 
 
 ![the console: what is waiting on a decision, the day's denials grouped by cause, the walls a role keeps hitting, and the policy behind them](docs/img/console.gif)
 
-It opens on what needs a decision, not on the policy. Five numbers ride on every screen and
+It opens on what needs a decision, not on the policy. Four numbers ride on every screen and
 each is a link to the page that explains it — including two a log cannot answer, because
 they are recomputed against the policy: how much of the day is **one cause**, and how many
 of those causes are on paths **nobody owns**.
 
 Beside each role it also holds the two families a policy can hand out, editor settings and
 instruction files, and the `[protect] instructions` switch. A change there is shown first as
-what it does to each role's sandbox profile, and written to `seisin.toml` only when you confirm.
+what it does to each role's sandbox settings, and written to `seisin.toml` only when you confirm.
 
 ## How it holds
 
@@ -585,7 +585,7 @@ confined process. Nothing degrades: a provider that fails stops the run.
 
 **[Key directories, references, providers, delivery modes and nine recipes →](docs/keys.md)**
 
-**Measured, over four agent cells and three days: every refused read was a read of something
+**Measured, over four teams of agents and three days: every denied read was a read of something
 the policy had declared a key.** 148 of them, no exceptions, from five roles — all running
 searches that swept a repository root. That is how a key gets read without anyone deciding
 it should.
@@ -595,7 +595,7 @@ it should.
 seisin answers *whose is this* at the moment of the denial — once, mid-turn — and then the
 sentence is gone. Nothing carries it forward, so the agent tries again.
 
-Measured on a real team: of **345 denials, 88 (25%) were a repeat of something that same role
+Measured in the author's own multi-agent setup: of **345 denials, 88 (25%) were a repeat of something that same role
 had already been denied.** One role spent 37 calls on two walls, hitting one of them nineteen
 times. Every denial was correct. Not one was a false positive. It still cost thirty-seven
 calls, because *correct* and *heard* are different properties and only the first was being
@@ -613,10 +613,10 @@ And the standing list is a command:
 
 ```
 $ seisin walls dev
-WALLS — you have already been refused these, and the policy still refuses them.
+WALLS — you have already been denied these, and the policy still denies them.
 Do not retry; the reason is where the other way in is.
-  19× write ../equipo/.git/index.lock
-      ../equipo/.git/index.lock belongs to plataforma-dev
+  19× write ../shared/.git/index.lock
+      belongs to platform
   6× read ~/.npmrc
       no role declares ~/.npmrc — add it under a [roles.<name>] keys list
   (23 of your calls went into retrying these.)
@@ -626,7 +626,7 @@ Do not retry; the reason is where the other way in is.
 allowed today, it is not a wall — whatever happened yesterday. The obvious implementation is a
 time window, on the argument that an old wall may have been granted since; the window is a
 proxy for the question, and seisin has the policy right there, so it asks the question. A grant
-makes its wall disappear on the next turn instead of when a window expires. Same move as
+makes its wall disappear on the next run instead of when a window expires. Same move as
 `owners` and the request queue: recompute rather than believe.
 
 Silent on the first denial, by design. A counter that reads `1×` every time is noise on the
@@ -637,7 +637,7 @@ obvious way to check is to compare repeats before and after — but the repeats 
 lock file, and the release before this one deleted that wall outright with
 `GIT_OPTIONAL_LOCKS=0`. Repeats did fall, by a lot, and **the fall is the wall going away,
 not the sentence landing**: both shipped within days of each other and the bigger cause is the
-other one. Isolating this needs a forward test — walls per role, rounds with the hook wired
+other one. Isolating this needs a forward test — walls per role, runs with the hook wired
 and no git locks in the way — not the history. Measured in the field and written up rather
 than smoothed over, because the alternative is a claim the numbers do not carry.
 
@@ -653,7 +653,7 @@ It is one line to turn off.
 
 ## What it is not
 
-- **Not a sandbox.** [`sandbox-runtime`](https://github.com/anthropics/sandbox-runtime) is the sandbox, and it is Anthropic's. seisin writes its settings and explains its refusals.
+- **Not a sandbox.** [`sandbox-runtime`](https://github.com/anthropics/sandbox-runtime) is the sandbox, and it is Anthropic's. seisin writes its settings and explains its denials.
 - **Not an orchestrator.** It does not run your agents, schedule them, or merge their work. It runs one command as one role.
 - **Not a secret manager.** It scopes *reads* of files you already have. Where those files come from is your problem.
 - **Not what a single agent needs first.** If only one agent ever touches the repo,
@@ -710,17 +710,17 @@ This space already has good work, and seisin is not the first thing here:
 - [`NVIDIA/OpenShell`](https://github.com/NVIDIA/openshell) — a runtime that sandboxes an agent with Landlock and seccomp, under a declarative policy. Serious, and the closest thing here by weight. It was evaluated as a possible backend; [the measured compatibility decision](docs/openshell.md) explains why it is currently an execution target candidate rather than a drop-in replacement.
 - [`dredozubov/hazmat`](https://github.com/dredozubov/hazmat) — runs the agent as a different system user, with `pf` rules and snapshots.
 - [`nolabs-ai/nono`](https://github.com/nolabs-ai/nono) — a kernel sandbox for agents on the host (Seatbelt, Landlock), with per-tool child sandboxes, a credential proxy with endpoint filtering, approval webhooks and a tamper-evident audit log. The most complete sandbox here, and on a Mac the one that enforces through the same kernel seisin does. `nono why` explains *which rule* denied something and how to allow it; it has no notion of *whose* it was.
-- *Directory ownership* is recommended in half the multi-agent write-ups. As far as I could find, nobody enforces it, and nobody names the owner in the refusal. That gap is the reason for this repo.
+- *Directory ownership* is recommended in half the multi-agent write-ups. As far as I could find, nobody enforces it, and nobody names the owner in the denial. That gap is the reason for this repo.
 
 ### One sentence to tell these apart, because the names all sound the same
 
 **OpenShell, hazmat and nono isolate the agent from your machine. seisin separates roles from
-each other inside one repository, and when it blocks something it names the owner.**
+each other inside one repository, and when the kernel denies something it names the owner.**
 
 Those are different problems and the first one is not the one this solves. If what you want
-is "this agent cannot touch anything outside its box", they do that and OpenShell does it
+is "this agent cannot touch anything outside its sandbox", they do that and OpenShell does it
 with a large organisation behind it. If what you want is "four agents work in the same
-repository and none of them edits another's files — and when one is stopped it is told whose
+repository and none of them edits another's files — and when one is denied it is told whose
 those files are", nothing above answers that, which is why this exists.
 
 They compose rather than compete: the agent seisin confines could be running inside one of
@@ -756,11 +756,11 @@ already done:
 | **Windows** | the runtime has a backend. seisin has never been pointed at it, and no CI runner covers it |
 | **Deleting inside your own territory** | not covered, and not coverable here — the ask is upstream as [issue #545](https://github.com/anthropics/sandbox-runtime/issues/545), open and unanswered since 2026-09-13, [with the measurement behind it](docs/upstream/denyUnlink.md) and [a demo](docs/demo/) |
 | **`init` heuristics** | it reads `.claude/agents/` then `CODEOWNERS`. Every other convention is a guess nobody has made yet |
-| **SSH inside a turn (macOS)** | on macOS the `ProxyCommand` the runtime sets can't authenticate to its own proxy, so `git` over SSH fails at the handshake (on Linux the runtime routes it through an authenticated proxy). Fix upstream: [PR #516](https://github.com/anthropics/sandbox-runtime/pull/516). Use an HTTPS remote |
+| **SSH inside a run (macOS)** | on macOS the `ProxyCommand` the runtime sets can't authenticate to its own proxy, so `git` over SSH fails at the handshake (on Linux the runtime routes it through an authenticated proxy). Fix upstream: [PR #516](https://github.com/anthropics/sandbox-runtime/pull/516). Use an HTTPS remote |
 | **A browser inside a role (macOS)** | Chromium only starts with `--single-process`, which is unstable with several browsers. Fix upstream: [PR #598](https://github.com/anthropics/sandbox-runtime/pull/598). [Measurement](docs/upstream/mach-register.md) |
 
 Every word above has one meaning, listed in [the glossary](docs/glossary.md) — the boundary
-**denies**, a person **declines**, seisin **refuses** a config it cannot enforce. A tool whose
+**denies**, a person **grants** or **declines**, seisin **refuses** a config it cannot enforce. A tool whose
 product is a sentence cannot afford two words for one thing.
 
 Issues and pull requests welcome — [CONTRIBUTING.md](CONTRIBUTING.md) says what is actually
