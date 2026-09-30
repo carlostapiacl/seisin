@@ -31,9 +31,9 @@ import { loadConfig, findConfig } from "./config.js";
 import { inspect } from "./inspect.js";
 import { explain, ownersOf } from "./owners.js";
 import { settingsFor } from "./srt.js";
-import { pending, requestsPath, grantFor, refuseIfBarred, markStale, shellId } from "./requests.js";
+import { pending, requestsPath, refuseIfBarred, shellId } from "./requests.js";
 import { read, logPath } from "./log.js";
-import { causesOf } from "./serve.js";
+import { causesOf, parseSince, queue as requestQueue, verdicts, wallsByRole } from "./views.js";
 import { walls, wasted } from "./walls.js";
 
 /**
@@ -192,7 +192,7 @@ const HANDLERS = {
 
   seisin_requests() {
     const cfg = config();
-    const queue = markStale(pending(requestsPath(cfg.root)), read(logPath(cfg.root)));
+    const queue = requestQueue(cfg.root, read(logPath(cfg.root)));
     return {
       pending: queue.map((r, i) => ({
         number: i + 1, id: r.key, role: r.role, action: r.action,
@@ -222,9 +222,8 @@ const HANDLERS = {
     // after the console had stopped doing so, and the two then disagreed about
     // the same log — 3,999 refusals here against 6,630 there, measured — with
     // nothing telling the agent its window was half of the person's.
-    const t = since ? Date.parse(since) : NaN;
-    const from = Number.isNaN(t) ? null : new Date(t).toISOString();
-    const c = causesOf(cfg, read(logPath(cfg.root), from ? { since: from } : {}));
+    const from = parseSince(since);
+    const c = causesOf(cfg, read(logPath(cfg.root), from ? { since: from } : {}), { ask: verdicts(cfg) });
     return {
       total: c.total,
       distinct: c.distinct,
@@ -238,14 +237,15 @@ const HANDLERS = {
 
   seisin_walls({ role }) {
     const cfg = config();
-    const file = logPath(cfg.root);
-    const names = role ? [role] : Object.keys(cfg.roles);
     if (role && !cfg.roles[role]) throw new Error(`unknown role "${role}"`);
+    // One read of the log for every role, not one per role (32 on a real policy).
+    const denied = read(logPath(cfg.root), { verdict: "denied" });
+    const ask = verdicts(cfg);
+    const byRole = role
+      ? Object.fromEntries([[role, walls(cfg, role, { entries: denied, ask })]].filter(([, w]) => w.length))
+      : wallsByRole(cfg, denied, { ask });
     const out = {};
-    for (const r of names) {
-      const w = walls(cfg, r, { file });
-      if (w.length) out[r] = { walls: w, spentRetrying: wasted(w) };
-    }
+    for (const [r, w] of Object.entries(byRole)) out[r] = { walls: w, spentRetrying: wasted(w) };
     return { roles: out, spentRetrying: Object.values(out).reduce((n, x) => n + x.spentRetrying, 0) };
   },
 

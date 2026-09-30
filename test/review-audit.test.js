@@ -187,3 +187,33 @@ test("pending() is cached per file state, and one caller's marks do not leak int
   assert.equal(pending(file).length, 0);
   assert.equal(pending(file, { includeSettled: true })[0].state, "denied");
 });
+
+/* ── the MCP shares the console's arithmetic, and reads the log once ───── */
+
+test("seisin_walls without a role equals asking role by role", async () => {
+  const { HANDLERS } = await import("../src/mcp.js");
+  const { walls } = await import("../src/walls.js");
+  const dir = scratch("seisin-audit-mcp-");
+  writeFileSync(join(dir, "seisin.toml"), '[roles.a]\nwrites = ["src/**"]\n\n[roles.b]\nwrites = ["deploy/**"]\n');
+  mkdirSync(join(dir, ".seisin"));
+  const d = (role, target) => JSON.stringify({ at: "2026-09-28T10:00:00.000Z", role, action: "write", target, verdict: "denied", owners: [] });
+  writeFileSync(join(dir, ".seisin", "log.jsonl"),
+    [d("a", "deploy/x"), d("a", "deploy/x"), d("a", "deploy/x"), d("b", "src/y"), d("b", "src/y"), d("b", "lib/z")].join("\n") + "\n");
+  const cwd = process.cwd();
+  process.chdir(dir);
+  try {
+    const every = HANDLERS.seisin_walls({});
+    const cfg = loadConfig(join(dir, "seisin.toml"));
+    for (const r of ["a", "b"]) {
+      assert.deepEqual(every.roles[r].walls, walls(cfg, r, { file: join(dir, ".seisin", "log.jsonl") }));
+      assert.deepEqual(HANDLERS.seisin_walls({ role: r }).roles[r], every.roles[r]);
+    }
+    assert.equal(every.spentRetrying, 3);
+  } finally { process.chdir(cwd); }
+});
+
+test("the MCP server no longer loads node:http to answer", async () => {
+  const src = readFileSync(new URL("../src/mcp.js", import.meta.url), "utf8");
+  assert.ok(!/from "\.\/serve\.js"/.test(src));
+  assert.ok(!/grantFor/.test(src));
+});
