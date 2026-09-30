@@ -9,13 +9,14 @@
  * where they can be exercised directly.
  */
 import { resolve, dirname, basename, relative, join, delimiter } from "node:path";
-import { realpathSync, lstatSync, readdirSync, existsSync, readFileSync, statSync } from "node:fs";
+import { lstatSync, readdirSync, existsSync, readFileSync, statSync } from "node:fs";
 import { ownersOf, covers, enforcedNeverWrites } from "./owners.js";
-import { ROLE_KEYS } from "./config.js";
+import { ROLE_KEYS, closest } from "./config.js";
 import { entriesOf } from "./keys.js";
 import { SHAPES } from "./scan.js";
 import { wired } from "./commands/wire.js";
 import { RUNTIME_WRITES, CREDENTIAL_HOMES, expand, settingsFor } from "./srt.js";
+import { realOrSelf } from "./grants.js";
 import { protections, resolveExecutable } from "./surface.js";
 
 /**
@@ -28,6 +29,9 @@ import { protections, resolveExecutable } from "./surface.js";
 export function inspect(config, only = null, where = config.path) {
   if (only && !config.roles[only]) throw new Error(`unknown role "${only}"`);
   const roles = only ? [config.roles[only]] : Object.values(config.roles);
+  // Once: it is listed on its own and again as a warning, and it is the most
+  // expensive thing check computes.
+  const shared = sharedPaths(config, roles);
 
   return {
     where,
@@ -43,7 +47,7 @@ export function inspect(config, only = null, where = config.path) {
     providers: Object.values(config.keyProviders ?? {}).map((p) => ({
       name: p.name, command: p.command, mode: p.mode,
     })),
-    shared: sharedPaths(config, roles),
+    shared,
     /**
      * What the kernel will refuse a role inside its own territory, and why:
      * programs installed where a role writes, the hooks and settings of each
@@ -52,7 +56,7 @@ export function inspect(config, only = null, where = config.path) {
      * quietly. See surface.js for the family and the measurements.
      */
     protected: protections(config, roles),
-    warnings: warningsFor(config, roles),
+    warnings: warningsFor(config, roles, shared),
     limits: LIMITS,
   };
 }
@@ -240,25 +244,7 @@ function nearest(word, candidates) {
   // letters mislead here: `no_writes` is three edits from `writes`, and
   // suggesting the grant for a misspelt subtraction is the worst answer.
   if (/deny|never|no_?write/i.test(word)) return "never_writes";
-  let best = null, bestD = 4;
-  for (const c of candidates) {
-    const d = distance(word.toLowerCase(), c);
-    if (d < bestD) { best = c; bestD = d; }
-  }
-  return best;
-}
-
-function distance(a, b) {
-  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
-  for (let i = 1; i <= a.length; i++) {
-    let prev = row[0]; row[0] = i;
-    for (let j = 1; j <= b.length; j++) {
-      const cur = row[j];
-      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
-      prev = cur;
-    }
-  }
-  return row[b.length];
+  return closest(word, candidates);
 }
 
 /**
@@ -269,10 +255,17 @@ function distance(a, b) {
  * that it stays a decision somebody made rather than a thing that drifted.
  */
 export function sharedPaths(config, roles = Object.values(config.roles)) {
+  // Asked once per distinct glob: a real policy repeats them (1,332 writes,
+  // 303 distinct on the portfolio), and each question is every glob of every
+  // role again.
   const seen = new Set();
+  const asked = new Map();
   for (const r of roles)
-    for (const glob of r.writes)
-      if (ownersOf(config, glob.replace(/\/\*\*$/, "")).length > 1) seen.add(glob);
+    for (const glob of r.writes) {
+      let many = asked.get(glob);
+      if (many === undefined) asked.set(glob, (many = ownersOf(config, glob.replace(/\/\*\*$/, "")).length > 1));
+      if (many) seen.add(glob);
+    }
   /**
    * A shared database counts once, not four times.
    *
@@ -331,7 +324,6 @@ function homeReachWarning(config) {
 }
 
 
-/** Every way this policy does not hold, each with what to do about it. */
 /**
  * Credential-shaped names at the top of the repository, and nothing deeper.
  *
@@ -377,14 +369,23 @@ function credentialish(root) {
   return [...found].sort().slice(0, 4);
 }
 
-/** Is this a command the shell would find? Walks PATH; asks no shell. */
-function onPath(cmd) {
-  if (cmd.includes("/")) return existsSync(cmd);
-  const dirs = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
-  return dirs.some((d) => existsSync(join(d, cmd)));
+/**
+ * Would the parent find this command? The same lookup `run` makes
+ * (resolveExecutable), so check does not call "missing" a program that is
+ * only in a directory a role writes — that has its own warning, above.
+ */
+function onPath(cmd, config) {
+  try {
+    // A path is resolved against the policy and not looked up, so it is there
+    // only if it exists.
+    return existsSync(resolveExecutable(cmd, config));
+  } catch (e) {
+    return /a role can write/.test(e.message);
+  }
 }
 
-function warningsFor(config, roles) {
+/** Every way this policy does not hold, each with what to do about it. */
+function warningsFor(config, roles, shared = sharedPaths(config, roles)) {
   const warnings = [];
 
   // A pattern the kernel cannot be given is not a policy, it is a sentence that
@@ -433,8 +434,6 @@ function warningsFor(config, roles) {
       headline: `PATH has ${unanchored.length} relative entr${unanchored.length === 1 ? "y" : "ies"} (${unanchored.map((d) => JSON.stringify(d)).join(", ")})`,
       detail: "They resolve inside the repo, where roles write, so seisin skips them when it looks for a program to run outside the box.",
     });
-  const shared = sharedPaths(config, roles);
-
   if (shared.length)
     warnings.push({
       kind: "shared",
@@ -597,7 +596,6 @@ function warningsFor(config, roles) {
       const unnamed = onDisk.filter((n) => !named.includes(n));
       if (!unnamed.length) continue;
       const shown = relative(resolve(config.root), dir);
-      const more = unnamed.length > 8 ? ` … and ${unnamed.length - 8} more` : "";
       listed.push({ role: r.name, named: named.length, total: onDisk.length,
                     where: shown ? shown + "/" : "the repo root", unnamed });
 
@@ -732,7 +730,7 @@ function warningsFor(config, roles) {
     for (const k of entriesOf(r)) if (k.kind === "ref") used.add(k.scheme);
   for (const scheme of [...used].sort()) {
     const provider = config.keyProviders?.[scheme];
-    if (!provider || onPath(provider.command[0])) continue;
+    if (!provider || onPath(provider.command[0], config)) continue;
     warnings.push({
       kind: "provider-missing",
       headline: `the ${scheme} provider runs "${provider.command[0]}", which is not on PATH`,
@@ -800,14 +798,5 @@ function lstatOrNull(p) {
     return lstatSync(p);
   } catch {
     return null;
-  }
-}
-
-/** The path with symlinks followed, or the path itself if it is not on disk. */
-function realOrSelf(p) {
-  try {
-    return realpathSync(p);
-  } catch {
-    return p;
   }
 }

@@ -14,6 +14,8 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { protectedBy } from "./surface.js";
+import { entriesOf } from "./keys.js";
+import { WILD } from "./paths.js";
 
 /**
  * Does this glob cover this path? Supports `**`, `*`, `?` and a trailing `/`.
@@ -43,9 +45,23 @@ import { protectedBy } from "./surface.js";
 export function covers(glob, path) {
   const p = normalized(path);
   const m = matcherOf(glob);
+  /**
+   * Above the root only for a glob that climbs there itself.
+   *
+   * `../../etc/passwd` is a path the kernel refuses to every role, and `**`
+   * matched it as a string, so `explain` answered "inside territory" for it.
+   * A territory reaches outside the repo only by saying so — the
+   * `../bitacora/lab/dev.md` a cell writes beside its own directory — and
+   * that one still matches, because both sides start with the same `..`.
+   */
+  if (climbs(p) && !m.climbs) return false;
   // The path itself, or anything beneath it. The `/` is load-bearing: without
   // it `src/api` would also cover `src/apifoo.ts`, which the kernel does not.
   if (m.prefix !== null) return p === m.prefix || p.startsWith(m.prefix + "/");
+  // The literal head of the glob, before its first wildcard, has to be the
+  // head of the path too. Most pairs fail here, for the price of a
+  // startsWith — `check` asks ~400k of them on a real policy.
+  if (!p.startsWith(m.head)) return false;
   return matchGlob(m.glob, p);
 }
 
@@ -69,7 +85,8 @@ function matcherOf(glob) {
   if (m) return m;
   let g = normalize(glob);
   if (glob.endsWith("/")) g += "/**";
-  m = WILD.test(g) ? { prefix: null, glob: g } : { prefix: g, glob: null };
+  const wild = WILD.test(g);
+  m = { prefix: wild ? null : g, glob: wild ? g : null, climbs: climbs(g), head: wild ? headOf(g) : "" };
   if (GLOBS.size >= MAX_CACHED) GLOBS.clear();
   GLOBS.set(glob, m);
   return m;
@@ -84,8 +101,15 @@ function normalized(path) {
   return p;
 }
 
-/** The four characters toRegExp() treats as wildcards. */
-const WILD = /[*?[\]]/;
+/**
+ * What every path a glob matches starts with: its text up to the first
+ * wildcard, minus a final `/` — `src/api/**` matches `src/api` itself, and
+ * `a/**\/b` matches `a/b`.
+ */
+const headOf = (g) => g.slice(0, g.search(WILD)).replace(/\/$/, "");
+
+/** Does a normalised path start above the repo root? */
+const climbs = (p) => p === ".." || p.startsWith("../");
 
 /**
  * One spelling per file, before anybody decides anything about it.
@@ -97,8 +121,10 @@ const WILD = /[*?[\]]/;
  * every sentence seisin said about it was wrong, which is the half of the tool
  * that is actually ours.
  *
- * A path that climbs above the repo root comes back as `..`, which owns
- * nothing and matches nothing. Outside the repo has no owner by definition.
+ * A path that climbs above the repo root keeps its leading `..` segments
+ * (`src/../../x` is `../x`). `covers` matches such a path only against a glob
+ * that climbs out too, so outside the repo has no owner unless a territory
+ * names that place explicitly.
  */
 export function normalize(s) {
   const flat = s.replace(/\\/g, "/").replace(/\/+/g, "/").replace(/\/+$/, "");
@@ -111,22 +137,9 @@ export function normalize(s) {
   return up.join("/");
 }
 
-/**
- * Glob to RegExp.
- *
- * The wildcards are parked on sentinels before `*` is expanded, because
- * expanding `**` first produces a `.*` whose own `*` the next pass would
- * rewrite again. Getting that order wrong is silent: the regex still compiles
- * and quietly matches the wrong set of files.
- *
- * `src/api/**` also matches `src/api` itself. Without that, the directory a
- * role was just granted comes back ownerless, which reads as a bug every time.
- *
- * Dotfiles are matched like any other name: `*.env` covers `.env`. Shell globs
- * hide them by default, and most glob libraries copy that. A permission tool
- * must not: covering one file too many costs an argument, covering one too few
- * is the hole. When the two readings disagree, this one takes the wider set.
- */
+/** matchGlob's memo, shared between calls (see there). */
+let MEMO = new Uint8Array(4096);
+
 /**
  * Does `glob` cover `path`? A linear matcher, not a regular expression.
  *
@@ -141,11 +154,31 @@ export function normalize(s) {
  * Same wildcards as before: `?` one non-`/`, `*` a run of non-`/`, `**` any run
  * including `/`, `**\/` zero or more whole directories, a trailing `/**` the
  * subtree. Characters are compared literally; nothing is treated as regex.
+ *
+ * `src/api/**` also matches `src/api` itself. Without that, the directory a
+ * role was just granted comes back ownerless, which reads as a bug every time.
+ *
+ * Dotfiles are matched like any other name: `*.env` covers `.env`. Shell globs
+ * hide them by default, and most glob libraries copy that. A permission tool
+ * must not: covering one file too many costs an argument, covering one too few
+ * is the hole. When the two readings disagree, this one takes the wider set.
  */
 function matchGlob(glob, path) {
   const G = glob.length, P = path.length;
-  // memo[gi * (P+1) + pi]: 0 unknown, 1 true, 2 false. One flat array, reused.
-  const memo = new Uint8Array((G + 1) * (P + 1));
+  // memo[gi * (P+1) + pi]: 0 unknown, 1 true, 2 false. One flat array, kept
+  // between calls and cleared over the part this call uses: allocating it
+  // fresh was most of the cost of a call that fails on its second character.
+  // Nothing re-enters matchGlob while it runs, so sharing it is safe.
+  // An outsized pair gets its own array, so one long path does not pin
+  // megabytes for the life of a server.
+  const size = (G + 1) * (P + 1);
+  let memo;
+  if (size > 1 << 20) memo = new Uint8Array(size);
+  else {
+    if (MEMO.length < size) MEMO = new Uint8Array(Math.max(size, MEMO.length * 2));
+    memo = MEMO;
+    memo.fill(0, 0, size);
+  }
   const at = (gi, pi) => {
     for (;;) {
       const key = gi * (P + 1) + pi;
@@ -355,19 +388,30 @@ export function keyHolders(config, key) {
   // netlify` — so it stays, and only for an unqualified question.
   const loose = !key.includes("/");
 
+  /**
+   * Only path keys. A reference — `keychain://x`, `NAME=file://.secrets/a#X` —
+   * is resolved by the parent and delivered as a value; the role is never
+   * given the file. Comparing the raw strings let `explain` say "declares
+   * a.env" about a role whose key merely pointed into it, a yes the kernel
+   * would refuse.
+   */
   return Object.values(config.roles)
-    .filter((r) => r.keys.some((k) =>
+    .filter((r) => fileKeys(r).some((k) =>
       resolve(k) === wanted || (loose && bare(k) === bare(key))))
     .map((r) => r.name);
 }
 
-/**
- * The sentence a blocked agent should read.
- *
- * Three outcomes, and the third is the one worth having: a path nobody owns is
- * not a permission problem, it is a hole in the map. Saying so is more useful
- * than denying quietly, and it is the only way the hole ever gets fixed.
- */
+/** The keys of `role` that grant a read: the path ones. A malformed entry grants nothing. */
+function fileKeys(role) {
+  let entries;
+  try {
+    entries = entriesOf(role);
+  } catch {
+    return [];
+  }
+  return entries.filter((e) => e.kind === "file").map((e) => e.raw);
+}
+
 /**
  * A connection the kernel refused: `tcp:<port>` or a unix socket path.
  *
@@ -431,6 +475,13 @@ function explainMcp(config, role, name) {
       : `${role} declares mcp = [], no MCP servers` };
 }
 
+/**
+ * The sentence a blocked agent should read.
+ *
+ * Three outcomes, and the third is the one worth having: a path nobody owns is
+ * not a permission problem, it is a hole in the map. Saying so is more useful
+ * than denying quietly, and it is the only way the hole ever gets fixed.
+ */
 export function explain(config, role, action, target) {
   if (action === "connect") return explainConnect(config, role, target);
   if (action === "mcp") return explainMcp(config, role, target);
