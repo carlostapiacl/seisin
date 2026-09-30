@@ -6,10 +6,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync, appendFileSync, readFileSync, renameSync, unlinkSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, writeFileSync, appendFileSync, readFileSync, renameSync, unlinkSync, existsSync, realpathSync } from "node:fs";
+import { join, relative } from "node:path";
 import { createHash } from "node:crypto";
-import { scan, insideRepo } from "../src/scan.js";
+import { scan, insideRepo, territoryRoots } from "../src/scan.js";
+import { loadConfig } from "../src/config.js";
 import { append, verifyLog, genesisPath } from "../src/log.js";
 import { renderScan } from "../src/render.js";
 import { watchDenials, underAnotherRun } from "../src/violations.js";
@@ -64,10 +65,18 @@ test("a scan with pruned checkouts does not read as clean", () => {
 });
 
 test("the CLI fails on a certain hit inside a checkout under a non-repo root", () => {
-  const r = seisin(projects(), "scan");
+  // The policy's only territory is app/: by default the scan looks there, and
+  // says so; --all walks the whole folder, wt/ included.
+  const box = projects();
+  const r = seisin(box, "scan");
   assert.equal(r.status, 1, r.stdout + r.stderr);
-  assert.match(r.stdout, /2 credential\(s\)/);
-  assert.doesNotMatch(r.stdout, /not scanned/);
+  assert.match(r.stdout, /1 credential\(s\)/);
+  assert.match(r.stdout, /app\/k\.txt.*in dev's territory/);
+  assert.match(r.stdout, /scanned: where the territories are — app/);
+  const all = seisin(box, "scan", "--all");
+  assert.equal(all.status, 1);
+  assert.match(all.stdout, /2 credential\(s\)/);
+  assert.doesNotMatch(all.stdout, /not scanned/);
 });
 
 /* ── log verify: the genesis record and its log ──────────────────────── */
@@ -227,4 +236,33 @@ test("a line without a suffix put off to the next snapshot is held for it, not d
   assert.deepEqual(seen, [32_000]);
   assert.equal(calls, 2);
   w.close();
+});
+
+/* ── scan follows the territories when the policy holds many repositories ── */
+
+test("territoryRoots widens a territory to its repository and leaves the rest of the folder out", () => {
+  const box = scratch("seisin-scope-");
+  for (const d of ["a/.git", "a/src", "b/.git", "archive/old/.git", "loose/notes"]) mkdirSync(join(box, d), { recursive: true });
+  writeFileSync(join(box, "a", ".env"), TOKEN("C"));            // repository root, outside the territory
+  writeFileSync(join(box, "archive", "old", "k.txt"), TOKEN("D")); // no territory anywhere near
+  writeFileSync(join(box, "loose", "notes", "k.txt"), TOKEN("E"));
+  writeFileSync(join(box, "seisin.toml"),
+    `[roles.dev]\nwrites = ["a/src/**", "loose/notes/**"]\n\n[roles.ops]\nwrites = ["b/**", "../elsewhere/**"]\n`);
+  const cfg = loadConfig(join(box, "seisin.toml"));
+  const roots = territoryRoots(cfg).map((r) => relative(realpathSync.native(box), realpathSync.native(r))).sort();
+  assert.deepEqual(roots, ["a", "b", "loose/notes"]);
+  const { hits } = scan(cfg.root, [], [], 500, { roots: territoryRoots(cfg) });
+  assert.deepEqual(hits.map((h) => h.file).sort(), ["a/.env", "loose/notes/k.txt"]);
+});
+
+test("a checkout that holds a territory is walked even inside another root", () => {
+  const box = scratch("seisin-scope-");
+  for (const d of ["team/.git", "team/copies/w1/.git", "team/copies/w2/.git"]) mkdirSync(join(box, d), { recursive: true });
+  writeFileSync(join(box, "team", "copies", "w1", "k.txt"), TOKEN("F"));
+  writeFileSync(join(box, "team", "copies", "w2", "k.txt"), TOKEN("G"));
+  writeFileSync(join(box, "seisin.toml"), `[roles.lead]\nwrites = ["team/board/**"]\n\n[roles.dev]\nwrites = ["team/copies/w1/**"]\n`);
+  const cfg = loadConfig(join(box, "seisin.toml"));
+  const r = scan(cfg.root, [], [], 500, { roots: territoryRoots(cfg) });
+  assert.deepEqual(r.hits.map((h) => h.file), ["team/copies/w1/k.txt"], "w1 is a territory; w2 is someone's copy");
+  assert.deepEqual(r.nestedPaths, ["team/copies/w2"]);
 });
