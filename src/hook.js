@@ -52,10 +52,14 @@ export function mcpServer(tool) {
 }
 
 export function targetsOf(tool, input = {}) {
+  // The event is whatever the agent's harness sent. `tool_input: null` or a
+  // path that is a number used to throw below, and a throwing hook exits 2 —
+  // which Claude Code reads as "block". Malformed means "nothing to say".
+  if (!input || typeof input !== "object") input = {};
   const kind = FILE_TOOLS[tool];
   if (kind) {
-    const p = input.file_path ?? input.path ?? input.notebook_path;
-    return p ? [{ action: kind, path: p }] : [];
+    const p = [input.file_path, input.path, input.notebook_path].find((x) => x != null);
+    return typeof p === "string" && p ? [{ action: kind, path: p }] : [];
   }
   /**
    * An MCP tool call names a resource, not a path: `mcp__<server>__<tool>`.
