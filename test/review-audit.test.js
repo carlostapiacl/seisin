@@ -256,7 +256,7 @@ test("a decision the policy file cannot take is a 500; a bad one is a 400", asyn
   // The directory the policy lives in cannot be written: no lock, no temp file.
   chmodSync(box, 0o555);
   try {
-    const r = await post("/api/decide", JSON.stringify({ key, decision: "granted" }));
+    const r = await post("/api/decide", JSON.stringify({ key, decision: "granted", reason: "r" }));
     assert.equal(r.status, 500, await r.text());
   } finally { chmodSync(box, 0o755); }
   assert.equal(pending(q).length, 1, "the request is still open: nothing was written");
