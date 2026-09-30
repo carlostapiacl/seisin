@@ -213,6 +213,22 @@ From a first-run review with a small sample repo.
   (`left, renumbered: #1 …`). Without an argument they print a usage line pointing at
   `seisin requests`.
 
+- **`run` says only what it added.** It reprinted the whole pending queue after every run. Now
+  it lists the requests this run filed, with the numbers `grant` takes, and one line —
+  `this run: 1 new request(s) · 3 older pending — seisin requests` — and nothing when nothing is new.
+- **`run`'s header names the territory:** `writes frontend/** (+7 scratch) · keys netlify.txt`
+  instead of `writes 8 path(s) · reads 1 key(s)`. A command the role cannot find is
+  `seisin: "nosuchcmd" not found on the role's PATH`, exit 127, instead of the runtime's
+  `env: nosuchcmd: No such file or directory`. A missing sandbox runtime is fixed the way seisin
+  was installed (in the project, globally, or in a checkout), not always with `npm i -g`.
+- **Mistakes are one line, exit 2.** An unknown command says `unknown command "chek" — did you
+  mean "check"?` instead of printing the whole usage; a flag a command does not take is refused
+  (`check --bogus`); every unknown role lists the known ones with the nearest; `log --verdict` is
+  checked, and `log --role x` with nothing for x says which roles the log does hold. `review` in a
+  wired repo with no allowed action yet says so, instead of asking for `seisin wire` again.
+- **`seisin <command> --help`** lists that command's flags, one or two examples and its exit
+  codes. The README has the exit codes too.
+
 ## 0.4.2 — 2026-09-29
 
 - **Small hardening across the launcher.** A `--observe` written after the command

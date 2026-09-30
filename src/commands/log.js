@@ -18,15 +18,30 @@ const flag = (argv, name) => {
   return i === -1 ? undefined : argv[i + 1];
 };
 
+const VERDICTS = ["allowed", "denied", "observed"];
+
 export function log(config, argv = []) {
   if (argv[0] === "verify") return verify(config);
-  const entries = read(logPath(config.root), {
-    role: flag(argv, "--role"),
-    verdict: flag(argv, "--verdict"),
-    limit: Number(flag(argv, "--limit") ?? 40),
-  });
+  const role = flag(argv, "--role");
+  const verdict = flag(argv, "--verdict");
+  const limit = flag(argv, "--limit") ?? "40";
+  // Checked, because a filter that matches nothing reads as an empty log.
+  if (verdict !== undefined && !VERDICTS.includes(verdict))
+    throw new Error(`unknown verdict "${verdict}" — use allowed, denied or observed`);
+  if (!/^[1-9]\d*$/.test(limit)) throw new Error(`--limit takes a positive number, got "${limit}"`);
+  // A role that is not in the policy is still a fair question: the log keeps
+  // the lines of a role that was renamed or removed. The empty answer says so.
+  const entries = read(logPath(config.root), { role, verdict, limit: Number(limit) });
 
   if (entries.length === 0) {
+    // Say which: nothing at all, or nothing for this filter.
+    const any = role || verdict ? read(logPath(config.root), { limit: 1000 }) : [];
+    if (any.length) {
+      const others = [...new Set(any.map((e) => e.role).filter(Boolean))];
+      out(`\n  ${C.dim}no entries for ${[role && `role ${role}`, verdict && `verdict ${verdict}`].filter(Boolean).join(", ")} — ` +
+        `the log has ${any.length === 1000 ? "1000+" : any.length} for ${others.join(", ") || "other filters"}${C.off}\n\n`);
+      return entries;
+    }
     out(`\n  ${C.dim}nothing recorded yet — run an agent through "seisin run"${C.off}\n\n`);
     return entries;
   }

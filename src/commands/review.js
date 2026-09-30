@@ -16,6 +16,7 @@
  */
 import { review } from "../review.js";
 import { C, out } from "../render.js";
+import { wired } from "./wire.js";
 
 export function reviewCommand(config, argv = []) {
   const i = argv.indexOf("--min");
@@ -95,7 +96,13 @@ export function reviewCommand(config, argv = []) {
   if (!r.unusedKnowable) {
     out(`\n  ${C.b}Granted, never used${C.off} ${C.dim}— cannot be answered from this log${C.off}\n`);
     out(`  ${C.dim}nothing here records what was ALLOWED, only what was refused. Every grant${C.off}\n`);
-    out(`  ${C.dim}would look dead, so nothing is listed. Run \`seisin wire\` and come back.${C.off}\n`);
+    // Wired already: telling someone to run `seisin wire` again sends them
+    // looking for a fault in a setup that is fine and simply has not run.
+    if (wired(config.root))
+      out(`  ${C.dim}would look dead, so nothing is listed. wired, but no allowed action logged yet —${C.off}\n` +
+          `  ${C.dim}run an agent (claude, codex…) through seisin run and come back.${C.off}\n`);
+    else
+      out(`  ${C.dim}would look dead, so nothing is listed. Run \`seisin wire\` and come back.${C.off}\n`);
   }
 
   if (r.unused.length) {

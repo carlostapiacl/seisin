@@ -21,10 +21,10 @@ import { spool, SOCK_ENV } from "../spool.js";
 import { openRun } from "../rundir.js";
 import { secretsOf, redactor } from "../redact.js";
 import { C, err } from "../render.js";
-import { pending, requestsPath, markStale } from "../requests.js";
+import { pending, requestsPath, withDeclarers } from "../requests.js";
 import { notifier } from "../notify.js";
-import { logPath, read } from "../log.js";
-import { renderQueue } from "./requests.js";
+import { renderAdded } from "./requests.js";
+import { unknownRole } from "../suggest.js";
 import { watchDenials } from "../violations.js";
 import { intake } from "../intake.js";
 
@@ -134,8 +134,7 @@ export async function run(config, argv) {
     cmd = argv.slice(i);
   }
   if (!role || cmd.length === 0) throw new Error("usage: seisin run <role> -- <command...>");
-  if (!config.roles[role])
-    throw new Error(`unknown role "${role}". Known: ${Object.keys(config.roles).join(", ")}`);
+  if (!config.roles[role]) throw unknownRole(config, role);
 
   /**
    * seisin does not run inside seisin, and says so here rather than later.
@@ -200,6 +199,8 @@ export async function run(config, argv) {
     theRun.close();
   };
   process.once("exit", cleanup);
+  // What was already waiting, so the end of the run can say what it added.
+  const before = new Set(pending(requestsPath(config.root)).map((q) => q.key));
   const sockPath = theRun.sock;
   const settings = settingsFor(config, role, sockPath, observe);
   // Per run, never per role: `.seisin/<role>.json` was one file for every run
@@ -212,7 +213,7 @@ export async function run(config, argv) {
   audit = await spool(take.fromHook, sockPath);
 
   const srt = resolveSrt();
-  if (!srt) throw new Error("sandbox runtime not found. Install it with: npm i -g @anthropic-ai/sandbox-runtime");
+  if (!srt) throw new Error(`sandbox runtime not found. ${installHint()}`);
 
   // The hook runs inside the child and has to know which role it is. These are
   // the only variables seisin injects, and none carries a secret.
@@ -299,9 +300,27 @@ export async function run(config, argv) {
   if (observe) env.SEISIN_OBSERVE = "1";
   if (mine.includes("--debug-env")) err(`${C.dim}seisin: dropped ${dropped.join(" ")}${C.off}\n`);
 
+  /**
+   * A command the role cannot find, said as that — before the box starts.
+   *
+   * It used to reach the runtime, which runs it through `env`, and the only
+   * word on screen was `env: nosuchcmd: No such file or directory`: seisin's
+   * own wrapper named as the thing that failed. 127, the shell's code for it.
+   */
+  if (!onPath(cmd[0], env.PATH)) {
+    const e = new Error(`"${cmd[0]}" not found on the role's PATH`);
+    e.exitCode = 127;
+    throw e;
+  }
+
+  // What the role gets, in the policy's own words: `writes 8 path(s)` counted
+  // the runtime's scratch directories as territory and named none of it.
+  const r = config.roles[role];
+  const territory = observe ? "the whole repo" : r.writes.length ? r.writes.join(" ") : "nothing";
+  const scratch = settings.filesystem.allowWrite.length - (observe ? 1 : r.writes.length);
   err(
-    `${C.dim}seisin: ${role} · writes ${settings.filesystem.allowWrite.length} path(s) · ` +
-    `reads ${settings.filesystem.allowRead.length} key(s) · ` +
+    `${C.dim}seisin: ${role} · writes ${territory}${scratch > 0 ? ` (+${scratch} scratch)` : ""} · ` +
+    `keys ${r.keys.length ? r.keys.join(" ") : "none"} · ` +
     `env ${Object.keys(env).length} kept, ${dropped.length} dropped` +
     `${observe ? ` · ${C.yellow}OBSERVING — the repo is writable, the network is NOT${C.off}${C.dim}` : ""}${C.off}\n`
   );
@@ -480,8 +499,12 @@ export async function run(config, argv) {
           `${offPolicy ? `, ${offPolicy} outside the policy's paths` : ""}` +
           `${foreign ? `, ${foreign} from other sandboxes` : ""}${C.off}\n`);
 
-    const queue = pending(requestsPath(config.root));
-    if (queue.length) err(renderQueue(markStale(queue, read(logPath(config.root)))));
+    // Only what this run added, with the numbers `grant` takes, and one line
+    // for the rest. The whole queue after every run buried the new request
+    // under the ones already seen; nothing new, nothing said.
+    const queue = withDeclarers(config, pending(requestsPath(config.root), { keyDirs: config.keyDirs }));
+    const added = queue.map((q, i) => ({ ...q, n: i + 1 })).filter((q) => !before.has(q.key));
+    if (added.length) err(renderAdded(added, queue.length - added.length));
     const failed = await notify.settle();
     if (failed.length) err(`${C.yellow}seisin: could not notify about a new request (${failed[0]})${C.off}\n`);
     // One more turn of the loop, so a signal that arrived with the child's exit
@@ -509,4 +532,28 @@ export async function run(config, argv) {
     err(`${C.red}seisin:${C.off} could not start the sandbox: ${e.message}\n`);
     process.exit(2);
   });
+}
+
+/** Is `name` a program the role can start with this PATH? */
+function onPath(name, path) {
+  if (!name) return false;
+  if (name.includes("/")) return existsSync(name);
+  return (path ?? "").split(delimiter).some((d) => d && existsSync(join(d, name)));
+}
+
+/**
+ * How to put the runtime back, for the way this seisin was installed.
+ *
+ * It is a dependency, so it is missing only from a broken install — and the
+ * fix differs: a project's own node_modules, a global install, or a checkout.
+ * `npm i -g` was suggested to everyone, which for a project-local seisin
+ * installs a second runtime somewhere seisin does not look first.
+ */
+export function installHint(from = HERE) {
+  const at = from.split("/node_modules/seisin/")[0];
+  if (at === from) return `Install it in this checkout with: npm install (in ${dirname(dirname(from))})`;
+  // npm's global layout is <prefix>/lib/node_modules on unix, …/npm/node_modules on Windows.
+  if (/\/lib$/.test(at) || /[\\/]npm$/.test(at))
+    return "seisin is installed globally; reinstall it with: npm install -g seisin";
+  return `seisin is installed in ${at}; reinstall it there with: npm install seisin`;
 }

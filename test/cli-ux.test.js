@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync, existsSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
-import { CLI, boxed, repoWith } from "./_tmp.js";
+import { CLI, boxed, repoWith, srtSkip } from "./_tmp.js";
 
 const TOML = `[keys]
 dir = ".secrets"
@@ -134,4 +134,106 @@ test("grant and decline with no argument point at seisin requests", () => {
     assert.equal(r.code, 2);
     assert.match(r.err, new RegExp(`usage: seisin ${verb} <n\\|id> .* seisin requests`));
   }
+});
+
+/* ── 4 and 14. what a run says ─────────────────────────────────────────────── */
+
+test("run: the header names the territory and keys; the end lists only what this run added", { skip: srtSkip() }, () => {
+  const dir = demo("ux-run-");
+  ask(dir, { role: "qa", action: "write", target: "frontend/old.js" });
+  const r = sh(dir, "run", "frontend", "--", "sh", "-c", "echo x > backend/new.py");
+  assert.match(r.err, /seisin: frontend · writes frontend\/\*\* \(\+\d+ scratch\) · keys netlify\.txt/);
+  assert.match(r.err, /#2\s+frontend wants write on backend\/src\/\*\*|#2\s+frontend wants write on backend\/\*\*/);
+  assert.doesNotMatch(r.err, /qa wants write/, "an older request is counted, not reprinted");
+  assert.match(r.err, /this run: 1 new request\(s\) · 1 older pending — seisin requests/);
+
+  const quiet = sh(dir, "run", "frontend", "--", "true");
+  assert.equal(quiet.code, 0, quiet.all);
+  assert.doesNotMatch(quiet.err, /request|pending/, "nothing new, nothing said");
+});
+
+test("run: a command that is not there is said as that, with 127", { skip: srtSkip() }, () => {
+  const dir = demo("ux-run-");
+  const r = sh(dir, "run", "frontend", "--", "nosuchcmd-seisin");
+  assert.equal(r.code, 127);
+  assert.match(r.err, /seisin: "nosuchcmd-seisin" not found on the role's PATH/);
+  assert.doesNotMatch(r.err, /env:/);
+});
+
+test("run: a missing runtime is fixed the way seisin was installed", async () => {
+  const { installHint } = await import("../src/commands/run.js");
+  assert.match(installHint("/usr/local/lib/node_modules/seisin/src/commands"), /npm install -g seisin/);
+  assert.match(installHint("/home/me/app/node_modules/seisin/src/commands"), /installed in \/home\/me\/app; reinstall it there with: npm install seisin/);
+  assert.match(installHint("/home/me/seisin/src/commands"), /npm install \(in \/home\/me\/seisin\)/);
+});
+
+/* ── 12. one line for every mistake ───────────────────────────────────────── */
+
+test("an unknown command, flag, role or action is one line and exit 2", () => {
+  const dir = demo();
+  const typo = sh(dir, "chek");
+  assert.equal(typo.code, 2);
+  assert.match(typo.err, /seisin: unknown command "chek" — did you mean "check"\?/);
+  assert.doesNotMatch(typo.all, /give each agent its own folders/, "no usage dump");
+
+  const flag = sh(dir, "check", "--bogus");
+  assert.equal(flag.code, 2);
+  assert.match(flag.err, /unknown flag "--bogus" for check/);
+
+  const role = sh(dir, "walls", "fronted");
+  assert.equal(role.code, 2);
+  assert.match(role.err, /unknown role "fronted" — did you mean "frontend"\?\n\s+known roles: frontend, backend, qa/);
+
+  const action = sh(dir, "explain", "frontend", "delete", "x");
+  assert.equal(action.code, 2);
+  assert.match(action.err, /unknown action "delete" — use read, write or mcp/);
+});
+
+test("without a policy every command says so in one line", () => {
+  const dir = boxed("ux-empty-");
+  for (const cmd of [["check"], ["requests"], ["explain", "a", "read", "x"], ["log"]]) {
+    const r = sh(dir, ...cmd);
+    assert.equal(r.code, 2, cmd.join(" "));
+    assert.equal(r.all.trim().split("\n").length, 1, `${cmd.join(" ")}:\n${r.all}`);
+    assert.match(r.err, /no seisin\.toml found here or above/);
+  }
+});
+
+/* ── 13. per-command help ─────────────────────────────────────────────────── */
+
+test("each command's --help lists its flags, an example and its exit codes", () => {
+  const dir = boxed("ux-help-");
+  const want = {
+    walls: ["--since", "--min", "--all"], explain: ["mcp"], scan: ["--all"], log: ["--limit", "--verdict"],
+    run: ["--debug-env", "--observe", "--settings"], review: ["--min"], check: ["--verbose"], init: ["--force"],
+  };
+  for (const [cmd, words] of Object.entries(want)) {
+    const r = sh(dir, cmd, "--help");
+    assert.equal(r.code, 0, cmd);
+    for (const w of words) assert.ok(r.out.includes(w), `${cmd} --help mentions ${w}:\n${r.out}`);
+    assert.match(r.out, /examples:/);
+    assert.match(r.out, /exit codes:/);
+  }
+});
+
+test("log: a verdict is validated, and an empty filter says what the log does hold", async () => {
+  const { append, logPath } = await import("../src/log.js");
+  const dir = demo();
+  append(logPath(dir), { role: "frontend", action: "write", target: "backend/x", verdict: "denied", owners: ["backend"] });
+  const bad = sh(dir, "log", "--verdict", "nope");
+  assert.equal(bad.code, 2);
+  assert.match(bad.err, /unknown verdict "nope" — use allowed, denied or observed/);
+  const other = sh(dir, "log", "--role", "qa");
+  assert.equal(other.code, 0);
+  assert.match(other.out, /no entries for role qa — the log has 1 for frontend/);
+});
+
+test("review: wired but nothing allowed yet is said as that, not as 'run seisin wire'", async () => {
+  const { append, logPath } = await import("../src/log.js");
+  const dir = demo();
+  append(logPath(dir), { role: "frontend", action: "write", target: "backend/x", verdict: "denied", owners: ["backend"] });
+  assert.equal(sh(dir, "wire").code, 0);
+  const r = sh(dir, "review");
+  assert.match(r.out, /wired, but no allowed action logged yet/);
+  assert.doesNotMatch(r.out, /Run `seisin wire`/);
 });
