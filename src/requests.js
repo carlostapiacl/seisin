@@ -27,6 +27,7 @@
  * deleted — it is followed by a line saying what happened to it.
  */
 import { neverWrites, isGitMetadata, covers } from "./owners.js";
+import { protectedBy } from "./surface.js";
 import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
@@ -284,6 +285,18 @@ export function refuseIfBarred(config, request) {
       `${request.target} is under never_writes of ${request.role} ("${hit}"), which wins over ` +
       `writes. Granting it would change nothing. If the subtraction is wrong, remove that ` +
       `entry from [roles.${request.role}]; otherwise decline this request.`);
+  // A protected file stays refused whatever `writes` says: the kernel is given
+  // it as a deny, and explain answers the same. Approving `web/.vscode/**`
+  // used to add the line and change nothing — a grant that reads as done.
+  const guard = protectedBy(config, request.target, { role: request.role });
+  if (guard)
+    throw new Error(guard.family
+      ? `${request.target} is protected (${guard.why}). A grant cannot open it: ${request.role} ` +
+        `writes it only if the policy hands it the family, control_files = ["${guard.family}"] ` +
+        `under [roles.${request.role}], inside its own territory. Edit the policy if that is ` +
+        `what you mean; otherwise decline this request.`
+      : `${request.target} is protected (${guard.why}) and no role can ever be granted it. ` +
+        `Decline this request.`);
   // Only a repository the role does not write: its own `.git` is its own business.
   if (isGitMetadata(request.target) && !(role?.writes ?? []).some((g) => covers(g, request.target)))
     throw new Error(
