@@ -86,20 +86,26 @@ accident rather than by looking:
 
 There is a test for the first shape — anything the console derives must have an MCP tool —
 and it exists because a test is the only version of this rule that survives a tired evening.
-The second shape has no test yet; `grep` is what there is.
+The second shape has one now too: `test/words.test.js` reads what every surface says and
+fails on a word the glossary does not use.
 
 ## Words
 
-A term that reaches the CLI, the console, the log or the README arrives with its line in
-[docs/glossary.md](docs/glossary.md), or it does not arrive.
+A term that reaches the CLI, the console, the MCP server, the hook's messages, the log or
+the README arrives with its line in [docs/glossary.md](docs/glossary.md), or it does not
+arrive.
 
 This is not tidiness. What this project adds over a sandbox is the sentence you read when
-something is stopped, and a tool whose product is a sentence cannot afford four words for one
+something is denied, and a tool whose product is a sentence cannot afford four words for one
 event. It had four — `block`, `denial`, `refusal` and `deny` — and the fix cost a rename of a
 published command, which is what the rule is here to prevent next time.
 
 The three verbs are taken and each belongs to one actor: the **boundary denies**, a **person
-declines**, **seisin refuses** a configuration it will not accept.
+grants or declines**, **seisin refuses** a configuration it will not accept.
+
+`test/words.test.js` holds the list. A new word goes in the glossary first; an exception goes
+in its `ALLOW` list with the reason it is right *there* — "it was already like that" is not
+one. CHANGELOG.md is not read: history quotes the old words on purpose.
 
 ## The config language
 
