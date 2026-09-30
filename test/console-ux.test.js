@@ -177,3 +177,79 @@ test("the page is sent every cause up to its cap, not twelve, and told how many 
   assert.equal(s.causes.distinct, 15);
   assert.equal(s.causes.causes.length, 15, "the list was cut at twelve without saying so");
 });
+
+/* ── the page ──────────────────────────────────────────────────────────── */
+
+const HTML = readFileSync(new URL("../ui/index.html", import.meta.url), "utf8");
+const JS = HTML.slice(HTML.indexOf("<script>"), HTML.lastIndexOf("</script>"));
+const CSS = HTML.slice(HTML.indexOf("<style>"), HTML.indexOf("</style>"));
+
+test("the page parses", () => {
+  assert.doesNotThrow(() => new Function(JS.slice("<script>".length)));
+});
+
+test("the example's kind hints are kinds.js's sentences, word for word", () => {
+  for (const [kind, hint] of Object.entries(KINDS))
+    assert.ok(JS.includes(JSON.stringify(hint)), `the page's hint for ${kind} drifted from kinds.js`);
+});
+
+test("the example has requests, denials and walls, and names no real credential", () => {
+  const demo = JS.slice(JS.indexOf("var DEMO = {"), JS.indexOf("var KEYS ="));
+  assert.match(demo, /requests: \[\s*\{/);
+  assert.match(demo, /"denied"/);
+  assert.ok(!/hetzner/i.test(HTML), "the example still names a real provider's key");
+  // Opened as a file, it says what seisin is and how to see your own repo.
+  assert.match(HTML, /id="demo-banner"[\s\S]{0,400}seisin ui/);
+});
+
+test("approve and decline need a reason, and approving another role's path takes a second click", () => {
+  const act = JS.slice(JS.indexOf("async function act(btn)"), JS.indexOf("function draw()"));
+  assert.match(act, /Write a reason first/);
+  assert.match(act, /Click again to share/);
+  assert.match(act, /granting \? \(req\.owners \|\| \[\]\)\.length > 0 : filled/);
+  // The widening is said before the click, not in grey under it.
+  assert.match(JS, /approving grants <b>all of <code>/);
+  // Approve is the filled button; Decline is neutral, not amber.
+  assert.match(JS, /class="btn primary"[^>]*data-d="granted"/);
+  assert.ok(!/class="btn warn"[^>]*data-d="denied"/.test(JS));
+});
+
+test("live, the roles table offers no edit that would be thrown away", () => {
+  const rows = JS.slice(JS.indexOf("function drawRows()"), JS.indexOf("function drawCfg()"));
+  // Every editing control is behind the example's branch.
+  assert.match(rows, /if \(LIVE\) return s;/, "× on a path in live mode");
+  assert.match(rows, /if \(!LIVE\) \{\s*var add=/, "+ folder in live mode");
+  assert.match(rows, /if \(LIVE\) \{\s*r\.keys\.forEach/, "key toggles in live mode");
+  // The role is a real button that says whether it is the selected one.
+  assert.match(rows, /rb\.setAttribute\("aria-pressed"/);
+});
+
+test("two failed polls turn the writes off and say which failure it is", () => {
+  assert.match(JS, /if \(FAILS >= 2\) setOffline\(got\.status === 401 \|\| got\.status === 403 \? "expired" : "down"\)/);
+  assert.match(JS, /seisin ui --link/);
+  assert.match(JS, /document\.querySelectorAll\("\[data-write\]"\)/);
+  for (const id of ["Approve", "Decline"]) assert.match(JS, new RegExp(`data-write>${id}<`));
+  assert.match(HTML, /id="decline-all" type="button" data-write/);
+});
+
+test("a toggle's accessible name starts with the words on it", () => {
+  assert.match(JS, /b\.setAttribute\("aria-label", o\.text \+ " — " \+ o\.aria\)/);
+});
+
+test("informative grey meets AA on white in light mode and on the panel in dark", () => {
+  const lum = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255)
+    .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+    .reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
+  const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  const dims = [...CSS.matchAll(/--dim:(#[0-9a-f]{6})/g)].map((m) => m[1]);
+  assert.equal(dims.length, 3, "light, dark by preference, dark by choice");
+  assert.ok(ratio(dims[0], "#f6f8fa") >= 4.5, `light --dim ${dims[0]}`);
+  for (const d of dims.slice(1)) assert.ok(ratio(d, "#161b22") >= 4.5, `dark --dim ${d}`);
+  assert.match(CSS, /\[tabindex\]:focus-visible/);
+  assert.match(CSS, /input:focus-visible/);
+});
+
+test("Causes is reachable from the nav, as a cut of Denied", () => {
+  assert.match(HTML, /<a href="#causes" role="tab"/);
+  assert.ok(!/data-view="causes"/.test(HTML), "a view the nav cannot reach");
+});
