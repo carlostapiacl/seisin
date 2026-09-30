@@ -122,18 +122,41 @@ const PREFACE =
   "or a macOS privacy prompt: chmod, sudo or a different path to the same file will not change it.";
 
 /**
+ * What the tool said, and whether it said it failed.
+ *
+ * PostToolUseFailure is a failure by definition, and its evidence is all of it.
+ * PostToolUse is a Bash result, and most of those are successes: a command that
+ * prints "Permission denied" to stdout — a grep through logs, a test that
+ * checks for it — used to pay the full retry schedule (413 ms measured) to
+ * find nothing. So there, only stderr counts, and only an explicit failure
+ * (a non-zero exit code, or `is_error`) is a reason to wait for the kernel.
+ * A success with the words on stderr — `cmd; true` swallowed the status —
+ * still gets one look at the log, just not the waits.
+ */
+function evidenceOf(event) {
+  if (event.hook_event_name !== "PostToolUse")
+    return { text: JSON.stringify({ r: event.tool_response, e: event.error, o: event.tool_output }), failed: true };
+  const r = event.tool_response;
+  if (typeof r === "string") return { text: JSON.stringify(r), failed: false };
+  const code = r?.exit_code ?? r?.exitCode ?? r?.code;
+  const failed = r?.is_error === true || (typeof code === "number" && code !== 0);
+  return { text: JSON.stringify(typeof r?.stderr === "string" ? r.stderr : ""), failed };
+}
+
+/**
  * After a tool call failed. Returns the hook output, or null to say nothing.
  *
  * `wait` retries the read a few times: the kernel's line lands ~30 ms after the
- * refusal, and a loaded machine can be slower than the hook.
+ * refusal, and a loaded machine can be slower than the hook. Only when the tool
+ * reported a failure — see {@link evidenceOf}.
  */
 export async function afterTool(config, role, event, { file, now = Date.now, wait = [0, 100, 300] } = {}) {
-  const evidence = JSON.stringify({ r: event.tool_response, e: event.error, o: event.tool_output });
+  const { text: evidence, failed } = evidenceOf(event);
   if (!DENIAL_SIGNS.test(evidence)) return null;
   // JSON escapes what the program printed; the signatures are written against the text.
   const known = knownRefusals(evidence.replace(/\\n/g, "\n").replace(/\\"/g, '"'));
   let found = [];
-  for (const ms of wait) {
+  for (const ms of failed ? wait : [0]) {
     if (ms) await new Promise((ok) => setTimeout(ok, ms));
     found = recentKernelDenials(file, role, now() - WINDOW_MS);
     if (found.length) break;
