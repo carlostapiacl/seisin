@@ -14,6 +14,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { protectedBy } from "./surface.js";
+import { entriesOf } from "./keys.js";
 
 /**
  * Does this glob cover this path? Supports `**`, `*`, `?` and a trailing `/`.
@@ -43,6 +44,16 @@ import { protectedBy } from "./surface.js";
 export function covers(glob, path) {
   const p = normalized(path);
   const m = matcherOf(glob);
+  /**
+   * Above the root only for a glob that climbs there itself.
+   *
+   * `../../etc/passwd` is a path the kernel refuses to every role, and `**`
+   * matched it as a string, so `explain` answered "inside territory" for it.
+   * A territory reaches outside the repo only by saying so — the
+   * `../bitacora/lab/dev.md` a cell writes beside its own directory — and
+   * that one still matches, because both sides start with the same `..`.
+   */
+  if (climbs(p) && !m.climbs) return false;
   // The path itself, or anything beneath it. The `/` is load-bearing: without
   // it `src/api` would also cover `src/apifoo.ts`, which the kernel does not.
   if (m.prefix !== null) return p === m.prefix || p.startsWith(m.prefix + "/");
@@ -69,7 +80,8 @@ function matcherOf(glob) {
   if (m) return m;
   let g = normalize(glob);
   if (glob.endsWith("/")) g += "/**";
-  m = WILD.test(g) ? { prefix: null, glob: g } : { prefix: g, glob: null };
+  const wild = WILD.test(g);
+  m = { prefix: wild ? null : g, glob: wild ? g : null, climbs: climbs(g) };
   if (GLOBS.size >= MAX_CACHED) GLOBS.clear();
   GLOBS.set(glob, m);
   return m;
@@ -84,8 +96,11 @@ function normalized(path) {
   return p;
 }
 
-/** The four characters toRegExp() treats as wildcards. */
-const WILD = /[*?[\]]/;
+/** The four characters the matcher treats as wildcards. */
+export const WILD = /[*?[\]]/;
+
+/** Does a normalised path start above the repo root? */
+const climbs = (p) => p === ".." || p.startsWith("../");
 
 /**
  * One spelling per file, before anybody decides anything about it.
@@ -97,8 +112,10 @@ const WILD = /[*?[\]]/;
  * every sentence seisin said about it was wrong, which is the half of the tool
  * that is actually ours.
  *
- * A path that climbs above the repo root comes back as `..`, which owns
- * nothing and matches nothing. Outside the repo has no owner by definition.
+ * A path that climbs above the repo root keeps its leading `..` segments
+ * (`src/../../x` is `../x`). `covers` matches such a path only against a glob
+ * that climbs out too, so outside the repo has no owner unless a territory
+ * names that place explicitly.
  */
 export function normalize(s) {
   const flat = s.replace(/\\/g, "/").replace(/\/+/g, "/").replace(/\/+$/, "");
@@ -355,10 +372,28 @@ export function keyHolders(config, key) {
   // netlify` — so it stays, and only for an unqualified question.
   const loose = !key.includes("/");
 
+  /**
+   * Only path keys. A reference — `keychain://x`, `NAME=file://.secrets/a#X` —
+   * is resolved by the parent and delivered as a value; the role is never
+   * given the file. Comparing the raw strings let `explain` say "declares
+   * a.env" about a role whose key merely pointed into it, a yes the kernel
+   * would refuse.
+   */
   return Object.values(config.roles)
-    .filter((r) => r.keys.some((k) =>
+    .filter((r) => fileKeys(r).some((k) =>
       resolve(k) === wanted || (loose && bare(k) === bare(key))))
     .map((r) => r.name);
+}
+
+/** The keys of `role` that grant a read: the path ones. A malformed entry grants nothing. */
+function fileKeys(role) {
+  let entries;
+  try {
+    entries = entriesOf(role);
+  } catch {
+    return [];
+  }
+  return entries.filter((e) => e.kind === "file").map((e) => e.raw);
 }
 
 /**
