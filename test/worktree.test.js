@@ -285,8 +285,10 @@ test("explain and whose say so from both checkouts, and change no verdict", { sk
     assert.equal(git(join(b, "repo"), "commit", "-q", "--allow-empty", "-m", "init").status, 0);
     writeFileSync(join(b, "seisin.toml"), ABOVE);
 
+    // Paths are spelled from where the command runs: a relative path is
+    // relative to the working directory, and the answer names it root-relative.
     // Before the worktree exists: the answer to keep.
-    const before = seisin(join(b, "repo"), "explain", "dev", "write", "repo/src/a.ts");
+    const before = seisin(join(b, "repo"), "explain", "dev", "write", "src/a.ts");
     assert.equal(before.status, 0);
     assert.match(before.stdout, /allowed  dev write repo\/src\/a\.ts/);
     assert.ok(!before.stdout.includes("worktree"), "nothing to say before there is a worktree");
@@ -296,7 +298,7 @@ test("explain and whose say so from both checkouts, and change no verdict", { sk
     const fix = join(b, "trees", "fix");
 
     // The defect: allowed on the canonical path, asked from inside the worktree.
-    const inside = seisin(fix, "explain", "dev", "write", "repo/src/a.ts");
+    const inside = seisin(fix, "explain", "dev", "write", "../../repo/src/a.ts");
     assert.equal(inside.status, before.status, "the exit code is the verdict, and it did not move");
     assert.equal(answer(inside.stdout), answer(before.stdout), "the verdict is word for word what it was");
     assert.match(inside.stdout, /worktree  you are standing in a worktree of repo, at trees\/fix/);
@@ -304,12 +306,12 @@ test("explain and whose say so from both checkouts, and change no verdict", { sk
     assert.match(inside.stdout, /The policy names the canonical checkout, not the worktree — a write in the worktree is refused\./);
 
     // Same question from the canonical side: the worktree is named, not "you".
-    const outside = seisin(repo, "explain", "dev", "write", "repo/src/a.ts");
+    const outside = seisin(repo, "explain", "dev", "write", "src/a.ts");
     assert.equal(outside.status, 0);
     assert.match(outside.stdout, /worktree  repo has a worktree at trees\/fix/);
 
     // The reverse: asked about the path that was actually refused.
-    const refused = seisin(fix, "explain", "dev", "write", "trees/fix/src/a.ts");
+    const refused = seisin(fix, "explain", "dev", "write", "src/a.ts");
     assert.equal(refused.status, 1, "still denied — the note is not a grant");
     assert.match(refused.stdout, /denied  dev write trees\/fix\/src\/a\.ts/);
     assert.match(refused.stdout, /worktree  trees\/fix is a worktree of repo/);
@@ -317,14 +319,15 @@ test("explain and whose say so from both checkouts, and change no verdict", { sk
     assert.match(refused.stdout, /The policy names the canonical checkout, not the worktree\.\n/);
 
     // Nothing to say: a role refused on both sides, a path in no checkout, a key.
-    for (const args of [["explain", "qa", "write", "repo/src/a.ts"], ["explain", "dev", "write", "qa/x"], ["explain", "dev", "read", "token"]]) {
+    for (const args of [["explain", "qa", "write", "../../repo/src/a.ts"], ["explain", "dev", "write", "../../qa/x"], ["explain", "dev", "read", "token"]]) {
       const r = seisin(fix, ...args);
-      assert.equal(r.status, 1);
+      // No [keys] dir here, so a read is open to every role: allowed, and still no note.
+      assert.equal(r.status, args[2] === "read" ? 0 : 1);
       assert.ok(!r.stdout.includes("worktree"), `no note for ${args.join(" ")}:\n${r.stdout}`);
     }
 
     // whose, from inside the box, on the path the kernel refused.
-    const who = spawnSync(process.execPath, [CLI, "whose", "trees/fix/src/a.ts"],
+    const who = spawnSync(process.execPath, [CLI, "whose", "src/a.ts"],
       { cwd: fix, encoding: "utf8", env: { ...process.env, NO_COLOR: "1", SEISIN_ROLE: "dev" } });
     assert.equal(who.status, 0);
     assert.match(who.stdout, /nobody owns trees\/fix\/src\/a\.ts/);
@@ -333,13 +336,13 @@ test("explain and whose say so from both checkouts, and change no verdict", { sk
     assert.match(who.stdout, /The policy names the canonical checkout, not the worktree\./);
 
     // whose on a path owned the same way on both sides says nothing extra.
-    const same = seisin(fix, "whose", "qa/x");
+    const same = seisin(fix, "whose", "../../qa/x");
     assert.match(same.stdout, /qa\/x belongs to qa/);
     assert.ok(!same.stdout.includes("worktree"));
 
     // A worktree removed without `prune` is no longer a place.
     rmSync(join(b, "trees"), { recursive: true });
-    const stale = seisin(repo, "explain", "dev", "write", "repo/src/a.ts");
+    const stale = seisin(repo, "explain", "dev", "write", "src/a.ts");
     assert.equal(stale.status, 0);
     assert.ok(!stale.stdout.includes("worktree"), `stale registration named:\n${stale.stdout}`);
   } finally {

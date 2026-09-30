@@ -5,9 +5,11 @@
  * That is the only reason the exit code is not always 0 — a denial is an answer,
  * not a failure, but a shell has one channel for both.
  */
-import { toRepoRelative } from "../paths.js";
+import { toRepoRelative, fromCwd } from "../paths.js";
 import { isAbsolute } from "node:path";
-import { explain } from "../owners.js";
+import { explain, explainFileRead, readTarget } from "../owners.js";
+import { CREDENTIAL_HOMES, expand } from "../grants.js";
+import { unknownRole } from "../suggest.js";
 import { twinsOf, whereIs } from "../worktree.js";
 import { renderVerdict, C, out } from "../render.js";
 
@@ -15,7 +17,11 @@ export function explainCommand(config, argv = []) {
   const [role, action, target] = argv;
   if (!role || !action || !target)
     throw new Error("usage: seisin explain <role> <read|write|mcp> <path, key or MCP server>");
-  if (!config.roles[role]) throw new Error(`unknown role "${role}"`);
+  if (!config.roles[role]) throw unknownRole(config, role);
+  // Anything else used to be answered as a write, confidently, to a question
+  // nobody asked. An unknown action is a usage error, like an unknown flag.
+  if (!["read", "write", "mcp"].includes(action))
+    throw new Error(`unknown action "${action}" — use read, write or mcp`);
 
   if (action === "mcp") {
     const verdict = explain(config, role, "mcp", target);
@@ -23,7 +29,16 @@ export function explainCommand(config, argv = []) {
     return { ...verdict, worktree: [] };
   }
 
-  const verb = action.startsWith("r") ? "read" : "write";
+  const verb = action;
+
+  if (verb === "read") {
+    const asked = readTarget(config, target);
+    const verdict = asked.key
+      ? explain(config, role, "read", asked.target)
+      : explainFileRead(config, role, asked.target, CREDENTIAL_HOMES.map(expand));
+    out(renderVerdict(role, verb, asked.target, verdict));
+    return { ...verdict, worktree: [] };
+  }
 
   /**
    * An absolute path inside the repo is the same question as the relative one.
@@ -41,12 +56,18 @@ export function explainCommand(config, argv = []) {
    * because that is a question about somewhere else and it still deserves its
    * honest "no owner".
    */
-  const asked = toRepoRelative(config, target);
+  //
+  // A relative path is relative to where you are standing, as in every other
+  // command line tool: from frontend/src, `app.js` is frontend/src/app.js. It
+  // was read against the policy's root, so the same question asked from a
+  // subdirectory came back "no owner". The answer prints the path the policy
+  // was asked about, so the reader sees which file was meant.
+  const asked = toRepoRelative(config, fromCwd(config, target));
 
   const verdict = explain(config, role, verb, asked);
-  out(renderVerdict(role, verb, target, verdict));
+  out(renderVerdict(role, verb, asked, verdict));
 
-  const worktree = verb === "write" ? elsewhere(config, role, target, verdict) : [];
+  const worktree = elsewhere(config, role, isAbsolute(target) ? target : asked, verdict);
   for (const w of worktree) out(renderElsewhere(w));
   return { ...verdict, worktree };
 }
