@@ -59,8 +59,19 @@ export function own(obj, key) {
   return obj && Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined;
 }
 
+/**
+ * Where each table and key of a parsed file was written, by dotted name.
+ *
+ * Kept beside the result rather than in it, so the object stays exactly the
+ * data that was written; loadConfig reads it to put a line number on a name it
+ * does not know.
+ */
+const LINES = new WeakMap();
+
 export function parseToml(text) {
   const out = dict();
+  const where = new Map();
+  LINES.set(out, where);
   let table = out;
   let tableName = "";
   // "Last one wins" is TOML-ish and wrong for a permission file. A policy can
@@ -90,6 +101,10 @@ export function parseToml(text) {
           `A later block would silently override the earlier one — put every setting for ` +
           `${tableName} in one place.`);
       seenTables.add(tableName);
+      tableName.split(".").forEach((_, k, parts) => {
+        const name = parts.slice(0, k + 1).join(".");
+        if (!where.has(name)) where.set(name, i + 1);
+      });
       table = tableName.split(".").reduce((node, key, k, parts) => {
         if (!Object.prototype.hasOwnProperty.call(node, key)) node[key] = dict();
         else if (!isTable(node[key]))
@@ -105,16 +120,18 @@ export function parseToml(text) {
     if (!pair) throw new Error(`${CONFIG_NAME}:${i + 1}: cannot read "${raw.trim()}"`);
 
     let [, key, value] = pair;
+    const at = i + 1;
     // An array may span lines; keep pulling until the brackets balance. Only
     // the new line is searched: searching the whole growing value made an
-    // unclosed array of 100k lines take 20 s to be refused.
-    if (value.startsWith("[") && !value.includes("]")) {
+    // unclosed array of 100k lines take 20 s to be refused. A `]` inside a
+    // quoted item does not close it — `["a]b",` used to end the array there.
+    if (value.startsWith("[") && !closesArray(value)) {
       const parts = [value];
       let closed = false;
       while (!closed && i + 1 < lines.length) {
         const next = stripComment(lines[++i]).trim();
         parts.push(next);
-        closed = next.includes("]");
+        closed = closesArray(next);
       }
       value = parts.join(" ");
     }
@@ -126,6 +143,7 @@ export function parseToml(text) {
         `${CONFIG_NAME}:${i + 1}: "${key}" is set twice in [${tableName || "the root"}]. ` +
         `The second would win, which is not a thing a permission file should do quietly.`);
     seenKeys.add(seen);
+    where.set(tableName ? `${tableName}.${key}` : key, at);
     /**
      * A key may not be a table that is declared elsewhere, in either order.
      *
@@ -143,6 +161,17 @@ export function parseToml(text) {
     table[key] = readValue(value, i + 1);
   }
   return out;
+}
+
+/** Is there a `]` on this line outside a quoted string? Strings do not span lines. */
+function closesArray(line) {
+  let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') quoted = !quoted;
+    else if (c === "]" && !quoted) return true;
+  }
+  return false;
 }
 
 /** Strips a trailing `#` comment, but not one inside a quoted string. */
@@ -292,6 +321,7 @@ export function readIsolate(v) {
 
 export function loadConfig(path) {
   const parsed = parseToml(readFileSync(path, "utf8"));
+  checkShape(parsed, SHAPE, "", path, LINES.get(parsed));
   // Read only what the file actually declared. The parser refuses the names
   // that make inheritance possible, and this is the second half of the same
   // rule: if one of them ever gets through, a role still cannot pick up a
@@ -353,7 +383,11 @@ export function loadConfig(path) {
   // than one kind of secret, and making people flatten them to satisfy the tool
   // is how a tool gets kept out.
   const keyDir = own(own(parsed, "keys"), "dir");
-  const keyDirs = keyDir === undefined ? [] : asArray(keyDir, "keys.dir");
+  // `.secrets/` and `.secrets` are one directory, and every consumer compares
+  // them as prefixes: with the slash kept, `scan` walked into the protected
+  // directory and a bare key resolved to `.secrets//x`, which matched nothing.
+  const keyDirs = (keyDir === undefined ? [] : asArray(keyDir, "keys.dir"))
+    .map((d) => d.replace(/\/+$/, "") || d);
   const keyProviders = readProviders(own(own(parsed, "keys"), "providers"), path);
   // `undefined` means "use the defaults"; an explicit empty array means "none".
   // The difference matters: one is a user who has not thought about it, the
@@ -363,13 +397,15 @@ export function loadConfig(path) {
 
   const out = {
     root: dirname(path), path, keyDirs, keyProviders,
-    allowedDomains: own(own(parsed, "network"), "allow") ?? [],
+    // Through asArray like every other list: `allow = "github.com"` was kept as
+    // a string, and a string iterated is its characters.
+    allowedDomains: asArray(own(own(parsed, "network"), "allow"), "network.allow"),
     runtimeWrites: runtimeWrites === undefined ? undefined : asArray(runtimeWrites, "runtime.writes"),
     // `[runtime] isolate` — how much of your home a role stops reaching. See
     // srt.js for what each level emits, and readIsolate() below for why there
     // are two of them.
     isolate: readIsolate(own(runtime, "isolate")),
-    redact: own(runtime, "redact"),
+    redact: readBoolean(own(runtime, "redact"), `${path}: runtime.redact`),
     scanIgnore: asArray(own(own(parsed, "scan"), "ignore"), "scan.ignore"),
     protect: readProtect(own(parsed, "protect"), path),
     roles: {},
@@ -610,6 +646,82 @@ export function withSidecars(paths) {
   // A policy written before this existed already lists them. Keeping the first
   // occurrence keeps the order somebody chose.
   return [...new Set(out)];
+}
+
+/**
+ * Every table and key a policy may have outside `[roles.*]`. `true` is a value,
+ * an object is a table, and `*` stands for any name (a provider's).
+ *
+ * Anything else is refused at load, with its line. The roles table reports an
+ * unknown key through `check` because a role's typo is usually one extra
+ * grant; here the settings are global, and the one that made this necessary
+ * was `isolaet = true` under [runtime] — read as nothing, so isolation stayed
+ * off for every role and nothing on screen said so. The same "fail open by
+ * typo" that was closed for roles, closed harder because it covers them all.
+ */
+const SHAPE = {
+  roles: null,                            // validated where roles are read
+  keys: { dir: true, providers: { "*": { command: true, mode: true } } },
+  network: { allow: true },
+  runtime: { writes: true, isolate: true, redact: true },
+  scan: { ignore: true },
+  protect: { instructions: true },
+  notify: { url: true, url_file: true, format: true },
+};
+
+function checkShape(table, shape, prefix, path, lines) {
+  const known = Object.keys(shape).filter((k) => k !== "*");
+  for (const key of Object.keys(table)) {
+    const name = prefix ? `${prefix}.${key}` : key;
+    const at = `${path}:${lines?.get(name) ?? "?"}`;
+    const rule = Object.prototype.hasOwnProperty.call(shape, key) ? shape[key] : shape["*"];
+    if (rule === undefined) {
+      const near = closest(key, known);
+      throw new Error(
+        `${at}: ${prefix ? `[${prefix}] ` : ""}"${key}" is not a setting` +
+        `${prefix ? "" : " or a table"} seisin knows${near ? ` — did you mean "${near}"?` : "."}\n` +
+        `  Known${prefix ? ` in [${prefix}]` : " at the top level"}: ${known.join(", ")}. ` +
+        `An unknown name is refused rather than ignored: ignored, a misspelt setting ` +
+        `reads as a rule and does nothing.`);
+    }
+    if (rule === null) continue;
+    const value = table[key];
+    if (rule === true && isTable(value))
+      throw new Error(`${at}: [${name}] is a table, but ${name} is a setting — write ${key} = … under [${prefix}].`);
+    if (typeof rule === "object" && !isTable(value))
+      throw new Error(`${at}: ${name} = ${JSON.stringify(value)} — ${name} is a table, [${name}], with its settings under it.`);
+    if (typeof rule === "object") checkShape(value, rule, name, path, lines);
+  }
+}
+
+/** The candidate within edit distance 3 of `word`, or null. Shared with `check`. */
+export function closest(word, candidates) {
+  let best = null, bestD = 4;
+  for (const c of candidates) {
+    const d = distance(word.toLowerCase(), c);
+    if (d < bestD) { best = c; bestD = d; }
+  }
+  return best;
+}
+
+/** Levenshtein distance. */
+function distance(a, b) {
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = row[0]; row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cur = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = cur;
+    }
+  }
+  return row[b.length];
+}
+
+/** true, false, or absent (undefined). Anything else is a mistake, said as one. */
+function readBoolean(value, where) {
+  if (value === undefined || typeof value === "boolean") return value;
+  throw new Error(`${where} must be true or false, not ${JSON.stringify(value)}`);
 }
 
 /** The keys a `[roles.<name>]` table can hold. Anything else is reported by `check`. */

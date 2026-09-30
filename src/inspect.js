@@ -11,7 +11,7 @@
 import { resolve, dirname, basename, relative, join, delimiter } from "node:path";
 import { realpathSync, lstatSync, readdirSync, existsSync, readFileSync, statSync } from "node:fs";
 import { ownersOf, covers, enforcedNeverWrites } from "./owners.js";
-import { ROLE_KEYS } from "./config.js";
+import { ROLE_KEYS, closest } from "./config.js";
 import { entriesOf } from "./keys.js";
 import { SHAPES } from "./scan.js";
 import { wired } from "./commands/wire.js";
@@ -240,25 +240,7 @@ function nearest(word, candidates) {
   // letters mislead here: `no_writes` is three edits from `writes`, and
   // suggesting the grant for a misspelt subtraction is the worst answer.
   if (/deny|never|no_?write/i.test(word)) return "never_writes";
-  let best = null, bestD = 4;
-  for (const c of candidates) {
-    const d = distance(word.toLowerCase(), c);
-    if (d < bestD) { best = c; bestD = d; }
-  }
-  return best;
-}
-
-function distance(a, b) {
-  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
-  for (let i = 1; i <= a.length; i++) {
-    let prev = row[0]; row[0] = i;
-    for (let j = 1; j <= b.length; j++) {
-      const cur = row[j];
-      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
-      prev = cur;
-    }
-  }
-  return row[b.length];
+  return closest(word, candidates);
 }
 
 /**

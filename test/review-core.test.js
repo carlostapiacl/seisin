@@ -170,3 +170,65 @@ test("scan skips compiled python and nested checkouts, and counts the checkouts"
   assert.deepEqual(hits.map((h) => h.file), ["own.txt"]);
   assert.equal(skipped.nested, 2);
 });
+
+// ── config: nothing outside the roles is ignored silently ───────────────────
+
+test("a misspelt [runtime] setting is refused with its line", () => {
+  assert.throws(() => policy(`[runtime]\nisolaet = true\n\n[roles.a]\nwrites = ["a/**"]\n`),
+    /seisin\.toml:2: \[runtime\] "isolaet" is not a setting .*did you mean "isolate"/);
+});
+
+test("an unknown table or root key is refused with its line", () => {
+  assert.throws(() => policy(`[roles.a]\nwrites = ["a/**"]\n\n[netwrok]\nallow = []\n`),
+    /seisin\.toml:4: "netwrok" is not a setting or a table .*did you mean "network"/);
+  assert.throws(() => policy(`isolate = true\n[roles.a]\nwrites = ["a/**"]\n`),
+    /seisin\.toml:1: "isolate" is not a setting/);
+  assert.throws(() => policy(`[keys.providers.k]\ncommand = ["x", "{ref}"]\nmodo = "env"\n[roles.a]\nwrites = ["a/**"]\n`),
+    /seisin\.toml:3: \[keys\.providers\.k\] "modo"/);
+  assert.throws(() => policy(`[notify]\nurl_fiel = ".secrets/x"\n[roles.a]\nwrites = ["a/**"]\n`),
+    /seisin\.toml:2: \[notify\] "url_fiel"/);
+  assert.throws(() => policy(`[runtime.isolate]\nx = true\n[roles.a]\nwrites = ["a/**"]\n`),
+    /seisin\.toml:1: \[runtime\.isolate\] is a table/);
+});
+
+test("every setting the docs name still loads", () => {
+  const cfg = policy(`
+[keys]
+dir = ".secrets/"
+[keys.providers.k]
+command = ["x", "{ref}"]
+mode = "env"
+[network]
+allow = "github.com"
+[runtime]
+writes = []
+isolate = "credentials"
+redact = false
+[scan]
+ignore = ["fixtures/**"]
+[protect]
+instructions = true
+[notify]
+format = "text"
+[roles.a]
+writes = ["a/**"]
+`);
+  assert.deepEqual(cfg.allowedDomains, ["github.com"]);   // not ["g","i","t",…]
+  assert.deepEqual(cfg.keyDirs, [".secrets"]);
+  assert.equal(cfg.redact, false);
+});
+
+test("runtime.redact must be a boolean", () => {
+  assert.throws(() => policy(`[runtime]\nredact = "no"\n[roles.a]\nwrites = ["a/**"]\n`),
+    /runtime\.redact must be true or false/);
+});
+
+test("a ] inside a quoted item does not end a multi-line array", () => {
+  const cfg = policy(`[roles.a]\nwrites = ["a]b/**",\n  "c/**"]\n`);
+  assert.deepEqual(cfg.roles.a.writesDeclared, ["a]b/**", "c/**"]);
+});
+
+test("a key directory with a trailing slash matches its keys", () => {
+  const cfg = policy(`[keys]\ndir = ".secrets/"\n[roles.a]\nwrites = ["a/**"]\nkeys = ["x.txt"]\n`);
+  assert.deepEqual(keyHolders(cfg, ".secrets/x.txt"), ["a"]);
+});
