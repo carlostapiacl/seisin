@@ -75,7 +75,7 @@ export function grantFor({ action, target }) {
   const t = typeof target === "string" ? target : "";
   // A key keeps its directory when it has one. Stripping it turned a request
   // for `shared/api.txt` into a grant of `api.txt`, which settingsFor then
-  // resolves against the FIRST key directory — so the person approves one file
+  // resolves against the FIRST key directory — so the person grants one file
   // and another one of the same name is what gets read.
   if (action === "read") return t.includes("/") ? t : t.replace(/^.*\//, "");
   const dir = t.split("/").slice(0, -1).join("/");

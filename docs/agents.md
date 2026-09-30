@@ -14,11 +14,11 @@ actually been exercised:
 | **Claude Code** (`claude -p`) | 2.1.x | Territory and keys enforced; HTTP(S) egress denied an undeclared domain by name |
 | **opencode** (`opencode run`) | **1.18.30** | Same, **on a free model with no API key at all** |
 | **LangGraph** (`python graph.py`) | **1.2.11** | Same, **enforced against the interpreter's own `open()`** — in-process tools, no child command to match |
-| **codex** (`codex exec`) | **0.150.1** | Same, with its own sandbox off — see below. Refused twice: its patch tool, then the shell redirect it fell back to |
+| **codex** (`codex exec`) | **0.150.1** | Same, with its own sandbox off — see below. Denied twice: its patch tool, then the shell redirect it fell back to |
 
 **seisin now says this before it starts one.** The error you get otherwise —
 `sandbox-exec: sandbox_apply: Operation not permitted` — names neither seisin, nor the agent,
-nor the fix, which in a tool whose claim is that a refusal explains itself is the worst message
+nor the fix, which in a tool whose claim is that a denial explains itself is the worst message
 available. It is a short closed list, checked before the spawn, and it only warns about an
 agent whose own sandbox is actually on.
 
@@ -95,11 +95,11 @@ of what it had actually done. Wrapping a plain shell and a plain interpreter ins
 | `sh -c 'echo x > proyecto/FILE.txt'` (own territory) | rc=0, created |
 | `sh -c 'echo x > qa/report.md'` (shell redirect) | `Operation not permitted`, rc=1 |
 | `python3 -c "open('qa/report.md','w')"` (the program's own syscall) | `PermissionError: [Errno 1]` |
-| `rm -f proyecto/FILE.txt` (**destructive, inside** own territory) | **rc=0, file gone** |
+| `rm -f src/FILE.txt` (**destructive, inside** own territory) | **rc=0, file gone** |
 
 The last row is not a bug, it is the shape of the tool: seisin answers *where*, not *what*.
-A team running this in front of an agent fleet measured how often it matters: across ~330
-rounds, sixty-six times a role reached for a command that would have destroyed its own
+The author's own multi-agent deployment measured how often it matters: across ~330
+runs, sixty-six times a role reached for a command that would have destroyed its own
 uncommitted work, and the kernel boundary permitted every one. The ask that would close it
 is written up in [docs/upstream/denyUnlink.md](upstream/denyUnlink.md), filed against
 the sandbox runtime rather than worked around here.

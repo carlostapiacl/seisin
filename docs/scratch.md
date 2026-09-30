@@ -56,7 +56,7 @@ Measured, on the same machine, same policy, same command:
 
 `"home"` also gives each role its own `HOME`, `TMPDIR` and XDG directories, so one role cannot
 read the session another's CLI just wrote. It is the stronger claim and it has a real price:
-**every CLI in the box sees an empty home and asks you to log in again.** That is not this
+**every CLI in the sandbox sees an empty home and asks you to log in again.** That is not this
 sandbox being strict — on macOS the agent's credential is in the login keychain, the keychain is
 found through `$HOME`, and `HOME=/empty claude -p` reproduces the same message with no sandbox
 involved at all.

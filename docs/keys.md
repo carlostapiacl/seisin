@@ -11,7 +11,7 @@ because a security tool that lists only its wins is not one.
 | way out | closed by | how |
 |---|---|---|
 | reading another role's key file | the kernel | the key directory is denied, each declared key re-allowed. Survives a grandchild process and an absolute path |
-| a key riding in the environment | the launcher | the child's environment is **built, not inherited**. Measured before this existed: 93 variables crossed into every turn, a planted token among them |
+| a key riding in the environment | the launcher | the child's environment is **built, not inherited**. Measured before this existed: 93 variables crossed into every run, a planted token among them |
 | spilling a key the role does hold | the launcher | the value is masked on stdout and stderr, including when it lands split across two buffers |
 | sending it somewhere | the kernel | egress is allow-only. `curl` to a domain you did not list gets nothing |
 | **a key stored outside the declared directories** | **nothing** | `seisin scan` finds them so you know what is not covered — or keep it in a vault and name it by [reference](#a-key-can-be-a-reference-instead-of-a-file) instead of by path |
@@ -93,7 +93,7 @@ is stable:
 | **input** | your `command`, with every `{ref}` replaced by the text after `://`. No shell: the array is the `argv`, so a reference cannot inject one |
 | **success** | exit `0`, the value on **stdout**. Exactly one trailing newline is stripped |
 | **failure** | any non-zero exit, or empty output. The run stops; nothing is substituted |
-| **diagnostics** | **stderr** is passed through to the human. `stdout` never is, so a provider that prints the secret and then fails does not leak it into the terminal or the log |
+| **diagnostics** | **stderr** is passed through to the person running it. `stdout` never is, so a provider that prints the secret and then fails does not leak it into the terminal or the log |
 | **where it runs** | the parent, unsandboxed, before the child starts — it holds your vault's credential and the confined side must not reach it |
 | **what it must not do** | prompt on a tty an agent does not have. Cache your session first (`op signin`, `gpg-agent`, an unlocked keychain) |
 
@@ -145,12 +145,12 @@ gpg --batch --quiet --passphrase "$(security find-generic-password -w -s master)
 ```
 
 Scripts named by a provider are **denied to every role**, the same way `seisin.toml` is — the
-parent executes them, so a role that could rewrite one would decide what runs outside the box.
+parent executes them, so a role that could rewrite one would decide what runs outside the sandbox.
 
 | | |
 |---|---|
 | **`mode = "env"`** | resolved and passed as a variable |
-| **`mode = "scratch"`** | written to a file in the run's scratch space, removed when the turn ends. The path arrives **both** as `NETLIFY_TOKEN` and as `NETLIFY_TOKEN_FILE` — `_FILE` is the Docker-secrets convention, while `KUBECONFIG` and `GOOGLE_APPLICATION_CREDENTIALS` already expect a path in the plain name. Neither holds the value |
+| **`mode = "scratch"`** | written to a file in the **run directory** (private to the run), removed when the run ends. The path arrives **both** as `NETLIFY_TOKEN` and as `NETLIFY_TOKEN_FILE` — `_FILE` is the Docker-secrets convention, while `KUBECONFIG` and `GOOGLE_APPLICATION_CREDENTIALS` already expect a path in the plain name. Neither holds the value |
 | **`mode = "inject"`** | the agent never sees the value — **not implemented**, and refused by name rather than left looking available. It needs the runtime's credential masking, which does not load without terminating that role's TLS with a CA of seisin's own. That is MITM over all of the role's traffic, and it is a decision to take deliberately |
 
 There is **no default mode**. A reference with none declared anywhere is an error, because
@@ -164,7 +164,7 @@ how much a leak costs you.
 - **An unknown scheme is refused, not ignored.** `keys = ["vault://x"]` with no
   `[keys.providers.vault]` is a configuration error, never a key that quietly never arrives.
 - **The parent runs the provider, never the confined process.** The provider command holds
-  the vault's own credential; running it inside the box would put that credential in there
+  the vault's own credential; running it inside the sandbox would put that credential in there
   too, which is the thing this is for.
 - **A provider that fails does not degrade.** Not to empty, not to a file of the same name,
   not to a skipped key. The run stops and says so.
@@ -183,7 +183,7 @@ provider commands**, because of the next paragraph.
 
 **A provider that is a script in your repo is denied to every role**, the same way
 `seisin.toml` is. The parent executes it, so a role that could rewrite it would decide what
-runs outside the box — not a wider boundary, no boundary, arriving disguised as an ordinary
+runs outside the sandbox — not a wider boundary, no boundary, arriving disguised as an ordinary
 file in somebody's territory. A provider found on `PATH` (`security`, `op`, `gpg`) is left
 alone: that is a machine, not a repo.
 
@@ -209,7 +209,7 @@ the same file, and cannot read the file.
 
 **A key's name may not collide with one the child already needs.** `keys =
 ["keychain://path"]` would arrive as `PATH`, and `SEISIN_ROLE` is how the hook inside the
-box learns which role it is — a policy that could set it could tell the hook it is somebody
+sandbox learns which role it is — a policy that could set it could tell the hook it is somebody
 else. Both are refused when the config loads, as is one name claimed by two keys.
 
 **And what it does not do, in the same breath:** this resolves the secret **at rest**, not
@@ -219,7 +219,7 @@ strict improvement — but "the agent never sees it" is `inject`, and `inject` i
 
 ### A database is four files, and you declare it once
 
-`bitacora/team.sqlite` is not a database — it is one of the files a database is made of.
+`data/app.sqlite` is not a database — it is one of the files a database is made of.
 Writing to it also writes `-wal` and `-shm`, or `-journal`, so *"this role writes this
 database"* used to take four lines. Measured on one real policy: **744 of 1,248 write lines,
 60%, were sidecars**, and every single one had its `.sqlite` declared beside it.
@@ -228,7 +228,7 @@ Now the database is enough:
 
 ```toml
 [roles.dev]
-writes = ["bitacora/team.sqlite"]     # -wal, -shm and -journal come with it
+writes = ["data/app.sqlite"]         # -wal, -shm and -journal come with it
 ```
 
 **It grants nothing that was not already granted**, which is why it is safe to do without
@@ -245,16 +245,16 @@ ending in `.sqlite` or `.sqlite3`. `.db` is not included — plenty of things ar
 and a grant to create `whatever.db-wal` inside somebody else's directory would be new
 authority arriving quietly. A database with another name declares its sidecars by hand.
 
-**If your agent runs hooks of its own, they need a line here too.** Whatever a hook reads to learn which role it is gets dropped with everything else, and the symptom is two layers disagreeing about one file — your hook refusing a write that seisin just allowed, and the lower one is the one that is right — until the variable is named in `env`.
+**If your agent runs hooks of its own, they need a line here too.** Whatever a hook reads to learn which role it is gets dropped with everything else, and the symptom is two layers disagreeing about one file — your hook denying a write that seisin just allowed, and the lower one is the one that is right — until the variable is named in `env`.
 
 **What this bought, measured rather than argued.** Over the same production window — four
-agent cells, ~370 confined turns, three days — **every denied read was a read of something
+teams of agents, ~370 confined runs, three days — **every denied read was a read of something
 the policy had declared a key.** 148 of them, no exceptions, from five different roles, and
 not one was doing anything unusual: they were running searches that swept a repository root.
 That is how a key gets read without anyone deciding it should, and it is the whole case for
 declaring the key directory rather than trusting the instruction not to look.
 
-Refused *writes* were a different story, and both halves are worth reading: those were
+Denied *writes* were a different story, and both halves are worth reading: those were
 ordinary collisions between roles, the boundary keeping two agents out of each other's work.
 It is the reads where the policy was the only thing there.
 
