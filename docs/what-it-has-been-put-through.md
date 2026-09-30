@@ -56,7 +56,7 @@ of the runtime, not of this.
 Since 0.5.0 `.vscode/`, `.cursor/` and `.windsurf/` are protected by default,
 and `CLAUDE.md`, `AGENTS.md` and their kin when the policy turns that on. A
 policy can hand either family to a role that maintains those files; the first
-version of this change could not, and blocked every `CLAUDE.md` a working team
+version of this change could not, and denied every `CLAUDE.md` a working team
 edits several times a week. That, and three other costs found before it
 shipped — npm dropping those files from the packages it unpacks, a role's
 `git checkout` leaving them stale without a word, and `check` listing hundreds
@@ -67,10 +67,10 @@ What the kernel tests do, and each fails with the protection switched off:
 
 | id | tries | result |
 |---|---|---|
-| ATTACK-009 | rewrite a nested project's `.vscode/settings.json`, move it aside, create a `.cursor/` | refused |
+| ATTACK-009 | rewrite a nested project's `.vscode/settings.json`, move it aside, create a `.cursor/` | denied |
 | ATTACK-009b | the same edit, by a role handed `control_files = ["ide"]` | written |
-| ATTACK-010 | rewrite a nested `AGENTS.md`, create a `CLAUDE.md` | refused |
-| ATTACK-011 | append to `~/.npm/_logs` and `~/.claude/debug` | refused |
+| ATTACK-010 | rewrite a nested `AGENTS.md`, create a `CLAUDE.md` | denied |
+| ATTACK-011 | append to `~/.npm/_logs` and `~/.claude/debug` | denied |
 
 The last one is a different finding. The pinned runtime makes those two
 directories writable by itself, even though neither appears in the territory
@@ -124,7 +124,7 @@ Four findings, all four real, all four reproduced before being fixed.
 |---|---|---|
 | **Policy ≠ enforcement** | `ownersOf` read `src/*` as one level; the kernel got `src`, the whole subtree. `seisin explain` said *denied* and the write landed | patterns the kernel cannot express exactly are **refused**, not widened. There is no exact translation to find later: a sandbox grants prefixes and "one level down" is not a prefix |
 | **The audit trail was writable by what it audits** | `.seisin/` was in every role's allowWrite, so the log and queue could be truncated, rewritten or forged | the directory left the territory. The hook sends lines to the parent over a unix socket granted by path; the parent holds the file |
-| **Paths were not canonical** | `src/web/../api/orders.ts` is backend's file and matched frontend's `src/web/**`. The kernel still refused — but `whose` named the wrong owner and the log said `allowed` for a write that was about to fail | resolved before anyone decides anything. Above the root owns nothing |
+| **Paths were not canonical** | `src/web/../api/orders.ts` is backend's file and matched frontend's `src/web/**`. The kernel still denied — but `whose` named the wrong owner and the log said `allowed` for a write that was about to fail | resolved before anyone decides anything. Above the root owns nothing |
 | **The README contradicted itself on Linux** | one section said the suite passed on Debian 12, another said it had never run there | CI now runs it on both platforms every push |
 
 ### Review 2 — security, file by file
@@ -135,8 +135,8 @@ before the fix and re-measured after.
 | | what it was |
 |---|---|
 | **A full-repo role owned its own policy** | `writes = ["**"]` plus `denyWrite: []` meant the role could rewrite `seisin.toml` and come back wider next run |
-| **A grant could land in the wrong role** | approving for a role that declares only `keys` wrote the permission into the *next* role, carrying a comment naming the role it was meant for |
-| **A reason could become configuration** | approver text went into a comment unescaped, and a newline ends a comment |
+| **A grant could land in the wrong role** | granting for a role that declares only `keys` wrote the permission into the *next* role, carrying a comment naming the role it was meant for |
+| **A reason could become configuration** | the reason a person typed went into a comment unescaped, and a newline ends a comment |
 | **A key could point outside the key directories** | a slash in the name made it relative to the repo root, so `keys = ["../.ssh/id_rsa"]` was a read grant hiding in the one list nobody audits twice |
 | **`--observe` was read from the whole command line** | a flag belonging to the agent could change seisin's mode |
 | **The audit socket sat in writable scratch** | the channel could be unlinked |
@@ -157,19 +157,19 @@ Each of these is a command that was run, not an argument that was made.
 **A role with the whole repo, against the real kernel:**
 
 ```
-seisin.toml          blocked
-.secrets/            blocked
-.seisin/log.jsonl    blocked
+seisin.toml          denied 
+.secrets/            denied 
+.seisin/log.jsonl    denied 
 src/ok.txt           written   ← its actual territory
 ```
 
-**The audit trail, attacked from inside the box:**
+**The audit trail, attacked from inside the sandbox:**
 
 ```
-rm .seisin/log.jsonl              blocked
-echo BORRADO > .seisin/log.jsonl  blocked
-echo x >> .seisin/requests.jsonl  blocked
-unlink the audit socket           blocked
+rm .seisin/log.jsonl              denied
+echo WIPED > .seisin/log.jsonl    denied
+echo x >> .seisin/requests.jsonl  denied
+unlink the audit socket           denied
 a confined process sending a line arrived
 ```
 
@@ -179,8 +179,8 @@ a confined process sending a line arrived
 role a HOME  .../seisin-home-<repo>/a
 role b HOME  .../seisin-home-<repo>/b
 a → the real ~/.claude         cannot see it
-a → writing b's home           blocked
-a → reading b's home           blocked
+a → writing b's home           denied
+a → reading b's home           denied
 ```
 
 That last line was **wrong here for a day**. The only thing measured was the
@@ -196,7 +196,7 @@ Confirmed the seven above closed, then found eight more.
 
 | | what it was |
 |---|---|
-| **A policy could be cancelled further down the file** | duplicate tables and duplicate keys both parsed, last one wins. A config reads restrictive at the top and is undone forty lines below; the reviewer reads the first block |
+| **A policy could be cancelled further down the file** | duplicate tables and duplicate keys both parsed, last one wins. A config reads restrictive at the top and is undone forty lines below; the reviewer reads the first table |
 | **A key that is a symlink escaped its directory** | the check compared text and the sandbox enforces on the destination. `.secrets/github-token.txt -> ~/.ssh/id_rsa` was a read grant on the ssh key. Measured: the read succeeded through the link *and* through the real path |
 | **`check` mislabelled what it could not enforce** | every settingsFor error was reported as a glob problem, sending the reader to the wrong line — and it exited 0 on a config `run` would refuse |
 | **The audit socket was at a guessable path** | already unlinkable-proof, but any other process of this user could connect and add lines |
@@ -343,20 +343,21 @@ Three things came out of parting them, and the middle one is the general lesson:
 
 Verified afterwards on Debian 12.15 with bubblewrap 0.8.0, in Docker with
 `--privileged`: **225 of 225, nothing skipped**, plus a real run that reads its
-declared key, writes inside its territory, and is refused outside it.
+declared key, writes inside its territory, and is denied outside it.
 
 ## Still open, and named
 
 - **Deleting inside your own territory.** `rm` in a role's own folders
   succeeds, because writes and deletes are one permission to the kernel. Not
   coverable here — [the ask is upstream](upstream/denyUnlink.md), with a
-  measurement behind it: 66 times in ~330 rounds of real agent work.
+  measurement behind it: 66 times in ~330 runs of real agent work.
 - **Forgery in the audit trail.** A hostile agent can still *send* lines, so it
   can pad its own history. It cannot erase or alter what is there. Tampering is
-  closed; forgery is not.
+  closed to the agent, and detectable for anyone else (the log is tamper-evident);
+  forgery is not.
 - **Isolated mode is off by default** — and since 2026-09-14 it is no longer the
   all-or-nothing it is described as above. Two reviewers asked for it to be the
-  default, and the answer was that turning it on signs every CLI in the box out.
+  default, and the answer was that turning it on signs every CLI in the sandbox out.
   That was true of one switch doing two jobs. `isolate = "credentials"` now
   closes `~/.ssh`, `~/.aws`, `~/.npmrc` and `~/.config` while leaving `HOME`
   alone, and the agent stays logged in — measured. `isolate = "home"` is still
@@ -384,24 +385,24 @@ declared key, writes inside its territory, and is refused outside it.
   NFC/NFD-normalising disk the kernel matches a path that `explain` spells
   differently, so `explain` can be stricter than the boundary (never looser).
   The safe direction, but a mismatch: read `check` for what the kernel is given.
-- **A network deny by resolved address.** The runtime blocks loopback, link-local
+- **A network deny by resolved address.** The runtime denies loopback, link-local
   and cloud-metadata IPs by default, so an allowed domain cannot be rebound to
-  the metadata endpoint. It does not block private-LAN ranges (RFC1918) by
+  the metadata endpoint. It does not deny private-LAN ranges (RFC1918) by
   default, and seisin does not add them, so an allowed domain whose DNS an
   attacker controls could still reach a host on your LAN. An allowed domain sees
   every port, too — the allow list is per host, not per port.
-- **A hard link made from outside the box.** Ownership is by path, and the kernel
+- **A hard link made from outside the sandbox.** Ownership is by path, and the kernel
   enforces it by path, so two names for one inode are two territories' worth of
   access to the same bytes. A role cannot *create* a hard link that crosses its
-  territory (the kernel refuses it, measured), but a hard link placed inside its
-  territory by something outside the box — the operator, another tool — lets the
+  territory (the kernel denies it, measured), but a hard link placed inside its
+  territory by something outside the sandbox — a person, another tool — lets the
   role write the inode it points at, whatever path that inode also has. Closing
   it would need the kernel to key on inode, which the runtime does not; the honest
   fix is not to hard-link a sensitive file into an agent's territory.
 - **A planted repository with a different name.** A role can write, inside its own
   territory, a directory that is a git repository under a name that is not `.git`,
   and a `.git` *file* pointing at it. A `git status` run there by a person or an
-  IDE — outside the box — then runs what that repository's config names. seisin
+  IDE — outside the sandbox — then runs what that repository's config names. seisin
   denies the config and hooks of a `.git` directory, and of submodules and
   worktrees, but a glob that also caught the pointer file would deny the whole
   `.git` subtree and stop the agent committing. Closing it needs a runtime

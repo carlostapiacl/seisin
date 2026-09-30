@@ -77,10 +77,10 @@ Counted from the run logs of a private multi-agent deployment — the same one t
 `seisin check` guidance comes from. The breakdown, not the raw logs:
 
 ```
-913  blocked actions, ~330 rounds
+913  denied actions, ~330 runs
 112  destructive
- 46  ...aimed at ANOTHER role's paths   -> a path boundary already refuses these
- 66  ...inside its OWN writable tree    -> permitted by the box, every one
+ 46  ...aimed at ANOTHER role's paths   -> a path boundary already denies these
+ 66  ...inside its OWN writable tree    -> permitted by the sandbox, every one
 ```
 
 The 46 are excluded deliberately; counting them would inflate the ask with

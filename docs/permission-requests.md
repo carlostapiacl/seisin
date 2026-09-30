@@ -1,13 +1,16 @@
-# Permission requests
+# Requests
 
-> How a denial stops being a dead end, and why approving one is deliberately
+> How a denial stops being a dead end, and why granting one is deliberately
 > not something an agent can do.
+>
+> Not Claude Code's `PermissionRequest`, which is a prompt for one tool call, answered now.
+> A request here is asynchronous: the run has already moved on, and a grant applies to the next one.
 
 ## The problem
 
 A permission tool that can only say no is a tool people uninstall.
 
-The loop today: the agent is denied, the turn stops, you go and edit a config,
+The loop without it: the agent is denied, its turn stops, you go and edit a config,
 you run it again. That is three context switches for one line of policy, and it
 happens most often at exactly the wrong moment — mid-task, when you were
 watching something else.
@@ -24,58 +27,58 @@ asked, what it wanted, and who owns it. So it writes that down:
 ```
 agent denied  →  the hook records a request
               →  you see it where you already are
-              →  you approve or refuse, by hand
+              →  you grant or decline, by hand
               →  the next run has it
 ```
 
-Nothing about the enforcement changes. The kernel still refuses, the turn still
-stops. What changes is that the refusal leaves something behind that a human can
+Nothing about the enforcement changes. The kernel still denies, the run still
+stops. What changes is that the denial leaves something behind that a person can
 act on in one command instead of in an editor.
 
 ## The invariant
 
-> **Approving is not a tool call.**
+> **Granting is not a tool call.**
 
-This is the line the whole design hangs from. If granting a permission were an
+This is the line the whole design hangs from. If granting were an
 MCP tool, an agent holding that tool could widen its own territory, and the
-record would say a human did it. Every audit trail after that point is fiction.
+record would say a person did it. Every audit trail after that point is fiction.
 
 So the channels are split, and the split is the feature:
 
 | channel | can do | cannot do |
 |---|---|---|
 | the MCP server | read state, read pending requests, **draft** a proposal | grant anything |
-| the console (UI) | everything above, plus **approve** | — |
-| the CLI | everything above, plus **approve** | — |
+| the console | everything above, plus **grant** and **decline** | — |
+| the CLI | everything above, plus **grant** and **decline** | — |
 
 An agent can ask, and can even write the exact diff it wants. Turning that into
 policy requires a person acting in a channel the agent does not have.
 
-This is also why the UI is not where approval is *hosted* — it is one of two
-places where a human can do it. The other is a terminal, which matters because
+This is also why the console is not where granting is *hosted* — it is one of two
+places where a person can do it. The other is a terminal, which matters because
 the tool has to work for someone who never opens the console.
 
-### Why the console may approve and the MCP server may not
+### Why the console may grant and the MCP server may not
 
-Both run on the operator's machine, so the distinction has to be more than
+Both run on the machine of the person deciding, so the distinction has to be more than
 intent. It is: **a confined role cannot reach the console.**
 
-Measured, not assumed. From inside the box, `curl` against the console's own
+Measured, not assumed. From inside the sandbox, `curl` against the console's own
 port on loopback gets exactly what it gets from a domain outside its allowlist —
 the egress proxy makes no exception for `127.0.0.1`:
 
 ```
-console on 127.0.0.1     000   blocked
+console on 127.0.0.1     000   denied
 api.anthropic.com        404   reached — it is in the allowlist
-example.com              000   blocked
+example.com              000   denied
 ```
 
 The MCP server is the opposite by construction: it speaks on the agent's own
 stdio. Anything it can do, the agent can cause. So the split is not a policy
-about who *should* approve, it is a fact about who *can* reach the channel.
+about who *should* grant, it is a fact about who *can* reach the channel.
 
 One more thing had to be true, and was not for free. Loopback is no boundary
-against the browser — any page the operator has open can POST to `127.0.0.1`.
+against the browser — any page the person has open can POST to `127.0.0.1`.
 So `seisin ui` mints a token per run, inlines it into the page it serves, and
 demands it back on the only endpoint that writes. A tab from somewhere else
 cannot read it, and asking for it in a custom header also forces a preflight
@@ -90,12 +93,12 @@ First, it would need a tool to do it, and giving the confined process a channel
 to the thing confining it is the shape of every sandbox escape ever written.
 
 Second, a motive supplied by the requester is the least reliable field in the
-record. The useful motive is the one written by whoever approves — *"yes,
+record. The useful motive is the one written by whoever grants — *"yes,
 frontend owns the checkout flow now"* — because that is the sentence someone
 will need in three months.
 
 So the hook records facts it already has: role, action, path, owners, when, how
-many times. The reason belongs to the approval.
+many times. The reason belongs to the grant.
 
 ## Where the notification lives
 
@@ -111,7 +114,7 @@ this without adopting a process.
 
 ## Provenance
 
-A grant records who asked, how many times, and who approved it — in the config,
+A grant records who asked, how many times, and why it was granted — in the config,
 as a comment, next to the line it added.
 
 ```toml
@@ -122,7 +125,7 @@ writes = [
 ]
 ```
 
-Without this, a policy file is a list of permissions with no history, and the
+Without this, a policy file is a list of grants with no history, and the
 only safe operation on a line nobody remembers is to leave it there. That is the
 mechanism by which permission files only ever grow.
 
@@ -131,11 +134,11 @@ mechanism by which permission files only ever grow.
 `.seisin/requests.jsonl`, append-only, beside the log.
 
 Append-only matters for the same reason it does for the log: a decision that can
-be rewritten is not evidence. A granted or refused request is not deleted, it is
+be rewritten is not evidence. A granted or declined request is not deleted, it is
 followed by a line saying what happened to it.
 
 And "append-only" is now enforced rather than asserted. It was not, for a while:
-`.seisin/` sat in every role's allowWrite because the hook runs inside the box
+`.seisin/` sat in every role's allowWrite because the hook runs inside the sandbox
 and has to record what it decided — so the queue was writable by the processes
 it is a record of, and a request could be truncated, rewritten or invented. The
 file said the word and nothing held it up.
@@ -148,7 +151,7 @@ unlink.
 
 The honest limit: a hostile agent can still send lines, so it can pad its own
 queue. It cannot erase or alter what is already there. Forgery and tampering are
-different problems and only the second one is closed here.
+different problems and only the second one is closed here: the agent cannot reach the file.
 
 ## The MCP server
 
@@ -160,7 +163,7 @@ It is read-only **by construction**, not by policy. Nothing on disk is opened
 for writing by that process. `seisin_draft_grant` returns the change as text and
 the command a person runs; it does not stage a proposal file, because a staged
 file is one `mv` away from being policy and the last step is supposed to belong
-to a human in a channel the agent does not have.
+to a person in a channel the agent does not have.
 
 ```jsonc
 // .mcp.json, or wherever your client keeps servers
@@ -172,7 +175,9 @@ to a human in a channel the agent does not have.
 | `seisin_state` | the whole map, plus every way it does not hold |
 | `seisin_explain` | may this role touch this path, and whose is it |
 | `seisin_requests` | what is waiting on a person |
-| `seisin_activity` | recent allow/deny decisions |
+| `seisin_activity` | recent log entries, allowed, denied or observed |
+| `seisin_causes` | the denials grouped by path and by name, read against the policy |
+| `seisin_walls` | what a role keeps being denied and would still be denied today |
 | `seisin_draft_grant` | the change a request would make — as text, not applied |
 
 A test asserts that no tool name in that list mutates anything. If somebody adds
@@ -195,9 +200,9 @@ defensible. `PROTOCOLS` in `src/mcp.js` is where a break would surface first.
 
 ## What this is not
 
-- **Not an approval workflow.** There are no roles, no delegation, no
-  notifications to other people. One operator, one machine.
-- **Not a way to run unattended.** If nobody approves, nothing is granted and the
+- **Not an approval workflow.** There are no approver roles and no delegation.
+  One person, one machine; `[notify]` tells that person, and nobody else decides.
+- **Not a way to run unattended.** If nobody answers, nothing is granted and the
   agent stays confined. That is the correct failure.
 - **Not a replacement for writing the policy.** `init --from-observations` is
   still the right way to start; requests are for the long tail that observation

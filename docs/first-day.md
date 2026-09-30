@@ -6,7 +6,7 @@ somebody an afternoon before it cost a paragraph.
 *Part of [seisin](../README.md).*
 
 Four shapes that a correct policy still produces, and that a reader reads as breakage. All
-four come out of one production window — four agent cells, ~370 confined turns over three
+four come out of one production window — four teams of agents, ~370 confined runs over three
 days, 1,409 kernel denials — where none of them was the boundary misbehaving. They are here
 because every one of them cost someone an afternoon before it cost this paragraph.
 
@@ -39,10 +39,10 @@ another role, and the lock write is denied.
 Measured again six days later on the same deployment, with thirty-two times the volume:
 **1,080 of 1,422**, the same three quarters, and by then it was one filename across eight
 paths. Two windows, one shape — [the second one is in the field
-notes](field-notes.md#1--three-quarters-of-everything-the-kernel-refused-was-one-lock-file),
+notes](field-notes.md#1--three-quarters-of-everything-the-kernel-denied-was-one-lock-file),
 with what it cost and what removed it.
 
-It is noise, not a wall, and the distinction is measurable: inside the box
+It is noise, not a wall, and the distinction is measurable: inside the sandbox
 `git status --short --branch` and `git log` still exit 0. Git cannot refresh its index cache
 and carries on without it. If a role genuinely needs to commit, give it **its own worktree**
 rather than a share of the main index — two agents staging into one index corrupt each other
@@ -61,12 +61,12 @@ database instead of the policy, and the reason `seisin wire` exists.
 
 Where these stand: the sibling case is a `check` warning instead of a surprise, the worktree
 case is resolved in the tool, the SQLite case is named by the hook, and the git one is
-friction that gets logged rather than silenced — a boundary that hides what it denied is the
+noise that gets logged rather than silenced — a boundary that hides what it denied is the
 thing this project exists to argue against.
 
 **5 · Go and Dart fail TLS on macOS although the domain is allowed.** The error is
 `x509: OSStatus -26276` (Go — `gh`, kubectl, terraform, `go get`) or `CERTIFICATE_VERIFY_FAILED:
-application verification failure` (Dart/Flutter), and it is not the domain list: a blocked
+application verification failure` (Dart/Flutter), and it is not the domain list: a denied
 domain reads `CONNECT tunnel failed, response 403`. On macOS these tools ask the system whether
 a certificate is valid, the system answers through `com.apple.trustd.agent`, and the sandbox
 closes that service. It happens with a plain tunnel, no TLS interception involved — measured,

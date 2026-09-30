@@ -88,11 +88,11 @@ enforcement runtime's model, and every tool built on it inherits the same gap.
 - **Filed upstream** as [anthropics/sandbox-runtime#545](https://github.com/anthropics/sandbox-runtime/issues/545),
   with the implementation, and the Linux objection answered before it was raised.
 - **Measured**, because a principle is cheaper to argue with than a number. Over
-  ~330 rounds of a multi-agent run, **66 destructive commands landed inside a
+  ~330 runs of a multi-agent setup, **66 destructive commands landed inside a
   role's own writable tree** — 34 recursive deletes, 11 `reset --hard` over a
   shared tree — every one permitted by the sandbox, and caught only by a program
   reading command strings and guessing at intent.
 
 [seisin](../../README.md) is the tool that measured it: it gives each agent its
-own folders and its own keys, and when it blocks, it tells you whose file it was.
+own folders and its own keys, and when it denies something, it tells you whose file it was.
 This is the one policy it cannot express.

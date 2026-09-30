@@ -51,8 +51,8 @@ arguing them is welcome in a normal issue:
   says so; it narrows a careless print and is not a containment boundary.
 - **A hard link into a territory, made from outside the sandbox.** Ownership is by
   path; a second name for a sensitive inode, placed in a role's territory by
-  something outside the box, is writable by that role. Creating such a link from
-  inside is refused. Do not hard-link a sensitive file into an agent's territory.
+  something outside the sandbox, is writable by that role. Creating such a link from
+  inside is denied. Do not hard-link a sensitive file into an agent's territory.
 - **A key stored outside the declared key directories.** Nothing covers those. `seisin scan`
   exists to find them.
 
@@ -61,13 +61,13 @@ arguing them is welcome in a normal issue:
 The three things that turn a report into a fix:
 
 ```bash
-seisin log --verdict denied     # what the kernel refused, and when
-cat seisin.toml                 # the policy it was refusing against
+seisin log --verdict denied     # what the kernel denied, and when
+cat seisin.toml                 # the policy it was denying against
 seisin check                    # what the policy actually resolves to
 ```
 
 Plus the platform and the enforcement backend — macOS/Seatbelt or Linux/bubblewrap — because
-they refuse differently and a hole in one is not automatically a hole in the other.
+they deny differently and a hole in one is not automatically a hole in the other.
 
 ## Scope
 

@@ -12,7 +12,7 @@ asking the OS; seisin decides what to ask for and says whose file it was.
 
 It is why the hook is allowed to be imperfect. A hook that misreads a shell
 command costs an explanation, never a boundary — what escapes it goes
-**unexplained, not unblocked**. Every design question below was settled by
+**unexplained, not unenforced**. Every design question below was settled by
 asking which side of that line it falls on.
 
 ## A permission layer, not a sandbox
@@ -54,7 +54,7 @@ behaviour handed the kernel the whole subtree while `seisin explain` reported
 the narrow pattern: the document was tighter than the boundary, which is the one
 direction a permission tool must never fail in.
 
-The config generator does the same with paths that leave the cell, and the
+The config generator does the same with paths that leave the repository, and the
 principle is stated in the field report that prompted it: *if refusing is easier
 than computing the escape, refusing is the better bug.* Where computing it is
 exact, compute it; where it is ambiguous, refuse.
@@ -138,7 +138,7 @@ threat model — that is why neither is a default.
 **Rejected: linking the real keychain into the isolated home**, to get the
 separation without the logout. Measured against a throwaway keychain, a confined
 role reads **every** item in it, including one added without `-A`: a macOS ACL is
-per *application*, and `security` is the application, so any process in the box
+per *application*, and `security` is the application, so any process in the sandbox
 clears it. That trades one hole for a larger one — the login keychain is every
 password you have — and it is the kind of thing that has to be measured before
 it is offered, not after.
@@ -154,13 +154,13 @@ read allowlist. A default-deny read set has to enumerate every interpreter,
 library and cache a toolchain touches, gets one wrong, and fails as an
 unexplainable crash inside the agent. Narrower than the ideal, and it holds up.
 
-## Approving is not a tool call
+## Granting is not a tool call
 
 The MCP server can read state, read the queue and draft the exact change. It
 cannot grant. If it could, an agent holding that tool could widen its own
-territory and the record would say a human did it.
+territory and the record would say a person did it.
 
-The console *can* approve, and the difference is checkable rather than a matter
+The console *can* grant, and the difference is checkable rather than a matter
 of trust: **a confined role cannot reach the console.** Measured — `curl`
 against its port on loopback returns nothing, the same as a domain outside the
 allowlist. The MCP server is the opposite by construction: it speaks on the
@@ -193,13 +193,13 @@ The honest cost: the protocol is tracked by hand and it moves. `PROTOCOLS` in
 with the inner role both wider and narrower than the outer one, and it never worked: the inner
 run died in the runtime with `rc=13` and a Node warning about an unsettled await — no role
 named, no boundary named, reading as seisin crashing rather than as a refusal. Before that it
-failed one step earlier, on a `$TMPDIR` the outer box had already reshaped.
+failed one step earlier, on a `$TMPDIR` the outer sandbox had already reshaped.
 
 Making it work was the other side of the fork, and it was not taken, because the shape that
 reaches for it is usually the wrong one. The case is a dispatcher that starts roles: an
-orchestrator, a launcher, a queue runner. Putting that dispatcher *inside* a box makes every
+orchestrator, a launcher, a queue runner. Putting that dispatcher *inside* a sandbox makes every
 worker a descendant of it — and the dispatcher is the role that should hold the least, since
-it decides who works rather than doing the work. Whatever a second box would hold there, it is
+it decides who works rather than doing the work. Whatever a second sandbox would hold there, it is
 not "its own territory", and a permission tool should not be vague about that.
 
 So the shape the refusal points at is siblings, not descendants: the dispatcher sits above the
@@ -209,7 +209,7 @@ sanitised env, role from an allowlist — while leaving each worker's territory 
 policy rather than by whoever happened to launch it.
 
 **Measured afterwards, and it is stronger than the refusal assumed.** The open question was
-whether a nested box could only ever intersect with the one around it. It cannot nest at all:
+whether a nested sandbox could only ever intersect with the one around it. It cannot nest at all:
 macOS refuses to apply a second Seatbelt profile to an already-sandboxed process, with
 `sandbox_apply: Operation not permitted`, and that is the OS and not this tool —
 
@@ -227,17 +227,17 @@ profile per command — `codex` does, via `sandbox-exec` — cannot do so inside
 command it tries to confine fails to start. Such an agent has to run with its own sandbox
 turned off, because the boundary is already there and only one can exist.
 
-## The refusal names the queue, and never the MCP
+## The denial names the queue, and never the MCP
 
-A denial already files a permission request — and until now it did so silently,
-so nothing inside the box knew anything was pending. An agent could not tell the
-person who sent it that the work was waiting on an approval rather than simply
+A denial already files a request — and until now it did so silently,
+so nothing inside the sandbox knew anything was pending. An agent could not tell the
+person who sent it that the work was waiting on a grant rather than simply
 impossible. The sentence now ends with *"Already queued for a person to answer —
 retrying or waiting will not move it."*
 
 Both halves earn their place. **Retrying**, because the queue deduplicates: a
 second attempt at the same grant raises a counter and produces nothing new.
-**Waiting**, because nothing reachable from inside the sandbox can approve, by
+**Waiting**, because nothing reachable from inside the sandbox can grant, by
 the design two sections above — an agent that settles in to wait is an agent
 that has stopped working.
 
@@ -257,29 +257,29 @@ more helpful.
 ## The kernel gets to speak, and it is an instrument rather than a control
 
 The hook reports the attempt before it happens, and it is allowed to be
-imperfect — what escapes it goes *unexplained, not unblocked*. That sentence is
+imperfect — what escapes it goes *unexplained, not unenforced*. That sentence is
 the split this whole tool rests on, and for a while it hid a consequence nobody
 had priced: **the log only ever held what the hook understood.** Everything else
-left no trace at all, because a kernel refusal surfaces as a bare `Operation not
+left no trace at all, because a kernel denial surfaces as a bare `Operation not
 permitted` on the child's stderr, with no path, no operation and no owner.
 
-The measurement that forced this. In production, wrapping two cells of an agent
-team: the team's own hook had recorded 48,050 actions and 1,210 blocks, while
+The measurement that forced this. In the author's own deployment, wrapping two
+teams of agents: their own hook had recorded 48,050 actions and 1,210 denials, while
 seisin's log held **one** entry. Four defects found while wrapping the first
-cell all presented identically — a file that stopped growing — and diagnosing
+team all presented identically — a file that stopped growing — and diagnosing
 them took a night, because nothing anywhere named the path that had been
-refused. A tool whose line is *"when it blocks, it tells you whose it was"* was
+denied. A tool whose line is *"when it denies, it tells you whose it was"* was
 delivering that in `explain`, which you have to go and ask, and not at the
-moment of the block, which is when it is worth anything.
+moment of the denial, which is when it is worth anything.
 
 macOS already writes the missing line. Every Seatbelt denial lands in the system
 log with the operation, the absolute path, and the runtime's own attribution tag
 attached. `seisin run` now reads that stream and records what it finds, so a
-refusal the hook never saw becomes a line with an owner and a request in the
-queue — the same two things a refusal the hook *did* see produces.
+denial the hook never saw becomes a line with an owner and a request in the
+queue — the same two things a denial the hook *did* see produces.
 
 **It does not touch the boundary, and that is what makes it allowed.** By the
-time a line exists here the kernel has already refused. Nothing in this path can
+time a line exists here the kernel has already denied it. Nothing in this path can
 widen a grant, narrow one, or change an outcome; the run behaves identically
 with the monitor off. So "refusing rather than widening" is not in tension with
 it — observing cost nothing to observe, which is the only reason it was built at
@@ -304,11 +304,11 @@ for a small gain.
 ### Two anchors for attribution, because each one alone is wrong
 
 A denial has to be proven to belong to *this* run before it is written under this
-role's name. Crediting another sandbox's refusal to a role would be inventing a
+role's name. Crediting another sandbox's denial to a role would be inventing a
 fact about somebody's work, which is the one thing this tool exists not to do.
 
 - **The process tree.** Exact while the process is alive, and worthless once it
-  has exited — which, for the short commands that get refused most, is before
+  has exited — which, for the short commands that get denied most, is before
   the line arrives. Measured: attribution by tree alone recorded *nothing* for a
   one-line `sh -c`.
 - **The runtime's command tag.** Survives the process, and depends on the
@@ -322,34 +322,34 @@ session suffix; from there attribution is one string comparison, exact against
 every other sandbox on the machine. When neither can answer, the denial is
 **held and re-examined, then dropped** — counted in a number the run prints, never
 guessed at. Verified with two runs of two repos side by side: each log held its
-own refusal and neither held the other's.
+own denial and neither held the other's.
 
 ### The stream starts before the child, and that ordering is the feature
 
 The first version started the monitor after the spawn, since that is when the
 pid exists. It recorded zero denials, because `log stream` has its own startup
-and a refused `sh -c` is over in single-digit milliseconds. So the stream starts
+and a denied `sh -c` is over in single-digit milliseconds. So the stream starts
 first and the pid is handed over afterwards, with anything that arrives in the
 gap held rather than credited on faith.
 
 Cost, since the constraint was explicit — this runs alongside a hook that fires
-on **every** tool call, tens of thousands of times in one cell's history:
+on **every** tool call, tens of thousands of times in one team's history:
 **nothing is added to that path at all.** The monitor is a sibling process and
 the hook never touches it, so the number that mattered for `whose` — 166 ms,
 which is why it lives only on the denial path — has no equivalent here.
 
 What it does cost, measured rather than reasoned about: **128 ms per run**, from
-683 ms to 811 ms over eight runs of the same refused command with and without the
+683 ms to 811 ms over eight runs of the same denied command with and without the
 monitor. That is the stream's own startup plus the drain at exit, and it is paid
 once per `seisin run` — a unit that lasts as long as an agent session, not as
 long as a tool call. The drain is capped at 250 ms and settles 60 ms after the
-stream goes quiet; the measured lag between a refusal and its line arriving was
+stream goes quiet; the measured lag between a denial and its line arriving was
 under a millisecond, with the line landing before `srt` had finished exiting, so
 the 60 ms is a floor against scheduling noise rather than an estimate of the lag.
 
 ### What is not recorded, said out loud
 
-The kernel refuses plenty that is not a territory question: `/dev/tty` on every
+The kernel denies plenty that is not a territory question: `/dev/tty` on every
 command a CLI runs, dtrace helpers, font caches. A denial is recorded when it
 lands inside the repo or inside a path the role's own settings named; everything
 else is counted and the count is printed when the run ends. Filtering that
@@ -357,7 +357,7 @@ nobody can see is indistinguishable from an instrument that is not working.
 
 ### Linux gets a sentence, not a shim
 
-There is no equivalent stream to read. bubblewrap does not log refusals; the
+There is no equivalent stream to read. bubblewrap does not log denials; the
 runtime synthesises them by observing write-intent syscalls through its own
 `apply-seccomp` stub, reporting over a socket it creates, reading paths out of
 the traced process's memory — its own comment calls those events
@@ -394,15 +394,15 @@ working. The distinction was never missing — the log already carries `kind:
 denial. This report was the only thing not reading it.
 
 `guarded` does not affect the exit code, and that is deliberate. `review` exits 1
-on friction so it composes in CI; a boundary refusing exactly what it was
-configured to refuse must not fail a build, or a correct policy can never go
+on repeated denials so it composes in CI; a boundary denying exactly what it was
+configured to deny must not fail a build, or a correct policy can never go
 green.
 
 ### "Never used" abstains rather than answer from half a log
 
 This is the finding that can make a policy smaller, and therefore the one where
-being wrong deletes a permission somebody needed. It is read off `allowed`
-lines — and **only the hook writes those**. The kernel reports what it refused;
+being wrong deletes a grant somebody needed. It is read off `allowed`
+lines — and **only the hook writes those**. The kernel reports what it denied;
 it has nothing to say about what went through.
 
 So on a repo where `wire` was never run, the log holds denials and nothing else,
@@ -450,8 +450,8 @@ session, by someone who had just written the tool.
 
 It is time-of-check-to-time-of-use in the one command whose entire job is
 deciding a permission. Every argument for this project — that a boundary should
-name what it refused, that nothing is taken at its word — is worth nothing if
-approving the wrong thing is one race away.
+name what it denied, that nothing is taken at its word — is worth nothing if
+granting the wrong thing is one race away.
 
 A number still works, because reading a list and typing a number is how anyone
 will use it. But each entry now prints an id — `<role>:<action>:<path>` — that
@@ -538,7 +538,7 @@ So the chain is wired end to end and snaps at its own last link. On Linux the ru
 `GIT_SSH_COMMAND` through `socat` to its HTTP proxy with credentials instead, and the gap is
 macOS's alone (read from the 0.0.78 source; not re-measured on Linux here). The runtime is not
 silent about it in its source — a comment there says `nc` cannot authenticate and points to
-HTTPS, and the proxy answers such a client with an SSH-protocol refusal — but what a person sees
+HTTPS, and the proxy answers such a client with an SSH-protocol error — but what a person sees
 at the terminal is still only the broken pipe below.
 
 **Measured, with `github.com` in the role's allow list:**
@@ -568,14 +568,14 @@ filed — and it did not need to be: upstream PR
 exactly this.
 
 **What to do today.** Use an HTTPS remote for git — it passes. Run SSH deploys outside the
-confined turn. Both of those were already true; what changed is that the reason is now the
+confined run. Both of those were already true; what changed is that the reason is now the
 real one.
 
 ## trustd: every sandbox chose a side
 
 On macOS, Go and Dart do not verify a TLS certificate themselves: they ask the system, and
 the system answers through `com.apple.trustd.agent`. The runtime seisin sits on closes that
-service. So inside the box `gh`, `go get` and `flutter pub get` fail with the domain allowed and
+service. So inside the sandbox `gh`, `go get` and `flutter pub get` fail with the domain allowed and
 the connection made — measured on 0.0.76 with a plain CONNECT tunnel, although the runtime's
 option for it is documented as needed only behind a TLS-intercepting proxy.
 
@@ -607,9 +607,9 @@ What seisin does, in that order:
    that one role — Dart, and Go built before 1.27 — and `check` prints what it costs next to the
    role. Every other sandbox makes this choice once, for everything with network; here it is
    made per role, and it is visible.
-3. **Not the escape hatch.** Running `gh` outside the box is the documented answer elsewhere,
+3. **Not the escape hatch.** Running `gh` outside the sandbox is the documented answer elsewhere,
    and it works when a person approves each run. An agent that runs alone overnight has nobody
-   to approve it, and "outside the box" there means no boundary at all.
+   to approve it, and "outside the sandbox" there means no boundary at all.
 
 What the warning rests on: trustd fetches, outside the sandbox, the URLs a certificate carries
 (Apple's `SecCAIssuerRequest.m`), so a confined process could make it fetch a URL of its
@@ -625,7 +625,7 @@ runtime's Seatbelt profile allows either no loopback or `localhost:*`, and can't
 The proxy can. It sees the destination port and its allowlist already takes `host:port`. seisin
 adds each port in three spellings (`localhost:N`, `127.0.0.1:N`, `[::1]:N`) and removes loopback
 from `NO_PROXY` for that role, by prefixing the command with `env NO_PROXY=…`. Without that, the
-client would skip the proxy and the kernel would refuse it. A test keeps that list in step with
+client would skip the proxy and the kernel would deny it. A test keeps that list in step with
 the pinned runtime.
 
 Measured on macOS 15 and Linux (Debian 12, bwrap): curl, Node's `fetch` and Python's `urllib`
@@ -636,20 +636,20 @@ key reaches nothing.
 non-HTTP server on a listed port answered through it; an unlisted one got 403. So
 `local_ports = [3307]` opens the database to any client that can use `CONNECT`.
 
-**Clients that dial directly** (the `mysql` CLI, most drivers, raw sockets) are refused. A
+**Clients that dial directly** (the `mysql` CLI, most drivers, raw sockets) are denied. A
 driver that takes a custom stream, like Node's `mysql2`, can be given a tunnel. We don't ship a
 relay for the rest.
 
-**Chromium** (macOS). By default it doesn't start: the profile blocks the Mach service it
+**Chromium** (macOS). By default it doesn't start: the profile denies the Mach service it
 registers at launch, and it aborts with `bootstrap_check_in … Permission denied (1100)`.
 `--single-process` gets it running. That isn't a path, so it's not in the log; the
 after-failure hook recognises the error instead. Once running, Playwright's `proxy` option
-(built from `HTTP_PROXY`) reaches a listed port and is blocked on the rest. The runtime fix is
+(built from `HTTP_PROXY`) reaches a listed port and is denied on the rest. The runtime fix is
 upstream PR #598; see [mach-register.md](upstream/mach-register.md). Chromium and `CONNECT`
 were measured on macOS only.
 
-**Refused connections** are logged as `connect`, once per target per run, since readiness loops
-poll. `/var/run/*` is dropped because every DNS lookup in the box lands there. Refusals by the
+**Denied connections** are logged as `connect`, once per target per run, since readiness loops
+poll. `/var/run/*` is dropped because every DNS lookup in the sandbox lands there. Denials by the
 proxy (a domain not on the list) aren't logged: the `srt` CLI doesn't expose them. That's
 [#582](https://github.com/anthropics/sandbox-runtime/issues/582).
 
@@ -734,14 +734,14 @@ could write it. `seisin check` prints the part that takes something from a terri
   costs `.git/hooks`, `.git/config` and `.claude` whole, and patterns anchored to the territory
   cover the rest.
 - **`~/.claude` is protected file by file**, never whole: Claude Code keeps its sessions there
-  and writes them from inside the box.
+  and writes them from inside the sandbox.
 - **Providers are looked up only where no role writes**, and run with that PATH.
 - **Not protected: instructions.** `CLAUDE.md`, memory files and prompts shape what a future
   session does, but they do not execute. Protecting them would take a role's docs from it.
 - **Not protected: whatever else a program reads from the shared scratch** (`~/.cache`,
   `~/.local/share`) that is not on PATH. `isolate = "home"` gives each role its own.
 
-Two things considered and not done. **A token on the audit channel**: only this run's box can
+Two things considered and not done. **A token on the audit channel**: only this run's sandbox can
 reach its socket or FIFO, and a token would live in the agent's environment, where the agent reads
 it. The parent recomputes everything that decides something (role, owners, whether a request is
 askable) and marks a verdict it disagrees with as `disputed`. **Redaction on a terminal**: it needs
@@ -753,7 +753,7 @@ on a TTY and says so.
 - ~~**An MCP tool call has no owner.**~~ **Read at the server level, 2026-09-24.** The hook used
   to judge file tools and `Bash` and return nothing for anything else, so a call like
   `mcp__supabase__execute_sql` got no verdict and no line in the log; the kernel does not see it
-  either, since the MCP server runs outside the box. Measured first — `PreToolUse` does fire for
+  either, since the MCP server runs outside the sandbox. Measured first — `PreToolUse` does fire for
   it, with `tool_name` in the full `mcp__<server>__<tool>` form and `tool_input` set to the tool's
   own argument object (`{"msg":"hello"}` for a probe tool), not a path, which is exactly why
   `targetsOf` returned nothing. Now `targetsOf` resolves the call to its **server** and `explain`
@@ -761,7 +761,7 @@ on a TTY and says so.
   server the role may not load is denied; a name that is not a real `mcp__server__tool` is closed;
   the call is always recorded. Nothing is queued — the `mcp` list is a policy change, not a grant,
   the shape of `never_writes`. The parent recomputes the verdict rather than trust the line from
-  inside the box (`intake.js`).
+  inside the sandbox (`intake.js`).
 
   Still open, deferred on purpose: the **finer resource** — *which* table or project a call
   touches, `supabase://project/table` derived from `tool_input`. That needs a per-server adapter,
@@ -775,7 +775,7 @@ on a TTY and says so.
   happened, so a process inside the box could file a request for a path its own
   role already owns and the queue would print *first refused on …* about an
   event that never occurred — in front of a person about to approve it.
-  `seisin run` now drops any request the policy does not actually refuse. Same
+  `seisin run` now drops any request the policy does not actually deny. Same
   treatment `owners` already got: the claim is recomputed by the parent rather
   than believed, and the parent is the one process the confined side cannot
   reach. It deliberately does **not** require the agent to have *tried* — asking
@@ -801,7 +801,8 @@ on a TTY and says so.
   [the glossary](glossary.md), which did not exist and is why this drifted.
 - **Deleting inside your own territory** is not covered and not coverable here.
   [The ask is upstream](upstream/denyUnlink.md).
-- **Forgery in the audit trail.** Tampering is closed; a hostile agent can still
+- **Forgery in the audit trail.** Tampering is closed to the agent — it cannot reach the file —
+  and detectable for anyone else, because the log is tamper-evident. A hostile agent can still
   add lines to its own history.
 - **No resource limits.** CPU, memory, PIDs and disk are unbounded. The boundary
   is about what an agent can reach, not how much of it there is.
@@ -889,10 +890,10 @@ understands; a second first-class format is a parser, a precedence rule between 
 a new way for the policy to disagree with itself — in the one file whose job is to be the
 thing everybody agrees on.
 
-This was tested rather than assumed. A team running several agent cells generates their
-policy from what their own configs already say, on their side, and the generator knows
-things seisin has no business knowing: how many cells there are, where each one's records
-live, which roles share a name across cells. An adapter shipped here could not have known
+This was tested rather than assumed, in the author's own deployment: several groups of
+roles, whose policy is generated from what their own configs already say, outside this repo,
+and the generator knows things seisin has no business knowing: how many groups there are,
+where each one's records live, which roles share a name across groups. An adapter shipped here could not have known
 any of it, and shipping one anyway would have made this repo responsible for a format it
 does not own.
 
