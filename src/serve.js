@@ -45,7 +45,20 @@ export function sinceOf(url) {
  * 1–2 s of causes and walls every two seconds to find nothing had moved
  * (measured on the portfolio's log, 7,728 lines, 32 roles).
  */
-const memo = { path: null, hash: null, cfg: null, logSig: null, all: null, derived: new Map(), bodies: new Map() };
+const memo = { path: null, hash: null, bucket: null, cfg: null, logSig: null, all: null, derived: new Map(), bodies: new Map() };
+
+/**
+ * How long a loaded config and what was derived from it are trusted.
+ *
+ * Not everything the page shows is a function of these files. Some of it is
+ * the disk around them — a key directory that became a symlink, a provider's
+ * executable that appeared, a control file that now exists (settingsFor, the
+ * walls' "would still be refused today") — and with the key made of file
+ * signatures alone, that stayed as it was first seen for the server's life,
+ * defeating the one-minute memory views.verdicts keeps for the same reason.
+ * A minute is that memory's own span.
+ */
+const MEMO_SPAN = 60_000;
 
 function statSig(p) {
   try { const s = statSync(p); return `${p}:${s.ino}:${s.size}:${s.mtimeMs}`; } catch { return `${p}:-`; }
@@ -54,8 +67,9 @@ function statSig(p) {
 function snapshot(configPath) {
   const text = readFileSync(configPath, "utf8");
   const hash = createHash("sha256").update(text).digest("hex");
-  if (memo.path !== configPath || memo.hash !== hash) {
-    Object.assign(memo, { path: configPath, hash, cfg: loadConfig(configPath), logSig: null, all: null });
+  const bucket = Math.floor(Date.now() / MEMO_SPAN);
+  if (memo.path !== configPath || memo.hash !== hash || memo.bucket !== bucket) {
+    Object.assign(memo, { path: configPath, hash, bucket, cfg: loadConfig(configPath), logSig: null, all: null });
     memo.derived.clear();
     memo.bodies.clear();
   }
@@ -67,7 +81,7 @@ function snapshot(configPath) {
     memo.logSig = logSig;
     memo.derived.clear();
   }
-  return { cfg, text, all: memo.all, key: `${hash}|${logSig}|${statSig(requestsPath(cfg.root))}` };
+  return { cfg, text, all: memo.all, key: `${hash}|${bucket}|${logSig}|${statSig(requestsPath(cfg.root))}` };
 }
 
 /** Keeps the last few entries of a memo map. */
@@ -84,8 +98,8 @@ function remember(map, key, value, max = 4) {
  * page downloaded every two seconds and it drew none of them. One role's are
  * served on demand by /api/settings.
  */
-export function state(configPath, { since = null } = {}) {
-  const { cfg, text, all } = snapshot(configPath);
+export function state(configPath, { since = null, snap = snapshot(configPath) } = {}) {
+  const { cfg, text, all } = snap;
 
   // The date filter narrows everything read from the log: activity, causes,
   // walls and the per-role counts. Not the request queue, which is what is
@@ -154,10 +168,13 @@ export function state(configPath, { since = null } = {}) {
  * no body at all.
  */
 function stateBody(configPath, since) {
-  const { key } = snapshot(configPath);
-  const k = `${key}|${since}`;
+  // One snapshot for the tag and the body. Each used to take its own, so a
+  // file that moved between the two calls got a body filed under the tag of
+  // what was there before — and a 304 for it until something else moved.
+  const snap = snapshot(configPath);
+  const k = `${snap.key}|${since}`;
   return memo.bodies.get(k) ?? remember(memo.bodies, k, {
-    body: JSON.stringify(state(configPath, { since })),
+    body: JSON.stringify(state(configPath, { since, snap })),
     etag: `"${createHash("sha256").update(k).digest("hex").slice(0, 24)}"`,
   });
 }

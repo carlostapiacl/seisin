@@ -161,3 +161,37 @@ test("from the CLI it exits 0 and says it was already granted", async () => {
   assert.match(r.stdout, /already granted/);
   assert.equal(pending(requestsPath(box)).length, 0);
 });
+
+/* ── the console's memory expires with what it depends on ─────────────── */
+
+test("the console re-reads the disk around the policy after a minute, not never", async (t) => {
+  const { realpathSync } = await import("node:fs");
+  const box = repo("seisin-x-memo-",
+    '[roles.a]\nwrites = ["a/**"]\nkeys = ["TOK=file://cred/t.txt"]\n');
+  const { get } = await consoleOn(t, box);
+  const settings = async () => JSON.stringify((await (await get("/api/settings?role=a")).json()).settings);
+
+  const first = await get("/api/state");
+  const tag = first.headers.get("etag");
+  await first.text();
+  await settings();
+  // Nothing moved: the same tag, a 304.
+  assert.equal((await get("/api/state", { "if-none-match": tag })).status, 304);
+
+  // The key file becomes a link to somewhere else. Its destination is what the
+  // kernel meets, so it must be denied too — but nothing the key hashes moved.
+  const elsewhere = join(box, "elsewhere");
+  mkdirSync(elsewhere);
+  writeFileSync(join(elsewhere, "t.txt"), "x");
+  mkdirSync(join(box, "cred"));
+  symlinkSync(join(elsewhere, "t.txt"), join(box, "cred", "t.txt"));
+  const dest = realpathSync(join(elsewhere, "t.txt"));
+  assert.ok(!(await settings()).includes(dest), "precondition: still the first reading");
+
+  const real = Date.now;
+  Date.now = () => real() + 61_000;
+  try {
+    assert.ok((await settings()).includes(dest), "a disk change was never seen");
+    assert.equal((await get("/api/state", { "if-none-match": tag })).status, 200, "the old tag was still served");
+  } finally { Date.now = real; }
+});

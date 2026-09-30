@@ -127,6 +127,11 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
 - **"Already has it" closes the request everywhere.** The console settled it as granted;
   `seisin grant` threw and left it pending for good. It now says it was already granted, closes
   it, and exits 0.
+- **The console's memory expires after a minute.** It kept the loaded policy, and everything
+  derived from it, for as long as the files it hashes stayed the same — so what depends on the
+  disk around them (a key file that became a link, a provider that was installed, a control file
+  that now exists) showed as first seen for the server's life. The state's tag and body also
+  come from one reading now, not two.
 
 ## 0.4.2 — 2026-09-29
 
