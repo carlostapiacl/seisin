@@ -13,7 +13,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { scratch } from "./_tmp.js";
 
-import { targetsOf, TOOL_MATCHER } from "../src/hook.js";
+import { targetsOf, decide, TOOL_MATCHER } from "../src/hook.js";
 import { loadConfig } from "../src/config.js";
 import { wire, wired } from "../src/commands/wire.js";
 import { afterTool } from "../src/diagnose.js";
@@ -151,4 +151,39 @@ test("a Bash that reports failure on stderr still gets the sentence", async () =
     tool_response: { stdout: "", stderr: "sh: src/api/x.ts: Operation not permitted\n", exit_code: 1 } };
   const out = await afterTool(cfg, "web", failed, { file: logPath(dir), wait: [0] });
   assert.match(out.hookSpecificOutput.additionalContext, /src\/api\/x\.ts belongs to api/);
+});
+
+/* ── timesHit one behind under `seisin run` ───────────────────────────── */
+
+/** A PreToolUse denial of `target` for `role`, as the parent writes it from the socket. */
+function hookLine(dir, role, target) {
+  mkdirSync(join(dir, ".seisin"), { recursive: true });
+  appendFileSync(logPath(dir), JSON.stringify({
+    at: new Date().toISOString(), role, tool: "Write", action: "write", kind: "file",
+    target, verdict: "denied", owners: ["api"], reason: "x",
+  }) + "\n");
+}
+
+test("the refusal counts this attempt when its entry went to the socket, not the file", () => {
+  const { dir, env } = policy();
+  hookLine(dir, "web", "src/api/x.ts");
+  // Through the CLI with SEISIN_SPOOL set: this attempt's line goes to a
+  // socket (nobody is listening, so it never reaches the file at all).
+  const r = hook(env, { hook_event_name: "PreToolUse", tool_name: "Write", tool_input: { file_path: "src/api/x.ts" } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(JSON.parse(r.stdout).hookSpecificOutput.permissionDecisionReason, /denied this 2 times now.*third try/);
+});
+
+test("the same count when the entry went to the file", () => {
+  const { dir } = policy();
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  const event = { tool_name: "Write", tool_input: { file_path: "src/api/x.ts" } };
+  const lost = () => {};                       // the socket: nothing lands on disk
+  hookLine(dir, "web", "src/api/x.ts");
+  const viaSocket = decide(cfg, "web", event, { now: lost, ask: lost });
+  const viaFile = decide(cfg, "web", event, { ask: lost });   // real append, to the file
+  assert.match(viaSocket.hookSpecificOutput.permissionDecisionReason, /denied this 2 times now/);
+  assert.match(viaFile.hookSpecificOutput.permissionDecisionReason, /denied this 2 times now/);
+  const third = decide(cfg, "web", event, { ask: lost });
+  assert.match(third.hookSpecificOutput.permissionDecisionReason, /denied this 3 times now/);
 });
