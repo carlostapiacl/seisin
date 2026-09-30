@@ -116,20 +116,32 @@ test("a run stopped by SIGTERM stops its agent, cleans up, and does not report s
   // running with nobody holding its audit socket, and the directory stayed.
   // With the signal forwarded, the runtime then ended 0 — success, for a run
   // an orchestrator had just killed.
-  // The agent writes `up` at once and would write `alive` after 3 s if it kept
-  // running. A SIGTERM to seisin must stop the agent, so `alive` never appears.
-  // Checked by that marker, not by probing the agent's pid: under bubblewrap the
-  // pid is namespaced, so process.kill from outside gives EPERM, not ESRCH.
+  // The agent writes `up` at once and then a tick into `alive` every 0.1 s
+  // for as long as it lives. A SIGTERM to seisin must stop it, so the ticks
+  // stop with the run. Checked by that marker, not by probing the agent's pid:
+  // under bubblewrap the pid is namespaced, so process.kill from outside gives
+  // EPERM, not ESRCH.
+  const alive = join(repo, "b", "alive");
+  const t0 = Date.now();
   const c = spawn(process.execPath,
-    [CLI, "run", "b", "--", "sh", "-c", "echo up > b/up; sleep 3; echo alive > b/alive; sleep 30"], { cwd: repo });
-  await waitFor(join(repo, "b", "up"));
+    [CLI, "run", "b", "--", "sh", "-c", "echo up > b/up; while :; do echo tick >> b/alive; sleep 0.1; done"], { cwd: repo });
+  await waitFor(alive);
+  // How long this machine took to start a run, right now: the budget for
+  // stopping one follows it, so load moves both. Never under the old 20 s.
+  const startup = Date.now() - t0;
   const t = Date.now();
   c.kill("SIGTERM");
   const code = await new Promise((r) => c.on("exit", r));
   assert.equal(code, 143);
-  assert.ok(Date.now() - t < 20000);
-  await new Promise((r) => setTimeout(r, 5000));   // longer than the agent's 3 s
-  assert.ok(!existsSync(join(repo, "b", "alive")), "the agent outlived its run");
+  const limit = Math.max(20000, 5 * startup);
+  assert.ok(Date.now() - t < limit, `stopping took ${Date.now() - t} ms, budget ${limit} ms`);
+  // A tick already in flight when the run ended may still land: let three go
+  // by, then watch for twenty more, and at least as long as starting a run
+  // took. A survivor would have added lines by then.
+  await new Promise((r) => setTimeout(r, 300));
+  const ticks = readFileSync(alive, "utf8");
+  await new Promise((r) => setTimeout(r, Math.max(2000, startup)));
+  assert.equal(readFileSync(alive, "utf8"), ticks, "the agent outlived its run");
 });
 
 test("the FIFO channel carries lines, and a parent that is gone costs nothing", async () => {

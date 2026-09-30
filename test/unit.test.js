@@ -1824,12 +1824,32 @@ test("SEC-05 a later [roles] cannot replace a role declared above it", () => {
   assert.deepEqual(load(role + '\n[roles]\n')().roles.a.network, []);
 });
 
+/**
+ * A time budget that follows the machine: `ms` on an idle one, and under load
+ * `factor` times what a linear pass takes right now — measured here, so load
+ * moves both. Anything super-linear still blows through it; a busy CI runner
+ * no longer fails a parser that is fine.
+ */
+function budget(ms, factor, linear) {
+  const t0 = performance.now();
+  linear();
+  return Math.max(ms, factor * (performance.now() - t0));
+}
+
 test("an unclosed multi-line array is refused quickly", () => {
   const box = scratch("seisin-long-");
-  writeFileSync(join(box, "seisin.toml"), '[roles.a]\nwrites = [\n' + '  "x",\n'.repeat(100_000));
-  const t0 = Date.now();
+  const text = '[roles.a]\nwrites = [\n' + '  "x",\n'.repeat(100_000);
+  writeFileSync(join(box, "seisin.toml"), text);
+  // Baseline: read the same file and walk its lines once each — what any
+  // parser has to do at least.
+  const limit = budget(2000, 20, () => {
+    for (let i = 0; i < 3; i++)
+      readFileSync(join(box, "seisin.toml"), "utf8").split("\n").map((l) => l.trim()).filter((l) => /^"/.test(l));
+  });
+  const t0 = performance.now();
   assert.throws(() => loadConfig(join(box, "seisin.toml")));
-  assert.ok(Date.now() - t0 < 2000, `took ${Date.now() - t0} ms`);
+  const took = performance.now() - t0;
+  assert.ok(took < limit, `took ${Math.round(took)} ms, budget ${Math.round(limit)} ms`);
 });
 
 test("SEC-06 init --from-observations ignores lines the parent disputed", () => {
@@ -1859,9 +1879,14 @@ test("SEC-09 a leading-slash CODEOWNERS path maps to a repo-relative territory",
 test("SEC-22a covers() does not backtrack catastrophically on a crafted glob", () => {
   const glob = "**/a/".repeat(15) + "**/*.zz";
   const path = "a/".repeat(40) + "b.ts";
-  const t0 = Date.now();
+  // Baseline: the same path against a glob of the same length that cannot
+  // backtrack, 2000 times. Exponential matching is minutes, not a factor.
+  const flat = "src/".repeat(15) + "**/*.zz";
+  const limit = budget(500, 50, () => { for (let i = 0; i < 2000; i++) covers(flat, path); });
+  const t0 = performance.now();
   assert.equal(covers(glob, path), false);
-  assert.ok(Date.now() - t0 < 500, `took ${Date.now() - t0} ms`);
+  const took = performance.now() - t0;
+  assert.ok(took < limit, `took ${Math.round(took)} ms, budget ${Math.round(limit)} ms`);
 });
 
 test("SEC-07 two concurrent grants both land — neither is lost", async () => {
