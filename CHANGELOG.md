@@ -90,6 +90,12 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
   error from `kill(pid, 0)` other than EPERM "dead", and removed the directory — socket and scratch
   keys — of a run it could not rule out. The log lock and the sweep now share one `alive()`: only
   ESRCH is gone, and a pid file that is not a positive pid is left alone.
+- **seisin installed as a project's dependency uses the runtime it pins.** `run` looked for `srt`
+  only inside seisin's own `node_modules`, where npm does not put it once it hoists the runtime to
+  the project's. `npx seisin` found it anyway through PATH; `./node_modules/.bin/seisin` and
+  `node node_modules/seisin/src/cli.js` said "not found", or ran under a global `srt` of another
+  version. The runtime is now found the way Node finds a dependency, up through every
+  `node_modules`, before PATH.
 
 ### Faster
 

@@ -4,7 +4,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, readdirSync, existsSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, readdirSync, existsSync, statSync, symlinkSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { inspect } from "../src/inspect.js";
@@ -13,6 +13,7 @@ import { TOOL_MATCHER } from "../src/hook.js";
 import { alive } from "../src/log.js";
 import { runsRoot, openRun } from "../src/rundir.js";
 import { recentKernelDenials } from "../src/diagnose.js";
+import { resolveSrt } from "../src/commands/run.js";
 import { scratch, repoWith as policyRepo, CLI } from "./_tmp.js";
 
 const silently = (fn) => {
@@ -186,4 +187,41 @@ test("diagnose reads the log's last 512 KB, dropping the line the cut lands in",
   assert.equal(statSync(onEdge).size, BUDGET + X.length + 1);
   assert.deepEqual(recentKernelDenials(onEdge, "dev", now - 60_000).map((e) => e.target), ["cut/c.txt"],
     "a cut on a line boundary lost a whole line, or read past the budget");
+});
+
+/* ── srt when seisin is a project's dependency ───────────────────────── */
+
+/** A project that installed seisin: npm hoisted the runtime beside it, not inside it. */
+function consumer({ link = true } = {}) {
+  const root = scratch("seisin-dep-");
+  const nm = join(root, "node_modules");
+  const here = join(nm, "seisin", "src", "commands");      // where run.js lives there
+  mkdirSync(here, { recursive: true });
+  const pkg = join(nm, "@anthropic-ai", "sandbox-runtime");
+  mkdirSync(join(pkg, "dist"), { recursive: true });
+  writeFileSync(join(pkg, "package.json"), JSON.stringify({ name: "@anthropic-ai/sandbox-runtime", bin: { srt: "dist/cli.js" } }));
+  writeFileSync(join(pkg, "dist", "cli.js"), "#!/usr/bin/env node\n", { mode: 0o755 });
+  if (link) {
+    mkdirSync(join(nm, ".bin"));
+    symlinkSync("../@anthropic-ai/sandbox-runtime/dist/cli.js", join(nm, ".bin", "srt"));
+  }
+  // and a different, global srt on PATH, the one that must not win
+  const global = join(root, "global-bin");
+  mkdirSync(global);
+  writeFileSync(join(global, "srt"), "#!/bin/sh\n", { mode: 0o755 });
+  return { root, nm, here, global };
+}
+
+test("seisin installed as a dependency finds the hoisted runtime, not a global one", () => {
+  const c = consumer();
+  assert.equal(resolveSrt({ from: c.here, path: "" }), join(c.nm, ".bin", "srt"), "a hoisted runtime was not found");
+  assert.equal(resolveSrt({ from: c.here, path: c.global }), join(c.nm, ".bin", "srt"), "a global srt outranked the pinned one");
+});
+
+test("without a .bin link the runtime's own bin entry is used; with no runtime, PATH, then null", () => {
+  const c = consumer({ link: false });
+  assert.equal(resolveSrt({ from: c.here, path: "" }), join(c.nm, "@anthropic-ai", "sandbox-runtime", "dist", "cli.js"));
+  const bare = scratch("seisin-nodep-");
+  assert.equal(resolveSrt({ from: bare, path: c.global }), join(c.global, "srt"));
+  assert.equal(resolveSrt({ from: bare, path: "" }), null);
 });
