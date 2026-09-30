@@ -134,6 +134,29 @@ export async function run(config, argv) {
   // Everything that belongs to this run alone — socket, settings, scratch keys
   // — in one private directory, with one id. See rundir.js.
   const theRun = openRun();
+  /**
+   * From here on, every way out removes what this run made.
+   *
+   * The happy path closed the spool, the kernel watcher and the directory; the
+   * failures did not. A key provider that failed, a spool that would not bind,
+   * a runtime that would not start — each left the directory behind with its
+   * socket and, past the key step, its `scratch` keys on disk until some later
+   * run swept it, and the `log stream` process running. An `exit` handler,
+   * because every one of those ends in `process.exit`, from cli.js or from here,
+   * and everything it has to do is synchronous. Idempotent: the normal exit
+   * below runs it first and the handler finds nothing left.
+   */
+  let audit = null;
+  let denials = null;
+  let closed = false;
+  const cleanup = () => {
+    if (closed) return;
+    closed = true;
+    try { audit?.close(); } catch {}
+    try { denials?.close(); } catch {}
+    theRun.close();
+  };
+  process.once("exit", cleanup);
   const sockPath = theRun.sock;
   const settings = settingsFor(config, role, sockPath, observe);
   // Per run, never per role: `.seisin/<role>.json` was one file for every run
@@ -143,7 +166,7 @@ export async function run(config, argv) {
   // What arrives from the hook and from the kernel, checked against the policy
   // this run started with and written with the run's id on it. See intake.js.
   const take = intake({ config, role, runId: theRun.id, observe, settings, notify });
-  const audit = await spool(take.fromHook, sockPath);
+  audit = await spool(take.fromHook, sockPath);
 
   const srt = resolveSrt();
   if (!srt) throw new Error("sandbox runtime not found. Install it with: npm i -g @anthropic-ai/sandbox-runtime");
@@ -297,7 +320,7 @@ export async function run(config, argv) {
   // path (measured: 3 lines and 3 requests for one write by one of 3 roles).
   // The nonce makes each run's command unique, so the tag names one run.
   const boxed = ["env", `SEISIN_RUN_ID=${theRun.id}`, ...loopbackVia(config.roles[role], cmd)];
-  const denials = watchDenials(take.fromKernel, { argv: boxed });
+  denials = watchDenials(take.fromKernel, { argv: boxed });
 
   // Deliberately NOT announced here. On Linux this branch is taken every time,
   // so saying it per run puts a line the reader cannot act on in front of every
@@ -372,8 +395,11 @@ export async function run(config, argv) {
    * Seen once in a full suite run under load; by the end of the drains below
    * the pending signal has been handled.
    */
+  // A runtime that itself dies of a signal (SIGKILL, the OOM killer) exits
+  // the shell's way, 128 + n, the same as a run seisin was told to stop — it
+  // was reported as 1, a plain failure, which hides that it was killed.
   const statusOf = (code, signal) => stoppedBy ? 128 + osConstants.signals[stoppedBy]
-    : signal ? 1
+    : signal ? 128 + (osConstants.signals[signal] ?? 0)
     : interrupted && !code ? 130
     : code ?? 0;
 
@@ -393,7 +419,7 @@ export async function run(config, argv) {
     // nothing pays a tick.
     await denials.close({ drain: DRAIN_MS });
     // The run made this directory, so the run removes it.
-    theRun.close();
+    cleanup();
 
     // Say what was dropped rather than only what was kept. A filter nobody can
     // see is indistinguishable from a monitor that is not working, and this one
@@ -433,5 +459,11 @@ export async function run(config, argv) {
     clearTimeout(guard);
     process.exit(status);
   });
-  child.on("error", (e) => { throw new Error(`could not start the sandbox: ${e.message}`); });
+  // Not a `throw`: in a listener it is an uncaught exception — exit 1, a
+  // stack trace, and none of the cleanup. Said the way cli.js says any other
+  // failure, with its code; the `exit` handler above removes the run.
+  child.on("error", (e) => {
+    err(`${C.red}seisin:${C.off} could not start the sandbox: ${e.message}\n`);
+    process.exit(2);
+  });
 }
