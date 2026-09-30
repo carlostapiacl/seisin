@@ -183,6 +183,15 @@ export function decide(config, role, event, { observe = false, now = append, ask
   const file = logPath(config.root);
   const queue = requestsPath(config.root);
   const verdicts = [];
+  // How many times the first refusal here was given BEFORE this attempt. Read
+  // before the entry is written, because where the entry goes decides whether
+  // a read afterwards sees it: to the file outside `seisin run`, but to the
+  // parent's socket inside it — and that line is not on disk until the parent
+  // gets to it, so counting afterwards came out one behind there.
+  let before = null;
+  const priorOnce = (action, target) => {
+    if (before === null) before = timesHit(file, role, action, target);
+  };
 
   for (const t of targets) {
     // A tool call, resolved to its MCP server. "Whose is it" is the question
@@ -195,6 +204,7 @@ export function decide(config, role, event, { observe = false, now = append, ask
       const v = t.server
         ? explain(config, role, "mcp", t.server)
         : { allowed: false, owners: [], mcp: true, reason: `${t.tool} is not a recognisable mcp__<server>__<tool> name` };
+      if (!observe && !v.allowed) priorOnce("use", t.tool);
       now(file, {
         role, tool: event.tool_name, action: "use", kind: "tool", target: t.tool,
         verdict: observe ? "observed" : v.allowed ? "allowed" : "denied",
@@ -218,6 +228,7 @@ export function decide(config, role, event, { observe = false, now = append, ask
     if (t.action === "read" && kind !== "key") continue;
 
     const v = explain(config, role, kind === "key" ? "read" : "write", rel);
+    if (!observe && !v.allowed) priorOnce(kind === "key" ? "read" : t.action, rel);
 
     now(file, {
       role,
@@ -264,13 +275,14 @@ export function decide(config, role, event, { observe = false, now = append, ask
    * measured. So the refusal carries its own history: the second time, it says
    * it is the second time.
    *
-   * Counted from the log that was just written, so the count includes this
-   * attempt. Silent on the first — a counter that says "1×" on every first
-   * refusal is noise on the turn where the sentence is already doing its job.
+   * The earlier refusals, read before this one was recorded, plus this one —
+   * the same number whether the entry went to the file or to the socket. Silent
+   * on the first — a counter that says "1×" on every first refusal is noise on
+   * the turn where the sentence is already doing its job.
    */
-  const before = timesHit(logPath(config.root), role, denied.action, denied.target);
-  const again = before > 1
-    ? ` You have been denied this ${before} times now; it is not going to work on the ${ordinal(before + 1)} try.`
+  const times = (before ?? 0) + 1;
+  const again = times > 1
+    ? ` You have been denied this ${times} times now; it is not going to work on the ${ordinal(times + 1)} try.`
     : "";
 
   // The hook advises; it does not enforce. Returning `deny` here stops the call
