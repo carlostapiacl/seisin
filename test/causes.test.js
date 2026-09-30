@@ -86,7 +86,7 @@ test("the MCP exposes causes and walls, not only the raw log", () => {
   for (const n of ["seisin_causes", "seisin_walls"]) assert.ok(names.includes(n), n);
 });
 
-test("every MCP tool says it is read-only, because approving never happens here", () => {
+test("every MCP tool says it is read-only, because granting never happens here", () => {
   for (const t of TOOLS) assert.match(t.description, /read-only/i, t.name);
 });
 

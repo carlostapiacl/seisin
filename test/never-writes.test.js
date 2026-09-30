@@ -151,7 +151,7 @@ test("a grant that never_writes would cancel is refused, not written", async () 
 });
 
 test("the sidecars of a database go with it", () => {
-  // Revisión del 22/09, #4: un -wal fabricado se aplica a la base al abrirla.
+  // Review of 22/09, #4: a forged -wal is applied to the database when it opens.
   const cfg = loadConfig(join(repoWith(
     '[roles.dev]\nwrites = ["data/**"]\nnever_writes = ["data/app.sqlite"]\n',
     ["data/app.sqlite", "data/app.sqlite-wal", "data/app.sqlite-shm", "data/app.sqlite-journal"]), "seisin.toml"));
@@ -160,8 +160,8 @@ test("the sidecars of a database go with it", () => {
 });
 
 test("a symlink on the way does not route around it", { skip }, () => {
-  // Revisión del 22/09, #3: app/data -> store, y escribir app/data/prod.lock
-  // pasaba (rc=0) porque el kernel ve store/prod.lock.
+  // Review of 22/09, #3: app/data -> store, and writing app/data/prod.lock
+  // went through (rc=0) because the kernel sees store/prod.lock.
   const dir = repoWith('[roles.dev]\nwrites = ["app/**"]\nnever_writes = ["app/data/prod.lock"]\n', ["app/store/prod.lock"]);
   symlinkSync("store", join(dir, "app", "data"));
   const r = spawnSync(process.execPath, [CLI, "run", "dev", "--", "sh", "-c", "echo x > app/data/prod.lock"],
@@ -171,22 +171,22 @@ test("a symlink on the way does not route around it", { skip }, () => {
 });
 
 test("on Linux, a path that does not exist is not mounted over, and every answer says so", { skip: process.platform !== "linux" && "Linux only: bubblewrap mounts over what it denies" }, () => {
-  // Revisión del 22/09, #2, medido en Docker el 23/09: srt monta /dev/null sobre
-  // la ruta y bwrap crea un index.lock vacío en el host durante toda la corrida
-  // — y para siempre si el proceso muere con SIGKILL.
+  // Review of 22/09, #2, measured in Docker on 23/09: srt mounts /dev/null over
+  // the path and bwrap creates an empty index.lock on the host for the whole run
+  // — and forever if the process dies with SIGKILL.
   const dir = repoWith(WORKTREE_ROLE);
   mkdirSync(join(dir, "app", ".git"), { recursive: true });
   const cfg = loadConfig(join(dir, "seisin.toml"));
   assert.ok(!settingsFor(cfg, "dev").filesystem.denyWrite.includes(join(dir, "app/.git/index.lock")));
   assert.equal(explain(cfg, "dev", "write", "app/.git/index.lock").allowed, true, "the sentence must match the kernel");
   assert.ok(inspect(cfg).warnings.some((w) => w.kind === "never-writes-not-enforced-here"));
-  // Y existiendo, se aplica.
+  // Once it exists, it is enforced.
   writeFileSync(join(dir, "app", ".git", "index.lock"), "");
   assert.ok(settingsFor(cfg, "dev").filesystem.denyWrite.includes(join(dir, "app/.git/index.lock")));
 });
 
 test("the MCP draft does not offer what grant would refuse", async () => {
-  // Revisión del 22/09, #6.
+  // Review of 22/09, #6.
   const { HANDLERS } = await import("../src/mcp.js");
   const { record } = await import("../src/requests.js");
   const dir = repoWith(WORKTREE_ROLE);
@@ -204,8 +204,9 @@ test("the MCP draft does not offer what grant would refuse", async () => {
 });
 
 test("on macOS, a symlink on the way does not route around it even before the file exists", { skip: (skip || process.platform !== "darwin") && "macOS: the reviewed case, a lock file not taken yet" }, () => {
-  // El caso exacto de la revisión (#3): el archivo todavía no existe, srt no
-  // resuelve rutas inexistentes, y sin el ancestro resuelto la escritura pasaba.
+  // The exact case from the review (#3): the file does not exist yet, srt does
+  // not resolve paths that do not exist, and without the resolved ancestor the
+  // write went through.
   const dir = repoWith('[roles.dev]\nwrites = ["app/**"]\nnever_writes = ["app/data/prod.lock"]\n', ["app/store/"]);
   symlinkSync("store", join(dir, "app", "data"));
   const r = spawnSync(process.execPath, [CLI, "run", "dev", "--", "sh", "-c", "echo x > app/data/prod.lock"],
@@ -215,9 +216,10 @@ test("on macOS, a symlink on the way does not route around it even before the fi
 });
 
 test("git metadata of a repo the role does not write: refused, explained, never queued", async () => {
-  // .git/index.lock, FETCH_HEAD, objects de un repo ajeno: no es territorio que
-  // se pueda conceder (concederlo es dejar reescribir historia ajena). Medido:
-  // 327 requests por un solo index.lock en un portfolio real.
+  // .git/index.lock, FETCH_HEAD, objects of a repo that belongs to someone else:
+  // not a territory that can be granted (granting it lets a role rewrite another
+  // role's history). Measured: 327 requests for a single index.lock in a
+  // multi-repo workspace.
   const { refuseIfBarred } = await import("../src/requests.js");
   const dir = repoWith('[roles.review]\nwrites = ["notes/**"]\n\n[roles.dev]\nwrites = ["app/**"]\n');
   const cfg = loadConfig(join(dir, "seisin.toml"));
@@ -231,6 +233,6 @@ test("git metadata of a repo the role does not write: refused, explained, never 
   const out = decide(cfg, "review", { tool_name: "Write", tool_input: { file_path: join(dir, "app/.git/FETCH_HEAD"), content: "" } });
   assert.match(out.hookSpecificOutput.permissionDecisionReason, /Nothing was queued/);
   assert.equal(pending(join(dir, ".seisin", "requests.jsonl")).length, 0);
-  // Y el dueño del repo sigue escribiendo su propio .git.
+  // And the repo's owner still writes its own .git.
   assert.equal(explain(cfg, "dev", "write", "app/.git/index.lock").allowed, true);
 });

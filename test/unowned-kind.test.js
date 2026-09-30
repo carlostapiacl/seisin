@@ -1,5 +1,5 @@
 /**
- * What kind of thing an unowned refused path is.
+ * What kind of thing an unowned denied path is.
  *
  * Suggesting an owner for these was measured before it was built, on one
  * deployment's 317 unowned paths: right about one time in twenty, and wrong
@@ -91,7 +91,7 @@ const TABLE = [
   ["Cargo.lock", "territory"],
   ["data/app.sqlite", "territory"],              // the database, not its sidecar
   ["releases/v22", "territory"],
-  ["bitacora/pruebas-datos-22359", "territory"], // alone, a run-shaped name is only a hint
+  ["data/shared/test-data-22359", "territory"], // alone, a run-shaped name is only a hint
   ["catalog/blog.md", "territory"],
   ["config/settings.json", "territory"],
   [".config/tool.toml", "territory"],            // `.config` is a container, not a secret
@@ -134,16 +134,16 @@ test("a declared key directory makes anything inside it a credential", () => {
 test("the same name made unique per run in several siblings is scratch, not a folder", () => {
   // Measured: a test that named its directory after its PID produced 258 of
   // 317 unowned paths. Alone, each looks like a folder somebody made.
-  const runs = ["pruebas-deuda-57141-2b32ca", "pruebas-deuda-3333-5e1809", "pruebas-deuda-5017-bfaeec"];
-  const targets = runs.flatMap((r) => [`bitacora/${r}`, `bitacora/${r}/BUZON.md`]);
-  targets.push("bitacora/pruebas-guardia", "bitacora/pruebas-datos-22359");
+  const runs = ["test-run-57141-2b32ca", "test-run-3333-5e1809", "test-run-5017-bfaeec"];
+  const targets = runs.flatMap((r) => [`data/shared/${r}`, `data/shared/${r}/INBOX.md`]);
+  targets.push("data/shared/test-guard", "data/shared/test-data-22359");
   const m = kindsOf(targets);
   for (const r of runs) {
-    assert.equal(m.get(`bitacora/${r}`).kind, "temporary", r);
-    assert.equal(m.get(`bitacora/${r}/BUZON.md`).kind, "temporary", "what is inside a generated directory is too");
+    assert.equal(m.get(`data/shared/${r}`).kind, "temporary", r);
+    assert.equal(m.get(`data/shared/${r}/INBOX.md`).kind, "temporary", "what is inside a generated directory is too");
   }
-  assert.equal(m.get("bitacora/pruebas-guardia").kind, "territory");
-  assert.equal(m.get("bitacora/pruebas-datos-22359").kind, "territory", "one of its stem is not a generator");
+  assert.equal(m.get("data/shared/test-guard").kind, "territory");
+  assert.equal(m.get("data/shared/test-data-22359").kind, "territory", "one of its stem is not a generator");
 });
 
 test("fewer siblings than the threshold, or siblings under different parents, stay territory", () => {
@@ -169,16 +169,16 @@ test("the set rule never overrides a stronger reading", () => {
 // ── through causesOf and the MCP ───────────────────────────────────────────
 
 const TOML = '[roles.a]\nwrites = ["src/**"]\n\n[roles.b]\nwrites = ["deploy/**"]\n';
-const refused = (target, role = "a") =>
+const denied = (target, role = "a") =>
   ({ at: "2026-09-30T10:00:00.000Z", role, action: "write", kind: "file", target, verdict: "denied", owners: [] });
 const LOG = [
-  ...Array(5).fill(refused("other/.git/index.lock")),
-  refused("other/.git/index.lock", "b"),
-  refused("pkg/.npmrc"),
-  refused("web/node_modules/x/index.js"),
-  refused("bitacora/t-1001-aa11bb"), refused("bitacora/t-1002-cc22dd"), refused("bitacora/t-1003-ee33ff/x.md"),
-  refused("legacy/x.ts"), refused("legacy/x.ts"),
-  refused("deploy/owned.yml"),                  // owned by b: no kind, it is not unowned
+  ...Array(5).fill(denied("other/.git/index.lock")),
+  denied("other/.git/index.lock", "b"),
+  denied("pkg/.npmrc"),
+  denied("web/node_modules/x/index.js"),
+  denied("data/shared/t-1001-aa11bb"), denied("data/shared/t-1002-cc22dd"), denied("data/shared/t-1003-ee33ff/x.md"),
+  denied("legacy/x.ts"), denied("legacy/x.ts"),
+  denied("deploy/owned.yml"),                  // owned by b: no kind, it is not unowned
 ];
 
 function repo() {
@@ -199,8 +199,8 @@ test("causesOf labels each unowned cause and counts the kinds; owned causes get 
   assert.match(by["other/.git/index.lock"].hint, /GIT_OPTIONAL_LOCKS/);
   assert.equal(by["pkg/.npmrc"].kind, "credential");
   assert.equal(by["web/node_modules/x/index.js"].kind, "build");
-  assert.equal(by["bitacora/t-1001-aa11bb"].kind, "temporary");
-  assert.equal(by["bitacora/t-1003-ee33ff/x.md"].kind, "temporary");
+  assert.equal(by["data/shared/t-1001-aa11bb"].kind, "temporary");
+  assert.equal(by["data/shared/t-1003-ee33ff/x.md"].kind, "temporary");
   assert.equal(by["legacy/x.ts"].kind, "territory");
   assert.equal(by["legacy/x.ts"].hint, KINDS.territory);
   assert.equal(by["deploy/owned.yml"].standing, "owned");
@@ -225,8 +225,8 @@ test("the kinds are read over every unowned cause, not only the twelve shown", a
   const dir = repo();
   // Twelve loud causes push the generated siblings out of the list shown; the
   // rule still needs all three of them to fire.
-  const loud = Array.from({ length: 12 }, (_, i) => Array(10).fill(refused(`legacy/loud-${i}.ts`))).flat();
-  const log = [...loud, refused("gen/r-1001-aa11bb"), refused("gen/r-1002-bb22cc"), refused("gen/r-1003-cc33dd")];
+  const loud = Array.from({ length: 12 }, (_, i) => Array(10).fill(denied(`legacy/loud-${i}.ts`))).flat();
+  const log = [...loud, denied("gen/r-1001-aa11bb"), denied("gen/r-1002-bb22cc"), denied("gen/r-1003-cc33dd")];
   const f = causesOf(loadConfig(join(dir, "seisin.toml")), log);
   assert.ok(!f.causes.some((c) => c.target.startsWith("gen/")), "the siblings are not in the list");
   assert.equal(f.standing.unowned.kinds.temporary.paths, 3);
@@ -265,7 +265,7 @@ test("seisin review splits unowned rows by kind and says each kind's advice once
   assert.equal(row("other/.git").times, 6);
   assert.equal(row("legacy").kind, "territory");
   assert.equal(row("pkg").kind, "credential");
-  assert.equal(row("bitacora").kind, "temporary", "the generated siblings, read over the whole log");
+  assert.equal(row("data/shared").kind, "temporary", "the generated siblings, read over the whole log");
   assert.ok(r.unowned.every((u) => u.hint === KINDS[u.kind] || u.kind === "git"));
 
   const lines = [];

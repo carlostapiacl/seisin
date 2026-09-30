@@ -212,9 +212,9 @@ test("the watcher never throws into the run it is watching", () => {
 });
 
 test("undecided denials cannot accumulate for the length of a session", async () => {
-  // A run that is never refused anything never learns its own suffix, so every
+  // A run that is never denied anything never learns its own suffix, so every
   // denial from every other sandbox on the machine stays undecided. Several
-  // cells running at once for hours is that shape, and an unbounded queue is
+  // teams of agents running at once for hours is that shape, and an unbounded queue is
   // how the instrument becomes the leak.
   const child = fakeStream();
   const w = watchDenials(() => {}, {

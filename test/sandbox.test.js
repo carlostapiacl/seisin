@@ -146,34 +146,34 @@ test("the agent's own flags are not eaten by the sandbox", { skip }, () => {
 });
 
 test("CR-1 · a missing boundary refuses to run, and the child never starts", { skip: false }, () => {
-  // El modo de falla más caro del informe de campo: dos caminos de aplicación
-  // de distinta fuerza, y el débil elegido en silencio. Acá no hay camino débil:
-  // sin runtime no se ejecuta nada.
-  const canario = join(repo, "canario-cr1.txt");
-  const r = spawnSync(process.execPath, [CLI, "run", "frontend", "--", "sh", "-c", `touch ${JSON.stringify(canario)}`],
+  // The costliest failure mode in the field report: two enforcement paths of
+  // different strength, and the weak one picked silently. Here there is no weak
+  // path: without the runtime, nothing runs.
+  const canary = join(repo, "canario-cr1.txt");
+  const r = spawnSync(process.execPath, [CLI, "run", "frontend", "--", "sh", "-c", `touch ${JSON.stringify(canary)}`],
     { cwd: repo, encoding: "utf8", env: { ...process.env, PATH: "/nonexistent" } });
   assert.notEqual(r.status, 0);
-  assert.ok(!existsSync(canario), "el hijo corrió igual: eso es degradación silenciosa");
+  assert.ok(!existsSync(canary), "the child ran anyway: that is silent degradation");
 });
 
 test("CR-2 · ownership does not depend on which role is asking", { skip }, () => {
-  // La respuesta a "de quién es esto" sale de un solo mapa con todos los roles,
-  // así que es simétrica. El mapa por corrida del informe hacía que un archivo
-  // ajeno pareciera sin dueño.
-  const preguntar = (rol, ruta) => spawnSync(process.execPath, [CLI, "whose", ruta],
-    { cwd: repo, encoding: "utf8", env: { ...process.env, SEISIN_ROLE: rol } }).stdout;
-  assert.match(preguntar("frontend", "src/api/x.ts"), /belongs to backend/);
-  assert.match(preguntar("backend", "src/web/y.ts"), /belongs to frontend/);
+  // The answer to "whose is this" comes from a single map with every role in
+  // it, so it is symmetric. The per-run map in the report made another role's
+  // file look unowned.
+  const ask = (role, path) => spawnSync(process.execPath, [CLI, "whose", path],
+    { cwd: repo, encoding: "utf8", env: { ...process.env, SEISIN_ROLE: role } }).stdout;
+  assert.match(ask("frontend", "src/api/x.ts"), /belongs to backend/);
+  assert.match(ask("backend", "src/web/y.ts"), /belongs to frontend/);
 });
 
 test("CR-3 · the confined process can ask whose it is", { skip }, () => {
-  // El titular del README —"no, y es de X"— viene del hook, y quien sólo
-  // envuelve un proceso no lo tiene. Esta consulta lo cierra sin integración:
-  // la instrucción pasa a ser "ante EPERM, preguntá de quién es".
+  // The README's headline — "no, and it belongs to X" — comes from the hook, and
+  // someone who only wraps a process does not get it. This query closes that gap
+  // with no integration: the instruction becomes "on EPERM, ask whose it is".
   const r = spawnSync(process.execPath,
     [CLI, "run", "frontend", "--", process.execPath, CLI, "whose", "src/api/server.ts"],
     { cwd: repo, encoding: "utf8" });
-  assert.equal(r.status, 0, "la consulta quedó bloqueada por la caja que está consultando");
+  assert.equal(r.status, 0, "the query was denied by the very sandbox it is asking about");
   assert.match(r.stdout, /belongs to backend/);
   assert.match(r.stdout, /you are frontend/);
 });
@@ -190,7 +190,7 @@ test("seisin refuses to run inside seisin, by name", () => {
   });
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /does not nest/);
-  assert.match(r.stderr, /frontend/); // the box it is already in, not just the one it asked for
+  assert.match(r.stderr, /frontend/); // the sandbox it is already in, not just the one it asked for
 });
 
 /**
@@ -209,16 +209,16 @@ test("an isolated role starts, and loses the credentials the ordinary mode leave
   const run = (line) => spawnSync(process.execPath, [CLI, "run", "dev", "--", "sh", "-c", line],
     { cwd: iso, encoding: "utf8" });
 
-  const arranca = run("echo up");
-  assert.equal(arranca.status, 0, `no arrancó: ${arranca.stderr.trim()}`);
-  assert.doesNotMatch(arranca.stderr, /EINVAL/, "el socket del runtime no entró en la ruta");
+  const starts = run("echo up");
+  assert.equal(starts.status, 0, `did not start: ${starts.stderr.trim()}`);
+  assert.doesNotMatch(starts.stderr, /EINVAL/, "the runtime's socket did not fit in the path");
 
   // Its own territory still works, and the home is its own.
   assert.equal(run("echo x > src/a.txt").status, 0);
   assert.match(run("echo $HOME").stdout, /sn-/);
 
   // And the reason the mode exists: these are readable without it.
-  assert.notEqual(run("test -r ~/.ssh").status, 0, "~/.ssh sigue legible bajo isolate");
+  assert.notEqual(run("test -r ~/.ssh").status, 0, "~/.ssh is still readable under isolate");
 
   rmSync(iso, { recursive: true, force: true });
 });
@@ -272,7 +272,7 @@ test("the resolved value is in no file seisin wrote — not the settings, not th
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("the provider runs OUTSIDE the box — it writes where the role cannot", { skip }, () => {
+test("the provider runs OUTSIDE the sandbox — it writes where the role cannot", { skip }, () => {
   // The security property, asserted structurally instead of described. The
   // provider touches a path outside the role's territory: confined as `dev`
   // that write is refused, so the file existing proves the parent ran it.
@@ -339,7 +339,7 @@ test("a provider that fails stops the run, and the command never happens", { ski
 test("a role cannot rewrite the script its own provider runs, even inside its territory", { skip }, () => {
   // The escalation this closes: the parent executes the provider command,
   // unsandboxed. A role that could rewrite that file would decide what runs
-  // outside the box — which is not a wider boundary, it is no boundary, and it
+  // outside the sandbox — which is not a wider boundary, it is no boundary, and it
   // arrives disguised as an ordinary file in somebody's territory.
   const dir = refRepo(
     `[network]\nallow = []\n\n[keys.providers.p]\ncommand = ["./bin/open.sh", "{ref}"]\nmode = "env"\n\n` +

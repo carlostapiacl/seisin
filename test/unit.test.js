@@ -194,8 +194,8 @@ test("a role can name the one variable it needs, and only that one", () => {
 });
 
 test("git's optional locks are off, so reading a repo you do not own is not a request", () => {
-  // The measurement this exists for: of the last 60 refusals in a real
-  // portfolio, 58 were `.git/index.lock`, most of them with no owner at all.
+  // The measurement this exists for: of the last 60 denials in a multi-repo
+  // workspace, 58 were `.git/index.lock`, most of them with no owner at all.
   // `git status` refreshes the index as a courtesy and the refresh takes the
   // lock, so a role that only reads a repo trips the boundary doing nothing.
   // The parent does NOT have the variable — it is set, not forwarded, which is
@@ -405,44 +405,44 @@ test("scratch covers the XDG dirs, and never ~/.config", () => {
   assert.ok(!w.some((p) => p.endsWith("/.config")));
 });
 
-/* ── lo que el refactor hizo alcanzable ───────────────────────────────── */
+/* ── what the refactor made reachable ─────────────────────────────────── */
 
 test("inspect names a path two roles claim", () => {
-  // Antes esto sólo se podía comprobar lanzando el binario y buscando texto en
-  // su stdout, que prueba el renderizador tanto como la lógica.
+  // Before, this could only be checked by launching the binary and searching
+  // its stdout, which tests the renderer as much as the logic.
   const shared = { ...cfg, roles: { ...cfg.roles,
     hotfix: { name: "hotfix", writes: ["src/**"], keys: [], env: [] } } };
   const r = inspect(shared, null, "seisin.toml");
   assert.ok(r.warnings.some((w) => w.kind === "shared"));
-  // `src/**` NO aparece: su raíz `src` la cubre un solo rol. Lo compartido son
-  // los dos territorios que quedan adentro del de hotfix.
+  // `src/**` does NOT appear: its root `src` is covered by a single role. What is
+  // shared is the two territories that sit inside hotfix's.
   assert.deepEqual(sharedPaths(shared).sort(), ["src/api/**", "src/web/**"]);
 });
 
 test("inspect warns when the repo sits inside shared scratch", () => {
-  // El aviso más valioso de `check`, y el que un test no podía tocar: el propio
-  // banco de pruebas vivía en el temp dir y hacía pasar una prueba de frontera
-  // por la razón equivocada.
-  const enScratch = { ...cfg, root: join(realpathSync(tmpdir()), "algun-repo") };
-  const r = inspect(enScratch, null, "seisin.toml");
+  // The most valuable warning `check` gives, and the one a test could not reach:
+  // the test bench itself lived in the temp dir and made a boundary test pass
+  // for the wrong reason.
+  const inScratch = { ...cfg, root: join(realpathSync(tmpdir()), "algun-repo") };
+  const r = inspect(inScratch, null, "seisin.toml");
   assert.ok(r.warnings.some((w) => w.kind === "scratch"));
 });
 
 test("inspect warns when keys are declared with nowhere to scope them", () => {
-  const sinDir = { ...cfg, keyDirs: [] };
-  assert.ok(inspect(sinDir, null, "x").warnings.some((w) => w.kind === "keys-unscoped"));
+  const noDir = { ...cfg, keyDirs: [] };
+  assert.ok(inspect(noDir, null, "x").warnings.some((w) => w.kind === "keys-unscoped"));
 });
 
 test("asking about a role that does not exist is an error, not an empty report", () => {
-  // Contestar un typo con silencio es como un typo se convierte en una creencia.
+  // Answering a typo with silence is how a typo becomes a belief.
   assert.throws(() => inspect(cfg, "no-existe", "x"), /unknown role/);
 });
 
 test("the renderer never decides anything", () => {
-  // Contrato del módulo: mismo dato, mismo texto, sin leer nada de afuera.
-  const informe = inspect(cfg, null, "seisin.toml");
-  assert.equal(renderReport(informe), renderReport(informe));
-  assert.match(renderReport(informe), /frontend/);
+  // The module's contract: same data, same text, nothing read from outside.
+  const report = inspect(cfg, null, "seisin.toml");
+  assert.equal(renderReport(report), renderReport(report));
+  assert.match(renderReport(report), /frontend/);
 });
 
 test("a denial renders with its owner, an allow does not", () => {
@@ -455,25 +455,26 @@ test("a denial renders with its owner, an allow does not", () => {
 });
 
 test("the proposed config leads with the agent's own API", () => {
-  // Sin esto el agente no se autentica y falla con un 403 del proxy antes de
-  // trabajar, que se lee como instalación rota y no como política estricta.
+  // Without this the agent cannot authenticate and fails with a 403 from the
+  // proxy before doing any work, which reads as a broken install rather than a
+  // strict policy.
   const toml = renderConfig({ source: "prueba", roles: [{ name: "a", writes: ["x/**"], keys: [] }] });
   assert.match(toml, /api\.anthropic\.com/);
   assert.match(toml, /\[roles\.a\]/);
 });
 
 test("the public API exposes decisions, not rendering", () => {
-  // La línea que hace refactorizable el resto: lo que no está acá es interno.
+  // The line that makes the rest refactorable: what is not here is internal.
   assert.ok(publica.explain && publica.settingsFor && publica.inspect && publica.scan);
   assert.equal(publica.renderReport, undefined);
   assert.equal(publica.run, undefined);
 });
 
-/* ── pedidos de permiso ───────────────────────────────────────────────── */
+/* ── requests ─────────────────────────────────────────────────────────── */
 
 test("many denials in one directory are one request, not many", () => {
-  // Un agente frenado en a.ts y después en b.ts no hace dos preguntas, y una
-  // cola que dice que sí se vuelve una cola que nadie lee.
+  // An agent denied on a.ts and then on b.ts does not ask two questions, and a
+  // queue that keeps saying the same thing becomes a queue nobody reads.
   const box = scratch("seisin-req-");
   const f = join(box, "requests.jsonl");
   for (const t of ["src/api/a.ts", "src/api/b.ts", "src/api/a.ts"])
@@ -487,43 +488,43 @@ test("many denials in one directory are one request, not many", () => {
 });
 
 test("a settled request leaves the queue but not the file", () => {
-  // Append-only: una decisión que se puede reescribir no es evidencia.
+  // Append-only: a decision that can be rewritten is not evidence.
   const box = scratch("seisin-req-");
   const f = join(box, "requests.jsonl");
   record(f, { role: "qa", action: "write", target: "docs/x.md", owners: [] });
   const [req] = pending(f);
-  settle(f, req.key, "denied", "no es suyo");
-  const abiertos = pending(f);
-  const todos = pending(f, { includeSettled: true });
-  const lineas = readFileSync(f, "utf8").trim().split("\n").length;
+  settle(f, req.key, "denied", "not theirs");
+  const open = pending(f);
+  const all = pending(f, { includeSettled: true });
+  const lines = readFileSync(f, "utf8").trim().split("\n").length;
   rmSync(box, { recursive: true, force: true });
-  assert.equal(abiertos.length, 0);
-  assert.equal(todos[0].state, "denied");
-  assert.equal(todos[0].reason, "no es suyo");
-  assert.equal(lineas, 2);
+  assert.equal(open.length, 0);
+  assert.equal(all[0].state, "denied");
+  assert.equal(all[0].reason, "not theirs");
+  assert.equal(lines, 2);
 });
 
 test("a grant lands in the right role, with its provenance", () => {
   const toml = '[roles.frontend]\nwrites = ["src/web/**"]\nkeys   = []\n\n[roles.backend]\nwrites = ["src/api/**"]\n';
   const req = { role: "frontend", action: "write", grant: "src/api/**", times: 3 };
-  const { toml: after, changed } = applyGrant(toml, req, "se lleva el checkout");
+  const { toml: after, changed } = applyGrant(toml, req, "takes over checkout");
   assert.ok(changed);
   assert.match(after, /"src\/web\/\*\*",/);
-  assert.match(after, /"src\/api\/\*\*"\s+# granted .* asked 3× · «se lleva el checkout»/);
-  // y no tocó al otro rol
+  assert.match(after, /"src\/api\/\*\*"\s+# granted .* asked 3× · «takes over checkout»/);
+  // and it did not touch the other role
   assert.match(after, /\[roles\.backend\]\nwrites = \["src\/api\/\*\*"\]/);
 });
 
-test("SEC-02 a grant adds exactly the approved item — not what a comment or a past reason quotes", () => {
-  // Antes: la lista se reconstruía con TODAS las cadenas entre comillas del
-  // bloque, comentarios incluidos. Aprobar docs/** concedía también el "src/**"
-  // de un comentario, y la razón de la aprobación anterior (entre comillas en
-  // su comentario) se volvía una ruta en la siguiente.
+test("SEC-02 a grant adds exactly the granted item — not what a comment or a past reason quotes", () => {
+  // Before: the list was rebuilt from EVERY quoted string in the block,
+  // comments included. Granting docs/** also granted the "src/**" in a comment,
+  // and the reason given for the previous grant (quoted in its comment) became a
+  // path in the next one.
   const toml = '[roles.frontend]\nwrites = [\n  "src/web/**",   # was "src/**" until the split\n]\n\n[roles.backend]\nwrites = ["src/api/**"]\n';
   let { toml: t } = applyGrant(toml, { role: "frontend", action: "write", grant: "docs/**", times: 1 }, "**");
   ({ toml: t } = applyGrant(t, { role: "frontend", action: "write", grant: "lib/**", times: 2 }, "ok"));
   assert.deepEqual(parseToml(t).roles.frontend.writes, ["src/web/**", "docs/**", "lib/**"]);
-  // la procedencia de antes sigue ahí, y el comentario original también
+  // the earlier provenance is still there, and so is the original comment
   assert.match(t, /# was "src\/\*\*" until the split/);
   assert.match(t, /"docs\/\*\*",?\s+# granted .* asked 1× · «\*\*»/);
   assert.deepEqual(parseToml(t).roles.backend.writes, ["src/api/**"]);
@@ -543,10 +544,10 @@ test("granting something a role already has changes nothing", () => {
 });
 
 test("a key request grants the key, not a directory glob", () => {
-  // Con directorio, el directorio se conserva. Recortarlo convertía un pedido
-  // por `shared/api.txt` en una concesión de `api.txt`, que settingsFor resuelve
-  // contra el PRIMER directorio de claves — la persona aprueba un archivo y se
-  // termina leyendo otro con el mismo nombre.
+  // With a directory, the directory is kept. Trimming it turned a request for
+  // `shared/api.txt` into a grant of `api.txt`, which settingsFor resolves
+  // against the FIRST key directory — a person grants one file and a different
+  // one with the same name ends up being read.
   assert.equal(grantFor({ action: "read", target: ".secrets/netlify.txt" }), ".secrets/netlify.txt");
   assert.equal(grantFor({ action: "read", target: "shared/api.txt" }), "shared/api.txt");
   assert.equal(grantFor({ action: "read", target: "netlify.txt" }), "netlify.txt");
@@ -570,46 +571,46 @@ test("a denial leaves a request behind", () => {
   assert.deepEqual(asked[0].owners, ["backend"]);
 });
 
-test("the public surface can read the queue and cannot approve", () => {
-  // La invariante del diseño, como prueba: aprobar no es una llamada de
-  // herramienta, así que ni settle ni applyGrant salen por la puerta pública.
+test("the public surface can read the queue and cannot grant", () => {
+  // The design's invariant, as a test: granting is not a tool call, so neither
+  // settle nor applyGrant goes out through the public door.
   assert.ok(publica.pendingRequests && publica.grantFor);
   assert.equal(publica.settle, undefined);
   assert.equal(publica.applyGrant, undefined);
 });
 
 test("a territory can reach outside the config's own directory", () => {
-  // El adaptador emite `../` cuando el territorio sale de la célula, y eso solo
-  // es correcto si acá se sostiene. Un rol posee su árbol de trabajo adentro y
-  // su traspaso un nivel arriba; sin esto el generador tendría que elegir entre
-  // dos bases relativas en un archivo, que fue el bug que lo trajo.
+  // The adapter emits `../` when the territory leaves the team's directory, and
+  // that is only correct if it holds here. A role owns its working tree inside
+  // and its handoff one level up; without this the generator would have to pick
+  // between two relative bases in one file, which was the bug that brought it.
   const cfg = {
     root: "/repo", keyDirs: [], allowedDomains: [],
-    roles: { dev: { name: "dev", writes: ["proyecto/**", "../bitacora/lab/dev.md"], keys: [], network: null } },
+    roles: { dev: { name: "dev", writes: ["src/**", "../data/shared/lab/dev.md"], keys: [], network: null } },
   };
-  assert.ok(explain(cfg, "dev", "write", "proyecto/a.py").allowed);
-  assert.ok(explain(cfg, "dev", "write", "../bitacora/lab/dev.md").allowed);
-  // y el escape no abre el directorio entero
-  assert.ok(!explain(cfg, "dev", "write", "../bitacora/lab/qa.md").allowed);
+  assert.ok(explain(cfg, "dev", "write", "src/a.py").allowed);
+  assert.ok(explain(cfg, "dev", "write", "../data/shared/lab/dev.md").allowed);
+  // and the escape does not open the whole directory
+  assert.ok(!explain(cfg, "dev", "write", "../data/shared/lab/qa.md").allowed);
 });
 
-/* ── policy == explicación == frontera ─────────────────────────────────── */
+/* ── policy == explanation == boundary ─────────────────────────────────── */
 
 test("a pattern the kernel cannot express is refused, not widened", () => {
-  // El hallazgo de una revisión externa, y era el peor posible. ownersOf() lee
-  // `src/*` como un nivel (`*` → [^/]*), y la traducción vieja recortaba el
-  // `/*` y le entregaba `src` al kernel, que es el subárbol entero. O sea:
-  // `seisin explain` decía denegado y la escritura entraba. Comprobado contra
-  // el sandbox real, no razonado.
+  // The finding of an outside review, and the worst one possible. ownersOf()
+  // reads `src/*` as one level (`*` → [^/]*), and the old translation trimmed
+  // the `/*` and handed `src` to the kernel, which is the whole subtree. That is:
+  // `seisin explain` said denied and the write went through. Checked against
+  // the real sandbox, not reasoned about.
   const mk = (w) => ({ root: "/repo", keyDirs: [], allowedDomains: [],
                        roles: { r: { name: "r", writes: [w], keys: [], network: null } } });
 
-  // No hay traducción exacta que encontrar después: el sandbox concede
-  // prefijos, y "un nivel abajo" no es un prefijo.
-  for (const malo of ["src/*", "src/*/foo/**", "src/??/**", "src/[ab]/**"])
-    assert.throws(() => settingsFor(mk(malo), "r"), /cannot be enforced/, malo);
+  // There is no exact translation left to find: the sandbox allows prefixes,
+  // and "one level down" is not a prefix.
+  for (const bad of ["src/*", "src/*/foo/**", "src/??/**", "src/[ab]/**"])
+    assert.throws(() => settingsFor(mk(bad), "r"), /cannot be enforced/, bad);
 
-  // Y lo que sí es expresable sigue siéndolo, sin cambiar de significado.
+  // And what can be expressed still can, without changing meaning.
   const w = (g) => settingsFor(mk(g), "r").filesystem.allowWrite;
   assert.ok(w("src/**").includes("/repo/src"));
   assert.ok(w("src/api/x.ts").includes("/repo/src/api/x.ts"));
@@ -620,20 +621,20 @@ test("check says so before anything runs", () => {
   const cfg = { root: "/repo", keyDirs: [], allowedDomains: [], path: "seisin.toml",
                 roles: { r: { name: "r", writes: ["src/*"], keys: [], network: null } } };
   const w = inspect(cfg, null, "seisin.toml").warnings.find((x) => x.kind === "cannot-be-enforced");
-  assert.ok(w, "check no avisa de un patrón que run va a rechazar");
+  assert.ok(w, "check does not warn about a pattern run will refuse");
   assert.match(w.headline, /src\/\*/);
 });
 
 test("a path is canonical before anyone decides who owns it", () => {
-  // src/web/../api/orders.ts es de backend. Sin resolver, matcheaba src/web/**:
-  // `whose` nombraba al dueño equivocado, el hook no levantaba pedido, y el log
-  // anotaba allowed para una escritura que el kernel después rechazaba. La
-  // frontera aguantaba; todo lo que seisin decía sobre ella era falso.
+  // src/web/../api/orders.ts belongs to backend. Unresolved, it matched
+  // src/web/**: `whose` named the wrong owner, the hook raised no request, and
+  // the log recorded allowed for a write the kernel then denied. The boundary
+  // held; everything seisin said about it was false.
   assert.deepEqual(ownersOf(shared2, "src/web/../api/orders.ts"), ["backend"]);
   assert.ok(!explain(shared2, "frontend", "write", "src/web/../api/orders.ts").allowed);
 
   assert.deepEqual(ownersOf(shared2, "src/web//./a.tsx"), ["frontend"]);
-  // Fuera del repo no es de nadie, y no hay patrón que lo alcance.
+  // Outside the repo it belongs to no one, and no pattern reaches it.
   assert.deepEqual(ownersOf(shared2, "../fuera.txt"), []);
   assert.ok(!explain(shared2, "frontend", "write", "../../etc/passwd").allowed);
 });
@@ -646,14 +647,14 @@ const shared2 = {
   },
 };
 
-/* ── el parser ────────────────────────────────────────────────────────── */
+/* ── the parser ───────────────────────────────────────────────────────── */
 
 test("malformed input is an error, never a guess", () => {
-  // El lector viejo sacaba las cadenas con un regex e ignoraba lo que hubiera
-  // entre ellas: ["a" BASURA "b"] daba ["a","b"], y una comilla sin cerrar daba
-  // "". Un archivo de permisos entendido a medias es peor que uno rechazado,
-  // porque la mitad que se descartó es la que quisiste escribir.
-  const malos = [
+  // The old reader pulled the strings out with a regex and ignored whatever
+  // sat between them: ["a" BASURA "b"] gave ["a","b"], and an unclosed quote
+  // gave "". A permissions file half understood is worse than one refused,
+  // because the half that was dropped is the half you meant to write.
+  const bad = [
     'writes = ["a" BASURA "b"]',
     'writes = ["a" "b"]',
     'writes = ["a", , "b"]',
@@ -663,88 +664,88 @@ test("malformed input is an error, never a guess", () => {
     'writes = ["a", "b"',
     "writes = [a, b]",
   ];
-  for (const src of malos)
-    assert.throws(() => parseToml(src), /seisin\.toml:\d+:/, `aceptó: ${src}`);
+  for (const src of bad)
+    assert.throws(() => parseToml(src), /seisin\.toml:\d+:/, `accepted: ${src}`);
 });
 
 test("everything the subset actually supports still parses", () => {
   assert.deepEqual(parseToml('writes = ["a", "b"]').writes, ["a", "b"]);
-  assert.deepEqual(parseToml('writes = ["a", "b",]').writes, ["a", "b"]);   // coma final
+  assert.deepEqual(parseToml('writes = ["a", "b",]').writes, ["a", "b"]);   // trailing comma
   assert.deepEqual(parseToml("writes = []").writes, []);
   assert.deepEqual(parseToml('writes = [ "a" ,  "b" ]').writes, ["a", "b"]);
-  assert.equal(parseToml('dir = ".secrets"').dir, ".secrets");              // regresión del doble slice
+  assert.equal(parseToml('dir = ".secrets"').dir, ".secrets");              // regression: the double slice
   assert.equal(parseToml("redact = false").redact, false);
-  // Un `#` dentro de comillas no es un comentario.
+  // A `#` inside quotes is not a comment.
   assert.equal(parseToml('dir = "a#b"').dir, "a#b");
 });
 
 test("no input makes the parser lose or invent an item", () => {
-  // Property-based, chico y determinista: para cualquier lista de rutas
-  // plausibles, lo que entra es lo que sale — o se rechaza. Nunca la mitad.
-  const piezas = ["src/**", "a b/c", ".env", "x", "a.b.c", "..", "*/", "#no-comentario"];
-  for (let n = 0; n <= piezas.length; n++) {
-    const items = piezas.slice(0, n);
+  // Property-based, small and deterministic: for any list of plausible paths,
+  // what goes in is what comes out — or it is refused. Never half.
+  const pieces = ["src/**", "a b/c", ".env", "x", "a.b.c", "..", "*/", "#no-comentario"];
+  for (let n = 0; n <= pieces.length; n++) {
+    const items = pieces.slice(0, n);
     const src = `writes = [${items.map((s) => `"${s}"`).join(", ")}]`;
     assert.deepEqual(parseToml(src).writes, items, src);
   }
 });
 
-/* ── adversariales ────────────────────────────────────────────────────── */
+/* ── adversarial ──────────────────────────────────────────────────────── */
 
 test("the confinement's own paperwork is never writable, however wide the territory", () => {
-  // `writes = ["**"]` es razonable para un agente solo, y le entregaba su
-  // propio archivo de política: reescribir seisin.toml y correr de nuevo con
-  // más territorio. Comprobado contra el kernel real antes de arreglarlo.
+  // `writes = ["**"]` is reasonable for a lone agent, and it handed the agent
+  // its own policy file: rewrite seisin.toml and run again with more territory.
+  // Checked against the real kernel before fixing it.
   const cfg = {
     root: "/repo", path: "/repo/seisin.toml", keyDirs: [".secrets"], allowedDomains: [],
     roles: { owner: { name: "owner", writes: ["**"], keys: [], network: null } },
   };
   const { denyWrite, allowWrite } = settingsFor(cfg, "owner").filesystem;
-  assert.ok(allowWrite.includes("/repo"), "el rol sí tiene el repo entero");
+  assert.ok(allowWrite.includes("/repo"), "the role does have the whole repo");
   for (const p of ["/repo/seisin.toml", "/repo/.seisin", "/repo/.secrets"])
-    assert.ok(denyWrite.includes(p), `${p} debería ser inescribible`);
-  // y el socket de auditoría, que vive en scratch compartido
+    assert.ok(denyWrite.includes(p), `${p} should be unwritable`);
+  // and the audit socket, which lives in shared scratch
   assert.ok(settingsFor(cfg, "owner", "/tmp/s.sock").denyWrite === undefined ||
             settingsFor(cfg, "owner", "/tmp/s.sock").filesystem.denyWrite.includes("/tmp/s.sock"));
 });
 
-test("a grant lands in the role it was approved for, or nowhere", () => {
-  // El bug: la búsqueda del campo no estaba acotada a la sección del rol, así
-  // que aprobar para un rol sin `writes` escribía el permiso en el SIGUIENTE
-  // rol — con un comentario diciendo para quién era.
-  const sinWrites = '[roles.frontend]\nkeys = []\n\n[roles.backend]\nwrites = ["src/api/**"]\nkeys   = []\n';
+test("a grant lands in the role it was granted for, or nowhere", () => {
+  // The bug: the search for the field was not bounded to the role's section,
+  // so granting to a role with no `writes` wrote the grant into the NEXT role
+  // — with a comment saying who it was for.
+  const noWrites = '[roles.frontend]\nkeys = []\n\n[roles.backend]\nwrites = ["src/api/**"]\nkeys   = []\n';
   assert.throws(
-    () => applyGrant(sinWrites, { role: "frontend", action: "write", grant: "src/X/**", times: 2 }, "para frontend"),
+    () => applyGrant(noWrites, { role: "frontend", action: "write", grant: "src/X/**", times: 2 }, "para frontend"),
     /has no writes list/);
 
-  const bien = '[roles.frontend]\nwrites = ["src/web/**"]\nkeys   = []\n\n[roles.backend]\nwrites = ["src/api/**"]\n';
-  const { toml } = applyGrant(bien, { role: "frontend", action: "write", grant: "src/X/**", times: 2 }, "ok");
+  const good = '[roles.frontend]\nwrites = ["src/web/**"]\nkeys   = []\n\n[roles.backend]\nwrites = ["src/api/**"]\n';
+  const { toml } = applyGrant(good, { role: "frontend", action: "write", grant: "src/X/**", times: 2 }, "ok");
   const front = toml.slice(toml.indexOf("[roles.frontend]"), toml.indexOf("[roles.backend]"));
   assert.match(front, /src\/X/);
   assert.ok(!toml.slice(toml.indexOf("[roles.backend]")).includes("src/X"));
 });
 
-test("an approver's reason cannot become configuration", () => {
-  // Un motivo es texto libre que escribe una persona, y a una persona se la
-  // puede convencer de pegar algo. Un salto de línea cerraría el comentario y
-  // lo que sigue se parsea como TOML.
+test("a person's reason cannot become configuration", () => {
+  // A reason is free text a person types, and a person can be talked into
+  // pasting something. A newline would close the comment and whatever follows
+  // would be parsed as TOML.
   const base = '[roles.frontend]\nwrites = ["src/web/**"]\nkeys   = []\n';
-  const veneno = 'ok\n\n[roles.frontend]\nwrites = ["**"]\nkeys = []\n#';
-  const { toml } = applyGrant(base, { role: "frontend", action: "write", grant: "src/api/**", times: 1 }, veneno);
+  const poison = 'ok\n\n[roles.frontend]\nwrites = ["**"]\nkeys = []\n#';
+  const { toml } = applyGrant(base, { role: "frontend", action: "write", grant: "src/api/**", times: 1 }, poison);
   assert.equal(toml.split("\n").filter((l) => l.trim() === "[roles.frontend]").length, 1);
   assert.deepEqual(parseToml(toml).roles.frontend.writes, ["src/web/**", "src/api/**"]);
 });
 
 test("a key cannot point outside the directories declared for keys", () => {
-  // Una barra en el nombre hacía la ruta relativa a la raíz del repo, así que
-  // keys = ["../.ssh/id_rsa"] era una concesión de lectura escrita en la única
-  // lista que nadie revisa dos veces, porque se supone que todo ahí es clave.
+  // A slash in the name made the path relative to the repo root, so
+  // keys = ["../.ssh/id_rsa"] was a read grant written into the one list nobody
+  // reviews twice, because everything in it is supposed to be a key.
   const mk = (k, dirs) => ({ root: "/repo", path: "/repo/seisin.toml", keyDirs: dirs, allowedDomains: [],
                              roles: { f: { name: "f", writes: ["src/**"], keys: [k], network: null } } });
   assert.throws(() => settingsFor(mk("../.ssh/id_rsa", [".secrets"]), "f"), /outside every \[keys\] dir/);
   assert.ok(settingsFor(mk("netlify.txt", [".secrets"]), "f").filesystem.allowRead
     .includes("/repo/.secrets/netlify.txt"));
-  // y declarar un segundo directorio es la forma soportada de usar otro lugar
+  // and declaring a second directory is the supported way to use another place
   assert.ok(settingsFor(mk("shared/api.txt", [".secrets", "shared"]), "f").filesystem.allowRead
     .includes("/repo/shared/api.txt"));
 });
@@ -755,34 +756,33 @@ test("isolated mode gives each role its own home, and the real one to nobody", (
                          b: { name: "b", writes: ["src/**"], keys: [], network: null } } };
   const wa = settingsFor(cfg, "a").filesystem.allowWrite;
   const wb = settingsFor(cfg, "b").filesystem.allowWrite;
-  assert.ok(!wa.some((p) => p.includes("/.claude")), "el ~/.claude real sigue concedido");
-  assert.ok(!wa.some((p) => wb.includes(p) && p.includes("seisin-home")), "los roles comparten scratch");
-  assert.ok(wa.some((p) => p.endsWith("/a")), "el rol no tiene un home propio");
+  assert.ok(!wa.some((p) => p.includes("/.claude")), "the real ~/.claude is still allowed");
+  assert.ok(!wa.some((p) => wb.includes(p) && p.includes("seisin-home")), "the roles share scratch");
+  assert.ok(wa.some((p) => p.endsWith("/a")), "the role has no home of its own");
 });
 
 test("a policy cannot be cancelled further down the file", () => {
-  // "Último gana" es TOML-ish y equivocado acá: una policy puede verse
-  // restrictiva arriba y anularse cuarenta líneas abajo, y quien la revisa lee
-  // el primer bloque.
+  // "Last one wins" is TOML-ish and wrong here: a policy can look restrictive
+  // at the top and be cancelled forty lines down, and whoever reviews it reads
+  // the first block.
   assert.throws(() => parseToml('[roles.a]\nwrites = ["src/**"]\n\n[roles.a]\nwrites = ["**"]\n'),
     /appears twice/);
   assert.throws(() => parseToml('[roles.a]\nwrites = ["src/**"]\nwrites = ["**"]\n'),
     /set twice/);
-  // dos roles distintos con el mismo campo siguen siendo normales
+  // two different roles with the same field are still normal
   assert.ok(parseToml('[roles.a]\nwrites = []\n\n[roles.b]\nwrites = []\n'));
 });
 
 test("a key that is a symlink out of its directory is refused", (t) => {
-  // El sandbox aplica sobre el destino de un symlink — la misma propiedad que
-  // hizo que conceder /tmp no concediera nada. Así que .secrets/token.txt →
-  // ~/.ssh/id_rsa es una concesión de lectura sobre la clave ssh, escrita en la
-  // única lista que nadie audita dos veces.
+  // The sandbox enforces on a symlink's target — the same property that made
+  // allowing /tmp allow nothing. So .secrets/token.txt → ~/.ssh/id_rsa is a
+  // read grant on the ssh key, written into the one list nobody audits twice.
   const box = scratch("seisin-sym-");
   t.after(() => rmSync(box, { recursive: true, force: true }));
   mkdirSync(join(box, ".secrets"), { recursive: true });
-  const afuera = join(box, "afuera.txt");
-  writeFileSync(afuera, "SECRETO\n");
-  symlinkSync(afuera, join(box, ".secrets", "tok.txt"));
+  const outside = join(box, "afuera.txt");
+  writeFileSync(outside, "SECRETO\n");
+  symlinkSync(outside, join(box, ".secrets", "tok.txt"));
   writeFileSync(join(box, ".secrets", "propia.txt"), "SECRETO\n");
 
   const mk = (k) => ({ root: box, path: join(box, "seisin.toml"), keyDirs: [".secrets"], allowedDomains: [],
@@ -792,16 +792,16 @@ test("a key that is a symlink out of its directory is refused", (t) => {
 });
 
 test("a key directory that is a symlink is refused", (t) => {
-  // El archivo-clave symlink ya estaba cerrado; el directorio es el mismo hueco
-  // un nivel arriba. denyRead nombra la ruta tal cual y el runtime aplica sobre
-  // el destino, así que `.secrets -> /tmp/otro` da un deny que no cubre nada y
-  // un allow que sale del repo.
+  // The symlinked key file was already closed; the directory is the same hole
+  // one level up. denyRead names the path as written and the runtime enforces on
+  // the target, so `.secrets -> /tmp/other` gives a deny that covers nothing and
+  // an allow that leaves the repo.
   const box = scratch("seisin-kd-");
   t.after(() => rmSync(box, { recursive: true, force: true }));
-  const afuera = join(box, "afuera");
-  mkdirSync(afuera, { recursive: true });
-  writeFileSync(join(afuera, "tok.txt"), "SECRETO\n");
-  symlinkSync(afuera, join(box, ".secrets"));
+  const outside = join(box, "afuera");
+  mkdirSync(outside, { recursive: true });
+  writeFileSync(join(outside, "tok.txt"), "SECRETO\n");
+  symlinkSync(outside, join(box, ".secrets"));
 
   const cfg = { root: box, path: join(box, "seisin.toml"), keyDirs: [".secrets"], allowedDomains: [],
                 roles: { a: { name: "a", writes: [], keys: ["tok.txt"], network: null } } };
@@ -809,10 +809,10 @@ test("a key directory that is a symlink is refused", (t) => {
 });
 
 test("a grant the config cannot represent is refused, not written", () => {
-  // El subset no tiene escapes, así que un valor con comilla o salto de línea
-  // no se puede escribir. El parser estricto rechazaría el resultado — pero
-  // dejar a alguien con un config que ya no carga, después de que aprobó algo,
-  // es su propia forma de estar roto.
+  // The subset has no escapes, so a value with a quote or a newline cannot be
+  // written. The strict parser would refuse the result — but leaving someone
+  // with a config that no longer loads, right after they granted something, is
+  // its own way of being broken.
   const base = '[roles.a]\nwrites = ["src/**"]\nkeys   = []\n';
   assert.throws(() => applyGrant(base, { role: "a", action: "write", grant: 'src/x"/**', times: 1 }, ""),
     /no way to represent a quote/);
@@ -820,9 +820,9 @@ test("a grant the config cannot represent is refused, not written", () => {
 });
 
 test("a forged queue entry cannot crash the queue", () => {
-  // Leer la cola no puede ser lo que falle: `run` la imprime al salir y la
-  // consola la sondea, así que un reventón acá tumba la mitad que usa una
-  // persona. Una línea sin `target` llegaba desde el sandbox y lo lograba.
+  // Reading the queue cannot be the thing that fails: `run` prints it on exit
+  // and the console polls it, so a crash here takes down the half a person
+  // uses. A line with no `target` arrived from inside the sandbox and did it.
   const box = scratch("seisin-q-");
   const f = join(box, "requests.jsonl");
   writeFileSync(f, JSON.stringify({ kind: "asked", key: "a:write:b", role: "a", action: "write" }) + "\n");
@@ -833,9 +833,9 @@ test("a forged queue entry cannot crash the queue", () => {
 });
 
 test("check says what it cannot enforce, and exits on it", () => {
-  // La etiqueta importa: decía "unenforceable-glob" para cualquier error, así
-  // que una clave fuera de su directorio se reportaba como problema de glob y
-  // mandaba al lector a la línea equivocada.
+  // The label matters: it said "unenforceable-glob" for any error, so a key
+  // outside its directory was reported as a glob problem and sent the reader
+  // to the wrong line.
   const cfg = { root: "/repo", path: "/repo/seisin.toml", keyDirs: [], allowedDomains: [],
                 roles: { r: { name: "r", writes: ["src/*"], keys: [], network: null } } };
   const w = inspect(cfg, null, "seisin.toml").warnings.find((x) => x.kind === "cannot-be-enforced");
@@ -853,45 +853,44 @@ test("check is loud about the two ways around the key model", () => {
 });
 
 test("isolated mode closes reading too, not just writing", () => {
-  // Por defecto el modelo es "leé lo que quieras salvo los directorios de
-  // claves declarados", así que ~/.ssh y ~/.aws son archivos comunes para
-  // cualquier rol. Razonable para agentes propios; el juego entero para otra cosa.
+  // By default the model is "read whatever you like except the declared key
+  // directories", so ~/.ssh and ~/.aws are ordinary files to any role.
+  // Reasonable for your own agents; the whole game for anything else.
   const cfg = { root: "/repo", path: "/repo/seisin.toml", keyDirs: [], allowedDomains: [], isolate: true,
                 roles: { a: { name: "a", writes: ["src/**"], keys: [], network: null } } };
   const { denyRead } = settingsFor(cfg, "a").filesystem;
   for (const p of [".ssh", ".aws", ".config"])
-    assert.ok(denyRead.some((d) => d.endsWith("/" + p)), `${p} legible en modo aislado`);
-  // y sin isolate sigue siendo abierto, que es lo documentado
-  const abierto = settingsFor({ ...cfg, isolate: false }, "a").filesystem.denyRead;
-  assert.ok(!abierto.some((d) => d.endsWith("/.ssh")));
+    assert.ok(denyRead.some((d) => d.endsWith("/" + p)), `${p} readable in isolated mode`);
+  // and without isolate it stays open, which is what the docs say
+  const open = settingsFor({ ...cfg, isolate: false }, "a").filesystem.denyRead;
+  assert.ok(!open.some((d) => d.endsWith("/.ssh")));
 });
 
 test("isolated roles cannot read each other's homes, not just write", () => {
-  // El hallazgo más incómodo de todos: el documento de auditoría decía que esto
-  // estaba cerrado porque lo único que medí fue la ESCRITURA. La lectura estaba
-  // abierta, así que `a` leía el token de sesión que la CLI de `b` acababa de
-  // escribir. Mismo patrón que los directorios de claves: negar el padre,
-  // permitir el propio.
+  // The most uncomfortable finding of all: the audit document said this was
+  // closed because the only thing I measured was WRITING. Reading was open, so
+  // `a` read the session token `b`'s CLI had just written. Same pattern as the
+  // key directories: deny the parent, allow its own.
   const cfg = { root: "/repo", path: "/repo/seisin.toml", keyDirs: [], allowedDomains: [], isolate: true,
                 roles: { a: { name: "a", writes: ["src/**"], keys: [], network: null },
                          b: { name: "b", writes: ["src/**"], keys: [], network: null } } };
   const fa = settingsFor(cfg, "a").filesystem;
-  // realOrSelf en el código, lo mismo acá: la raíz no existe en disco para un
-  // repo de mentira, y realpathSync sobre algo inexistente tira.
-  // Contra la función, no contra el nombre: la primera versión buscaba el texto
-  // "seisin-home" y se rompió cuando ese prefijo tuvo que acortarse para que la
-  // ruta del socket entrara en los 104 bytes de macOS. Un test que fija el
-  // nombre de un detalle interno falla por el arreglo, no por el defecto.
-  const esperada = roleHomeRoot(cfg);
-  const raiz = fa.denyRead.find((p) => p === esperada);
-  assert.ok(raiz, "la raíz de los homes no está negada");
-  assert.ok(fa.allowRead.some((p) => p === join(raiz, "a")), "el rol no recupera el suyo");
-  assert.ok(!fa.allowRead.some((p) => p === join(raiz, "b")), "alcanza el de otro");
+  // realOrSelf in the code, the same here: the root does not exist on disk for
+  // a fake repo, and realpathSync on something that does not exist throws.
+  // Against the function, not the name: the first version looked for the text
+  // "seisin-home" and broke when that prefix had to be shortened so the socket
+  // path would fit in macOS's 104 bytes. A test that pins the name of an
+  // internal detail fails on the fix, not on the defect.
+  const expected = roleHomeRoot(cfg);
+  const root = fa.denyRead.find((p) => p === expected);
+  assert.ok(root, "the root of the homes is not denied");
+  assert.ok(fa.allowRead.some((p) => p === join(root, "a")), "the role does not get its own back");
+  assert.ok(!fa.allowRead.some((p) => p === join(root, "b")), "it reaches another role's home");
 });
 
 test("the audit socket's directory is denied, not just the socket", () => {
-  // Negar solo el socket dejaba `mv /tmp/seisin-xxxx /tmp/gone` como forma de
-  // sacar el canal sin tocar nunca el archivo protegido.
+  // Denying only the socket left `mv /tmp/seisin-xxxx /tmp/gone` as a way to
+  // remove the channel without ever touching the protected file.
   const cfg = { root: "/repo", path: "/repo/seisin.toml", keyDirs: [], allowedDomains: [],
                 roles: { a: { name: "a", writes: ["src/**"], keys: [], network: null } } };
   const { denyWrite } = settingsFor(cfg, "a", "/tmp/seisin-abc/spool.sock").filesystem;
@@ -900,57 +899,56 @@ test("the audit socket's directory is denied, not just the socket", () => {
 });
 
 test("a directory that merely shares a key dir's name is not a key", () => {
-  // `includes` hacía que src/web/.secrets/readme.md se tratara como credencial
-  // y se negara con un mensaje sobre claves, para un archivo que no lo es. El
-  // motivo que da una denegación es el producto entero.
+  // `includes` made src/web/.secrets/readme.md count as a credential and be
+  // denied with a message about keys, for a file that is not one. The reason a
+  // denial gives is the whole product.
   const cfg = { root: "/repo", keyDirs: [".secrets"], allowedDomains: [],
                 roles: { f: { name: "f", writes: ["src/web/**"], keys: ["k.txt"], network: null } } };
-  const leer = (p) => decide(cfg, "f", { tool_name: "Read", tool_input: { file_path: p } },
+  const readAs = (p) => decide(cfg, "f", { tool_name: "Read", tool_input: { file_path: p } },
                              { now: () => true, ask: () => true });
-  assert.ok(!leer("src/web/.secrets/readme.md")?.hookSpecificOutput, "lo trató como clave");
-  assert.ok(leer(".secrets/otra.txt")?.hookSpecificOutput, "una clave real dejó de objetarse");
+  assert.ok(!readAs("src/web/.secrets/readme.md")?.hookSpecificOutput, "it treated it as a key");
+  assert.ok(readAs(".secrets/otra.txt")?.hookSpecificOutput, "a real key stopped being denied");
 });
 
 test("scan reports a symlink that leaves the repo, and does not open it", (t) => {
-  // scan es el comando que contesta "¿tengo credenciales fuera de los
-  // directorios declarados?", y un link es la única forma de que una credencial
-  // esté en el árbol sin ser un archivo del árbol. Se saltaba en silencio
-  // porque un symlink no es isFile().
+  // scan is the command that answers "do I have credentials outside the
+  // declared directories?", and a link is the only way a credential can be in
+  // the tree without being a file of the tree. It was skipped silently because
+  // a symlink is not isFile().
   const box = scratch("seisin-sl-");
-  const fuera = scratch("seisin-out-");
-  t.after(() => { rmSync(box, { recursive: true, force: true }); rmSync(fuera, { recursive: true, force: true }); });
-  writeFileSync(join(fuera, "id_rsa"), "-----BEGIN OPENSSH PRIVATE KEY-----\n");
+  const outside = scratch("seisin-out-");
+  t.after(() => { rmSync(box, { recursive: true, force: true }); rmSync(outside, { recursive: true, force: true }); });
+  writeFileSync(join(outside, "id_rsa"), "-----BEGIN OPENSSH PRIVATE KEY-----\n");
   mkdirSync(join(box, "src"), { recursive: true });
-  symlinkSync(join(fuera, "id_rsa"), join(box, "src", "suelto"));
+  symlinkSync(join(outside, "id_rsa"), join(box, "src", "suelto"));
 
   const { hits } = scan(box, [], undefined);
   const link = hits.find((h) => h.level === "link");
-  assert.ok(link, "el symlink no se reportó");
+  assert.ok(link, "the symlink was not reported");
   assert.match(link.file, /suelto/);
-  assert.match(link.shape, /id_rsa/);        // nombra el destino
-  assert.ok(!/BEGIN OPENSSH/.test(JSON.stringify(hits)), "leyó el destino");
+  assert.match(link.shape, /id_rsa/);        // names the target
+  assert.ok(!/BEGIN OPENSSH/.test(JSON.stringify(hits)), "it read the target");
 });
 
 test("a table named __proto__ cannot hand its settings to every other role", () => {
-  // El peor tipo: invisible en revisión humana. [roles.__proto__] no aparece en
-  // Object.keys(roles), así que `check` imprime los roles que existen y no dice
-  // nada — mientras cada uno hereda lo que esa tabla declaró. Un config que se
-  // lee `[roles.frontend]` sin writes salía del parser dueño del repo entero y
-  // con GITHUB_TOKEN en la mano.
-  for (const nombre of ["__proto__", "prototype", "constructor"])
-    assert.throws(() => parseToml(`[roles.${nombre}]\nwrites = ["**"]\n`), /reserved name/, nombre);
+  // The worst kind: invisible when a person reviews it. [roles.__proto__] does
+  // not appear in Object.keys(roles), so `check` prints the roles that exist and
+  // says nothing — while every one of them inherits what that table declared. A
+  // config that reads `[roles.frontend]` with no writes came out of the parser
+  // owning the whole repo and holding GITHUB_TOKEN.
+  for (const name of ["__proto__", "prototype", "constructor"])
+    assert.throws(() => parseToml(`[roles.${name}]\nwrites = ["**"]\n`), /reserved name/, name);
   assert.throws(() => parseToml('[roles.a]\nconstructor = ["x"]\n'), /reserved name/);
 
-  // Y el prototipo global quedó intacto tras todos esos intentos.
+  // And the global prototype is intact after all those attempts.
   assert.equal({}.writes, undefined);
   assert.deepEqual(Object.keys(parseToml('[roles.a]\nwrites = ["src/**"]\nkeys = []\n').roles), ["a"]);
 });
 
 test("a role never inherits a setting it did not write down", (t) => {
-  // La segunda defensa, sola. Si alguna vez se escapa un nombre, loadConfig
-  // sigue leyendo solo propiedades propias: dos frenos independientes, porque
-  // lo que evitan es invisible — el archivo se lee de una forma y la política
-  // es otra.
+  // The second defense, alone. If a name ever slips through, loadConfig still
+  // reads only own properties: two independent brakes, because what they prevent
+  // is invisible — the file reads one way and the policy is another.
   Object.prototype.writes = ["**"];
   Object.prototype.env = ["GITHUB_TOKEN"];
   t.after(() => { delete Object.prototype.writes; delete Object.prototype.env; });
@@ -965,8 +963,8 @@ test("a role never inherits a setting it did not write down", (t) => {
 });
 
 test("one rule decides what can be written into the config, everywhere", () => {
-  // applyGrant lo comprobaba, init no, y renderObserved armaba líneas con
-  // targets del registro — texto que eligió el agente.
+  // applyGrant checked it, init did not, and renderObserved built lines from
+  // targets in the log — text the agent chose.
   assert.throws(() => tomlString('src/x"'), /no way to represent/);
   assert.throws(() => tomlString("src/x\n[roles.b]"), /no way to represent/);
   assert.equal(tomlString("src/web/**"), '"src/web/**"');
@@ -975,11 +973,11 @@ test("one rule decides what can be written into the config, everywhere", () => {
 });
 
 test("observing means the kernel stops refusing, or there is nothing to observe", () => {
-  // --observe relajaba solo el hook, así que el sandbox denegaba igual y el
-  // banner decía "nothing denied" sobre una transcripción de denegaciones. Y
-  // `init --from-observations` construye una política con esa transcripción:
-  // saldría "el agente no necesita nada fuera de su territorio", que es lo
-  // contrario de la verdad.
+  // --observe relaxed only the hook, so the sandbox denied anyway and the banner
+  // said "nothing denied" over a transcript of denials. And
+  // `init --from-observations` builds a policy from that transcript: it would
+  // come out as "the agent needs nothing outside its territory", which is the
+  // opposite of the truth.
   const cfg = { root: "/repo", path: "/repo/seisin.toml", keyDirs: [".secrets"], allowedDomains: [],
                 roles: { dev: { name: "dev", writes: ["src/web/**"], keys: [], network: null } } };
 
@@ -987,18 +985,18 @@ test("observing means the kernel stops refusing, or there is nothing to observe"
   assert.ok(normal.allowWrite.includes("/repo/src/web"));
   assert.ok(!normal.allowWrite.includes("/repo"));
 
-  const mirando = settingsFor(cfg, "dev", null, true).filesystem;
-  assert.ok(mirando.allowWrite.includes("/repo"), "observar no abre el repo");
-  // y la papelería del confinamiento sigue cerrada incluso mirando
+  const observing = settingsFor(cfg, "dev", null, true).filesystem;
+  assert.ok(observing.allowWrite.includes("/repo"), "observing does not open the repo");
+  // and the confinement's own paperwork stays closed even while observing
   for (const p of ["/repo/seisin.toml", "/repo/.seisin", "/repo/.secrets"])
-    assert.ok(mirando.denyWrite.includes(p), `${p} quedó abierto al observar`);
+    assert.ok(observing.denyWrite.includes(p), `${p} was left open while observing`);
 });
 
 test("check says when nothing is recording", (t) => {
-  // El hook es lo que escribe el registro, y el README lo describía como algo
-  // que ocurre sin decir nunca que hay que instalarlo. Así que `seisin log`
-  // volvía vacío después de doce corridas reales, y con él watch, requests,
-  // grant y review — la historia con la que abre el README.
+  // The hook is what writes the log, and the README described it as something
+  // that happens without ever saying it has to be installed. So `seisin log`
+  // came back empty after twelve real runs, and with it watch, requests, grant
+  // and review — the story the README opens with.
   const box = scratch("seisin-w-");
   t.after(() => rmSync(box, { recursive: true, force: true }));
   const cfg = { root: box, path: join(box, "seisin.toml"), keyDirs: [], allowedDomains: [],
@@ -1008,13 +1006,13 @@ test("check says when nothing is recording", (t) => {
   assert.equal(wire(cfg).changed, true);
   assert.ok(wired(box));
   assert.ok(!inspect(cfg, null, "x").warnings.some((w) => w.kind === "hook-not-wired"));
-  // idempotente: correrlo dos veces no agrega el hook otra vez
+  // idempotent: running it twice does not add the hook again
   assert.equal(wire(cfg).changed, false);
 });
 
 test("wiring merges into settings that already exist", (t) => {
-  // Los hooks de alguien son suyos. Una herramienta que los pisa para
-  // instalarse no tiene segunda oportunidad.
+  // Someone's hooks are theirs. A tool that overwrites them to install itself
+  // does not get a second chance.
   const box = scratch("seisin-w2-");
   t.after(() => rmSync(box, { recursive: true, force: true }));
   mkdirSync(join(box, ".claude"), { recursive: true });
@@ -1025,63 +1023,63 @@ test("wiring merges into settings that already exist", (t) => {
   wire(cfg);
   const after = JSON.parse(readFileSync(join(box, ".claude", "settings.json"), "utf8"));
   assert.equal(after.hooks.PreToolUse.length, 2);
-  assert.ok(JSON.stringify(after).includes("mio"), "se llevó puesto el hook de otro");
+  assert.ok(JSON.stringify(after).includes("mio"), "it ran over someone else's hook");
 });
 
 test("a role name with a dot is a typo, and says so at config time", (t) => {
-  // En TOML el punto separa claves, así que [roles.mimo-v2.5-free-1] declara un
-  // rol llamado "mimo-v2". `check` imprimía una lista de nombres plausibles sin
-  // quejarse y el fallo llegaba después como `unknown role`. Quince de dieciocho
-  // corridas de alguien murieron por esto; las tres que sobrevivieron eran los
-  // nombres sin punto. No hay ambigüedad que preservar: una tabla anidada bajo
-  // [roles] no significa nada acá.
+  // In TOML a dot separates keys, so [roles.mimo-v2.5-free-1] declares a role
+  // named "mimo-v2". `check` printed a list of plausible names without
+  // complaining and the failure arrived later as `unknown role`. Fifteen of
+  // someone's eighteen runs died of this; the three that survived were the
+  // names without a dot. There is no ambiguity to preserve: a table nested
+  // under [roles] means nothing here.
   const box = scratch("seisin-dot-");
   t.after(() => rmSync(box, { recursive: true, force: true }));
   const f = join(box, "seisin.toml");
 
   writeFileSync(f, '[roles.mimo-v2.5-free-1]\nwrites = ["x/**"]\nkeys = []\n');
   assert.throws(() => loadConfig(f), /not "mimo-v2\.5-free-1"/);
-  assert.throws(() => loadConfig(f), /mimo-v2-5-free-1/);   // propone el nombre que sí funciona
+  assert.throws(() => loadConfig(f), /mimo-v2-5-free-1/);   // suggests the name that does work
 
   writeFileSync(f, '[roles.mimo-v2-5-free-1]\nwrites = ["x/**"]\nkeys = []\n');
   assert.deepEqual(Object.keys(loadConfig(f).roles), ["mimo-v2-5-free-1"]);
 });
 
 test("check asks when a role cannot reach any model", () => {
-  // El mismo defecto tres veces, reportado por tres personas: una lista de lo
-  // que los agentes necesitan, escrita en un lugar que no sabe qué agente va a
-  // correr. La última vez costó seis corridas de un banco que terminaron en
-  // ocho segundos con un 403 — que en una tabla de resultados se lee como "este
-  // modelo no puede con la tarea".
-  const mk = (dominios) => ({ root: "/repo", path: "/repo/seisin.toml", keyDirs: [],
-    allowedDomains: dominios,
+  // The same defect three times, reported by three people: a list of what the
+  // agents need, written in a place that does not know which agent will run.
+  // The last time it cost six runs of a benchmark that ended in eight seconds
+  // with a 403 — which in a results table reads as "this model cannot do the
+  // task".
+  const mk = (domains) => ({ root: "/repo", path: "/repo/seisin.toml", keyDirs: [],
+    allowedDomains: domains,
     roles: { dev: { name: "dev", writes: ["src/**"], keys: [], network: null } } });
-  const avisa = (c) => inspect(c, null, "x").warnings.some((w) => w.kind === "no-model-endpoint");
+  const warns = (c) => inspect(c, null, "x").warnings.some((w) => w.kind === "no-model-endpoint");
 
-  assert.ok(avisa(mk(["opencode.ai", "*.opencode.ai", "pypi.org"])), "la lista del banco pasó");
-  assert.ok(avisa(mk([])), "una lista vacía pasó");
-  assert.ok(!avisa(mk(["api.anthropic.com", "github.com"])), "avisó sobre una lista correcta");
-  // per-role gana sobre la global
-  const porRol = mk([]);
-  porRol.roles.dev.network = ["openrouter.ai"];
-  assert.ok(!avisa(porRol));
+  assert.ok(warns(mk(["opencode.ai", "*.opencode.ai", "pypi.org"])), "the benchmark's list passed");
+  assert.ok(warns(mk([])), "an empty list passed");
+  assert.ok(!warns(mk(["api.anthropic.com", "github.com"])), "it warned about a correct list");
+  // per-role wins over the global list
+  const perRole = mk([]);
+  perRole.roles.dev.network = ["openrouter.ai"];
+  assert.ok(!warns(perRole));
 });
 
 test("a file at the root is a file, not a directory that does not exist", () => {
-  // Observar una escritura a NOTAS.md proponía `NOTAS.md/**` — los hijos de un
-  // directorio inexistente, así que la política observada no concedía nada
-  // sobre el archivo que de verdad se escribió.
+  // Observing a write to NOTAS.md proposed `NOTAS.md/**` — the children of a
+  // directory that does not exist, so the observed policy allowed nothing on
+  // the file that was actually written.
   assert.deepEqual(generalise(["NOTAS.md"]), ["NOTAS.md"]);
   assert.deepEqual(generalise(["src/web/App.tsx", "src/web/a.css"]), ["src/web/**"]);
   assert.deepEqual(generalise(["NOTAS.md", "src/web/App.tsx"]), ["NOTAS.md", "src/web/**"]);
-  // un archivo de raíz ya cubierto por un directorio no hace falta nombrarlo
+  // a root file already covered by a directory does not need naming
   assert.deepEqual(generalise(["src/a.ts", "src/b/c.ts"]), ["src/**"]);
 });
 
 test("observation adds to the policy instead of replacing it", () => {
-  // El archivo dice "diff it, then move it", y moverlo borraba el territorio de
-  // todo rol que estuviera quieto durante la ventana. Un rol que no hizo nada
-  // no es un rol que no necesita nada: es un rol que nadie miró.
+  // The file says "diff it, then move it", and moving it erased the territory
+  // of every role that sat still during the window. A role that did nothing is
+  // not a role that needs nothing: it is a role nobody watched.
   const cfg = {
     root: "/repo", path: "/repo/seisin.toml", keyDirs: [], allowedDomains: [],
     roles: {
@@ -1094,16 +1092,16 @@ test("observation adds to the policy instead of replacing it", () => {
     { role: "frontend", action: "write", target: "docs/guia.md", verdict: "observed" },
   ]);
 
-  assert.match(toml, /\[roles\.backend\]/, "borró el rol que no actuó");
-  assert.match(toml, /writes = \["api\/\*\*"\]/, "borró su territorio declarado");
-  assert.match(toml, /"web\/\*\*", "NOTAS\.md", "docs\/\*\*"/, "no sumó lo observado a lo declarado");
+  assert.match(toml, /\[roles\.backend\]/, "it erased the role that did not act");
+  assert.match(toml, /writes = \["api\/\*\*"\]/, "it erased its declared territory");
+  assert.match(toml, /"web\/\*\*", "NOTAS\.md", "docs\/\*\*"/, "it did not add what was observed to what was declared");
   assert.match(toml, /this role did nothing while observing/);
 });
 
 test("the hook answers Claude Code with a denial that names the owner", () => {
-  // El lado de seisin de la promesa que abre el README. El kernel solo dice
-  // "Operation not permitted"; esto es lo único que lleva el dueño al contexto
-  // del agente.
+  // seisin's side of the promise the README opens with. The kernel only says
+  // "Operation not permitted"; this is the only thing that carries the owner
+  // into the agent's context.
   const cfg2 = { ...cfg, root: "/repo" };
   for (const tool of ["Write", "Edit"]) {
     const out = decide(cfg2, "frontend", { tool_name: tool, tool_input: { file_path: "src/api/s.ts" } },
@@ -1113,19 +1111,19 @@ test("the hook answers Claude Code with a denial that names the owner", () => {
   }
 });
 
-/* ── lo que el registro dice de la política ───────────────────────────── */
+/* ── what the log says about the policy ───────────────────────────────── */
 
-/** Un registro de mentira con la forma que escribe el hook. */
-function registro(t, lineas) {
+/** A fake log in the shape the hook writes. */
+function logWith(t, entries) {
   const box = scratch("seisin-rev-");
   t.after(() => rmSync(box, { recursive: true, force: true }));
   mkdirSync(join(box, ".seisin"), { recursive: true });
   const f = join(box, ".seisin", "log.jsonl");
-  writeFileSync(f, lineas.map((l) => JSON.stringify({ at: "2026-09-01T00:00:00Z", ...l })).join("\n") + "\n");
+  writeFileSync(f, entries.map((l) => JSON.stringify({ at: "2026-09-01T00:00:00Z", ...l })).join("\n") + "\n");
   return box;
 }
 
-const politica = (root) => ({
+const policyAt = (root) => ({
   root, path: join(root, "seisin.toml"), keyDirs: [], allowedDomains: [],
   roles: {
     frontend: { name: "frontend", writes: ["src/web/**", "public/**"], keys: [], network: null },
@@ -1134,119 +1132,118 @@ const politica = (root) => ({
 });
 
 test("repeated blocks on one place are one finding, not forty lines", (t) => {
-  // Cuarenta denegaciones en el mismo directorio no es un agente portándose
-  // mal: es una política equivocada. Hoy se leen como cuarenta líneas ámbar
-  // prolijas que nadie suma.
-  const root = registro(t, [
+  // Forty denials in the same directory are not an agent misbehaving: they are
+  // a wrong policy. Today they read as forty tidy amber lines nobody adds up.
+  const root = logWith(t, [
     ...Array(5).fill({ role: "frontend", action: "write", target: "src/api/checkout/a.ts", verdict: "denied", owners: ["backend"] }),
     { role: "frontend", action: "write", target: "src/web/App.tsx", verdict: "allowed" },
   ]);
-  const r = review(politica(root));
+  const r = review(policyAt(root));
   assert.equal(r.friction.length, 1);
   assert.equal(r.friction[0].times, 5);
   assert.equal(r.friction[0].where, "src/api/checkout");
   assert.deepEqual(r.friction[0].owners, ["backend"]);
-  // por debajo del umbral no es un hallazgo, es un martes
-  assert.equal(review(politica(root), { minDenials: 6 }).friction.length, 0);
+  // below the threshold it is not a finding, it is a Tuesday
+  assert.equal(review(policyAt(root), { minDenials: 6 }).friction.length, 0);
 });
 
 test("a grant nobody ever used is the only way a policy gets smaller", (t) => {
-  // Todo archivo de permisos solo crece, en todas partes, y siempre por lo
-  // mismo: nadie puede demostrar que una línea está muerta. Acá el registro sí.
-  const root = registro(t, [
+  // Every permissions file only grows, everywhere, and always for the same
+  // reason: nobody can prove a line is dead. Here the log can.
+  const root = logWith(t, [
     { role: "frontend", action: "write", target: "src/web/App.tsx", verdict: "allowed" },
     { role: "backend", action: "write", target: "src/api/orders.ts", verdict: "allowed" },
   ]);
-  const r = review(politica(root));
+  const r = review(policyAt(root));
   assert.deepEqual(r.unused, [{ role: "frontend", glob: "public/**" }]);
-  // y la ventana viaja con el hallazgo, porque "nunca usado" no significa nada
-  // sin "...en cuánto tiempo"
+  // and the window travels with the finding, because "never used" means
+  // nothing without "...over how long"
   assert.ok(r.window.from && r.window.to);
 });
 
 test("a denial is not what makes a grant look used", (t) => {
-  // Si un intento rechazado contara, un rol que nunca logró escribir en su
-  // propio territorio parecería estar usándolo.
-  const root = registro(t, [
+  // If a denied attempt counted, a role that never managed to write in its own
+  // territory would look like it was using it.
+  const root = logWith(t, [
     { role: "frontend", action: "write", target: "public/logo.svg", verdict: "denied", owners: ["backend"] },
     { role: "frontend", action: "write", target: "src/web/a.tsx", verdict: "allowed" },
   ]);
-  assert.ok(review(politica(root)).unused.some((u) => u.glob === "public/**"));
+  assert.ok(review(policyAt(root)).unused.some((u) => u.glob === "public/**"));
 });
 
 test("paths nobody claims are counted, not just mentioned one at a time", (t) => {
-  const root = registro(t, [
+  const root = logWith(t, [
     ...Array(3).fill({ role: "frontend", action: "write", target: "legacy/viejo.js", verdict: "denied", owners: [] }),
     { role: "frontend", action: "write", target: "src/web/a.tsx", verdict: "allowed" },
   ]);
-  const r = review(politica(root));
+  const r = review(policyAt(root));
   assert.deepEqual(r.unowned.map(({ where, times, kind }) => ({ where, times, kind })),
     [{ where: "legacy", times: 3, kind: "territory" }]);
 });
 
 test("an empty log reports nothing rather than inventing a clean bill", (t) => {
-  const root = registro(t, []);
-  const r = review(politica(root));
+  const root = logWith(t, []);
+  const r = review(policyAt(root));
   assert.equal(r.entries, 0);
   assert.equal(r.window, null);
-  assert.deepEqual(r.unused, []);   // sin datos no se declara muerto nada
+  assert.deepEqual(r.unused, []);   // with no data, nothing is declared dead
 });
 
-/* ── el carrete de auditoría ──────────────────────────────────────────── */
+/* ── the audit spool ──────────────────────────────────────────────────── */
 
 test("the spool carries an entry to the parent, and the parent picks the file", async (t) => {
-  // El único verbo alcanzable desde adentro es "mandá una línea": no hay
-  // descriptor, así que no hay seek, truncate ni unlink. Y el remitente no
-  // elige la ruta — nombra un destino y el padre decide qué significa.
+  // The only verb reachable from inside is "send a line": there is no
+  // descriptor, so there is no seek, truncate or unlink. And the sender does
+  // not pick the path — it names a destination and the parent decides what it
+  // means.
   const got = [];
   const s = await spool((to, entry) => got.push([to, entry]), join(tmpdir(), `seisin-t${process.pid}.sock`));
   t.after(() => s.close());
 
   send("log", { role: "frontend", verdict: "denied" }, s.path);
   send("requests", { role: "qa", action: "write" }, s.path);
-  send("otro-lado", { role: "qa" }, s.path);            // destino inventado
+  send("otro-lado", { role: "qa" }, s.path);            // made-up destination
   send("log", "no soy un objeto", s.path);
   await flush();
-  // Hasta que lleguen, no 60 ms fijos: con la máquina cargada (load 165) y en
-  // Linux los 60 ms no alcanzaban y la prueba fallaba sin que nada anduviera mal.
+  // Until they arrive, not a fixed 60 ms: on a loaded machine (load 165) and on
+  // Linux, 60 ms was not enough and the test failed with nothing wrong.
   for (const end = Date.now() + 5000; got.length < 3 && Date.now() < end;) await new Promise((r) => setTimeout(r, 20));
 
   assert.deepEqual(got.map((g) => g[0]), ["log", "requests", "log"]);
   assert.equal(got[0][1].role, "frontend");
-  assert.ok(got[0][1].at, "el sello de tiempo es del momento de la decisión, no de cuando el padre lo leyó");
+  assert.ok(got[0][1].at, "the timestamp is from the moment of the decision, not from when the parent read it");
 });
 
 test("closing the spool removes the socket and nothing around it", async (t) => {
-  // Regresión con dientes. close() borraba dirname(path) razonando que
-  // spoolPath() acababa de crear ese directorio — pero un llamador que pasa su
-  // propia ruta hace que dirname sea el temp del sistema, así que cerrar el
-  // carrete lo borraba entero. CI lo encontró: todo lo posterior falló con
-  // ENOENT sobre mkdtemp.
+  // A regression with teeth. close() removed dirname(path) on the reasoning
+  // that spoolPath() had just created that directory — but a caller passing its
+  // own path makes dirname the system temp, so closing the spool removed all of
+  // it. CI found it: everything after it failed with ENOENT on mkdtemp.
   const dir = scratch("seisin-vecino-");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const vecino = join(dir, "no-me-toques.txt");
-  writeFileSync(vecino, "acá estaba\n");
+  const neighbour = join(dir, "no-me-toques.txt");
+  writeFileSync(neighbour, "acá estaba\n");
 
   const s = await spool(() => {}, join(dir, "spool.sock"));
   s.close();
 
-  assert.ok(existsSync(dir), "el carrete se llevó el directorio del llamador");
-  assert.ok(existsSync(vecino), "el carrete se llevó un archivo que no era suyo");
-  assert.ok(!existsSync(join(dir, "spool.sock")), "el socket quedó");
+  assert.ok(existsSync(dir), "the spool took the caller's directory with it");
+  assert.ok(existsSync(neighbour), "the spool took a file that was not its own");
+  assert.ok(!existsSync(join(dir, "spool.sock")), "the socket was left behind");
 });
 
 test("with no parent listening, send says so instead of pretending", () => {
-  // Sin padre, append() cae al archivo. Si send() mintiera, el hook creería
-  // haber grabado y el registro quedaría vacío en una corrida que funcionó —
-  // que es exactamente cómo se rompió este instrumento la primera vez.
+  // With no parent, append() falls back to the file. If send() lied, the hook
+  // would believe it had recorded and the log would stay empty for a run that
+  // worked — which is exactly how this instrument broke the first time.
   assert.equal(send("log", { role: "x" }, undefined), false);
   assert.equal(send("log", { role: "x" }, ""), false);
 });
 
-/* ── la consola ───────────────────────────────────────────────────────── */
+/* ── the console ──────────────────────────────────────────────────────── */
 
-/** Levanta la consola sobre un repo de mentira y devuelve cómo hablarle. */
-async function consola(t) {
+/** Starts the console on a fake repo and returns how to talk to it. */
+async function startConsole(t) {
   const box = scratch("seisin-ui-");
   writeFileSync(join(box, "seisin.toml"),
     '[keys]\ndir = ".secrets"\n\n[roles.frontend]\nwrites = ["src/web/**"]\nkeys   = []\n\n[roles.backend]\nwrites = ["src/api/**"]\nkeys   = []\n');
@@ -1257,8 +1254,8 @@ async function consola(t) {
   const port = server.address().port;
   t.after(() => server.close());
 
-  // El token ya no viaja en la página: `seisin ui` lo pone en el fragmento del
-  // enlace. La prueba lo toma de donde lo toma `ui`.
+  // The token no longer travels in the page: `seisin ui` puts it in the link's
+  // fragment. The test takes it from where `ui` takes it.
   const token = server.seisinToken;
   const post = (body, tok = token) =>
     fetch(`http://127.0.0.1:${port}/api/decide`, {
@@ -1271,66 +1268,80 @@ async function consola(t) {
 }
 
 test("the console refuses a write without the token", async (t) => {
-  // Loopback no es una frontera contra el navegador: cualquier pestaña abierta
-  // puede hacer POST a 127.0.0.1. Lo que no puede es leer este token.
-  const { token, post, box, key } = await consola(t);
+  // Loopback is not a boundary against the browser: any open tab can POST to
+  // 127.0.0.1. What it cannot do is read this token.
+  const { token, post, box, key } = await startConsole(t);
   assert.match(token ?? "", /^[a-f0-9]{48}$/);
 
-  const sin = await post({ key, decision: "granted" }, null);
-  assert.equal(sin.status, 403);
-  const mal = await post({ key, decision: "granted" }, "0".repeat(48));
-  assert.equal(mal.status, 403);
-  // y nada cambió en el disco
+  const noToken = await post({ key, decision: "granted" }, null);
+  assert.equal(noToken.status, 403);
+  const wrongToken = await post({ key, decision: "granted" }, "0".repeat(48));
+  assert.equal(wrongToken.status, 403);
+  // and nothing changed on disk
   assert.ok(!readFileSync(join(box, "seisin.toml"), "utf8").includes("checkout"));
 });
 
-test("approving in the console writes the policy, with its reason", async (t) => {
-  const { post, box, key } = await consola(t);
-  const r = await post({ key, decision: "granted", reason: "se lleva el checkout" });
+test("granting in the console writes the policy, with its reason", async (t) => {
+  const { post, box, key } = await startConsole(t);
+  const r = await post({ key, decision: "granted", reason: "takes over checkout" });
   assert.equal(r.status, 200);
 
   const toml = readFileSync(join(box, "seisin.toml"), "utf8");
   assert.match(toml, /src\/api\/checkout\/\*\*/);
-  assert.match(toml, /se lleva el checkout/);     // la procedencia viaja con la línea
+  assert.match(toml, /takes over checkout/);     // the provenance travels with the line
   assert.equal(pending(join(box, ".seisin", "requests.jsonl")).length, 0);
 });
 
-test("refusing in the console settles the request and grants nothing", async (t) => {
-  const { post, box, key } = await consola(t);
-  assert.equal((await post({ key, decision: "denied", reason: "no es suyo" })).status, 200);
+test("declining in the console settles the request and grants nothing", async (t) => {
+  const { post, box, key } = await startConsole(t);
+  assert.equal((await post({ key, decision: "declined", reason: "not theirs" })).status, 200);
   assert.ok(!readFileSync(join(box, "seisin.toml"), "utf8").includes("checkout"));
   assert.equal(pending(join(box, ".seisin", "requests.jsonl")).length, 0);
 });
 
+test("the console still takes the old \"denied\" as a decline, and the queue still stores it", async (t) => {
+  // The console used to post "denied" for a person's decline. Anything scripted
+  // against that keeps working, and the stored value stays what 1,452+ lines in
+  // the field already say: renaming it is a breaking change for another release.
+  const { post, box, key } = await startConsole(t);
+  const res = await post({ key, decision: "denied", reason: "not theirs" });
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).decision, "declined");
+  assert.ok(!readFileSync(join(box, "seisin.toml"), "utf8").includes("checkout"));
+  const lines = readFileSync(join(box, ".seisin", "requests.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  assert.equal(lines.at(-1).kind, "denied");
+});
+
 test("the console refuses a decision it does not understand", async (t) => {
-  const { post, box, key } = await consola(t);
-  for (const cuerpo of [{ key: "frontend:write:nope/**", decision: "granted", reason: "x" }, { key, decision: "maybe", reason: "x" }, { number: 1, decision: "granted", reason: "x" }])
-    assert.equal((await post(cuerpo)).status, 400);
+  const { post, box, key } = await startConsole(t);
+  for (const body of [{ key: "frontend:write:nope/**", decision: "granted", reason: "x" }, { key, decision: "maybe", reason: "x" }, { number: 1, decision: "granted", reason: "x" }])
+    assert.equal((await post(body)).status, 400);
   assert.ok(!readFileSync(join(box, "seisin.toml"), "utf8").includes("checkout"));
 });
 
 test("SEC-03 the console decides the request on screen, not whatever moved into its place", async (t) => {
-  // Antes: /api/decide tomaba un número de fila contado contra la cola del
-  // momento del POST. Si otro canal resolvía la primera, "aprobar #2" aprobaba
-  // la tercera, con la razón escrita para otra; reenviar aprobaba la siguiente.
-  const { post, box, q } = await consola(t);
+  // Before: /api/decide took a row number counted against the queue as it
+  // stood at the moment of the POST. If another channel settled the first one,
+  // "grant #2" granted the third, with the reason written for another; resending
+  // granted the next one.
+  const { post, box, q } = await startConsole(t);
   record(q, { role: "frontend", action: "write", target: "lib/a.ts", owners: [] });
   record(q, { role: "frontend", action: "write", target: "src/api/orders/b.ts", owners: ["backend"] });
   const [a, b, c] = pending(q);
-  settle(q, a.key, "denied", "otro canal");             // la cola se movió
+  settle(q, a.key, "denied", "otro canal");             // the queue moved
   assert.equal((await post({ key: b.key, decision: "granted", reason: "approving lib" })).status, 200);
   const toml = readFileSync(join(box, "seisin.toml"), "utf8");
   assert.match(toml, /"lib\/\*\*"/);
   assert.ok(!toml.includes("src/api/orders"), "approved the request that moved into its place");
-  // reenviar no aprueba la siguiente
+  // resending does not grant the next one
   assert.equal((await post({ key: b.key, decision: "granted", reason: "again" })).status, 400);
   assert.deepEqual(pending(q).map((r) => r.key), [c.key]);
 });
 
 test("the page never carries the token, and every /api/ route asks for it", async (t) => {
-  // Revisión del 2026-09-22: con local_binding un rol leía el token de `GET /`
-  // y se aprobaba sus propias requests; /api/state le daba la política sin token.
-  const { port, token } = await consola(t);
+  // Review of 2026-09-22: with local_binding a role read the token from `GET /`
+  // and granted its own requests; /api/state handed it the policy without a token.
+  const { port, token } = await startConsole(t);
   const page = await (await fetch(`http://127.0.0.1:${port}/`)).text();
   assert.ok(!page.includes(token), "the token is in the page again");
   assert.equal((await fetch(`http://127.0.0.1:${port}/api/state`)).status, 403);
@@ -1339,11 +1350,11 @@ test("the page never carries the token, and every /api/ route asks for it", asyn
 });
 
 test("decline all refuses exactly what the page showed, grants nothing, and asks for the token", async (t) => {
-  const { box, port, token } = await consola(t);
+  const { box, port, token } = await startConsole(t);
   const q = join(box, ".seisin", "requests.jsonl");
   record(q, { role: "backend", action: "write", target: "src/web/b.ts", owners: ["frontend"] });
   const shown = pending(q).map((p) => p.key);
-  // Llega uno nuevo después de que la página dibujó: no se rechaza sin verlo.
+  // A new one arrives after the page rendered: it is not declined unseen.
   record(q, { role: "frontend", action: "write", target: "docs/late.md", owners: [] });
   const url = `http://127.0.0.1:${port}/api/decline-all`;
   const body = JSON.stringify({ keys: shown, reason: "ruido de un bug ya arreglado" });
@@ -1359,8 +1370,8 @@ test("decline all refuses exactly what the page showed, grants nothing, and asks
 });
 
 test("decline all takes a queue of hundreds in one request", async (t) => {
-  // Con 109 claves (9,3 KB) el tope plano de 4 KB cortaba la conexion.
-  const { box, port, token } = await consola(t);
+  // With 109 keys (9.3 KB) the flat 4 KB cap cut the connection.
+  const { box, port, token } = await startConsole(t);
   const q = join(box, ".seisin", "requests.jsonl");
   for (let i = 0; i < 500; i++) record(q, { role: "frontend", action: "write", target: `src/api/d${i}/f.ts`, owners: ["backend"] });
   const keys = pending(q).map((p) => p.key);
@@ -1374,8 +1385,8 @@ test("decline all takes a queue of hundreds in one request", async (t) => {
 });
 
 test("the console only answers to its own host name", async (t) => {
-  // DNS rebinding: un dominio ajeno apuntado a 127.0.0.1 llega con otro Host.
-  const { port, token } = await consola(t);
+  // DNS rebinding: a foreign domain pointed at 127.0.0.1 arrives with another Host.
+  const { port, token } = await startConsole(t);
   const { request } = await import("node:http");
   const status = await new Promise((ok, fail) => {
     const r = request({ host: "127.0.0.1", port, path: "/api/state",
@@ -1386,39 +1397,40 @@ test("the console only answers to its own host name", async (t) => {
 });
 
 test("the console's state carries the queue the page renders", async (t) => {
-  const { port, token } = await consola(t);
+  const { port, token } = await startConsole(t);
   const s = await (await fetch(`http://127.0.0.1:${port}/api/state`, { headers: { "x-seisin-token": token } })).json();
   assert.equal(s.requests.length, 1);
   assert.equal(s.requests[0].grant, "src/api/checkout/**");
   assert.deepEqual(s.requests[0].owners, ["backend"]);
 });
 
-/* ── lo que la herramienta no cubre ──────────────────────────────────── */
+/* ── what the tool does not cover ─────────────────────────────────────── */
 
 test("check states the gap it does not cover, every time", () => {
-  // El README lo decía en tres lugares y `check` no lo decía en ninguno, que es
-  // el único que alguien mira antes de confiar en el mapa. Fijado acá porque un
-  // límite que se puede borrar sin que nada se queje vuelve a ser una promesa.
+  // The README said it in three places and `check` said it in none, and
+  // `check` is the one place someone looks before trusting the map. Pinned here
+  // because a limit that can be deleted without anything complaining turns back
+  // into a promise.
   const { limits } = inspect(cfg, null, "seisin.toml");
-  const borrado = limits.find((l) => l.kind === "unlink-uncovered");
-  assert.ok(borrado, "check ya no dice que un rol puede borrar dentro de su territorio");
-  assert.match(borrado.detail, /denyUnlink/);   // y adónde fue el pedido
+  const unlink = limits.find((l) => l.kind === "unlink-uncovered");
+  assert.ok(unlink, "check no longer says a role can delete inside its territory");
+  assert.match(unlink.detail, /denyUnlink/);   // and where the upstream ask went
 
-  // El aislamiento de claves cubre lo declarado, no todo secreto del repo.
-  const claves = limits.find((l) => l.kind === "keys-only-what-you-declared");
-  assert.ok(claves, "check no dice que las claves fuera de [keys] son legibles");
-  assert.match(claves.detail, /seisin scan/);
+  // Key isolation covers what was declared, not every secret in the repo.
+  const keysLimit = limits.find((l) => l.kind === "keys-only-what-you-declared");
+  assert.ok(keysLimit, "check does not say keys outside [keys] are readable");
+  assert.match(keysLimit.detail, /seisin scan/);
 });
 
-/* ── el servidor MCP ──────────────────────────────────────────────────── */
+/* ── the MCP server ───────────────────────────────────────────────────── */
 
 test("the MCP surface has no tool that changes anything", () => {
-  // La invariante, como prueba y no como comentario. Si alguien agrega un
-  // seisin_grant, esto se pone rojo antes de que llegue a un release.
-  const nombres = TOOLS.map((t) => t.name);
-  const mutantes = nombres.filter((n) => /grant|deny|approve|apply|set|write|update|delete/.test(n));
-  assert.deepEqual(mutantes, ["seisin_draft_grant"]);   // draft: redacta, no aplica
-  assert.ok(nombres.every((n) => typeof HANDLERS[n] === "function"));
+  // The invariant, as a test and not as a comment. If someone adds a
+  // seisin_grant, this goes red before it reaches a release.
+  const names = TOOLS.map((t) => t.name);
+  const mutating = names.filter((n) => /grant|deny|approve|apply|set|write|update|delete/.test(n));
+  assert.deepEqual(mutating, ["seisin_draft_grant"]);   // draft: it writes up, it does not apply
+  assert.ok(names.every((n) => typeof HANDLERS[n] === "function"));
 });
 
 test("every MCP tool declares a schema a client can render", () => {
@@ -1432,37 +1444,37 @@ test("every MCP tool declares a schema a client can render", () => {
 
 test("version negotiation echoes a known version and offers the newest otherwise", async () => {
   const NL = String.fromCharCode(10);
-  const hablar = async (version) => {
-    const dicho = [];
+  const talk = async (version) => {
+    const said = [];
     const req = { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: version } };
-    await serveMcp("9.9.9", Readable.from([JSON.stringify(req) + NL]), { write: (s) => dicho.push(s) });
-    return JSON.parse(dicho[0]).result;
+    await serveMcp("9.9.9", Readable.from([JSON.stringify(req) + NL]), { write: (s) => said.push(s) });
+    return JSON.parse(said[0]).result;
   };
-  const conocida = await hablar("2025-06-18");
-  const rara = await hablar("1999-01-01");
-  assert.equal(conocida.protocolVersion, "2025-06-18");   // conocida: se devuelve igual
-  assert.equal(rara.protocolVersion, PROTOCOLS[0]);       // desconocida: se ofrece la nuestra
-  assert.equal(conocida.serverInfo.version, "9.9.9");
-  assert.deepEqual(Object.keys(conocida.capabilities), ["tools"]);
+  const known = await talk("2025-06-18");
+  const unknown = await talk("1999-01-01");
+  assert.equal(known.protocolVersion, "2025-06-18");   // known: echoed back as is
+  assert.equal(unknown.protocolVersion, PROTOCOLS[0]);   // unknown: ours is offered
+  assert.equal(known.serverInfo.version, "9.9.9");
+  assert.deepEqual(Object.keys(known.capabilities), ["tools"]);
 });
 
 test("a notification is never answered", async () => {
-  // Contestar una notificacion es un error de protocolo que algunos clientes
-  // toleran y en el que otros se cuelgan.
+  // Answering a notification is a protocol error some clients tolerate and
+  // others hang on.
   const NL = String.fromCharCode(10);
-  const dicho = [];
-  const nota = { jsonrpc: "2.0", method: "notifications/initialized" };
-  await serveMcp("1.0.0", Readable.from([JSON.stringify(nota) + NL]), { write: (s) => dicho.push(s) });
-  assert.deepEqual(dicho, []);
+  const said = [];
+  const note = { jsonrpc: "2.0", method: "notifications/initialized" };
+  await serveMcp("1.0.0", Readable.from([JSON.stringify(note) + NL]), { write: (s) => said.push(s) });
+  assert.deepEqual(said, []);
 });
 
 test("unparseable input does not kill the session", async () => {
   const NL = String.fromCharCode(10);
-  const dicho = [];
+  const said = [];
   const ping = { jsonrpc: "2.0", id: 7, method: "ping" };
   await serveMcp("1.0.0", Readable.from(["esto no es json" + NL, JSON.stringify(ping) + NL]),
-    { write: (s) => dicho.push(s) });
-  assert.equal(JSON.parse(dicho[0]).id, 7);   // la basura se descarta y sigue atendiendo
+    { write: (s) => said.push(s) });
+  assert.equal(JSON.parse(said[0]).id, 7);   // the junk is dropped and it keeps serving
 });
 
 /**
@@ -1689,42 +1701,42 @@ test("an isolated home leaves room for the runtime's socket, on this platform", 
 });
 
 test("a role whose isolated home cannot fit is refused by name, not by EINVAL", () => {
-  const largo = "a".repeat(120);
+  const longName = "a".repeat(120);
   const cfg = { root: "/repo", path: "/repo/seisin.toml", keyDirs: [], allowedDomains: [], isolate: true,
-                roles: { [largo]: { name: largo, writes: ["src/**"], keys: [], network: null } } };
-  assert.throws(() => settingsFor(cfg, largo), (e) =>
-    /isolate/.test(e.message) && /socket/.test(e.message) && e.message.includes(largo));
+                roles: { [longName]: { name: longName, writes: ["src/**"], keys: [], network: null } } };
+  assert.throws(() => settingsFor(cfg, longName), (e) =>
+    /isolate/.test(e.message) && /socket/.test(e.message) && e.message.includes(longName));
 });
 
 test("without isolate the home length is nobody's problem", () => {
-  // El guard sólo corre en modo aislado: en el ordinario no hay casa que crear.
-  const largo = "b".repeat(120);
+  // The guard only runs in isolated mode: in the ordinary one there is no home to create.
+  const longName = "b".repeat(120);
   const cfg = { root: "/repo", path: "/repo/seisin.toml", keyDirs: [], allowedDomains: [], isolate: false,
-                roles: { [largo]: { name: largo, writes: ["src/**"], keys: [], network: null } } };
-  assert.ok(settingsFor(cfg, largo).filesystem);
+                roles: { [longName]: { name: longName, writes: ["src/**"], keys: [], network: null } } };
+  assert.ok(settingsFor(cfg, longName).filesystem);
 });
 
 test("two checkouts that end the same way do not share an isolated home", () => {
-  // El id era la COLA del base64 de la ruta, o sea la cola de la ruta. Estos
-  // pares colisionaban — y una colisión acá es el HOME de un repo entregado al
-  // otro, con la sesión de su CLI adentro.
-  const pares = [
-    ["/Users/ana/dev/proyecto", "/Users/bob/dev/proyecto"],
+  // The id was the TAIL of the path's base64, which is the tail of the path.
+  // These pairs collided — and a collision here is one repo's HOME handed to the
+  // other, with its CLI session inside.
+  const pairs = [
+    ["/Users/ana/dev/project", "/Users/bob/dev/project"],
     ["/home/a/work/api", "/home/b/work/api"],
     ["/Users/uno/x/seisin", "/Users/dos/x/seisin"],
   ];
-  for (const [a, b] of pares)
+  for (const [a, b] of pairs)
     assert.notEqual(roleHomeRoot({ root: a }), roleHomeRoot({ root: b }), `${a} vs ${b}`);
 });
 
 test("the same repo always gets the same isolated home", () => {
-  // Lo otro que un hash tiene que cumplir: estable entre corridas, o el rol
-  // pierde su estado en cada invocación.
+  // The other thing a hash has to do: stay stable across runs, or the role
+  // loses its state on every invocation.
   const cfg = { root: "/Users/someone/repo" };
   assert.equal(roleHomeRoot(cfg), roleHomeRoot({ ...cfg }));
 });
 
-/** Config mínima para ejercitar el hook sin tocar disco. */
+/** A minimal config to exercise the hook without touching disk. */
 function cfgHook() {
   return { root: "/repo", path: "/repo/seisin.toml", keyDirs: [".secrets"], allowedDomains: [],
            roles: { frontend: { name: "frontend", writes: ["src/web/**"], keys: [], network: null },
@@ -1732,8 +1744,8 @@ function cfgHook() {
 }
 
 test("a refusal tells the agent the request is already queued", () => {
-  // `ask()` archivaba la request en silencio: nadie adentro de la caja sabía que
-  // había algo pendiente, así que el agente no podía contárselo a quien lo mandó.
+  // `ask()` filed the request silently: nobody inside the sandbox knew something
+  // was pending, so the agent could not tell whoever sent it.
   const out = decide(cfgHook(), "frontend",
     { tool_name: "Write", tool_input: { file_path: "/repo/src/api/orders.ts" } },
     { now() {}, ask() {} });
@@ -1742,22 +1754,22 @@ test("a refusal tells the agent the request is already queued", () => {
 
 test("the refusal closes the retry loop and the wait, in both branches", () => {
   const cfg = cfgHook();
-  const escritura = decide(cfg, "frontend",
+  const writeDenial = decide(cfg, "frontend",
     { tool_name: "Write", tool_input: { file_path: "/repo/src/api/orders.ts" } }, { now() {}, ask() {} });
-  const llave = decide(cfg, "frontend",
+  const keyDenial = decide(cfg, "frontend",
     { tool_name: "Read", tool_input: { file_path: "/repo/.secrets/db.txt" } }, { now() {}, ask() {} });
-  for (const o of [escritura, llave]) {
+  for (const o of [writeDenial, keyDenial]) {
     assert.match(o.hookSpecificOutput.permissionDecisionReason, /retrying or waiting/);
   }
-  // Y la rama de llaves sigue sin hablar de cambiar nada, que es de lo que no se
-  // trata una lectura.
-  assert.doesNotMatch(llave.hookSpecificOutput.permissionDecisionReason, /to change/);
+  // And the key branch still says nothing about changing anything, which is not
+  // what a read is about.
+  assert.doesNotMatch(keyDenial.hookSpecificOutput.permissionDecisionReason, /to change/);
 });
 
 test("the refusal does not name the MCP server, because the hook cannot know it exists", () => {
-  // `wire` escribe .claude/settings.json; los servidores MCP viven en otro
-  // archivo. Nombrar una herramienta que el agente quizá no tiene le cuesta un
-  // turno averiguarlo. El que sí la tiene la descubre por su descripción.
+  // `wire` writes .claude/settings.json; MCP servers live in another file.
+  // Naming a tool the agent may not have costs it a step to find that out. An
+  // agent that does have it finds it by its description.
   const out = decide(cfgHook(), "frontend",
     { tool_name: "Write", tool_input: { file_path: "/repo/src/api/orders.ts" } },
     { now() {}, ask() {} });
@@ -1765,12 +1777,12 @@ test("the refusal does not name the MCP server, because the hook cannot know it 
 });
 
 test("observing says nothing about a queue, because it filed none", () => {
-  let pedidos = 0;
+  let asked = 0;
   const out = decide(cfgHook(), "frontend",
     { tool_name: "Write", tool_input: { file_path: "/repo/src/api/orders.ts" } },
-    { observe: true, now() {}, ask() { pedidos++; } });
+    { observe: true, now() {}, ask() { asked++; } });
   assert.equal(out.decision, null);
-  assert.equal(pedidos, 0);
+  assert.equal(asked, 0);
 });
 test("a request the role stopped asking for is marked, not moved and not settled", async () => {
   const { markStale, STALE_RUNS } = await import("../src/requests.js");
@@ -1800,9 +1812,9 @@ test("a path outside the repo has no owner, even for writes = [\"**\"]", () => {
 });
 
 test("SEC-03 the CLI takes an id exactly — a prefix never selects another request", () => {
-  // Antes: pick() aceptaba prefijos. Con `lib` ya resuelto, escribir su id
-  // exacto elegía `lib-x`, una request nueva cuyo id solo empieza igual — y los
-  // ids los arman rutas que elige un agente.
+  // Before: pick() accepted prefixes. With `lib` already settled, typing its
+  // exact id picked `lib-x`, a new request whose id only starts the same way —
+  // and ids are built from paths an agent chooses.
   const box = scratch("seisin-pick-");
   writeFileSync(join(box, "seisin.toml"), '[roles.frontend]\nwrites = ["src/**"]\nkeys = []\n');
   const q = join(box, ".seisin", "requests.jsonl");
@@ -1816,8 +1828,8 @@ test("SEC-03 the CLI takes an id exactly — a prefix never selects another requ
 });
 
 test("SEC-05 a later [roles] cannot replace a role declared above it", () => {
-  // Antes: `a = true` en un [roles] escrito más abajo reemplazaba el rol entero;
-  // su `network = []` volvía como "no dicho" = la lista global. check: exit 0.
+  // Before: `a = true` in a [roles] written further down replaced the whole role;
+  // its `network = []` came back as "not said" = the global list. check: exit 0.
   const box = scratch("seisin-sec05-");
   const load = (toml) => { writeFileSync(join(box, "seisin.toml"), toml); return () => loadConfig(join(box, "seisin.toml")); };
   const role = '[network]\nallow = ["evil.com"]\n\n[roles.a]\nwrites = ["src/**"]\nnetwork = []\n';
@@ -1827,7 +1839,7 @@ test("SEC-05 a later [roles] cannot replace a role declared above it", () => {
   assert.throws(load('roles = "x"\n'), /"roles" must be tables/);
   assert.throws(load('roles = ["src/**"]\n'), /"roles" must be tables/);
   assert.throws(load('[roles]\nvalueOf = 1\n'), /a role is a table/);
-  // lo legítimo sigue cargando: la tabla madre declarada después, sin claves
+  // the legitimate form still loads: the parent table declared later, with no keys
   assert.deepEqual(load(role + '\n[roles]\n')().roles.a.network, []);
 });
 
@@ -1920,8 +1932,8 @@ test("SEC-15b/09 a territory cannot be absolute, but .. is allowed (used for sib
   const dir = scratch("seisin-terr-");
   const load = (toml) => { writeFileSync(join(dir, "seisin.toml"), toml); return () => loadConfig(join(dir, "seisin.toml")); };
   assert.throws(load('[roles.a]\nwrites = ["/etc/**"]\n'), /absolute/);
-  // .. stays legal: the team writes ../bitacora/... on purpose
-  assert.ok(load('[roles.a]\nwrites = ["../bitacora/**"]\n')());
+  // .. stays legal: a policy writes ../data/shared/... on purpose
+  assert.ok(load('[roles.a]\nwrites = ["../data/shared/**"]\n')());
 });
 
 test("SEC-14 role names that differ only in case are refused", () => {

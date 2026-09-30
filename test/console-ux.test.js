@@ -47,7 +47,7 @@ async function shop(t, { log = [] } = {}) {
 
 /* ── a decision needs a reason ─────────────────────────────────────────── */
 
-test("approving without a reason is refused and writes nothing", async (t) => {
+test("granting without a reason is refused and writes nothing", async (t) => {
   const { call, keyOf, toml, q } = await shop(t);
   for (const reason of [undefined, "", "   ", "\n\t"]) {
     const r = await call("/api/decide", { key: keyOf("docs/api.md"), decision: "granted", ...(reason !== undefined && { reason }) });
@@ -69,7 +69,7 @@ test("declining without a reason is refused too, one or all", async (t) => {
   assert.equal(pending(q).length, 0);
 });
 
-test("an approval answers with the line it wrote and where", async (t) => {
+test("a grant answers with the line it wrote and where", async (t) => {
   const { call, keyOf, toml } = await shop(t);
   const r = await call("/api/decide", { key: keyOf("docs/api.md"), decision: "granted", reason: "backend keeps the API docs" });
   assert.equal(r.status, 200);

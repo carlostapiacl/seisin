@@ -48,10 +48,10 @@ test("a glob that does not climb covers nothing above the repo root", () => {
 });
 
 test("a territory that names a place above the root still covers it", () => {
-  // The shape a real cell policy uses: its log lives beside its directory.
-  assert.equal(covers("../bitacora/lab/dev.md", "../bitacora/lab/dev.md"), true);
-  assert.equal(covers("../bitacora/**", "../bitacora/lab/dev.md"), true);
-  assert.equal(covers("../bitacora/lab/dev.md", "../otra/dev.md"), false);
+  // The shape a policy with 32 roles uses: a shared log lives beside the role's directory.
+  assert.equal(covers("../data/shared/lab/dev.md", "../data/shared/lab/dev.md"), true);
+  assert.equal(covers("../data/shared/**", "../data/shared/lab/dev.md"), true);
+  assert.equal(covers("../data/shared/lab/dev.md", "../other/dev.md"), false);
 });
 
 test("explain does not call a path outside the repo 'inside territory'", () => {
@@ -59,13 +59,13 @@ test("explain does not call a path outside the repo 'inside territory'", () => {
 [roles.dev]
 writes = ["**"]
 [roles.lab]
-writes = ["../bitacora/lab/dev.md"]
+writes = ["../data/shared/lab/dev.md"]
 `);
   const out = explain(cfg, "dev", "write", "../../etc/passwd");
   assert.equal(out.allowed, false);
   assert.deepEqual(ownersOf(cfg, "../../etc/passwd"), []);
-  assert.equal(explain(cfg, "lab", "write", "../bitacora/lab/dev.md").allowed, true);
-  assert.deepEqual(ownersOf(cfg, "../bitacora/lab/dev.md"), ["lab"]);
+  assert.equal(explain(cfg, "lab", "write", "../data/shared/lab/dev.md").allowed, true);
+  assert.deepEqual(ownersOf(cfg, "../data/shared/lab/dev.md"), ["lab"]);
 });
 
 // ── owners: only a path key grants a read ───────────────────────────────────

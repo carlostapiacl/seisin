@@ -37,7 +37,8 @@ test("the parent's PATH drops relative entries and every writable directory", ()
 
 test("a PATH link into a writable area protects the package, not the whole area", () => {
   // The first version protected the top-level entry under the writable root —
-  // on the portfolio, all of 01-activos/, because seisin lives in one project.
+  // in a multi-repo workspace, the folder holding every project, because seisin
+  // lives in one project.
   const dir = repo('[roles.a]\nwrites = ["**"]\n');
   const pkg = join(dir, "tools", "thing");
   mkdirSync(join(pkg, "bin"), { recursive: true });

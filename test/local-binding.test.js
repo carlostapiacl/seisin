@@ -91,10 +91,10 @@ test("check says what local_binding really opens", { skip: process.platform !== 
   assert.match(w[0].headline, /e2e: .*every port on localhost/);
 });
 
-test("a role with local_binding cannot read the console's token nor approve its own request", { skip: (skip || process.platform !== "darwin") && "macOS: only there does local_binding reach localhost" }, async (t) => {
-  // La reproducción de la revisión del 2026-09-22, como prueba: el rol llega a
-  // la consola (local_binding abre localhost:*), pero el token ya no viaja en
-  // ninguna respuesta, así que ni lo lee ni puede aprobar.
+test("a role with local_binding cannot read the console's token nor grant its own request", { skip: (skip || process.platform !== "darwin") && "macOS: only there does local_binding reach localhost" }, async (t) => {
+  // The reproduction from the 2026-09-22 review, as a test: the role reaches
+  // the console (local_binding opens localhost:*), but the token no longer
+  // travels in any response, so it can neither read it nor grant.
   const dir = repoWith(TWO.replace('[roles.docs]\nwrites = ["docs/**"]', '[roles.docs]\nwrites = ["docs/**", "secret/**"]'));
   record(join(dir, ".seisin", "requests.jsonl"),
     { role: "e2e", action: "write", target: "secret/x.txt", owners: ["docs"] });
@@ -115,7 +115,7 @@ test("a role with local_binding cannot read the console's token nor approve its 
   });
   assert.match(out, /page:0/, "the page carried the token");
   assert.match(out, /state:403/, "/api/state answered the role without a token");
-  assert.match(out, /decide:403/, "the role approved its own request");
+  assert.match(out, /decide:403/, "the role granted its own request");
   assert.ok(!loadConfig(join(dir, "seisin.toml")).roles.e2e.writes.includes("secret/**"), "the role granted itself secret/**");
   assert.equal(pending(join(dir, ".seisin", "requests.jsonl")).length, 1, "the request was settled");
 });
