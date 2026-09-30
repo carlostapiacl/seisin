@@ -28,7 +28,7 @@
  * On Linux the runtime's refusals cannot be read from outside (violations.js),
  * so the after-the-fact half finds nothing there and stays quiet.
  */
-import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
+import { readEntries } from "./log.js";
 import { explain } from "./owners.js";
 import { timesHit, walls } from "./walls.js";
 import { collapseSidecars } from "./render.js";
@@ -64,37 +64,16 @@ export function knownRefusals(evidence) {
 
 /** How far back a refusal still belongs to the call that just failed. */
 const WINDOW_MS = 120_000;
-/** Read only the end of the log: this runs on every failed command. */
+/** Read only the end of the log: this runs on every failed command. The line the cut lands in is dropped (readLines). */
 const TAIL_BYTES = 512 * 1024;
 /** How many paths to name. More than this is a wall of text nobody acts on. */
 const MAX_NAMED = 3;
-
-function tail(file) {
-  if (!existsSync(file)) return [];
-  const { size } = statSync(file);
-  const from = Math.max(0, size - TAIL_BYTES);
-  const fd = openSync(file, "r");
-  try {
-    const buf = Buffer.alloc(size - from);
-    readSync(fd, buf, 0, buf.length, from);
-    const lines = buf.toString("utf8").split("\n");
-    if (from > 0) lines.shift();          // the first line is cut in half
-    const out = [];
-    for (const l of lines) {
-      if (!l.trim()) continue;
-      try { out.push(JSON.parse(l)); } catch { /* a line being written */ }
-    }
-    return out;
-  } finally {
-    closeSync(fd);
-  }
-}
 
 /** This role's refusals by the kernel since `sinceMs`, one per path, newest first. */
 export function recentKernelDenials(file, role, sinceMs) {
   const since = new Date(sinceMs).toISOString();
   const seen = new Map();
-  for (const e of tail(file).reverse()) {
+  for (const e of readEntries(file, { tail: TAIL_BYTES }).reverse()) {
     if (e.role !== role || e.verdict !== "denied" || e.source !== "kernel") continue;
     if (!e.at || e.at < since || !e.target) continue;
     const k = `${e.action}\u0000${e.target}`;
