@@ -217,7 +217,8 @@ export function renderScan(result, keyDirs) {
     if (paths.length > 15) nested += `    ${C.dim}… and ${paths.length - 15} more${C.off}\n`;
     nested += "\n";
   }
-  if (certain.length === 0 && review.length === 0 && links.length === 0) {
+  const named = result.named ?? [];
+  if (certain.length === 0 && review.length === 0 && links.length === 0 && named.length === 0) {
     lines.push(skipped.nested
       ? `  nothing credential-shaped in what was scanned ${C.dim}(outside the declared directories)${C.off}\n\n`
       : `  ${C.green}nothing credential-shaped outside the declared directories${C.off}\n\n`, nested);
@@ -225,7 +226,7 @@ export function renderScan(result, keyDirs) {
   }
 
   if (certain.length) {
-    lines.push(`  ${C.red}${certain.length} credential(s)${C.off} — these shapes are issued, not written by accident\n\n`);
+    lines.push(`  ${C.red}${certain.length} credential(s)${C.off} — issued shapes, or a password in a URL: a credential, not a word that mentions one\n\n`);
     for (const h of certain) {
       const whose = h.owners?.length ? `  ${C.dim}in ${h.owners.map(safe).join(", ")}'s territory${C.off}` : "";
       lines.push(`    ${C.b}${safe(h.file)}${C.off}${C.dim}:${h.line}${C.off}  ${h.shape}${whose}\n`);
@@ -240,6 +241,18 @@ export function renderScan(result, keyDirs) {
     for (const [file, n] of [...byFile].slice(0, 15))
       lines.push(`    ${file}${C.dim}${n > 1 ? `  ×${n}` : ""}${C.off}\n`);
     if (byFile.size > 15) lines.push(`    ${C.dim}… and ${byFile.size - 15} more file(s)${C.off}\n`);
+    lines.push("\n");
+  }
+
+  // By name, not by content, and said that way: a .env of DEBUG=1 is on this
+  // list too. What it is for is the .env nobody declared.
+  if (named.length) {
+    lines.push(`  ${C.yellow}${named.length} file(s) that usually hold secrets${C.off} — by their name, not certain; every role reads them\n\n`);
+    for (const h of named.slice(0, 15)) {
+      const whose = h.owners?.length ? `  ${C.dim}in ${h.owners.map(safe).join(", ")}'s territory${C.off}` : "";
+      lines.push(`    ${C.b}${safe(h.file)}${C.off}${whose}\n`);
+    }
+    if (named.length > 15) lines.push(`    ${C.dim}… and ${named.length - 15} more${C.off}\n`);
     lines.push("\n");
   }
 

@@ -22,6 +22,7 @@ export function scanCommand(config, argv = []) {
   for (const h of hits) if (h.level !== "link") h.owners = ownersOf(config, h.file);
   const result = {
     certain: hits.filter((h) => h.level === "certain"),
+    named: hits.filter((h) => h.level === "named"),
     review: hits.filter((h) => h.level === "review"),
     links: hits.filter((h) => h.level === "link"),
     skipped,

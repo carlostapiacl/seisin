@@ -260,6 +260,12 @@ From a first-run review with a small sample repo.
   `--link` prints it and warns when it is not this directory's, and `ui` prints the full path of
   the policy it reads.
 
+- **`scan` finds the `.env` it called clean.** A password in a URL (`postgres://u:p@h/db`) is a
+  certain finding unless the password is a stand-in (`password`, `${DB_PASS}`, `<pass>`). And files
+  that usually hold secrets by their name — `.env*`, `*.pem`, `*.key`, `id_rsa`, `id_ed25519`… but
+  not `.example`, `.sample` or `.template` — found outside the key dirs are always listed, as
+  *files that usually hold secrets*, not certain and without changing the exit code.
+
 ## 0.4.2 — 2026-09-29
 
 - **Small hardening across the launcher.** A `--observe` written after the command
