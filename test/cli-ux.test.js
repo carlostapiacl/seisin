@@ -143,9 +143,13 @@ test("run: the header names the territory and keys; the end lists only what this
   ask(dir, { role: "qa", action: "write", target: "frontend/old.js" });
   const r = sh(dir, "run", "frontend", "--", "sh", "-c", "echo x > backend/new.py");
   assert.match(r.err, /seisin: frontend · writes frontend\/\*\* \(\+\d+ scratch\) · keys netlify\.txt/);
-  assert.match(r.err, /#2\s+frontend wants write on backend\/src\/\*\*|#2\s+frontend wants write on backend\/\*\*/);
   assert.doesNotMatch(r.err, /qa wants write/, "an older request is counted, not reprinted");
-  assert.match(r.err, /this run: 1 new request\(s\) · 1 older pending — seisin requests/);
+  // A plain shell's denial becomes a request only where the OS reports it to
+  // seisin (macOS's log); on Linux it reaches seisin through the agent's hook.
+  if (process.platform === "darwin") {
+    assert.match(r.err, /#2\s+frontend wants write on backend\/src\/\*\*|#2\s+frontend wants write on backend\/\*\*/);
+    assert.match(r.err, /this run: 1 new request\(s\) · 1 older pending — seisin requests/);
+  }
 
   const quiet = sh(dir, "run", "frontend", "--", "true");
   assert.equal(quiet.code, 0, quiet.all);
