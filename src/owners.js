@@ -15,6 +15,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { protectedBy } from "./surface.js";
 import { entriesOf } from "./keys.js";
+import { WILD } from "./paths.js";
 
 /**
  * Does this glob cover this path? Supports `**`, `*`, `?` and a trailing `/`.
@@ -100,9 +101,6 @@ function normalized(path) {
   return p;
 }
 
-/** The four characters the matcher treats as wildcards. */
-export const WILD = /[*?[\]]/;
-
 /**
  * What every path a glob matches starts with: its text up to the first
  * wildcard, minus a final `/` — `src/api/**` matches `src/api` itself, and
@@ -139,22 +137,9 @@ export function normalize(s) {
   return up.join("/");
 }
 
-/**
- * Glob to RegExp.
- *
- * The wildcards are parked on sentinels before `*` is expanded, because
- * expanding `**` first produces a `.*` whose own `*` the next pass would
- * rewrite again. Getting that order wrong is silent: the regex still compiles
- * and quietly matches the wrong set of files.
- *
- * `src/api/**` also matches `src/api` itself. Without that, the directory a
- * role was just granted comes back ownerless, which reads as a bug every time.
- *
- * Dotfiles are matched like any other name: `*.env` covers `.env`. Shell globs
- * hide them by default, and most glob libraries copy that. A permission tool
- * must not: covering one file too many costs an argument, covering one too few
- * is the hole. When the two readings disagree, this one takes the wider set.
- */
+/** matchGlob's memo, shared between calls (see there). */
+let MEMO = new Uint8Array(4096);
+
 /**
  * Does `glob` cover `path`? A linear matcher, not a regular expression.
  *
@@ -169,9 +154,15 @@ export function normalize(s) {
  * Same wildcards as before: `?` one non-`/`, `*` a run of non-`/`, `**` any run
  * including `/`, `**\/` zero or more whole directories, a trailing `/**` the
  * subtree. Characters are compared literally; nothing is treated as regex.
+ *
+ * `src/api/**` also matches `src/api` itself. Without that, the directory a
+ * role was just granted comes back ownerless, which reads as a bug every time.
+ *
+ * Dotfiles are matched like any other name: `*.env` covers `.env`. Shell globs
+ * hide them by default, and most glob libraries copy that. A permission tool
+ * must not: covering one file too many costs an argument, covering one too few
+ * is the hole. When the two readings disagree, this one takes the wider set.
  */
-let MEMO = new Uint8Array(4096);
-
 function matchGlob(glob, path) {
   const G = glob.length, P = path.length;
   // memo[gi * (P+1) + pi]: 0 unknown, 1 true, 2 false. One flat array, kept
@@ -422,13 +413,6 @@ function fileKeys(role) {
 }
 
 /**
- * The sentence a blocked agent should read.
- *
- * Three outcomes, and the third is the one worth having: a path nobody owns is
- * not a permission problem, it is a hole in the map. Saying so is more useful
- * than denying quietly, and it is the only way the hole ever gets fixed.
- */
-/**
  * A connection the kernel refused: `tcp:<port>` or a unix socket path.
  *
  * The kernel does not say which host — its line is `remote:*:<port>` — so the
@@ -491,6 +475,13 @@ function explainMcp(config, role, name) {
       : `${role} declares mcp = [], no MCP servers` };
 }
 
+/**
+ * The sentence a blocked agent should read.
+ *
+ * Three outcomes, and the third is the one worth having: a path nobody owns is
+ * not a permission problem, it is a hole in the map. Saying so is more useful
+ * than denying quietly, and it is the only way the hole ever gets fixed.
+ */
 export function explain(config, role, action, target) {
   if (action === "connect") return explainConnect(config, role, target);
   if (action === "mcp") return explainMcp(config, role, target);

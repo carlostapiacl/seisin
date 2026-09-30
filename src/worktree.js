@@ -30,9 +30,10 @@
  * and no dependency — a tool people install to shrink their attack surface
  * should not shell out to find out where it is.
  */
-import { statSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { statSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve, relative, isAbsolute } from "node:path";
 import { findConfig } from "./config.js";
+import { realOrSelf } from "./grants.js";
 
 const GITDIR = /^gitdir:\s*(.+?)\s*$/;
 const WORKTREE = /^(.+)\/\.git\/worktrees\/[^/]+$/;
@@ -63,18 +64,9 @@ function statOf(p) {
   }
 }
 
-/** The path with symlinks followed, or the path itself when it is not on disk. */
-function real(p) {
-  try {
-    return realpathSync(p);
-  } catch {
-    return p;
-  }
-}
-
 /** Two spellings of one place — `/tmp` and `/private/tmp` — compare equal. */
 function same(a, b) {
-  return real(a) === real(b);
+  return realOrSelf(a) === realOrSelf(b);
 }
 
 /**

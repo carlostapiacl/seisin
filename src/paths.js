@@ -23,7 +23,8 @@ export function realAncestor(p) {
   let head = p, tail = "";
   while (head !== dirname(head)) {
     try {
-      const real = realpathSync(head);
+      // `.native`: the disk's own case on APFS — see realOrSelf in grants.js.
+      const real = realpathSync.native(head);
       return tail ? join(real, tail) : real;
     } catch {
       tail = tail ? join(basename(head), tail) : basename(head);
@@ -32,6 +33,13 @@ export function realAncestor(p) {
   }
   return p;
 }
+
+/**
+ * The four characters the glob matcher treats as wildcards. Here, in a module
+ * that imports nothing of seisin's, so that owners.js and grants.js share one
+ * definition without importing each other.
+ */
+export const WILD = /[*?[\]]/;
 
 /**
  * Repo-relative when `target` is inside the repo, spelled either way; exactly as

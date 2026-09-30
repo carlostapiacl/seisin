@@ -9,13 +9,14 @@
  * where they can be exercised directly.
  */
 import { resolve, dirname, basename, relative, join, delimiter } from "node:path";
-import { realpathSync, lstatSync, readdirSync, existsSync, readFileSync, statSync } from "node:fs";
+import { lstatSync, readdirSync, existsSync, readFileSync, statSync } from "node:fs";
 import { ownersOf, covers, enforcedNeverWrites } from "./owners.js";
 import { ROLE_KEYS, closest } from "./config.js";
 import { entriesOf } from "./keys.js";
 import { SHAPES } from "./scan.js";
 import { wired } from "./commands/wire.js";
 import { RUNTIME_WRITES, CREDENTIAL_HOMES, expand, settingsFor } from "./srt.js";
+import { realOrSelf } from "./grants.js";
 import { protections, resolveExecutable } from "./surface.js";
 
 /**
@@ -323,7 +324,6 @@ function homeReachWarning(config) {
 }
 
 
-/** Every way this policy does not hold, each with what to do about it. */
 /**
  * Credential-shaped names at the top of the repository, and nothing deeper.
  *
@@ -369,13 +369,22 @@ function credentialish(root) {
   return [...found].sort().slice(0, 4);
 }
 
-/** Is this a command the shell would find? Walks PATH; asks no shell. */
-function onPath(cmd) {
-  if (cmd.includes("/")) return existsSync(cmd);
-  const dirs = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
-  return dirs.some((d) => existsSync(join(d, cmd)));
+/**
+ * Would the parent find this command? The same lookup `run` makes
+ * (resolveExecutable), so check does not call "missing" a program that is
+ * only in a directory a role writes — that has its own warning, above.
+ */
+function onPath(cmd, config) {
+  try {
+    // A path is resolved against the policy and not looked up, so it is there
+    // only if it exists.
+    return existsSync(resolveExecutable(cmd, config));
+  } catch (e) {
+    return /a role can write/.test(e.message);
+  }
 }
 
+/** Every way this policy does not hold, each with what to do about it. */
 function warningsFor(config, roles, shared = sharedPaths(config, roles)) {
   const warnings = [];
 
@@ -587,7 +596,6 @@ function warningsFor(config, roles, shared = sharedPaths(config, roles)) {
       const unnamed = onDisk.filter((n) => !named.includes(n));
       if (!unnamed.length) continue;
       const shown = relative(resolve(config.root), dir);
-      const more = unnamed.length > 8 ? ` … and ${unnamed.length - 8} more` : "";
       listed.push({ role: r.name, named: named.length, total: onDisk.length,
                     where: shown ? shown + "/" : "the repo root", unnamed });
 
@@ -722,7 +730,7 @@ function warningsFor(config, roles, shared = sharedPaths(config, roles)) {
     for (const k of entriesOf(r)) if (k.kind === "ref") used.add(k.scheme);
   for (const scheme of [...used].sort()) {
     const provider = config.keyProviders?.[scheme];
-    if (!provider || onPath(provider.command[0])) continue;
+    if (!provider || onPath(provider.command[0], config)) continue;
     warnings.push({
       kind: "provider-missing",
       headline: `the ${scheme} provider runs "${provider.command[0]}", which is not on PATH`,
@@ -790,14 +798,5 @@ function lstatOrNull(p) {
     return lstatSync(p);
   } catch {
     return null;
-  }
-}
-
-/** The path with symlinks followed, or the path itself if it is not on disk. */
-function realOrSelf(p) {
-  try {
-    return realpathSync(p);
-  } catch {
-    return p;
   }
 }
