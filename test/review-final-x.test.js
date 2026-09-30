@@ -111,3 +111,53 @@ test("once the policy hands the family, the same grant goes through", () => {
   grant(cfg, ["1"]);
   assert.match(readFileSync(join(box, "seisin.toml"), "utf8"), /web\/\.vscode/);
 });
+
+/* ── "already has it" closes the request on every channel ─────────────── */
+
+async function consoleOn(t, box) {
+  const { serve } = await import("../src/serve.js");
+  const server = await serve(join(box, "seisin.toml"), 0);
+  t.after(() => server.close());
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const auth = { "x-seisin-token": server.seisinToken };
+  return {
+    get: (path, headers = {}) => fetch(base + path, { headers: { ...auth, ...headers } }),
+    post: (path, body) => fetch(base + path, { method: "POST", headers: { ...auth, "content-type": "application/json" }, body }),
+  };
+}
+
+test("`seisin grant` for something the role already has closes it as granted", () => {
+  const box = repo("seisin-x-already-cli-");
+  const q = requestsPath(box);
+  // Asked before a person edited the policy by hand to give it.
+  record(q, { role: "a", action: "write", target: "a/x.ts", owners: [] });
+  const cfg = loadConfig(join(box, "seisin.toml"));
+  const before = readFileSync(join(box, "seisin.toml"), "utf8");
+  const r = grant(cfg, ["1"]);
+  assert.equal(r.changed, false);
+  assert.equal(readFileSync(join(box, "seisin.toml"), "utf8"), before);
+  assert.equal(pending(q).length, 0, "left pending forever");
+  assert.equal(pending(q, { includeSettled: true })[0].state, "granted");
+});
+
+test("the console closes the same request the same way", async (t) => {
+  const box = repo("seisin-x-already-ui-");
+  const q = requestsPath(box);
+  record(q, { role: "a", action: "write", target: "a/x.ts", owners: [] });
+  const { post } = await consoleOn(t, box);
+  const r = await post("/api/decide", JSON.stringify({ key: pending(q)[0].key, decision: "granted" }));
+  assert.equal(r.status, 200, await r.text());
+  assert.equal(pending(q).length, 0);
+  assert.equal(pending(q, { includeSettled: true })[0].state, "granted");
+});
+
+test("from the CLI it exits 0 and says it was already granted", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const { CLI } = await import("./_tmp.js");
+  const box = repo("seisin-x-already-exit-");
+  record(requestsPath(box), { role: "a", action: "write", target: "a/x.ts", owners: [] });
+  const r = spawnSync(process.execPath, [CLI, "grant", "1"], { cwd: box, encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /already granted/);
+  assert.equal(pending(requestsPath(box)).length, 0);
+});
