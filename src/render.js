@@ -180,12 +180,20 @@ export function renderScan(result, keyDirs) {
   const lines = [`\n  ${C.dim}protected: ${where}${C.off}\n\n`];
 
   // A pruned checkout is part of what a clean result means, so it is said
-  // even when there is nothing else to say.
-  const nested = skipped.nested
-    ? `  ${C.dim}not scanned: ${skipped.nested} nested checkout(s) — scan each from its own root${C.off}\n\n`
-    : "";
+  // even when there is nothing else to say — in yellow, not dim: every role
+  // can still read it, and a dim line under a green verdict read as clean.
+  const paths = result.nestedPaths ?? [];
+  let nested = "";
+  if (skipped.nested) {
+    nested = `  ${C.yellow}not scanned: ${skipped.nested} nested checkout(s)${C.off} — another repository each; every role can still read them. Scan one with ${C.b}cd <dir> && seisin scan${C.off}\n`;
+    for (const p of paths.slice(0, 15)) nested += `    ${safe(p)}\n`;
+    if (paths.length > 15) nested += `    ${C.dim}… and ${paths.length - 15} more${C.off}\n`;
+    nested += "\n";
+  }
   if (certain.length === 0 && review.length === 0 && links.length === 0) {
-    lines.push(`  ${C.green}nothing credential-shaped outside the declared directories${C.off}\n\n`, nested);
+    lines.push(skipped.nested
+      ? `  nothing credential-shaped in what was scanned ${C.dim}(outside the declared directories)${C.off}\n\n`
+      : `  ${C.green}nothing credential-shaped outside the declared directories${C.off}\n\n`, nested);
     return lines.join("");
   }
 
@@ -224,7 +232,7 @@ export function renderScan(result, keyDirs) {
   if (quiet.length) lines.push(`  ${C.dim}not reported: ${quiet.join(" · ")}${C.off}\n`);
   // Only the ones to review are capped; a certain hit is always listed above.
   if (truncated) lines.push(`  ${C.yellow}${result.omitted ?? "more"} more to review were not listed — the cap applies to review, never to certain hits${C.off}\n`);
-  if (nested) lines.push(nested.trimEnd() + "\n");
+  if (nested) lines.push(nested);
   lines.push(`  ${C.dim}seisin does not move these. Where a credential lives is your call.${C.off}\n\n`);
   return lines.join("");
 }
