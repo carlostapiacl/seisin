@@ -268,12 +268,13 @@ test("a decision is looked up, applied and settled under the policy lock", async
   const policy = join(box, "seisin.toml");
   // Another process — a `seisin grant` or `decline` in a terminal — holds the
   // policy lock and declines the request while holding it. The console must
-  // look the request up after that, not before.
+  // look the request up after that, not before. The lock is `.seisin/policy.lock`
+  // (requests.js, policyLockBase), where no role can plant one.
   const log = new URL("../src/log.js", import.meta.url).href;
   const reqs = new URL("../src/requests.js", import.meta.url).href;
   const child = spawn(process.execPath, ["--input-type=module", "-e",
     `import { withLock } from ${JSON.stringify(log)}; import { settle } from ${JSON.stringify(reqs)};
-     withLock(${JSON.stringify(policy)}, () => {
+     withLock(${JSON.stringify(join(box, ".seisin", "policy"))}, () => {
        process.stdout.write("locked\\n");
        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 700);
        settle(${JSON.stringify(q)}, ${JSON.stringify(key)}, "denied", "the other channel");

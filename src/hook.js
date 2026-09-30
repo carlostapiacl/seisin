@@ -248,7 +248,9 @@ export function decide(config, role, event, { observe = false, now = append, ask
     // Except a `never_writes` refusal. That one is the policy saying no on
     // purpose; a request for it asks a person to undo a subtraction somebody
     // wrote, and approving it is how the subtraction disappears unnoticed.
-    if (!observe && !v.allowed && !v.neverWrites && !v.gitMetadata)
+    // Nor a protected file: no grant opens one (the kernel keeps refusing it),
+    // which is why `seisin run` never queued those either (intake.js).
+    if (!observe && !v.allowed && !v.neverWrites && !v.gitMetadata && !v.protected)
       ask(queue, { role, action: kind === "key" ? "read" : t.action, target: rel, owners: v.owners ?? [] });
 
     // The action as it was RECORDED, not as the tool named it: a read of a key
@@ -299,7 +301,7 @@ export function decide(config, role, event, { observe = false, now = append, ask
         // told "no" retries; an agent told whose it is asks, or moves on.
         denied.neverWrites
           ? `${denied.reason}. Do not ask for it: nothing was queued, because the answer is already written down.` + again
-          : denied.gitMetadata
+          : denied.gitMetadata || denied.protected
           ? `${denied.reason}. Nothing was queued.` + again
           : denied.mcp
           ? `${denied.reason}. Nothing was queued: which MCP servers a role may load is set in its mcp list, a policy change a person makes, not a grant they approve.` + again
