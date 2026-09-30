@@ -111,9 +111,16 @@ const COMMANDS = {
     await serveMcp(version());
     return 0;
   },
+  // Always 0. Claude Code reads a non-zero exit from a PreToolUse hook as
+  // "block", so an internal error here would stop the agent's tool call — and
+  // the hook explains, it never enforces. The error goes to stderr instead.
   hook: async () => {
-    const decision = await hook();
-    if (decision?.hookSpecificOutput) out(JSON.stringify(decision) + "\n");
+    try {
+      const decision = await hook();
+      if (decision?.hookSpecificOutput) out(JSON.stringify(decision) + "\n");
+    } catch (e) {
+      err(`seisin hook: ${e?.message ?? e} — no decision, the tool call goes ahead\n`);
+    }
     return 0;
   },
   "--version": () => void out(version() + "\n"),

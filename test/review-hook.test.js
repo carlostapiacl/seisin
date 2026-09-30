@@ -1,0 +1,68 @@
+/**
+ * The hook and the run, held to what the 2026-09-30 code review found.
+ *
+ * Each test names the finding it fixes. Most go through the CLI, because the
+ * contract that broke was the process's — its exit code and how long it took —
+ * and a unit test of the function behind it would have passed all along.
+ */
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { scratch } from "./_tmp.js";
+
+import { targetsOf } from "../src/hook.js";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const CLI = join(HERE, "..", "src", "cli.js");
+const TOML = '[roles.web]\nwrites = ["src/web/**"]\n\n[roles.api]\nwrites = ["src/api/**"]\n';
+
+/** A policy in a temp dir, and the environment a hook inside `seisin run` sees. */
+function policy(toml = TOML) {
+  const dir = scratch("seisin-rh-");
+  writeFileSync(join(dir, "seisin.toml"), toml);
+  return {
+    dir,
+    env: {
+      ...process.env,
+      SEISIN_ROLE: "web",
+      SEISIN_CONFIG: join(dir, "seisin.toml"),
+      // A socket nobody listens on: the entries are lost, the hook must not care.
+      SEISIN_SPOOL: join(dir, "nobody-here.sock"),
+    },
+  };
+}
+
+function hook(env, event) {
+  return spawnSync(process.execPath, [CLI, "hook"], { input: JSON.stringify(event), env, encoding: "utf8" });
+}
+
+/* ── P0-1: the hook fails open ─────────────────────────────────────────── */
+
+test("a malformed PreToolUse event exits 0 with no decision (review P0-1)", () => {
+  const { env } = policy();
+  for (const tool_input of [null, { file_path: 123 }, "a string", { file_path: ["src/api/x.ts"] }]) {
+    const r = hook(env, { hook_event_name: "PreToolUse", tool_name: "Write", tool_input });
+    assert.equal(r.status, 0, `exit ${r.status} for ${JSON.stringify(tool_input)} — Claude Code would block the tool\n${r.stderr}`);
+    assert.equal(r.stdout, "", "no decision on a malformed event");
+  }
+  const bash = hook(env, { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: null });
+  assert.equal(bash.status, 0, bash.stderr);
+});
+
+test("targetsOf treats a non-object input as empty and ignores non-string paths", () => {
+  assert.deepEqual(targetsOf("Write", null), []);
+  assert.deepEqual(targetsOf("Edit", { file_path: 123 }), []);
+  assert.deepEqual(targetsOf("Read", "src/x"), []);
+  assert.deepEqual(targetsOf("Bash", null), []);
+  assert.deepEqual(targetsOf("Write", { file_path: "src/a.ts" }), [{ action: "write", path: "src/a.ts" }]);
+});
+
+test("a well-formed denial still comes back as a decision through the CLI", () => {
+  const { env } = policy();
+  const r = hook(env, { hook_event_name: "PreToolUse", tool_name: "Write", tool_input: { file_path: "src/api/x.ts" } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, "deny");
+});
