@@ -11,174 +11,103 @@
  * key each role can read, which is a map of where the credentials live.
  */
 import { createServer } from "node:http";
-import { randomBytes, timingSafeEqual } from "node:crypto";
-import { readFileSync, existsSync } from "node:fs";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { readFileSync, existsSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
-import { read, logPath } from "./log.js";
+import { read, logPath, logSegments } from "./log.js";
 import { settingsFor } from "./srt.js";
-import { pending, requestsPath, settle, applyGrant, refuseIfBarred, markStale, editPolicy } from "./requests.js";
-import { walls } from "./walls.js";
-import { explain, standingOf } from "./owners.js";
+import { pending, requestsPath, settle, applyGrant, refuseIfBarred, editPolicy } from "./requests.js";
+import { causesOf, parseSince, queue, verdicts, wallsByRole } from "./views.js";
+
+// Moved to views.js, which the MCP server shares; kept importable from here.
+export { causesOf } from "./views.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-
-/**
- * Everything the page needs, read fresh on each request.
- *
- * Read fresh rather than cached because the file on disk is the truth and the
- * page is a view of it — someone editing seisin.toml in an editor should see
- * the console change, not wonder why it disagrees.
- */
-/**
- * Today's denials, grouped by what was denied rather than by who asked.
- *
- * Called `causes` and not `friction`: `seisin review` already has a `friction`
- * that counts something narrower — repeated denials that are not about keys —
- * and two screens of one product reporting different numbers under one label
- * is the kind of thing nobody notices until they are compared.
- *
- * The console used to show them per role, which is the same list a hundred
- * times over: measured on one deployment, 1,080 of 1,422 refusals were a
- * single lock file across six repositories, and per-role that reads as six
- * hundred identical rows instead of one sentence. Grouped, the shape of the
- * day is visible at a glance and it is almost never a territory dispute.
- *
- * `stillRefused` is recomputed against the policy as it stands, not read out
- * of the log — a cause that has been granted since is history, not friction,
- * and leaving it on the page sends somebody to fix what is already fixed.
- */
-export function causesOf(cfg, entries) {
-  const by = new Map();
-  for (const e of entries) {
-    if (e.verdict !== "denied" || !e.target || !e.action) continue;
-    const k = `${e.action}\u0000${e.target}`;
-    const g = by.get(k) ?? { action: e.action, target: e.target, kind: e.kind, times: 0, roles: new Set(), ownersThen: e.owners ?? [] };
-    g.times++;
-    g.roles.add(e.role);
-    by.set(k, g);
-  }
-  const total = [...by.values()].reduce((n, g) => n + g.times, 0);
-
-  /**
-   * The same grouping again, one level coarser: by the NAME at the end of the
-   * path rather than the path.
-   *
-   * Grouping by path alone gets the most important reading backwards. Measured
-   * here: six of the top seven causes were `.git/index.lock` in six different
-   * repositories, no single one above 17% — so "no cause dominates" is what the
-   * arithmetic says and the opposite of what is true. Three quarters of the
-   * window was one *kind* of thing, and that is a tooling problem with a
-   * mechanical fix, not a territory question anybody needs to rule on.
-   *
-   * By last segment, and nothing cleverer. A regex that recognised lock files,
-   * caches and build outputs would be a list of guesses about other people's
-   * toolchains that quietly goes stale; a repeated filename is a fact about
-   * this log.
-   */
-  const fams = new Map();
-  for (const g of by.values()) {
-    const name = g.target.split("/").filter(Boolean).pop() ?? g.target;
-    const f = fams.get(name) ?? { name, times: 0, paths: 0, where: [], roles: new Set() };
-    f.times += g.times;
-    f.paths++;
-    // The places, so the console can show what a name is made of instead of
-    // asserting a percentage the reader has to take on faith.
-    f.where.push({ target: g.target, times: g.times });
-    for (const r of g.roles) f.roles.add(r);
-    fams.set(name, f);
-  }
-  const families = [...fams.values()]
-    .sort((a, b) => b.times - a.times)
-    .map((f) => ({
-      name: f.name, times: f.times, paths: f.paths,
-      share: total ? f.times / total : 0,
-      roles: [...f.roles].sort(),
-      where: f.where.sort((a, b) => b.times - a.times).slice(0, 20),
-    }));
-
-  /**
-   * What a `grep` over the log cannot tell you: where each refused path stands
-   * against the policy as it is now.
-   *
-   * The headline used to be "74% of it is one name", and a field review
-   * applied this project's own test to it: *did the number tell you something
-   * you did not know?* For somebody who reads the raw log, no. So the console
-   * added how many causes are on paths no role owns — a decision rather than a
-   * number — and then computed it from the `owners` each log line carried,
-   * which is the one thing the log already had. It said the policy and read
-   * the past: every grant made since left its refusals counted as "nobody's",
-   * and protected surfaces, ports and paths outside the repository, which
-   * nobody can ever own, were counted as waiting for somebody to claim them.
-   *
-   * Now every cause is classified by `standing` (owners.js), and the four
-   * piles are reported in paths and in refusals. `unowned` keeps its name and
-   * now means what the page always said it meant. The owners the log recorded
-   * are kept on each cause as `ownersThen`: evidence of what was true, not
-   * authority over what is.
-   */
-  const standOf = standingOf(cfg);
-  const piles = Object.fromEntries(["unowned", "owned", "protected", "outside"].map((k) => [k, { paths: 0, denials: 0 }]));
-  for (const g of by.values()) {
-    const s = standOf({ kind: g.kind, target: g.target });
-    g.standing = s;
-    piles[s.kind].paths++;
-    piles[s.kind].denials += g.times;
-  }
-
-  return {
-    total,
-    unowned: piles.unowned.paths,
-    standing: piles,
-    // The real number of distinct causes, not the length of the list below.
-    // The page says "over N distinct paths" and the list is capped at twelve,
-    // so taking N from the list reported the cap as if it were the count —
-    // a wrong number stated confidently, which is worse than no number.
-    distinct: by.size,
-    families: families.slice(0, 8),
-    causes: [...by.values()]
-      .sort((a, b) => b.times - a.times)
-      .slice(0, 12)
-      .map((g) => ({
-        action: g.action,
-        target: g.target,
-        times: g.times,
-        share: total ? g.times / total : 0,
-        roles: [...g.roles].sort(),
-        standing: g.standing.kind,
-        ...(g.standing.why && { why: g.standing.why }),
-        owners: g.standing.owners,
-        ownersThen: g.ownersThen,
-        // How many of the roles that hit this would still hit it. `some` and
-        // not `every`: two roles out of three still blocked is still friction,
-        // and requiring all of them would quietly retire a live cause the day
-        // one role got a grant.
-        stillRefused: [...g.roles].filter((r) => cfg.roles[r] && !explain(cfg, r, g.action, g.target).allowed).length,
-      })),
-  };
-}
 
 /**
  * `?since=<ISO date>`, or null for no filter. Anything that does not parse is
  * ignored rather than refused: a bad filter should show everything, not an error.
  */
 export function sinceOf(url) {
-  const raw = new URLSearchParams((url ?? "").split("?")[1] ?? "").get("since");
-  const t = raw ? Date.parse(raw) : NaN;
-  return Number.isNaN(t) ? null : new Date(t).toISOString();
+  return parseSince(new URLSearchParams((url ?? "").split("?")[1] ?? "").get("since"));
 }
 
+/**
+ * The files the state is made of, as they are on disk now: the policy's text,
+ * and the size and mtime of every log segment and of the queue.
+ *
+ * It was read fresh on every request, because the file on disk is the truth
+ * and the page is a view of it — someone editing seisin.toml in an editor
+ * should see the console change. That still holds: anything that changes one
+ * of these files changes the signature. What no longer happens is recomputing
+ * 1–2 s of causes and walls every two seconds to find nothing had moved
+ * (measured on the portfolio's log, 7,728 lines, 32 roles).
+ */
+const memo = { path: null, hash: null, cfg: null, logSig: null, all: null, derived: new Map(), bodies: new Map() };
+
+function statSig(p) {
+  try { const s = statSync(p); return `${p}:${s.ino}:${s.size}:${s.mtimeMs}`; } catch { return `${p}:-`; }
+}
+
+function snapshot(configPath) {
+  const text = readFileSync(configPath, "utf8");
+  const hash = createHash("sha256").update(text).digest("hex");
+  if (memo.path !== configPath || memo.hash !== hash) {
+    Object.assign(memo, { path: configPath, hash, cfg: loadConfig(configPath), logSig: null, all: null });
+    memo.derived.clear();
+    memo.bodies.clear();
+  }
+  const cfg = memo.cfg;
+  const file = logPath(cfg.root);
+  const logSig = logSegments(file).map(statSig).join("|");
+  if (logSig !== memo.logSig) {
+    memo.all = read(file);
+    memo.logSig = logSig;
+    memo.derived.clear();
+  }
+  return { cfg, text, all: memo.all, key: `${hash}|${logSig}|${statSig(requestsPath(cfg.root))}` };
+}
+
+/** Keeps the last few entries of a memo map. */
+function remember(map, key, value, max = 4) {
+  map.set(key, value);
+  while (map.size > max) map.delete(map.keys().next().value);
+  return value;
+}
+
+/**
+ * Everything the page needs.
+ *
+ * Without each role's generated settings: they were 70 % of the 749 KB the
+ * page downloaded every two seconds and it drew none of them. One role's are
+ * served on demand by /api/settings.
+ */
 export function state(configPath, { since = null } = {}) {
-  const cfg = loadConfig(configPath);
+  const { cfg, text, all } = snapshot(configPath);
+
   // The date filter narrows everything read from the log: activity, causes,
   // walls and the per-role counts. Not the request queue, which is what is
-  // waiting now whatever the window.
-  const entries = read(logPath(cfg.root), { limit: 200, since });
-  // The whole window, not a tail. "All" used to mean the last 4000 lines, so a
-  // 30-day window could show more denials than "all" did (6k against 4k on a
-  // real log). Every count on the page comes from this list.
-  const forShape = read(logPath(cfg.root), since ? { since } : {});
+  // waiting now whatever the window. (An entry with no `at` is kept, as
+  // read({ since }) always did.)
+  const derived = memo.derived.get(since) ?? remember(memo.derived, since, (() => {
+    const win = since ? all.filter((e) => !(e.at < since)) : all;
+    const blocks = new Map();
+    for (const e of win) if (e.verdict === "denied") blocks.set(e.role, (blocks.get(e.role) ?? 0) + 1);
+    const ask = verdicts(cfg);
+    return {
+      blocks,
+      log: win.slice(-60).reverse(),
+      // The whole window, not a tail. "All" used to mean the last 4000 lines, so a
+      // 30-day window could show more denials than "all" did (6k against 4k on a
+      // real log). Every count on the page comes from this list.
+      causes: causesOf(cfg, win, { ask }),
+      // What each role keeps being refused AND would still be refused today.
+      // Empty for a role that has hit nothing twice, which is most of them.
+      walls: wallsByRole(cfg, win, { ask }),
+    };
+  })());
 
   const roles = Object.values(cfg.roles).map((r) => ({
     name: r.name,
@@ -192,38 +121,53 @@ export function state(configPath, { since = null } = {}) {
     trustd: r.trustd === true,
     // Counted over the same window as the causes, so the KPI and the screen it
     // links to agree.
-    blocks: forShape.filter((e) => e.role === r.name && e.verdict === "denied").length,
-    settings: settingsFor(cfg, r.name),
+    blocks: derived.blocks.get(r.name) ?? 0,
   }));
 
-  // Read once for every role's walls, rather than once per role.
-  const whole = read(logPath(cfg.root), { verdict: "denied", since });
-  // Staleness is about the role's whole history, never the window: a request
-  // is not old just because the filter hides the runs that made it old.
-  const history = since ? read(logPath(cfg.root), { verdict: "denied" }) : whole;
   return {
     root: cfg.root,
     config: cfg.path,
-    requests: markStale(pending(requestsPath(cfg.root)), history),
+    // Staleness is about the role's whole history, never the window: a request
+    // is not old just because the filter hides the runs that made it old. The
+    // whole log, every verdict, as `seisin requests` and the MCP read it — this
+    // counted runs over denials only, and marked differently from both.
+    requests: queue(cfg.root, all),
     since,
     // The file itself, not a regeneration of it. The page can render a policy
     // from its own model, and that model has no comments — so showing it under
     // the heading "seisin.toml" next to "copy this back" invites someone to
     // paste away the provenance a grant just wrote.
-    toml: readFileSync(cfg.path, "utf8"),
+    toml: text,
     keyDirs: cfg.keyDirs,
     allowedDomains: cfg.allowedDomains,
     roles,
-    causes: causesOf(cfg, forShape),
-    // What each role keeps being refused AND would still be refused today.
-    // Empty for a role that has hit nothing twice, which is most of them.
-    walls: Object.fromEntries(
-      Object.keys(cfg.roles)
-        .map((r) => [r, walls(cfg, r, { entries: whole })])
-        .filter(([, w]) => w.length)),
-    log: entries.slice(-60).reverse(),
+    causes: derived.causes,
+    walls: derived.walls,
+    log: derived.log,
     live: true,
   };
+}
+
+/**
+ * `state` as the response body, the same string for as long as nothing on disk
+ * moved — and a tag naming it, so a poll that already has it gets a 304 and
+ * no body at all.
+ */
+function stateBody(configPath, since) {
+  const { key } = snapshot(configPath);
+  const k = `${key}|${since}`;
+  return memo.bodies.get(k) ?? remember(memo.bodies, k, {
+    body: JSON.stringify(state(configPath, { since })),
+    etag: `"${createHash("sha256").update(k).digest("hex").slice(0, 24)}"`,
+  });
+}
+
+/** One role's generated sandbox settings — what `seisin run` would hand the runtime. */
+function settingsOf(configPath, role) {
+  const { cfg } = snapshot(configPath);
+  if (typeof role !== "string" || !Object.hasOwn(cfg.roles, role))
+    throw Object.assign(new Error(`unknown role ${JSON.stringify(role)}`), { status: 404 });
+  return settingsFor(cfg, role);
 }
 
 /**
@@ -237,8 +181,6 @@ export function state(configPath, { since = null } = {}) {
  * MCP server deliberately does not.
  */
 function decide(configPath, { key, decision, reason }) {
-  const cfg = loadConfig(configPath);
-  const file = requestsPath(cfg.root);
   /**
    * By the request's id, never by its place in the queue.
    *
@@ -249,45 +191,79 @@ function decide(configPath, { key, decision, reason }) {
    * reason typed for something else. Re-sending the POST approved the next one.
    * The CLI stopped doing this long ago; the console had not.
    */
-  if (typeof key !== "string" || !key) throw new Error("key is required — the id of the request on screen");
-  const req = pending(file).find((r) => r.key === key);
-  if (!req) throw new Error(`request ${key} is no longer pending — reload to see the queue as it is now`);
+  if (typeof key !== "string" || !key) throw bad("key is required — the id of the request on screen");
   if (decision !== "granted" && decision !== "denied")
-    throw new Error(`decision must be granted or denied`);
+    throw bad(`decision must be granted or denied`);
+  const cfg = loadConfig(configPath);
+  const file = requestsPath(cfg.root);
 
-  if (decision === "granted") {
-    // The config is edited as text, so comments and order survive. Written
-    // before the queue is settled: if this throws, the request is still open
-    // rather than marked done against a file that never changed.
-    refuseIfBarred(cfg, req);
-    // Locked and atomic, so a grant from another channel is serialised with
-    // this one instead of one silently overwriting the other. See editPolicy.
-    try {
-      editPolicy(cfg, (before) => applyGrant(before, req, reason));
-    } catch (e) {
-      if (e.code === "ELOCKED") throw new Error("another grant is in progress — try again in a moment");
-      throw e;
-    }
+  /**
+   * Looked up, applied and settled under one lock — the policy's, the one
+   * every grant takes (editPolicy). The lookup used to happen before it and
+   * the settle after it, so the console and `seisin grant` could both find the
+   * same request pending and both act on it. A refusal takes the lock as well,
+   * though it writes no policy, for the same reason.
+   *
+   * The config is edited as text, so comments and order survive, and it is
+   * written before the queue is settled: if the write throws, the request is
+   * still open rather than marked done against a file that never changed.
+   */
+  let req = null;
+  try {
+    editPolicy(cfg, (before) => {
+      req = pending(file).find((r) => r.key === key);
+      if (!req) throw bad(`request ${key} is no longer pending — reload to see the queue as it is now`);
+      if (decision !== "granted") return { toml: before, changed: false };
+      refuseIfBarred(cfg, req);
+      return applyGrant(before, req, reason);
+    }, { after: () => settle(file, req.key, decision, reason ?? "") });
+  } catch (e) {
+    if (e.code === "ELOCKED") throw Object.assign(new Error("another grant is in progress — try again in a moment"), { status: 503 });
+    throw e;
   }
-  settle(file, req.key, decision, reason ?? "");
   return { ok: true, role: req.role, grant: req.grant, decision };
 }
 
-/** The body of a POST, capped: this endpoint takes three short fields. */
+/** An error that is the request's fault. */
+function bad(message) {
+  return Object.assign(new Error(message), { status: 400 });
+}
+
+/**
+ * The status for an error thrown while answering: its own when it has one; a
+ * failed read or write of a file (it carries a syscall) is the server's; what
+ * is left — a bad field, a grant the policy refuses — is the request's.
+ */
+function statusOf(e) {
+  if (Number.isInteger(e?.status)) return e.status;
+  return e?.syscall ? 500 : 400;
+}
+
 /**
  * A request body, capped. The cap is per route: one decision is a few hundred
  * bytes, but "decline all" carries every key on screen — 109 of them were
  * 9.3 KB, over the old flat 4 KB, and the connection was cut with nothing but
  * "Failed to fetch" in the browser. Found by Carlos on the first real use.
+ *
+ * Over the cap it is refused with 413, not cut: the caller answers first and
+ * the connection is closed after the answer has gone (see `answer`).
  */
 function readBody(req, max = 4096) {
   return new Promise((ok, fail) => {
     let s = "";
+    let over = false;
+    req.setEncoding("utf8");
     req.on("data", (c) => {
+      if (over) return;
       s += c;
-      if (s.length > max) { fail(new Error("body too large")); req.destroy(); }
+      if (Buffer.byteLength(s) > max) {
+        over = true;
+        s = "";
+        fail(Object.assign(new Error(`body too large — this route takes at most ${max} bytes`), { status: 413 }));
+      }
     });
-    req.on("end", () => ok(s));
+    req.on("end", () => { if (!over) ok(s); });
+    req.on("error", (e) => { if (!over) fail(Object.assign(e, { status: 400 })); });
   });
 }
 
@@ -301,18 +277,29 @@ function readBody(req, max = 4096) {
  * is what a queue full of noise from a bug already fixed needs.
  *
  * By key, not "whatever is pending now": a request that arrived after the page
- * drew is one the person has not seen, and it stays.
+ * drew is one the person has not seen, and it stays. Under the policy lock,
+ * like a single decision, so a grant from another channel cannot land between
+ * the lookup and the settle.
  */
 function declineAll(configPath, { keys, reason }) {
-  if (!Array.isArray(keys) || !keys.length) throw new Error("keys must list the requests on screen");
+  if (!Array.isArray(keys) || !keys.length) throw bad("keys must list the requests on screen");
   const cfg = loadConfig(configPath);
   const file = requestsPath(cfg.root);
   const wanted = new Set(keys.map(String));
   let declined = 0;
-  for (const req of pending(file)) {
-    if (!wanted.has(req.key)) continue;
-    settle(file, req.key, "denied", reason ?? "");
-    declined++;
+  try {
+    editPolicy(cfg, (before) => ({ toml: before, changed: false }), {
+      after: () => {
+        for (const req of pending(file)) {
+          if (!wanted.has(req.key)) continue;
+          settle(file, req.key, "denied", reason ?? "");
+          declined++;
+        }
+      },
+    });
+  } catch (e) {
+    if (e.code === "ELOCKED") throw Object.assign(new Error("another grant is in progress — try again in a moment"), { status: 503 });
+    throw e;
   }
   return { ok: true, declined };
 }
@@ -391,42 +378,65 @@ export function serve(configPath, port = 4178) {
       res.writeHead(403, { "content-type": "application/json" });
       return res.end(JSON.stringify({ error: "bad or missing token — open the URL `seisin ui` printed" }));
     }
-    if (req.method === "POST" && pathOf(req.url) === "/api/decline-all") {
+    /**
+     * A JSON answer. On an error the connection is closed once the answer has
+     * gone: a body refused half-read would otherwise be parsed as the next
+     * request on a keep-alive socket.
+     */
+    const answer = (status, obj, close = false) => {
+      res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store", ...(close && { connection: "close" }) });
+      res.end(JSON.stringify(obj), () => { if (close) req.socket?.destroy(); });
+    };
+    const post = async (max, fn) => {
+      let body;
+      try { body = await readBody(req, max); }
+      catch (e) { return answer(e.status ?? 400, { error: e.message }, true); }
       try {
-        // ~85 bytes per key: 1 MB is ten thousand requests on one screen.
-        const out = declineAll(configPath, JSON.parse((await readBody(req, 1024 * 1024)) || "{}"));
-        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
-        return res.end(JSON.stringify(out));
+        let args;
+        try { args = JSON.parse(body || "{}"); } catch { throw bad("the body is not JSON"); }
+        return answer(200, fn(args ?? {}));
       } catch (e) {
-        res.writeHead(400, { "content-type": "application/json" });
-        return res.end(JSON.stringify({ error: e.message }));
+        return answer(statusOf(e), { error: e.message });
       }
-    }
-    if (req.method === "POST" && pathOf(req.url) === "/api/decide") {
-      try {
-        const out = decide(configPath, JSON.parse((await readBody(req)) || "{}"));
-        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
-        return res.end(JSON.stringify(out));
-      } catch (e) {
-        res.writeHead(400, { "content-type": "application/json" });
-        return res.end(JSON.stringify({ error: e.message }));
-      }
-    }
+    };
+    // ~85 bytes per key: 1 MB is ten thousand requests on one screen.
+    if (req.method === "POST" && pathOf(req.url) === "/api/decline-all")
+      return post(1024 * 1024, (args) => declineAll(configPath, args));
+    if (req.method === "POST" && pathOf(req.url) === "/api/decide")
+      return post(4096, (args) => decide(configPath, args));
     if (req.method !== "GET" && req.method !== "HEAD") {
       res.writeHead(405).end("method not allowed");
       return;
     }
-    if (pathOf(req.url) === "/api/state") {
-      let body;
-      try {
-        body = JSON.stringify(state(configPath, { since: sinceOf(req.url) }));
-      } catch (e) {
-        res.writeHead(500, { "content-type": "application/json" });
-        return res.end(JSON.stringify({ error: e.message }));
+    if (pathOf(req.url).startsWith("/api/")) {
+      // HEAD computed the whole state and threw the body away — a request that
+      // cost what a GET does and answered nothing. The API is GET only.
+      if (req.method !== "GET") {
+        res.writeHead(405, { allow: "GET" });
+        return res.end();
       }
-      // The page polls, so tell every cache in between to stay out of it.
-      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
-      return res.end(body);
+      if (pathOf(req.url) === "/api/state") {
+        let got;
+        try {
+          got = stateBody(configPath, sinceOf(req.url));
+        } catch (e) {
+          return answer(500, { error: e.message });
+        }
+        // The page polls, so tell every cache in between to stay out of it;
+        // the page itself sends the tag back and is told when nothing moved.
+        const head = { "content-type": "application/json", "cache-control": "no-store", etag: got.etag };
+        if (req.headers["if-none-match"] === got.etag) { res.writeHead(304, head); return res.end(); }
+        res.writeHead(200, head);
+        return res.end(got.body);
+      }
+      if (pathOf(req.url) === "/api/settings") {
+        try {
+          const role = new URLSearchParams(req.url.split("?")[1] ?? "").get("role");
+          return answer(200, { role, settings: settingsOf(configPath, role) });
+        } catch (e) {
+          return answer(e.status ?? 500, { error: e.message });
+        }
+      }
     }
     if (pathOf(req.url) === "/" || pathOf(req.url) === "/index.html") {
       // No token in here. It used to be inlined, which handed it to anything

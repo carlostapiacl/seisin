@@ -188,6 +188,103 @@ test("pending() is cached per file state, and one caller's marks do not leak int
   assert.equal(pending(file, { includeSettled: true })[0].state, "denied");
 });
 
+/* ── the console's server ──────────────────────────────────────────────── */
+
+async function console_(t) {
+  const { serve } = await import("../src/serve.js");
+  const box = scratch("seisin-audit-ui-");
+  writeFileSync(join(box, "seisin.toml"),
+    '[keys]\ndir = ".secrets"\n\n[network]\nallow = ["example.org"]\n\n[roles.frontend]\nwrites = ["src/web/**"]\nkeys   = []\n\n[roles.backend]\nwrites = ["src/api/**"]\nkeys   = []\n');
+  const q = requestsPath(box);
+  record(q, { role: "frontend", action: "write", target: "src/api/checkout/a.ts", owners: ["backend"] });
+  const server = await serve(join(box, "seisin.toml"), 0);
+  t.after(() => server.close());
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const auth = { "x-seisin-token": server.seisinToken };
+  const get = (path, headers = {}) => fetch(base + path, { headers: { ...auth, ...headers } });
+  const post = (path, body) => fetch(base + path, { method: "POST", headers: { ...auth, "content-type": "application/json" }, body });
+  return { box, q, base, auth, get, post, key: pending(q)[0].key };
+}
+
+test("the poll carries no settings; one role's are served on demand, with the token", async (t) => {
+  const { get, base } = await console_(t);
+  const s = await (await get("/api/state")).json();
+  assert.ok(s.roles.every((r) => !("settings" in r)), "settings are back in the poll");
+  const { settingsFor } = await import("../src/srt.js");
+  const one = await get("/api/settings?role=frontend");
+  assert.equal(one.status, 200);
+  const body = await one.json();
+  assert.equal(body.role, "frontend");
+  assert.deepEqual(body.settings, settingsFor(loadConfig(s.config), "frontend"));
+  assert.ok(JSON.stringify(body.settings).includes("example.org"), "the policy's domains, not a hand-built github.com");
+  assert.equal((await get("/api/settings?role=nobody")).status, 404);
+  assert.equal((await get("/api/settings?role=__proto__")).status, 404);
+  assert.equal((await fetch(base + "/api/settings?role=frontend")).status, 403);
+});
+
+test("an unchanged state answers 304 to its own tag, and a change is a new tag", async (t) => {
+  const { get, q } = await console_(t);
+  const first = await get("/api/state");
+  const tag = first.headers.get("etag");
+  assert.ok(tag);
+  assert.equal((await get("/api/state", { "if-none-match": tag })).status, 304);
+  record(q, { role: "backend", action: "write", target: "src/web/x.ts", owners: ["frontend"] });
+  const next = await get("/api/state", { "if-none-match": tag });
+  assert.equal(next.status, 200);
+  assert.equal((await next.json()).requests.length, 2);
+});
+
+test("HEAD on the API is refused, not computed", async (t) => {
+  const { base, auth } = await console_(t);
+  const r = await fetch(base + "/api/state", { method: "HEAD", headers: auth });
+  assert.equal(r.status, 405);
+  assert.equal(r.headers.get("allow"), "GET");
+});
+
+test("a body over the cap gets a 413 before the connection closes", async (t) => {
+  const { post } = await console_(t);
+  const r = await post("/api/decide", JSON.stringify({ key: "x", decision: "denied", reason: "y".repeat(8000) }));
+  assert.equal(r.status, 413);
+  assert.match((await r.json()).error, /too large/);
+});
+
+test("a decision the policy file cannot take is a 500; a bad one is a 400", async (t) => {
+  const { chmodSync } = await import("node:fs");
+  const { post, box, key, q } = await console_(t);
+  assert.equal((await post("/api/decide", "{not json")).status, 400);
+  assert.equal((await post("/api/decide", JSON.stringify({ key, decision: "maybe" }))).status, 400);
+  // The directory the policy lives in cannot be written: no lock, no temp file.
+  chmodSync(box, 0o555);
+  try {
+    const r = await post("/api/decide", JSON.stringify({ key, decision: "granted" }));
+    assert.equal(r.status, 500, await r.text());
+  } finally { chmodSync(box, 0o755); }
+  assert.equal(pending(q).length, 1, "the request is still open: nothing was written");
+});
+
+test("a decision is looked up, applied and settled under the policy lock", async (t) => {
+  const { spawn } = await import("node:child_process");
+  const { post, box, key, q } = await console_(t);
+  const policy = join(box, "seisin.toml");
+  // Another process — a `seisin grant` or `decline` in a terminal — holds the
+  // policy lock and declines the request while holding it. The console must
+  // look the request up after that, not before.
+  const log = new URL("../src/log.js", import.meta.url).href;
+  const reqs = new URL("../src/requests.js", import.meta.url).href;
+  const child = spawn(process.execPath, ["--input-type=module", "-e",
+    `import { withLock } from ${JSON.stringify(log)}; import { settle } from ${JSON.stringify(reqs)};
+     withLock(${JSON.stringify(policy)}, () => {
+       process.stdout.write("locked\\n");
+       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 700);
+       settle(${JSON.stringify(q)}, ${JSON.stringify(key)}, "denied", "the other channel");
+     });`]);
+  await new Promise((ok) => child.stdout.once("data", ok));
+  const r = await post("/api/decide", JSON.stringify({ key, decision: "granted", reason: "r" }));
+  await new Promise((ok) => child.once("close", ok));
+  assert.equal(r.status, 400, "the request had been settled by the lock holder");
+  assert.ok(!readFileSync(policy, "utf8").includes("checkout"), "granted what the other channel declined");
+});
+
 /* ── the MCP shares the console's arithmetic, and reads the log once ───── */
 
 test("seisin_walls without a role equals asking role by role", async () => {

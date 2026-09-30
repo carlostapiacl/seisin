@@ -698,6 +698,18 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       return;
     }
     document.getElementById("cfg-title").textContent=".seisin/"+r.name+".json";
+    // Live, this is what `seisin run` hands the runtime for this role, asked of the
+    // server — not a profile rebuilt here, which had github.com as the only domain
+    // whatever the policy said. The hand-built one below is the example's.
+    if(LIVE){
+      var got=SETTINGS[r.name];
+      if(!got){ document.getElementById("cfg").textContent="reading "+r.name+"’s settings…"; loadSettings(r.name); return; }
+      if(got.error){ document.getElementById("cfg").textContent=got.error; return; }
+      document.getElementById("cfg").innerHTML=
+        '<span class="c">// seisin run '+esc(r.name)+' -- claude -p "…"</span>\n'+
+        esc(JSON.stringify(got.settings,null,2)).replace(/^(\s*)("[^"\n]*")(:)/gm,'$1<span class="k">$2</span>$3');
+      return;
+    }
     var L=[];
     L.push('<span class="c">// seisin run '+esc(r.name)+' -- claude -p "…"</span>');
     if(!r.sandbox){
@@ -832,6 +844,8 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
   /* ── requests ─────────────────────────────────────────────────────────── */
 
   var REQS = [];
+  var LIVE = false;    // served by `seisin ui`, reading a real repo
+  var SETTINGS = {};   // role -> { settings } or { error }, from /api/settings; cleared when the policy changes
   var ONDISK = null;   // the file on disk, when there is one
   var CAUSES = null;   // this window's denials, grouped by what was denied
   var WALLS = {};      // per role, what it keeps being denied and still would be
@@ -1230,8 +1244,10 @@ function draw(){
   var SPANS = { "1h": 36e5, "4h": 4 * 36e5, "24h": 24 * 36e5, "7d": 7 * 864e5, "30d": 30 * 864e5 };
 
   // Worked out on every request, so "last 4h" keeps moving while the page is open.
+  // To the minute: a window that moved by two seconds on every poll was a new question
+  // each time, and the server could never answer from what it had already worked out.
   function sinceIso(){
-    if (SPANS[RANGE]) return new Date(Date.now() - SPANS[RANGE]).toISOString();
+    if (SPANS[RANGE]) return new Date(Math.floor((Date.now() - SPANS[RANGE]) / 6e4) * 6e4).toISOString();
     if (RANGE.indexOf("from:") === 0) return RANGE.slice(5);
     return null;
   }
@@ -1266,16 +1282,127 @@ function draw(){
     setRange(isNaN(t) ? "all" : "from:" + new Date(t).toISOString());
   });
 
-  async function boot(){
-    let s = null, stale = false;
+  /**
+   * One read of the state, for boot, the poll and the reload after a decision.
+   *
+   * The poll sends back the tag of what it last got and the server answers 304 when
+   * nothing on disk moved, so an idle console costs nothing on either side.
+   */
+  var LAST = { url: null, etag: null };
+  async function fetchState(fresh){
+    var url = stateUrl();
+    var h = { "x-seisin-token": TOKEN };
+    if (!fresh && LAST.etag && LAST.url === url) h["if-none-match"] = LAST.etag;
+    var r = await fetch(url, { cache: "no-store", headers: h });
+    if (r.status === 304) return { same: true };
+    if (!r.ok) return { status: r.status };
+    var s = await r.json();
+    if (s.error) return { status: r.status, error: s.error };
+    LAST = { url: url, etag: r.headers.get("etag") };
+    return { s: s };
+  }
+
+  /**
+   * What the server said, applied — and only what changed is redrawn.
+   *
+   * Boot and the reload after a decision used to build the roles each their own way,
+   * and the reload forgot never_writes, local_binding, local_ports and trustd: after an
+   * approval the settings box said `denyWrite: []` for a role that had them. The poll
+   * refreshed the log and the queue and nothing else, so the KPIs, causes and walls
+   * went stale on an open page. One function now, for all three; a panel is rebuilt
+   * only when its part of the answer changed, so a table someone is reading or a
+   * reason being typed is not thrown away every two seconds.
+   */
+  var SEEN = {};
+  function changed(part, v){
+    var j = JSON.stringify(v === undefined ? null : v);
+    if (SEEN[part] === j) return false;
+    SEEN[part] = j;
+    return true;
+  }
+  function applyState(s){
+    var shape = s.roles.map(function(x){ var y = Object.assign({}, x); delete y.blocks; return y; });
+    var policy = changed("toml", s.toml);
+    policy = changed("shape", shape) || policy;
+    policy = changed("keyDirs", s.keyDirs) || policy;
+    if (policy) {
+      KEYDIR = (s.keyDirs && s.keyDirs[0]) || ".secrets";
+      KEYS = [...new Set(s.roles.flatMap(r => r.keys))].map(k => k.replace(/\.[^.]+$/, ""));
+      ROLES = s.roles.map(r => ({
+        name: r.name,
+        writes: r.writes.slice(),
+        keys: r.keys.map(k => k.replace(/\.[^.]+$/, "")),
+        sandbox: true,
+        blocks: r.blocks,
+        // The three role keys that change the profile, drawn from what the
+        // server says rather than typed into this page (review of 2026-09-22, #5).
+        neverWrites: r.neverWrites || [],
+        localBinding: !!r.localBinding,
+        localPorts: (r.localPorts || []).slice(),
+        trustd: !!r.trustd
+      }));
+      ONDISK = s.toml || null;
+      SETTINGS = {};
+      // The demo selection does not survive the live load. `sel` starts at "frontend", a
+      // role from the example policy, and a real repo has no reason to have one. `drawCfg`
+      // then reads `.name` off `undefined` and throws — which takes down everything `draw`
+      // renders after it, so three panels came up blank at once while the data behind
+      // them was fine.
+      if (!ROLES.some(function(r){ return r.name === sel; })) sel = (ROLES[0] || {}).name || "";
+    }
+    var blocks = changed("blocks", s.roles.map(function(x){ return [x.name, x.blocks]; }));
+    if (blocks && !policy) ROLES.forEach(function(r2){
+      var fresh = s.roles.find(function(x){ return x.name === r2.name; });
+      if (fresh) r2.blocks = fresh.blocks;
+    });
+    var log = changed("log", s.log);
+    if (log) LOG = fromServer(s.log);
+    var reqs = changed("requests", s.requests || []);
+    if (reqs) REQS = s.requests || [];
+    var causes = changed("causes", s.causes);
+    if (causes) CAUSES = s.causes || null;
+    var walls = changed("walls", s.walls);
+    if (walls) WALLS = s.walls || {};
+
+    var views = [];
+    if (policy) views.push(drawRows, drawCfg, drawToml);
+    else if (blocks) views.push(drawRows);
+    if (log) views.push(drawLog);
+    if (reqs) views.push(drawReqs);
+    if (causes) views.push(drawCauses, drawFamilies);
+    if (walls) views.push(drawWalls);
+    views.push(drawKpis);
+    views.forEach(function(f){ try { f(); } catch (e) { console.error("seisin: " + f.name + " failed", e); } });
+  }
+
+  /** One role's settings, asked of the server once per policy. */
+  var ASKING = {};
+  async function loadSettings(name){
+    if (ASKING[name]) return;
+    ASKING[name] = true;
     try {
-      const r = await fetch(stateUrl(), { cache: "no-store", headers: { "x-seisin-token": TOKEN } });
-      if (r.ok) s = await r.json();
+      var r = await fetch("/api/settings?role=" + encodeURIComponent(name),
+                          { cache: "no-store", headers: { "x-seisin-token": TOKEN } });
+      var out = await r.json();
+      SETTINGS[name] = r.ok ? { settings: out.settings } : { error: out.error || "could not read the settings" };
+    } catch (e) {
+      SETTINGS[name] = { error: whyFailed(e) };
+    } finally {
+      delete ASKING[name];
+    }
+    if (name === sel) { try { drawCfg(); } catch (e) { console.error("seisin: drawCfg failed", e); } }
+  }
+
+  async function boot(){
+    let got = null, stale = false;
+    try {
+      got = await fetchState(true);
       // A live server that refuses this tab's token: `seisin ui` was restarted
       // and minted a new one. Falling back to the example here showed a policy
       // that is not the reader's, one F5 after a restart, with nothing saying why.
-      stale = r.status === 403;
+      stale = got.status === 403;
     } catch (_) { /* opened as a file: stay in demo */ }
+    const s = got && got.s;
 
     const label = document.getElementById("source");
     if (stale) {
@@ -1291,7 +1418,7 @@ function draw(){
         'passes the example policy off as yours.</p></div>';
       return;
     }
-    if (!s || s.error) {
+    if (!s) {
       label.textContent = location.protocol.startsWith("http") && !TOKEN
         ? "no token — open the link `seisin ui` printed · showing an example"
         : "example policy — not your repo";
@@ -1300,33 +1427,8 @@ function draw(){
       return;
     }
 
-    KEYDIR = (s.keyDirs && s.keyDirs[0]) || ".secrets";
-    KEYS = [...new Set(s.roles.flatMap(r => r.keys))].map(k => k.replace(/\.[^.]+$/, ""));
-    ROLES = s.roles.map(r => ({
-      name: r.name,
-      writes: r.writes.slice(),
-      keys: r.keys.map(k => k.replace(/\.[^.]+$/, "")),
-      sandbox: true,
-      blocks: r.blocks,
-      // The three role keys that change the profile, drawn from what the
-      // server says rather than typed into this page (review of 2026-09-22, #5).
-      neverWrites: r.neverWrites || [],
-      localBinding: !!r.localBinding,
-      localPorts: (r.localPorts || []).slice(),
-      trustd: !!r.trustd
-    }));
-    LOG = fromServer(s.log);
-    REQS = s.requests || [];
-    CAUSES = s.causes || null;
-    WALLS = s.walls || {};
-    ONDISK = s.toml || null;
-    // The demo selection does not survive the live load. `sel` starts at "frontend", a role
-    // from the example policy, and a real repo has no reason to have one. `drawCfg` then
-    // reads `.name` off `undefined` and throws — which takes down everything `draw` renders
-    // after it, so the generated-settings box, the activity list AND the seisin.toml box all
-    // come up blank at once while the data behind them is fine. One stale default, three
-    // empty panels, and no error anywhere the reader can see.
-    if (!ROLES.some(function(r){ return r.name === sel; })) sel = (ROLES[0] || {}).name || "";
+    LIVE = true;
+    applyState(s);
     label.textContent = s.config.replace(/^.*\//, "") + " · live";
     label.style.color = "var(--green)";
     // The footer used to claim this page never touches your repo. It reads it
@@ -1346,7 +1448,18 @@ function draw(){
       "This page reads <b>" + esc(s.config) + "</b> and the log on disk. Editing the policy above is a preview \u2014 copy the " +
       "<b>seisin.toml</b> to keep it. Approving a request is the one action that writes: it edits your config in place, with its reason.";
     draw();
-    setInterval(refreshLog, 2000);
+    poll();
+  }
+
+  /**
+   * Every two seconds after the last answer, not every two seconds regardless. An
+   * interval kept firing while a slow answer was still on its way, so requests piled up
+   * behind each other — and an approval queued behind them.
+   */
+  function poll(){
+    setTimeout(async function(){
+      try { await refresh(); } finally { poll(); }
+    }, 2000);
   }
 
   /* ── the four views ─────────────────────────────────────────────────────────────────
@@ -1433,48 +1546,17 @@ function route(){ return (location.hash || "#requests").slice(1); }
     }));
   }
 
-  async function refreshLog(){
+  async function refresh(){
     try {
-      const r = await fetch(stateUrl(), { cache: "no-store", headers: { "x-seisin-token": TOKEN } });
-      if (!r.ok) return;
-      const s = await r.json();
-      if (s.error) return;
-      LOG = fromServer(s.log);
-      // The queue is filled by the hook, in another process, so it arrives here
-      // the same way the log does: by polling. Re-rendered only when it changed,
-      // so a reason someone is halfway through typing is not wiped every 2s.
-      var fresh = JSON.stringify(s.requests || []);
-      if (fresh !== JSON.stringify(REQS)) { REQS = JSON.parse(fresh); drawReqs(); drawKpis(); }
-      // Only the counters that come from the log are refreshed. Whatever the
-      // reader has been editing on screen stays put — a page that resets your
-      // work every two seconds is worse than one that does not update.
-      ROLES.forEach(r2 => {
-        const fresh = s.roles.find(x => x.name === r2.name);
-        if (fresh) r2.blocks = fresh.blocks;
-      });
-      drawLog(); drawRows();
+      var got = await fetchState(false);
+      if (got.s) applyState(got.s);
     } catch (_) { /* server went away: keep what is on screen */ }
   }
 
   /** Everything again, after a decision rewrote the policy on disk. */
   async function reload(){
-    const r = await fetch(stateUrl(), { cache: "no-store", headers: { "x-seisin-token": TOKEN } });
-    const s = await r.json();
-    if (s.error) return;
-    KEYDIR = (s.keyDirs && s.keyDirs[0]) || ".secrets";
-    KEYS = [...new Set(s.roles.flatMap(x => x.keys))].map(k => k.replace(/\.[^.]+$/, ""));
-    ROLES = s.roles.map(x => ({
-      name: x.name, writes: x.writes.slice(),
-      keys: x.keys.map(k => k.replace(/\.[^.]+$/, "")),
-      sandbox: true, blocks: x.blocks
-    }));
-    LOG = fromServer(s.log);
-    REQS = s.requests || [];
-    CAUSES = s.causes || null;
-    WALLS = s.walls || {};
-    ONDISK = s.toml || null;
-    draw();
-    drawKpis();
+    var got = await fetchState(true);
+    if (got.s) applyState(got.s);
   }
 
   boot();
