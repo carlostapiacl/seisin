@@ -367,3 +367,18 @@ test("wire repoints a bare 'seisin hook' when no seisin is on PATH", () => {
   assert.match(r.stdout, /repointed/);
   assert.doesNotMatch(readFileSync(join(dir, ".claude", "settings.json"), "utf8"), /"seisin hook"/);
 });
+
+/* ── 9. ui --link ─────────────────────────────────────────────────────────── */
+
+test("a console's link carries the policy it serves; --link warns when it is not this directory's", async () => {
+  const { writeUiLink, readUiLink } = await import("../src/uilink.js");
+  const { servesWhich } = await import("../src/commands/ui.js");
+  const b = boxed("ux-link-");
+  writeUiLink(4999, "http://127.0.0.1:4999/#t=x", b, "/work/a/seisin.toml");
+  const found = readUiLink(4999, b);
+  assert.equal(found.policy, "/work/a/seisin.toml");
+  assert.match(servesWhich(found.policy, "/work/a/seisin.toml"), /serving \/work\/a\/seisin\.toml/);
+  const other = servesWhich(found.policy, "/work/b/seisin.toml");
+  assert.match(other, /it serves \/work\/a\/seisin\.toml — not \/work\/b\/seisin\.toml, the policy for this directory/);
+  assert.match(servesWhich(null, "/work/b/seisin.toml"), /not recorded/);
+});
