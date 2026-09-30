@@ -224,6 +224,6 @@ export function wallsByRole(cfg, entries, { ask } = {}) {
  * the role has stopped asking for marked. `history` is the whole log, every
  * verdict — a run that was only allowed things is still a run.
  */
-export function queue(root, history) {
-  return markStale(pending(requestsPath(root)), history);
+export function queue(root, history, keyDirs = null) {
+  return markStale(pending(requestsPath(root), { keyDirs }), history);
 }

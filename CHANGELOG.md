@@ -204,6 +204,15 @@ From a first-run review with a small sample repo.
   mcp`, exit 2) instead of answering it as a write, and an unknown role lists the known ones with
   the nearest.
 
+- **A request for another role's key says whose it is.** It showed `(unowned)`, because a key
+  was looked up as write territory. It now shows `(declared by backend)`; `grant` warns that the
+  key is shared (`shared: stripe.txt is also declared by backend — both roles read it now`) and
+  writes `stripe.txt`, the form hand-written keys use, instead of `.secrets/stripe.txt`.
+- **Numbers are positions, and the CLI says so.** `requests` notes that `#n` shifts as requests
+  are settled and the id does not; `grant` and `decline` end with the queue renumbered on one line
+  (`left, renumbered: #1 …`). Without an argument they print a usage line pointing at
+  `seisin requests`.
+
 ## 0.4.2 — 2026-09-29
 
 - **Small hardening across the launcher.** A `--observe` written after the command
