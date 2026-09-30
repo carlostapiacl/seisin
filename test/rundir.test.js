@@ -8,19 +8,15 @@ import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveSrt } from "../src/commands/run.js";
 import { runsRoot, runsRootOf, openRun } from "../src/rundir.js";
-import { boxed } from "./_tmp.js";
+import { boxed, CLI, srtSkip } from "./_tmp.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const CLI = join(HERE, "..", "src", "cli.js");
 const SPOOL = join(HERE, "..", "src", "spool.js");
-const skip = resolveSrt() ? false : "sandbox runtime not installed";
+const skip = srtSkip();
 
 let repo;
 before(() => {
-  const box = join(HERE, ".sandbox-box");
-  mkdirSync(box, { recursive: true });
   repo = boxed("rundir-");
   mkdirSync(join(repo, "a"), { recursive: true });
   mkdirSync(join(repo, "b"), { recursive: true });

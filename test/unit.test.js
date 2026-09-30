@@ -12,7 +12,7 @@ import { realpathSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSy
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildEnv, DEFAULTS as ENV_DEFAULTS } from "../src/env.js";
-import { scratch } from "./_tmp.js";
+import { scratch, CLI } from "./_tmp.js";
 
 /** The names that crossed FROM THE PARENT, which is what these tests are about.
  *  `buildEnv` also SETS a couple of variables the parent never had (see
@@ -1866,8 +1866,6 @@ test("SEC-22a covers() does not backtrack catastrophically on a crafted glob", (
 
 test("SEC-07 two concurrent grants both land — neither is lost", async () => {
   const { spawn } = await import("node:child_process");
-  const { fileURLToPath } = await import("node:url");
-  const CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "cli.js");
   const box = scratch("seisin-race-");
   writeFileSync(join(box, "seisin.toml"),
     '[roles.a]\nwrites = ["a/**"]\nkeys = []\n\n[roles.b]\nwrites = ["b/**"]\nkeys = []\n');

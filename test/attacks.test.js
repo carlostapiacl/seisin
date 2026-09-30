@@ -16,20 +16,16 @@ import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, lstatS
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { resolveSrt } from "../src/commands/run.js";
 import { resolveRef } from "../src/keys.js";
-import { boxed } from "./_tmp.js";
+import { boxed, CLI, srtSkip } from "./_tmp.js";
 
-const CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "cli.js");
 const macOnly = process.platform === "darwin" ? false : "glob and rename semantics measured on macOS";
-const skip = resolveSrt() ? false : "sandbox runtime not installed";
+const skip = srtSkip();
 
 let repo, trusted, outside;
 before(() => {
   // Not under the temp dir: every role writes it, so a repo there would be
   // writable by all of them and every "cannot" below would pass by accident.
-  const box = join(dirname(fileURLToPath(import.meta.url)), ".sandbox-box");
-  mkdirSync(box, { recursive: true });
   const root = boxed("attack-");
   repo = join(root, "repo");
   trusted = join(root, "trusted");

@@ -16,9 +16,7 @@ import { renderReport } from "../src/render.js";
 import { TOOLS } from "../src/mcp.js";
 import { targetsOf, decide } from "../src/hook.js";
 
-const BOX = join(dirname(fileURLToPath(import.meta.url)), ".sandbox-box");
 function load(toml) {
-  mkdirSync(BOX, { recursive: true });
   const dir = boxed("mcp-");
   writeFileSync(join(dir, "seisin.toml"), toml);
   return loadConfig(join(dir, "seisin.toml"));

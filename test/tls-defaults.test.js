@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { boxed } from "./_tmp.js";
+import { boxed, repoWith as shared } from "./_tmp.js";
 
 import { buildEnv, DEFAULTS } from "../src/env.js";
 import { loadConfig } from "../src/config.js";
@@ -22,16 +22,9 @@ import { settingsFor } from "../src/srt.js";
 import { inspect } from "../src/inspect.js";
 import { renderReport } from "../src/render.js";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const BOX = join(HERE, ".sandbox-box");
 const BUNDLE = "/etc/ssl/cert.pem";
 
-function repoWith(toml) {
-  mkdirSync(BOX, { recursive: true });
-  const dir = boxed("tls-");
-  writeFileSync(join(dir, "seisin.toml"), toml);
-  return dir;
-}
+const repoWith = (toml) => shared("tls-", toml);
 
 test("node's fetch is told to use the proxy the sandbox routes through", () => {
   assert.equal(buildEnv({}, { env: [] }).env.NODE_USE_ENV_PROXY, "1");
