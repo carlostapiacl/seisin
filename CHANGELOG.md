@@ -351,6 +351,11 @@ From a first-run review with a small sample repo.
 - **`walls` at a terminal speaks to the operator** (`frontend keeps hitting:` … `2 of its calls
   went into retrying these`). The second-person voice — *you have already been denied these* —
   stays where an agent reads it: the hook and the MCP server.
+- **`check` says when a territory sits inside the key directory.** A key directory is closed to
+  every role, so a role whose territory lies under it can write nothing — and `check` printed that
+  territory as if it held. Now: `lead writes private/notes/** — inside the key directory private,
+  which no role can write`. Seen in use.
+
 
 ## 0.4.2 — 2026-09-29
 

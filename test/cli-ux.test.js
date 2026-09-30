@@ -427,3 +427,14 @@ test("walls from a terminal speaks to the operator, not to the agent", async () 
   assert.match(r.out, /2 of its calls went into retrying these/);
   assert.doesNotMatch(r.out, /you have|your calls|Do not retry/);
 });
+
+test("check says when a territory sits inside the key directory, where no role can write", () => {
+  const dir = boxed("ux-keyterr-");
+  mkdirSync(join(dir, "private", "notes"), { recursive: true });
+  mkdirSync(join(dir, "app"));
+  writeFileSync(join(dir, "seisin.toml"),
+    '[keys]\ndir = "private"\n\n[roles.lead]\nwrites = ["private/notes/**"]\n\n[roles.dev]\nwrites = ["app/**"]\n');
+  const r = sh(dir, "check");
+  assert.match(r.all, /lead writes private\/notes\/\*\* — inside the key directory private, which no role can write/);
+  assert.doesNotMatch(r.all, /dev writes app\/\*\* — inside the key directory/);
+});
