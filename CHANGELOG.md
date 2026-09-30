@@ -66,6 +66,10 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
   existing seisin-only `"*"` entry in place. A command's code is loaded when it runs, not all of it
   up front: a hook call went from about 140–170 ms to 90–100 ms, and Grep, Glob and TodoWrite no
   longer start it at all.
+- **`seisin check` says when the hook still matches `"*"`.** A repo wired before 0.5.0 keeps
+  working, so nothing asked anyone to re-run `wire`; `check` now names it (`hook-matcher-broad`) and
+  says `seisin wire` narrows it in place. A `"*"` entry that also runs another command is not
+  seisin's alone, `wire` leaves it, and `check` stays quiet about it.
 - **A successful Bash is not searched for refusals.** Output that merely contained "Permission
   denied" waited ~400 ms for a kernel line that was never coming.
 - **A run that fails after it started cleans up.** A runtime that cannot start, or a key that
