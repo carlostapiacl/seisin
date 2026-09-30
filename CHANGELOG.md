@@ -112,6 +112,14 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
 - A role's `git checkout` cannot update a protected file it may not write; git exits 0 and leaves
   the old version as a modification. The README's first-day section says what to do.
 
+### Granting and declining
+
+- **The policy's lock and temp file moved into `.seisin/`.** Both sat beside `seisin.toml` under
+  names anyone could predict, in a directory an `--observe` run or `writes = ["**"]` can write.
+  A symlink planted at the temp name made the next approval turn the policy into a link into the
+  role's territory; a `seisin.toml.lock` holding a live pid blocked every grant and decline. The
+  temp name is now random and opened exclusively, and no role can reach either.
+
 ## 0.4.2 — 2026-09-29
 
 - **Small hardening across the launcher.** A `--observe` written after the command
