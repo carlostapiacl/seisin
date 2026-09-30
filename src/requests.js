@@ -27,7 +27,8 @@
  * deleted — it is followed by a line saying what happened to it.
  */
 import { neverWrites, isGitMetadata, covers } from "./owners.js";
-import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync, renameSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
 import { STATE_DIR, tomlString } from "./layout.js";
 import { send } from "./spool.js";
@@ -307,17 +308,59 @@ export function refuseIfBarred(config, request) {
  * one step to anyone else taking this lock.
  */
 export function editPolicy(config, mutate, { waitMs = 10000, after = null } = {}) {
-  return withLock(config.path, () => {
+  return withLock(policyLockBase(config), () => {
     const before = readFileSync(config.path, "utf8");
     const result = mutate(before);
-    if (result.changed) {
-      const tmp = `${config.path}.tmp-${process.pid}`;
-      writeFileSync(tmp, result.toml);
-      renameSync(tmp, config.path);
-    }
+    if (result.changed) writePolicy(config, result.toml);
     after?.(result);
     return result;
   }, { waitMs });
+}
+
+/**
+ * Where the policy's lock lives: inside `.seisin/`, never beside the policy.
+ *
+ * It was `seisin.toml.lock`, next to the file. Any role that writes the repo
+ * root — every `--observe` run, any `writes = ["**"]` — could create that name
+ * holding a live pid and block every grant and every decline for as long as
+ * it liked. `.seisin/` is denied to every role (surface.js, parentInputs), so
+ * nothing confined can hold this one. withLock adds the `.lock`.
+ */
+export function policyLockBase(config) {
+  const dir = join(config.root, STATE_DIR);
+  mkdirSync(dir, { recursive: true });
+  return join(dir, "policy");
+}
+
+/**
+ * Write the policy through a temp file that nobody could have prepared.
+ *
+ * The temp was `seisin.toml.tmp-<pid>` beside the policy: a predictable name,
+ * in a directory roles can write, opened by writeFileSync — which follows a
+ * symlink. A role could plant that name as a link into its own territory, and
+ * the next approval made the policy itself a symlink the role could rewrite.
+ * Now the temp sits in `.seisin/`, has a random name, and is opened with `wx`
+ * (O_CREAT|O_EXCL), which refuses anything already there, a link included.
+ *
+ * A `.seisin/` on another filesystem (a symlink the operator made) cannot be
+ * renamed across; then the temp goes beside the policy, still random and still
+ * exclusive, which is what defeats a planted name.
+ */
+function writePolicy(config, text) {
+  const name = `seisin.toml.tmp-${randomBytes(12).toString("hex")}`;
+  const stateTmp = join(config.root, STATE_DIR, name);
+  writeFileSync(stateTmp, text, { flag: "wx" });
+  try {
+    renameSync(stateTmp, config.path);
+    return;
+  } catch (e) {
+    try { unlinkSync(stateTmp); } catch {}
+    if (e.code !== "EXDEV") throw e;
+  }
+  const near = join(dirname(config.path), `.${name}`);
+  writeFileSync(near, text, { flag: "wx" });
+  try { renameSync(near, config.path); }
+  catch (e) { try { unlinkSync(near); } catch {} throw e; }
 }
 
 /**
