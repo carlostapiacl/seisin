@@ -29,8 +29,8 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
 - **`scan` never hides a certain hit behind the cap.** The limit counted everything, so 500 lines
   to review before a real token left it out and the command exited 0. The cap now applies only to
   what needs review, and says how many it left out. A key directory written with a trailing slash
-  is excluded, the root is resolved and `.pyc` is skipped. **`scan` looks where the agents work.** A policy inside a repository scans that
-  repository, as before, and prunes a checkout nested in it (somebody else's repository), naming it
+  is excluded, the root is resolved and `.pyc` is skipped.
+- **`scan` looks where the agents work.** A policy inside a repository scans that repository, as before, and prunes a checkout nested in it (somebody else's repository), naming it
   in yellow with how to scan it. A policy at the root of a folder of repositories scans the
   repositories its territories live in, whole — a credential at a repository's root is read by an
   agent working anywhere in it — and names them; each finding says whose territory it is in.
