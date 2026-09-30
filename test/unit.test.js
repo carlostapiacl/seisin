@@ -1174,7 +1174,8 @@ test("paths nobody claims are counted, not just mentioned one at a time", (t) =>
     { role: "frontend", action: "write", target: "src/web/a.tsx", verdict: "allowed" },
   ]);
   const r = review(politica(root));
-  assert.deepEqual(r.unowned, [{ where: "legacy", times: 3 }]);
+  assert.deepEqual(r.unowned.map(({ where, times, kind }) => ({ where, times, kind })),
+    [{ where: "legacy", times: 3, kind: "territory" }]);
 });
 
 test("an empty log reports nothing rather than inventing a clean bill", (t) => {

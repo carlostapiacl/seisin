@@ -9,6 +9,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { explain, standingOf } from "./owners.js";
+import { kindsOf, KINDS } from "./kinds.js";
 import { walls } from "./walls.js";
 import { pending, requestsPath, markStale } from "./requests.js";
 
@@ -150,6 +151,25 @@ export function causesOf(cfg, entries, { ask = explain } = {}) {
     piles[s.kind].denials += g.times;
   }
 
+  /**
+   * And for the unowned pile, what kind of thing each path is (kinds.js).
+   *
+   * Suggesting an owner was measured first and was right about one time in
+   * twenty; the rest widened a role over git's lock files, a test's scratch
+   * directories and a credential. What the reader needs is the kind and the
+   * move that fits it, and `territory` — the part that really is a decision —
+   * is what is left. Over every unowned cause, not the twelve shown: one rule
+   * needs the whole set (the same name made unique per run in many places).
+   */
+  const unowned = [...by.values()].filter((g) => g.standing.kind === "unowned");
+  const natures = kindsOf(unowned.map((g) => g.target), { keyDirs: cfg.keyDirs ?? [] });
+  piles.unowned.kinds = Object.fromEntries(Object.keys(KINDS).map((k) => [k, { paths: 0, denials: 0 }]));
+  for (const g of unowned) {
+    g.nature = natures.get(g.target);
+    piles.unowned.kinds[g.nature.kind].paths++;
+    piles.unowned.kinds[g.nature.kind].denials += g.times;
+  }
+
   return {
     total,
     unowned: piles.unowned.paths,
@@ -171,6 +191,8 @@ export function causesOf(cfg, entries, { ask = explain } = {}) {
         roles: [...g.roles].sort(),
         standing: g.standing.kind,
         ...(g.standing.why && { why: g.standing.why }),
+        // Only on an unowned cause: what kind of thing it is, and what to do.
+        ...(g.nature && { kind: g.nature.kind, hint: g.nature.hint }),
         owners: g.standing.owners,
         ownersThen: g.ownersThen,
         // How many of the roles that hit this would still hit it. `some` and

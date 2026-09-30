@@ -105,7 +105,12 @@ const TOOLS = [
       "path is now — `standing`: unowned (a decision nobody has made), owned, protected " +
       "(closed to every role on purpose, nothing to grant) or outside (a port, a key, or " +
       "outside the repository) — and, per cause, `stillRefused`, how many of the roles " +
-      "that hit it would hit it today. `seisin_activity` has the raw events; this has " +
+      "that hit it would hit it today. An unowned cause also carries `kind` and `hint`: " +
+      "git (lock or metadata), credential, temporary, build or territory, and the move " +
+      "that fits it (`standing.unowned.kinds` counts them). Only `territory` is a question " +
+      "of who owns what; do not propose an owner for the others — a lock, a test's scratch " +
+      "or a credential given to whoever asked widens a role. " +
+      "`seisin_activity` has the raw events; this has " +
       "them read against the policy. Reach for it before proposing a change: a day that " +
       "is three quarters one filename is a tooling problem, and the same volume spread " +
       "across unrelated unowned paths is a question about who owns what. Read-only.",
