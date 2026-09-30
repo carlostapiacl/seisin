@@ -31,17 +31,6 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
 
-/**
- * TODO(0.5.0, second language pass): remove NOT_YET.
- *
- * These files were being rewritten on another branch when the language pass
- * landed, so their text was left alone rather than edited twice. Every change
- * they still need is listed, file:line → from → to, in the language pass's
- * `pendiente-cli.md`. Once that branch is merged and the list applied, delete
- * this constant and its one use in `violations()`; nothing else refers to it.
- */
-const NOT_YET = /^src\/(cli\.js|inspect\.js|scan\.js|init[^/]*\.js|explain[^/]*\.js|commands\/)/;
-
 // ── what a reader reads ───────────────────────────────────────────────────
 
 /** String and template literals of a JS source, comments skipped, with line numbers. */
@@ -166,6 +155,8 @@ function corpus() {
 function used(text) {
   return text
     .replace(/`[^`]*`/g, " ")
+    // a link's target is an address, not prose: a repo called *-permissions-hook is its name
+    .replace(/\]\([^)\s]*\)/g, "]")
     .replace(/\*\*[^*]{1,40}\*\*|\*[^*\s][^*]{0,38}\*|_[^_\s][^_]{0,38}_/g, " ")
     .replace(/"[^"]{1,40}"|“[^”]{1,40}”|'[a-z -]{1,30}'/gi, " ");
 }
@@ -226,14 +217,18 @@ const MUST = [
   { id: "turn-as-run", re: /\b(the|a|each|this) turn\b(?! (on|off|into))/i, in: new Set(["src", "mcp", "ui", "glossary"]), why: "seisin's unit is a *run*; *turn* is the agent's" },
   { id: "approver", re: /\b(operators?|humans?)\b/i, in: new Set(["src", "mcp", "ui", "readme"]), why: "the approver is *a person*" },
   { id: "permission-request", re: /\bpermission requests?\b/i, in: new Set(["src", "mcp", "ui", "readme", "site"]), why: "say *request*; Claude Code's `PermissionRequest` is a synchronous prompt" },
-];
-
-/** `should` rules — reported as todo until their cleanup lands, then promoted one at a time. */
-const SHOULD = [
-  { id: "permission-countable", re: /\bpermissions\b(?! (layer|error|errors|file|files|tool|tools|rules|system|mode))|\b(a|the) permission\b(?! (layer|error|file|tool|rules))/i, in: new Set(["src", "mcp", "ui", "npm", "readme"]), why: "there is no permission object: territory, key, request or grant" },
+  // Promoted in the second pass, once the CLI files were in the corpus and each reached zero.
+  { id: "permission-countable", re: /(?<!\bfile )\bpermissions\b(?! (layer|error|errors|file|files|tool|tools|rules|system|mode))|\b(a|the) permission\b(?! (layer|error|file|tool|rules))/i, in: new Set(["src", "mcp", "ui", "npm", "readme"]), why: "there is no permission object: territory, key, request or grant" },
   { id: "friction", re: /\bfriction\b|\bstopped, repeatedly\b/i, in: new Set(["src", "ui", "readme", "glossary", "site"]), why: "say *repeated denials*" },
   { id: "log-line-as-decision", re: /\b\d+ decisions\b|every decision\b/i, in: new Set(["src", "ui", "readme"]), why: "a log line is an *entry*; *decision* is a person's" },
 ];
+
+/**
+ * `should` rules — reported as todo until their cleanup lands, then promoted
+ * one at a time. Empty since the second language pass: add the next synonym
+ * cleanup here, not straight into MUST, so its count is visible while it lands.
+ */
+const SHOULD = [];
 
 /**
  * Written-down exceptions. `file` and `re` must both match; `why` is required.
@@ -244,6 +239,8 @@ const ALLOW = [
   { file: "src/config.js", re: /unknown name is refused/, why: "seisin refuses a policy it will not load" },
   { file: "src/grants.js", re: /Refusing rather than widening/, why: "seisin refuses a glob it cannot enforce" },
   { file: "src/keys.js", re: /refused rather than half-available/, why: "seisin refuses a key mode it cannot honour" },
+  // an editor's own feature, named: what a role writing .vscode/ can switch on
+  { file: "src/inspect.js", re: /auto-approval/, why: "the editors' name for the setting that runs an agent's tool calls unasked" },
   // a PEM header, not a denial
   { file: "src/scan.js", re: /private key block/, why: "the name of a PEM block, which is what scan looks for" },
   // other tools' words, quoted
@@ -251,6 +248,8 @@ const ALLOW = [
   { file: "docs/nono-backend.md", re: /\bblock\w*|rejects/, why: "nono's `network.block` setting and its feature list, in nono's words" },
   { file: "docs/what-it-has-been-put-through.md", re: /missing boundary refuses to run/, why: "a test name: seisin refusing to start without its boundary" },
   { file: "docs/upstream/cli-violations.md", re: /deny\(1\)/, why: "the macOS log line, verbatim" },
+  { file: "README.md", re: /fall through to the permission mode/, why: "Claude Code's documentation, quoted" },
+  { file: "README.md", re: /`bwrap: No permissions to create new$/, why: "bubblewrap's error message, verbatim (the code span wraps to the next line)" },
   { file: /^docs\//, re: /\bthe other way round\b/, why: "idiom" },
   // the glossary names the words it bans, in its *Not:* lists and its table
   { file: "docs/glossary.md", re: /\*Not:\*|^\| \*\*/, why: "the glossary lists the words it bans" },
@@ -293,7 +292,6 @@ function violations(rules, units) {
   const out = [];
   for (const u of units) {
     if (exemptBlock(u)) continue;
-    if (NOT_YET.test(u.file)) continue;
     const text = used(u.text);
     for (const r of rules) {
       if (!r.in.has(u.area)) continue;
@@ -339,10 +337,51 @@ test("every word the product prints about its own model has a glossary line", ()
 });
 
 test("the README's sample of `seisin walls` says what `seisin walls` says", async () => {
-  const { render } = await import(join(ROOT, "src", "walls.js"));
-  const header = render([{ times: 2, action: "write", target: "x", owners: ["y"] }]).split("\n")[0].trim();
+  // Two voices, one list: the terminal speaks to the person who ran the
+  // command, the session-start context to the agent. The README shows both,
+  // and each has to be what the product prints.
+  const { renderForPerson } = await import(join(ROOT, "src", "commands", "walls.js"));
+  const plain = (s) => s.replace(/\x1b\[[0-9;]*m/g, "");
+  const shown = plain(renderForPerson("dev", [
+    { times: 19, action: "write", target: "../shared/.git/index.lock", owners: ["platform"] },
+    { times: 6, action: "read", target: "~/.npmrc", owners: [], reason: "no role declares ~/.npmrc — add it under a [roles.<name>] keys list" },
+  ]));
   const readme = readFileSync(join(ROOT, "README.md"), "utf8");
-  assert.ok(readme.includes(header), `README shows a walls header that is not the product's:\n  product: ${header}`);
+  assert.ok(readme.includes(`$ seisin walls dev\n${shown.replace(/\n+$/, "")}\n\`\`\``),
+    `README's terminal sample is not what \`seisin walls dev\` prints:\n${shown}`);
+  const said = readFileSync(join(ROOT, "src", "diagnose.js"), "utf8").match(/"(Already denied more than once[^"]*)"/)[1];
+  assert.ok(readme.includes(said), `README's session-start sample is not the hook's sentence:\n  product: ${said}`);
+});
+
+test("the README's sample of `seisin review` is what `seisin review` prints for that log", async (t) => {
+  const { boxed } = await import("./_tmp.js");
+  const { mkdirSync, writeFileSync } = await import("node:fs");
+  const { loadConfig } = await import(join(ROOT, "src", "config.js"));
+  const { reviewCommand } = await import(join(ROOT, "src", "commands", "review.js"));
+  const dir = boxed("readme-review-");
+  writeFileSync(join(dir, "seisin.toml"),
+    '[roles.frontend]\nwrites = ["src/web/**", "public/**"]\n\n[roles.backend]\nwrites = ["src/api/**", "migrations/**"]\n');
+  for (const d of ["src/web", "src/api", "public", "migrations", "legacy"]) mkdirSync(join(dir, d), { recursive: true });
+  // The log the sample describes: 60 entries over three weeks.
+  const log = [];
+  const e = (day, role, verdict, target, owners = []) =>
+    log.push({ at: `2026-${day}T10:00:00.000Z`, role, action: "write", kind: "file", target, verdict, owners });
+  e("08-23", "frontend", "allowed", "src/web/a.js");
+  for (let i = 0; i < 9; i++) e("08-25", "frontend", "denied", "src/api/checkout/index.ts", ["backend"]);
+  for (let i = 0; i < 4; i++) e("08-27", "backend", "denied", "src/web/app.js", ["frontend"]);
+  for (let i = 0; i < 2; i++) e("09-01", "backend", "denied", "legacy/old.js");
+  for (let i = 0; i < 2; i++) e("09-02", "frontend", "denied", "legacy/old.js");
+  while (log.length < 59) e("09-05", log.length % 2 ? "frontend" : "backend", "allowed", log.length % 2 ? "src/web/b.js" : "src/api/c.py");
+  e("09-11", "backend", "allowed", "src/api/d.py");
+  mkdirSync(join(dir, ".seisin"));
+  writeFileSync(join(dir, ".seisin", "log.jsonl"), log.map((l) => JSON.stringify(l)).join("\n") + "\n");
+
+  const printed = [];
+  t.mock.method(process.stdout, "write", (s) => { printed.push(String(s)); return true; });
+  try { reviewCommand(loadConfig(join(dir, "seisin.toml")), []); } finally { t.mock.restoreAll(); }
+  const shown = printed.join("").replace(/\x1b\[[0-9;]*m/g, "").replace(/\n+$/, "");
+  const readme = readFileSync(join(ROOT, "README.md"), "utf8");
+  assert.ok(readme.includes(`$ seisin review\n${shown}\n\`\`\``), `README's review sample is not what review prints:\n${shown}`);
 });
 
 test("the console's decline button does not send the boundary's verb", () => {
