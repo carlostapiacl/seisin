@@ -147,7 +147,7 @@ export function state(configPath, { since = null, snap = snapshot(configPath) } 
     // is not old just because the filter hides the runs that made it old. The
     // whole log, every verdict, as `seisin requests` and the MCP read it — this
     // counted runs over denials only, and marked differently from both.
-    requests: queue(cfg.root, all),
+    requests: queue(cfg.root, all, cfg.keyDirs),
     since,
     // The file itself, not a regeneration of it. The page can render a policy
     // from its own model, and that model has no comments — so showing it under
@@ -234,7 +234,7 @@ function decide(configPath, { key, decision, reason }) {
   let req = null;
   try {
     editPolicy(cfg, (before) => {
-      req = pending(file).find((r) => r.key === key);
+      req = pending(file, { keyDirs: cfg.keyDirs }).find((r) => r.key === key);
       if (!req) throw bad(`request ${key} is no longer pending — reload to see the queue as it is now`);
       if (decision !== "granted") return { toml: before, changed: false };
       refuseIfBarred(cfg, req);

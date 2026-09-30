@@ -26,7 +26,7 @@
  * rewritten is not evidence. A request that is granted or refused is not
  * deleted — it is followed by a line saying what happened to it.
  */
-import { neverWrites, isGitMetadata, covers } from "./owners.js";
+import { neverWrites, isGitMetadata, covers, keyHolders, inKeyDir } from "./owners.js";
 import { protectedBy } from "./surface.js";
 import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { randomBytes } from "node:crypto";
@@ -71,13 +71,22 @@ export function shellId(key) {
 }
 
 /** The glob a grant would add, derived from what was asked. */
-export function grantFor({ action, target }) {
+export function grantFor({ action, target }, keyDir = null) {
   const t = typeof target === "string" ? target : "";
   // A key keeps its directory when it has one. Stripping it turned a request
   // for `shared/api.txt` into a grant of `api.txt`, which settingsFor then
   // resolves against the FIRST key directory — so the person approves one file
   // and another one of the same name is what gets read.
-  if (action === "read") return t.includes("/") ? t : t.replace(/^.*\//, "");
+  //
+  // Except the first key directory itself, which is exactly the one a bare
+  // name resolves against: `.secrets/stripe.txt` is written `stripe.txt`, the
+  // way every hand-written key is. Granting the long form put two spellings of
+  // one key in the same file.
+  if (action === "read") {
+    const first = keyDir ? String(keyDir).replace(/^\.\/+/, "").replace(/\/+$/, "") : null;
+    if (first && t.startsWith(first + "/") && !t.slice(first.length + 1).includes("/")) return t.slice(first.length + 1);
+    return t.includes("/") ? t : t.replace(/^.*\//, "");
+  }
   const dir = t.split("/").slice(0, -1).join("/");
   return dir ? `${dir}/**` : t;
 }
@@ -94,6 +103,25 @@ function write(file, entry) {
     // Same rule as the log: never take the agent down over bookkeeping.
     return false;
   }
+}
+
+/**
+ * Who a read request's key belongs to, from the policy as it is now.
+ *
+ * A key is declared, not owned: nobody writes `.secrets/`, so the owners a
+ * write-territory lookup finds for one are always none, and the queue said
+ * "(unowned)" about a key another role declares — right before a grant that
+ * would share it. Recomputed rather than read from the line, like every other
+ * field that decides what a person is shown.
+ */
+export function withDeclarers(config, queue) {
+  for (const r of queue) {
+    if (r.action !== "read" || typeof r.target !== "string") continue;
+    if (!inKeyDir(config, r.target) && r.target.includes("/")) continue;
+    r.owners = keyHolders(config, r.target);
+    r.declared = true;
+  }
+  return queue;
 }
 
 /** Records that a role asked for something the policy denies it. Safe to call
@@ -150,7 +178,7 @@ export function recordHandoff(file, key, decision = {}) {
  */
 let reduced = null;   // { file, ino, size, mtimeMs, all }
 
-export function pending(file, { includeSettled = false } = {}) {
+export function pending(file, { includeSettled = false, keyDirs = null } = {}) {
   let st;
   try { st = statSync(file); } catch { return []; }
   let all;
@@ -160,7 +188,10 @@ export function pending(file, { includeSettled = false } = {}) {
     all = reduce(file);
     reduced = { file, ino: st.ino, size: st.size, mtimeMs: st.mtimeMs, all };
   }
-  const copies = all.map((r) => ({ ...r }));
+  // The grant is re-derived with the policy's first key directory when the
+  // caller has one, so a key is proposed in the form hand-written keys use.
+  const first = keyDirs?.[0] ?? null;
+  const copies = all.map((r) => (first && r.action === "read" ? { ...r, grant: grantFor(r, first) } : { ...r }));
   return includeSettled ? copies : copies.filter((r) => r.state === "pending");
 }
 
