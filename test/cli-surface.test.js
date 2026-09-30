@@ -56,7 +56,7 @@ test("walls without a role, or with an unknown one, is a usage error (exit 2)", 
   assert.match(none.stderr, /usage: seisin walls <role>/);
   const unknown = seisin(dir, "walls", "nobody");
   assert.equal(unknown.status, 2);
-  assert.match(unknown.stderr, /unknown role "nobody"\. Known: dev, infra/);
+  assert.match(unknown.stderr, /unknown role "nobody"\n  known roles: dev, infra/);
 });
 
 /* ── scan ────────────────────────────────────────────────────────────── */
@@ -107,7 +107,8 @@ test("no command prints the usage and exits 0; an unknown one exits 2", () => {
   assert.match(bare.stdout, /seisin scan/);
   const typo = seisin(dir, "wals", "dev");
   assert.equal(typo.status, 2);
-  assert.match(typo.stdout, /seisin walls <role>/);
+  // One line and the nearest command, not the whole usage.
+  assert.match(typo.stderr, /unknown command "wals" — did you mean "walls"\?/);
 });
 
 /* ── what the CLI says it did not do ─────────────────────────────────── */

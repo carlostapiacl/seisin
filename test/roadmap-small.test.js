@@ -98,7 +98,7 @@ test("seisin --help, -h and help exit 0; help <command> narrows; an unknown comm
   }
   const one = seisin(dir, "help", "ui");
   assert.equal(one.status, 0);
-  assert.match(one.stdout, /seisin ui \[--port n\]/);
+  assert.match(one.stdout, /seisin ui \[--port <n>\]/);
   assert.doesNotMatch(one.stdout, /seisin run/);
   assert.equal(seisin(dir, "nonsense").status, 2);
 });

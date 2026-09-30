@@ -1,4 +1,5 @@
 /** `seisin walls <role>` — what that role keeps being refused, and what it cost. */
+import { unknownRole } from "../suggest.js";
 import { walls, render } from "../walls.js";
 import { STALE_RUNS } from "../requests.js";
 import { logPath } from "../log.js";
@@ -7,8 +8,7 @@ import { out } from "../render.js";
 export function wallsCommand(config, argv = []) {
   const role = argv[0];
   if (!role) throw new Error("usage: seisin walls <role> [--since <iso>] [--min <n>] [--all]");
-  if (!config.roles[role])
-    throw new Error(`unknown role "${role}". Known: ${Object.keys(config.roles).join(", ")}`);
+  if (!config.roles[role]) throw unknownRole(config, role);
   const at = (flag, fallback) => {
     const i = argv.indexOf(flag);
     return i === -1 ? fallback : argv[i + 1];

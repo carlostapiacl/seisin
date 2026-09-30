@@ -8,6 +8,7 @@
  * does — each one is a way the policy silently does not hold — so they belong
  * where they can be exercised directly.
  */
+import { unknownRole } from "./suggest.js";
 import { resolve, dirname, basename, relative, join, delimiter } from "node:path";
 import { lstatSync, readdirSync, existsSync, readFileSync, statSync } from "node:fs";
 import { ownersOf, covers, enforcedNeverWrites } from "./owners.js";
@@ -27,7 +28,7 @@ import { protections, resolveExecutable } from "./surface.js";
  * answering it with silence is how a typo becomes a belief.
  */
 export function inspect(config, only = null, where = config.path) {
-  if (only && !config.roles[only]) throw new Error(`unknown role "${only}"`);
+  if (only && !config.roles[only]) throw unknownRole(config, only);
   const roles = only ? [config.roles[only]] : Object.values(config.roles);
   // Once: it is listed on its own and again as a warning, and it is the most
   // expensive thing check computes.
