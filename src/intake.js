@@ -50,6 +50,10 @@ export function policyId(config) {
  */
 export function intake({ config, role, runId, observe = false, settings, notify }) {
   const stamp = { run: runId.slice(0, 8), policy: policyId(config) };
+  // No `at` from here or from the box: append() stamps the parent's clock and
+  // ignores any other. The confined process chose the time of its own lines —
+  // it could date them into or out of every `since` window, or make its
+  // requests look old enough to be passed over.
   const log = (entry) => append(logPath(config.root), { ...entry, ...stamp });
   const ask = (asked) => { record(requestsPath(config.root), asked); notify?.maybe(asked); };
 
@@ -91,7 +95,7 @@ export function intake({ config, role, runId, observe = false, settings, notify 
       const v = server ? explain(config, role, "mcp", server) : { allowed: false };
       const expected = observe ? "observed" : v.allowed ? "allowed" : "denied";
       return void log({
-        at: entry.at, role,
+        role,
         tool: String(entry.tool ?? "").slice(0, 40),
         action: "use", kind: "tool",
         target: entry.target.slice(0, 1000),
@@ -123,7 +127,6 @@ export function intake({ config, role, runId, observe = false, settings, notify 
         ? "observed"
         : explain(config, role, entry.action, entry.target).allowed ? "allowed" : "denied";
       return void log({
-        at: entry.at,
         role,
         tool: String(entry.tool ?? "").slice(0, 40),
         action: entry.action,
@@ -182,7 +185,7 @@ export function intake({ config, role, runId, observe = false, settings, notify 
       connects.add(d.path);
       const v = explain(config, role, "connect", d.path);
       log({
-        at: new Date().toISOString(), role, tool: "kernel", source: "kernel",
+        role, tool: "kernel", source: "kernel",
         action: "connect", kind: "network", target: d.path, verdict: "denied",
         owners: [], reason: d.operation, ...(v.listed ? { listed: true } : {}),
       });
@@ -225,7 +228,6 @@ export function intake({ config, role, runId, observe = false, settings, notify 
       ask({ role, action: d.action, target: rel, owners: ownersOf(config, rel) });
 
     log({
-      at: new Date().toISOString(),
       role,
       tool: "kernel",
       source: "kernel",

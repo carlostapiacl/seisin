@@ -27,13 +27,13 @@
  * deleted — it is followed by a line saying what happened to it.
  */
 import { neverWrites, isGitMetadata, covers } from "./owners.js";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { STATE_DIR, tomlString } from "./layout.js";
 import { send } from "./spool.js";
-import { withLock } from "./log.js";
+import { withLock, readEntries } from "./log.js";
 
-export const REQUESTS_NAME = "requests.jsonl";
+const REQUESTS_NAME = "requests.jsonl";
 
 export function requestsPath(root) {
   return join(root, STATE_DIR, REQUESTS_NAME);
@@ -57,7 +57,6 @@ export function keyOf({ role, action, target }) {
   return `${role}:${action}:${dir}`;
 }
 
-/** The glob a grant would add, derived from what was asked. */
 /**
  * A request's id as one shell word, for the commands seisin suggests.
  *
@@ -69,6 +68,7 @@ export function shellId(key) {
   return `'${String(key).replace(/'/g, `'\\''`)}'`;
 }
 
+/** The glob a grant would add, derived from what was asked. */
 export function grantFor({ action, target }) {
   const t = typeof target === "string" ? target : "";
   // A key keeps its directory when it has one. Stripping it turned a request
@@ -84,7 +84,9 @@ function write(file, entry) {
   if (send("requests", entry)) return true;
   try {
     mkdirSync(dirname(file), { recursive: true });
-    appendFileSync(file, JSON.stringify({ at: new Date().toISOString(), ...entry }) + "\n");
+    // The time is this process's, named after the spread so no entry sets it.
+    const now = new Date().toISOString();
+    appendFileSync(file, JSON.stringify({ at: now, ...entry, at: now }) + "\n");
     return true;
   } catch {
     // Same rule as the log: never take the agent down over bookkeeping.
@@ -115,6 +117,9 @@ export function settle(file, key, decision, reason = "") {
  *
  * It exists so that a refusal to run cannot be invisible. Admission may
  * postpone work; it may not make work disappear from the queue a person reads.
+ *
+ * Nothing in src/ calls it today — handoff.js decides but nothing records the
+ * outcome; the tests do, and pending() keeps reading what it writes.
  */
 export function recordHandoff(file, key, decision = {}) {
   const { type, role, limit, max, reason, depth, chainId, revision } = decision;
@@ -135,20 +140,32 @@ export function recordHandoff(file, key, decision = {}) {
  * it was asked and what was decided.
  *
  * Reduced from the whole file rather than kept as state, so the file stays the
- * only thing that has to be correct.
+ * only thing that has to be correct. The reduction is remembered for as long as
+ * the file is unchanged (same inode, size and mtime): the console asks every
+ * two seconds, and re-parsing a 2 MB queue each time to find it had not moved
+ * was most of the cost of asking. Each call gets its own copies, so a caller
+ * marking entries (markStale) cannot mark the next caller's.
  */
+let reduced = null;   // { file, ino, size, mtimeMs, all }
+
 export function pending(file, { includeSettled = false } = {}) {
-  if (!existsSync(file)) return [];
+  let st;
+  try { st = statSync(file); } catch { return []; }
+  let all;
+  if (reduced && reduced.file === file && reduced.ino === st.ino && reduced.size === st.size && reduced.mtimeMs === st.mtimeMs) {
+    all = reduced.all;
+  } else {
+    all = reduce(file);
+    reduced = { file, ino: st.ino, size: st.size, mtimeMs: st.mtimeMs, all };
+  }
+  const copies = all.map((r) => ({ ...r }));
+  return includeSettled ? copies : copies.filter((r) => r.state === "pending");
+}
+
+function reduce(file) {
   const byKey = new Map();
 
-  for (const line of readFileSync(file, "utf8").split("\n")) {
-    if (!line.trim()) continue;
-    let e;
-    try {
-      e = JSON.parse(line);
-    } catch {
-      continue; // a half-written line from a killed process is not an error
-    }
+  for (const e of readEntries(file)) {
     if (!e.key) continue;
 
     if (e.kind === "asked") {
@@ -169,7 +186,8 @@ export function pending(file, { includeSettled = false } = {}) {
      *
      * Without this branch the catch-all below would set state = "handoff" and a
      * throttled attempt would drop out of the pending queue — the exact silent
-     * disappearance the attempt is recorded to prevent.
+     * disappearance the attempt is recorded to prevent. (Only the tests write
+     * handoff lines today — see recordHandoff.)
      */
     if (e.kind === "handoff") {
       seen.handoff = {
@@ -182,8 +200,7 @@ export function pending(file, { includeSettled = false } = {}) {
     seen.state = e.kind; seen.reason = e.reason ?? ""; seen.decided = e.at;
   }
 
-  const all = [...byKey.values()];
-  return includeSettled ? all : all.filter((r) => r.state === "pending");
+  return [...byKey.values()];
 }
 
 /**
@@ -233,7 +250,7 @@ export function runsAfter(entries, since, gapMs = RUN_GAP_MS) {
  * reordering would shift the numbers `grant <n>` is typed against while
  * nobody decided anything. The mark says what is true — the role ran N times
  * since and did not ask again — and leaves the rest to whoever reads it.
- * `entries` are log lines (`read(logPath(root))`); `now` is for the tests.
+ * `entries` are log lines (`read(logPath(root))`).
  */
 export function markStale(queue, entries, { runs = STALE_RUNS, gapMs = RUN_GAP_MS } = {}) {
   const byRole = new Map();             // role -> its log lines
@@ -248,28 +265,6 @@ export function markStale(queue, entries, { runs = STALE_RUNS, gapMs = RUN_GAP_M
   return queue;
 }
 
-/**
- * Adds a granted glob to a role in the config text, with its provenance.
- *
- * Edits the text rather than re-emitting the file, because a config someone
- * wrote has comments and an order that mean something, and a tool that
- * reformats it on every grant is a tool people stop letting near it.
- */
-/**
- * Adds a granted glob to a role in the config text, with its provenance.
- *
- * Edits the text rather than re-emitting the file, because a config someone
- * wrote has comments and an order that mean something, and a tool that
- * reformats it on every grant is a tool people stop letting near it.
- *
- * The edit is bounded to the role's own section, and that is not tidiness. The
- * first version searched from the role header to the next `writes =` anywhere
- * in the file, so approving for a role that had no `writes` line wrote the
- * grant into the NEXT role — with a comment saying who it was for. A human
- * approved one thing and the file recorded another. In a permission tool that
- * is the worst possible bug, and it is not exotic: a role with only `keys`
- * declared is an ordinary config.
- */
 /**
  * Refuses a grant that `never_writes` would cancel, before anything is written.
  *
@@ -307,8 +302,11 @@ export function refuseIfBarred(config, request) {
  * so a crash mid-write cannot leave a half-written, partly-privileged policy.
  *
  * `mutate(toml)` returns `{ toml, changed }`. Nothing is written when unchanged.
+ * `after(result)` runs once the file is written, still under the lock — for
+ * the queue line that records the decision, so a decision and its edit are
+ * one step to anyone else taking this lock.
  */
-export function editPolicy(config, mutate, { waitMs = 10000 } = {}) {
+export function editPolicy(config, mutate, { waitMs = 10000, after = null } = {}) {
   return withLock(config.path, () => {
     const before = readFileSync(config.path, "utf8");
     const result = mutate(before);
@@ -317,10 +315,26 @@ export function editPolicy(config, mutate, { waitMs = 10000 } = {}) {
       writeFileSync(tmp, result.toml);
       renameSync(tmp, config.path);
     }
+    after?.(result);
     return result;
   }, { waitMs });
 }
 
+/**
+ * Adds a granted glob to a role in the config text, with its provenance.
+ *
+ * Edits the text rather than re-emitting the file, because a config someone
+ * wrote has comments and an order that mean something, and a tool that
+ * reformats it on every grant is a tool people stop letting near it.
+ *
+ * The edit is bounded to the role's own section, and that is not tidiness. The
+ * first version searched from the role header to the next `writes =` anywhere
+ * in the file, so approving for a role that had no `writes` line wrote the
+ * grant into the NEXT role — with a comment saying who it was for. A human
+ * approved one thing and the file recorded another. In a permission tool that
+ * is the worst possible bug, and it is not exotic: a role with only `keys`
+ * declared is an ordinary config.
+ */
 export function applyGrant(toml, request, note = "") {
   const field = request.action === "read" ? "keys" : "writes";
   const header = new RegExp(`^\\[roles\\.${escapeRe(request.role)}\\]\\s*$`, "m");
