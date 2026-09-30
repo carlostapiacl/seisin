@@ -265,6 +265,9 @@ JSON field was renamed.
   directory, which it has since the run-directory fix.
 - **`test/words.test.js`** reads what each surface says and fails on a word the glossary does
   not use, with each exception written down beside its reason.
+- **The CLI, in the same words.** `review` says *Denied repeatedly*, *Denied connections*,
+  *Unowned* and *60 entries*; `walls`, `whose`, `explain`, `check`, `grant`/`decline` help and
+  the handoff notes say denied, sandbox, setting and handoff chain — and the lint now covers them.
 
 ### At the prompt
 
