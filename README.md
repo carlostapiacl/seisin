@@ -506,6 +506,10 @@ each is a link to the page that explains it — including two a log cannot answe
 they are recomputed against the policy: how much of the day is **one cause**, and how many
 of those causes are on paths **nobody owns**.
 
+Beside each role it also holds the two families a policy can hand out, editor settings and
+instruction files, and the `[protect] instructions` switch. A change there is shown first as
+what it does to each role's sandbox profile, and written to `seisin.toml` only when you confirm.
+
 ## How it holds
 
 | layer | what it does | can it be talked around? |
