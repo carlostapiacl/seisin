@@ -93,8 +93,8 @@ export function walls(config, role, { file, entries = null, min = MIN_HITS, sinc
  * The log is append-only and a segment only rotates at 8 MiB, so "read the
  * file" is O(everything since the last rotation), on a path that runs inside
  * the hook. Measured on a 372 KB log: 3 ms per
- * call, which is nothing, and 300 ms at 37 MB, which is not, on every refusal
- * of every turn forever.
+ * call, which is nothing, and 300 ms at 37 MB, which is not, on every denial
+ * of every session forever.
  *
  * So it reads the tail. That makes the count **recent repetition** rather than
  * lifetime repetition, and recent is the one the sentence is about anyway: an

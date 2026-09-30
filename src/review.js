@@ -9,13 +9,13 @@
  *
  * Three questions, and the second is the one nothing else can answer.
  *
- *   1. What is a role being stopped by, over and over?
+ *   1. What is a role being denied, over and over?
  *      Forty denials on one directory is not an agent misbehaving. It is a
  *      policy that is wrong, and today it reads as forty tidy amber lines
  *      nobody adds up.
  *
  *   2. What was granted and never used?
- *      Every permission file only ever grows, everywhere, and the reason is
+ *      Every allowlist only ever grows, everywhere, and the reason is
  *      always the same: nobody can prove a line is dead, so the safe move is to
  *      leave it. Here the log can prove it. This is the only direction that
  *      makes a policy smaller.
@@ -104,11 +104,11 @@ function findings(config, entries, minDenials) {
    * that refusal is the whole of the second finding.
    *
    * "Never used" is read off `allowed` lines, and **only the hook writes those**.
-   * The kernel reports what it refused; it has nothing to say about what went
+   * The kernel reports what it denied; it has nothing to say about what went
    * through. So a log with no hook behind it holds denials and nothing else,
    * every grant falls through as unused, and this section reports that the whole
    * policy is dead — under a heading calling itself the only evidence anyone
-   * will ever have for making a permission file smaller.
+   * will ever have for making a policy smaller.
    *
    * Measured on a real repository with the hook not installed: every write
    * permission of every role listed as never used, while those roles were
@@ -129,7 +129,7 @@ function findings(config, entries, minDenials) {
   const knowable = entries.some((e) => e.verdict === "allowed" && !e.disputed);
 
   // Only writes. A key that is declared and not read is ordinary — most roles
-  // hold a credential for the one turn a month that needs it — but a folder a
+  // hold a credential for the one run a month that needs it — but a folder a
   // role owns and has never written to in the whole log is a line nobody would
   // miss, and the only evidence anyone will ever have for removing it.
   // Straight to the line's own role, and each (role, target) once: walking

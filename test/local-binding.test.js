@@ -45,7 +45,7 @@ test("it is a boolean, and anything else refuses to load", () => {
   assert.throws(() => loadConfig(join(dir, "seisin.toml")), /local_binding must be true or false/);
 });
 
-test("check shows it and does not call it an unknown key", () => {
+test("check shows it and does not call it an unknown setting", () => {
   const report = inspect(loadConfig(join(repoWith(TWO), "seisin.toml")));
   assert.ok(!report.warnings.some((w) => w.kind === "unknown-role-key"));
   assert.match(renderReport(report), /listen.*local_binding/);

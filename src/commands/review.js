@@ -5,8 +5,8 @@
  * would do; this reads what actually happened and tells you where the config
  * was wrong about it. Both run nothing.
  *
- * Exits 1 when there is friction, so it composes — a role blocked over and over
- * is a thing to fix, and a CI job that says so beats a human noticing in a
+ * Exits 1 on repeated denials, so it composes — a role denied over and over
+ * is a thing to fix, and a CI job that says so beats a person noticing in a
  * month. Unused grants and unowned paths exit 0: they are worth reading, not
  * worth failing a build over.
  *
@@ -37,11 +37,11 @@ export function reviewCommand(config, argv = []) {
   }
 
   const day = (s) => (s ?? "").slice(0, 10);
-  out(`\n  ${C.dim}${r.entries} decisions, ${day(r.window.from)} to ${day(r.window.to)}${C.off}\n`);
+  out(`\n  ${C.dim}${r.entries} entries, ${day(r.window.from)} to ${day(r.window.to)}${C.off}\n`);
 
   if (r.friction.length) {
-    out(`\n  ${C.b}Stopped, repeatedly${C.off}\n`);
-    out(`  ${C.dim}a role blocked on the same place over and over is a policy that is wrong,${C.off}\n`);
+    out(`\n  ${C.b}Denied repeatedly${C.off}\n`);
+    out(`  ${C.dim}a role denied on the same place over and over is a policy that is wrong,${C.off}\n`);
     out(`  ${C.dim}not an agent that is misbehaving${C.off}\n\n`);
     for (const f of cap(r.friction)) {
       const whose = f.owners.length ? ` ${C.dim}— belongs to ${who(f.owners)}${C.off}` : "";
@@ -66,7 +66,7 @@ export function reviewCommand(config, argv = []) {
    * working either when the service is one the role was meant to reach.
    */
   if (r.connects?.length) {
-    out(`\n  ${C.b}Refused connections${C.off}\n`);
+    out(`\n  ${C.b}Denied connections${C.off}\n`);
     out(`  ${C.dim}a local port or socket the role kept dialling. Not a grant: a port goes in${C.off}\n`);
     out(`  ${C.dim}local_ports, and a socket stays closed${C.off}\n\n`);
     for (const c of cap(r.connects))
@@ -76,7 +76,7 @@ export function reviewCommand(config, argv = []) {
   }
 
   if (r.guarded.length) {
-    out(`\n  ${C.b}Held at the keys${C.off}\n`);
+    out(`\n  ${C.b}Denied at the key directories${C.off}\n`);
     out(`  ${C.dim}a [keys] dir is closed to every role, so this is the policy working${C.off}\n`);
     out(`  ${C.dim}— not a territory drawn wrong, and never a thing to grant${C.off}\n\n`);
     for (const g of cap(r.guarded))
@@ -91,11 +91,11 @@ export function reviewCommand(config, argv = []) {
    *
    * Without the hook the log holds denials and nothing else, so every grant
    * looks dead. The old text called itself the only evidence anyone will ever
-   * have for making a permission file smaller, printed over the whole policy.
+   * have for making a policy smaller, printed over the whole policy.
    */
   if (!r.unusedKnowable) {
     out(`\n  ${C.b}Granted, never used${C.off} ${C.dim}— cannot be answered from this log${C.off}\n`);
-    out(`  ${C.dim}nothing here records what was ALLOWED, only what was refused. Every grant${C.off}\n`);
+    out(`  ${C.dim}nothing here records what was ALLOWED, only what was denied. Every grant${C.off}\n`);
     // Wired already: telling someone to run `seisin wire` again sends them
     // looking for a fault in a setup that is fine and simply has not run.
     if (wired(config.root))
@@ -108,16 +108,17 @@ export function reviewCommand(config, argv = []) {
   if (r.unused.length) {
     out(`\n  ${C.b}Granted, never used${C.off}\n`);
     out(`  ${C.dim}nothing was written here in the window above. This is the only evidence${C.off}\n`);
-    out(`  ${C.dim}anyone will ever have for making a permission file smaller${C.off}\n\n`);
+    out(`  ${C.dim}anyone will ever have for making a policy smaller${C.off}\n\n`);
     for (const u of cap(r.unused)) out(`    ${C.b}${u.role}${C.off}  ${u.glob}\n`);
     more(r.unused);
     out(`\n  ${C.dim}A short window proves nothing. Check the dates before you delete a line.${C.off}\n`);
   }
 
   if (r.unowned.length) {
-    out(`\n  ${C.b}Owned by nobody${C.off}\n`);
-    out(`  ${C.dim}touched by an agent, claimed by no role. Only \`territory\` is a hole in the map;${C.off}\n`);
-    out(`  ${C.dim}the rest is a kind of thing with its own answer, and none of them is an owner${C.off}\n\n`);
+    out(`\n  ${C.b}Unowned${C.off}\n`);
+    out(`  ${C.dim}touched by an agent, claimed by no role. Only an ownable path (kind \`territory\`)${C.off}\n`);
+    out(`  ${C.dim}is a hole in the map; the rest is a kind of thing with its own answer, and none${C.off}\n`);
+    out(`  ${C.dim}of them is an owner${C.off}\n\n`);
     // Territory first: it is the part that is a decision, and on a real log it
     // was 22 paths under 279 of a test's scratch — past the ten-row cap.
     const ordered = [...r.unowned.filter((u) => u.kind === "territory"), ...r.unowned.filter((u) => u.kind !== "territory")];
@@ -139,7 +140,7 @@ export function reviewCommand(config, argv = []) {
   }
 
   if (!r.friction.length && !r.guarded.length && !r.unused.length && !r.unowned.length && r.unusedKnowable)
-    out(`\n  ${C.green}nothing to report${C.off} ${C.dim}— no repeated blocks, no dead grants, no unowned paths${C.off}\n`);
+    out(`\n  ${C.green}nothing to report${C.off} ${C.dim}— no repeated denials, no unused grants, no unowned paths${C.off}\n`);
 
   out("\n");
   return r;

@@ -1666,9 +1666,9 @@ test("the two lifecycles do not overwrite each other, in either order", () => {
 });
 
 test("a held handoff says which limit held it, in words a person reads", () => {
-  assert.match(handoffNote({ outcome: "throttled", limit: "senderChains", max: 3 }), /open chains/);
+  assert.match(handoffNote({ outcome: "throttled", limit: "senderChains", max: 3 }), /open handoff chains/);
   assert.match(handoffNote({ outcome: "throttled", limit: "receiverConcurrent", max: 2, role: "backend" }), /backend already running/);
-  assert.match(handoffNote({ outcome: "cycle", role: "frontend" }), /already in this chain/);
+  assert.match(handoffNote({ outcome: "cycle", role: "frontend" }), /already in this handoff chain/);
   assert.match(handoffNote({ outcome: "depth", depth: 5, max: 4 }), /5 of 4/);
   assert.equal(handoffNote(undefined), "");   // a request nobody tried to route says nothing
 });

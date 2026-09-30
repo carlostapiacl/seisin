@@ -129,7 +129,7 @@ const NUL = "\u0000";
  * somebody else's policy.
  *
  * When the root is NOT a repository, the same rule made the command blind: a
- * folder that holds projects (a portfolio, a workspace) is nothing BUT nested
+ * folder that holds projects (a workspace) is nothing BUT nested
  * checkouts, so every one of them was pruned, the scan read almost nothing
  * and exited 0 with "nothing credential-shaped". There is no "somebody else"
  * there — the checkouts are the tree — so they are walked. A tree of work
@@ -286,7 +286,7 @@ export function insideRepo(dir) {
  * right: a `.env` at its root is outside every territory and every role reads
  * it. A policy at the root of a folder that holds many repositories (a
  * workspace, a monorepo of clones) is a different shape. Walking the whole
- * folder read everything the operator ever kept there — archives, experiments,
+ * folder read everything the person running it ever kept there — archives, experiments,
  * copies — measured at 155 s and 1,137 certain hits on one such folder, most of
  * them in directories no agent works in. The question the command answers is
  * "which credentials will an agent come across", and the agents work in their

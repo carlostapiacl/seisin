@@ -303,7 +303,7 @@ test("explain and whose say so from both checkouts, and change no verdict", { sk
     assert.equal(answer(inside.stdout), answer(before.stdout), "the verdict is word for word what it was");
     assert.match(inside.stdout, /worktree  you are standing in a worktree of repo, at trees\/fix/);
     assert.match(inside.stdout, /the same file there is trees\/fix\/src\/a\.ts, and it has no owner\./);
-    assert.match(inside.stdout, /The policy names the canonical checkout, not the worktree — a write in the worktree is refused\./);
+    assert.match(inside.stdout, /The policy names the canonical checkout, not the worktree — a write in the worktree is denied\./);
 
     // Same question from the canonical side: the worktree is named, not "you".
     const outside = seisin(repo, "explain", "dev", "write", "src/a.ts");
