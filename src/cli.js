@@ -20,20 +20,16 @@ import { findConfig, loadConfig } from "./config.js";
 import { CONFIG_NAME } from "./layout.js";
 import { C, out, err } from "./render.js";
 
-import { run } from "./commands/run.js";
-import { check } from "./commands/check.js";
-import { explainCommand } from "./commands/explain.js";
-import { scanCommand } from "./commands/scan.js";
-import { init, initFromObservations } from "./commands/init.js";
-import { log, watch } from "./commands/log.js";
-import { hook } from "./commands/hook.js";
-import { ui } from "./commands/ui.js";
-import { requests, grant, deny } from "./commands/requests.js";
-import { whose } from "./commands/whose.js";
-import { wallsCommand } from "./commands/walls.js";
-import { reviewCommand } from "./commands/review.js";
-import { wire } from "./commands/wire.js";
-import { serveMcp } from "./mcp.js";
+/**
+ * Each command is imported when it is the one being run, not before.
+ *
+ * All fifteen used to load up front — 42 of 47 modules, the MCP server and the
+ * HTTP console among them — and `seisin hook` paid for every one on every tool
+ * call of every agent: 218 ms measured, where the hook itself needs a fraction
+ * of that. A dispatcher that loads everything to run one thing charges the
+ * most frequent command for the rarest ones. So each entry in COMMANDS below
+ * does its own `import()`.
+ */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const [, , command, ...argv] = process.argv;
@@ -78,24 +74,27 @@ function config() {
  * the exceptions — they hand the process over and never come back here.
  */
 const COMMANDS = {
-  run: async () => await run(config(), argv),
+  run: async () => await (await import("./commands/run.js")).run(config(), argv),
   // Non-zero when the policy cannot be enforced as written, so `seisin check`
   // composes in a pre-commit hook or CI the way `explain` and `scan` already do.
   // Warnings about a config that WILL work still exit 0 — failing on those
   // would make the command unusable within a week.
-  check: () => (check(config(), argv).warnings.some((w) => w.kind === "cannot-be-enforced") ? 1 : 0),
-  explain: () => (explainCommand(config(), argv).allowed ? 0 : 1),
-  scan: () => (scanCommand(config()).certain.length ? 1 : 0),
-  log: () => void log(config(), argv),
-  watch: () => void watch(config()),
-  init: () => void (argv.includes("--from-observations") ? initFromObservations(config()) : init()),
-  ui: () => ui(config(), argv),
-  whose: () => void whose(config(), argv),
-  wire: () => void wire(config()),
-  review: () => (reviewCommand(config(), argv).friction.length ? 1 : 0),
-  walls: () => (wallsCommand(config(), argv).length ? 1 : 0),
-  requests: () => (requests(config()).length ? 1 : 0),
-  grant: () => void grant(config(), argv),
+  check: async () => ((await import("./commands/check.js")).check(config(), argv).warnings.some((w) => w.kind === "cannot-be-enforced") ? 1 : 0),
+  explain: async () => ((await import("./commands/explain.js")).explainCommand(config(), argv).allowed ? 0 : 1),
+  scan: async () => ((await import("./commands/scan.js")).scanCommand(config()).certain.length ? 1 : 0),
+  log: async () => void (await import("./commands/log.js")).log(config(), argv),
+  watch: async () => void (await import("./commands/log.js")).watch(config()),
+  init: async () => {
+    const { init, initFromObservations } = await import("./commands/init.js");
+    void (argv.includes("--from-observations") ? initFromObservations(config()) : init());
+  },
+  ui: async () => (await import("./commands/ui.js")).ui(config(), argv),
+  whose: async () => void (await import("./commands/whose.js")).whose(config(), argv),
+  wire: async () => void (await import("./commands/wire.js")).wire(config()),
+  review: async () => ((await import("./commands/review.js")).reviewCommand(config(), argv).friction.length ? 1 : 0),
+  walls: async () => ((await import("./commands/walls.js")).wallsCommand(config(), argv).length ? 1 : 0),
+  requests: async () => ((await import("./commands/requests.js")).requests(config()).length ? 1 : 0),
+  grant: async () => void (await import("./commands/requests.js")).grant(config(), argv),
   /**
    * A person DECLINES a request; the boundary DENIES a write. One word each,
    * because they are opposite events and `deny` used to name both — a queue
@@ -105,10 +104,10 @@ const COMMANDS = {
    * `deny` stays and is not documented. Renaming a published command over a
    * word is not worth breaking somebody's script; teaching the new one is.
    */
-  decline: () => void deny(config(), argv),
-  deny: () => void deny(config(), argv),
+  decline: async () => void (await import("./commands/requests.js")).deny(config(), argv),
+  deny: async () => void (await import("./commands/requests.js")).deny(config(), argv),
   mcp: async () => {
-    await serveMcp(version());
+    await (await import("./mcp.js")).serveMcp(version());
     return 0;
   },
   // Always 0. Claude Code reads a non-zero exit from a PreToolUse hook as
@@ -116,7 +115,7 @@ const COMMANDS = {
   // the hook explains, it never enforces. The error goes to stderr instead.
   hook: async () => {
     try {
-      const decision = await hook();
+      const decision = await (await import("./commands/hook.js")).hook();
       if (decision?.hookSpecificOutput) out(JSON.stringify(decision) + "\n");
     } catch (e) {
       err(`seisin hook: ${e?.message ?? e} — no decision, the tool call goes ahead\n`);
