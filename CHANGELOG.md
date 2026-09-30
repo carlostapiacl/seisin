@@ -202,6 +202,39 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
 - **Denied is no longer cut at twelve without saying so**, and keys, network and MCP denials are
   counted apart from files (`about` on each cause and `causes.about` per kind). The page is sent up
   to 200 causes and shows how many there are.
+- **Approving says what it grants before the click.** "Asked for `docs/api.md` → approving grants
+  all of `docs/**`", with whose it is today. Approving another role's path takes a second click that
+  names it ("Click again to share src/api/** with frontend"), like Decline all; a Decline with an
+  empty reason fills in the default and asks again, so what is recorded is on screen first. After
+  a decision a notice stays with the line written and a link to it, marked, in Config file.
+  Approve is the filled button; Decline is neutral. The grant is still the folder the request is
+  keyed by: granting the one file would need the queue keyed by file, or a later ask for a
+  sibling would fold into the settled request unseen.
+- **Live, the roles table is read-only.** Its × on a path, "+ folder" and key toggles were thrown
+  away on the next poll without a word. The only writes are decisions and control-files saves;
+  the table stays editable in the example, under a banner that says nothing is saved.
+- **The console says when it is offline.** The header kept "live" in green over a server that was
+  gone or restarted with a new token, and Approve stayed clickable. After two failed polls it says
+  "offline since hh:mm" or "link expired — open the new one: `seisin ui --link`", turns every write
+  off, and turns them back on when the server answers. A failed decision shows its error on its own
+  line instead of over the request's context.
+- **Opened as a file, the example is a whole example.** Three requests, denials and walls, all
+  computed from one example log the way the server computes the live state, so Activity, the KPIs
+  and Denied agree; a line on top says what seisin is and to run `seisin ui`. Texts that only hold
+  live ("on disk") say so only live.
+- **Control files: policy-wide apart from per role, and the preview says it plainly.** The
+  `[protect] instructions` switch has its own box. The preview groups the paths ("28 instruction
+  files in frontend, backend, ops become denied", the list behind a disclosure), shows "becomes
+  denied" in amber, names the roles the edit leaves alone and why, and shows the exact lines written
+  to `seisin.toml` and where. A save needs a reason and leaves a notice with the line.
+- **Smaller fixes.** "Top cause" says "none" under 40% with the largest beside it, matching the
+  page. Walls count retries and denials in the same units at every level, and the nav badges say
+  their unit. Causes is a tab of Denied, not a view the nav could not reach. Activity is newest
+  first as it says, shows "3 min ago · 14:02" with the instant on hover, and a network or MCP denial
+  says what it was ("not in the network allow list"), not "no role owns this path". Grey text
+  meets AA in both themes; the role cell is a button; focus rings reach inputs; a toggle's name
+  starts with its visible words. On a phone, requests stack with full-width actions and roles
+  become cards. The KPI cards are full only on the landing view. Links to the README and glossary.
 
 ## 0.4.2 — 2026-09-29
 
