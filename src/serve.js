@@ -44,7 +44,7 @@ export function sinceOf(url) {
  * should see the console change. That still holds: anything that changes one
  * of these files changes the signature. What no longer happens is recomputing
  * 1–2 s of causes and walls every two seconds to find nothing had moved
- * (measured on the portfolio's log, 7,728 lines, 32 roles).
+ * (measured on a multi-repo workspace's log, 7,728 lines, 32 roles).
  */
 const memo = { path: null, hash: null, bucket: null, cfg: null, logSig: null, all: null, derived: new Map(), bodies: new Map() };
 
@@ -199,7 +199,7 @@ function settingsOf(configPath, role) {
 }
 
 /**
- * Approve or refuse one pending request, as a person.
+ * Grant or decline one pending request, as a person.
  *
  * This is the only thing in seisin that writes policy, and it lives here rather
  * than in the MCP server for one reason: an agent cannot reach this. Measured,
@@ -377,7 +377,7 @@ function statusOf(e) {
  * A request body, capped. The cap is per route: one decision is a few hundred
  * bytes, but "decline all" carries every key on screen — 109 of them were
  * 9.3 KB, over the old flat 4 KB, and the connection was cut with nothing but
- * "Failed to fetch" in the browser. Found by Carlos on the first real use.
+ * "Failed to fetch" in the browser. Found on first real use.
  *
  * Over the cap it is refused with 413, not cut: the caller answers first and
  * the connection is closed after the answer has gone (see `answer`).
@@ -450,7 +450,7 @@ export function serve(configPath, port = 4178, { lockWaitMs = 10000 } = {}) {
    * Loopback is not a boundary against the browser: any site the operator has
    * open can POST to 127.0.0.1. It cannot read this token, and asking for it in
    * a custom header also forces a preflight that this server never answers. So
-   * the page can approve and a tab from somewhere else cannot.
+   * the page can grant and a tab from somewhere else cannot.
    */
   const token = randomBytes(24).toString("hex");
 

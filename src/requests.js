@@ -11,7 +11,7 @@
  * The entry says **asked** now, because refused was not always true. Asking for
  * a permission before reaching for it is reasonable, and nothing required a
  * denial to have happened first — so the queue could print a sentence about an
- * event that never occurred, in front of a person about to approve something.
+ * event that never occurred, in front of a person about to grant something.
  * `seisin run` drops any request the policy does not actually refuse; what is
  * left is "you cannot have this, and you asked", which holds whether the agent
  * tried or simply asked.

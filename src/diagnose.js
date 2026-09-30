@@ -2,10 +2,10 @@
  * The refusal the agent never heard, said after the fact.
  *
  * PreToolUse sees the path a tool call names, and that is all it sees. What the
- * kernel refuses on its own — a child process, `/bin/rm` inside a script, a
+ * kernel denies on its own — a child process, `/bin/rm` inside a script, a
  * path the regex did not catch — reaches the agent as `Operation not permitted`
- * with no path and no reason, and it retries. Measured on a real portfolio from
- * 2026-09-14 to 2026-09-22: 5,617 refusals, all of them from the kernel, 72%
+ * with no path and no reason, and it retries. Measured on a multi-repo workspace from
+ * 2026-09-14 to 2026-09-22: 5,617 denials, all of them from the kernel, 72%
  * the same role hitting the same path again.
  *
  * Two hooks close that, the shape nono uses for its sandbox diagnostics:

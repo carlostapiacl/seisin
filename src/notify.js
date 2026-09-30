@@ -17,7 +17,7 @@
  *     never holds the URL, and `SEISIN_NOTIFY_URL` is dropped from its
  *     environment even if the role names it;
  *   - the URL is not readable from any territory. A ntfy topic or a webhook is
- *     a credential — whoever can read it can send the person a fake "approve
+ *     a credential — whoever can read it can send the person a fake "grant
  *     #3". So it lives in a key directory no role declares (`url_file`), or in
  *     the parent's environment, and never as a plain value in seisin.toml,
  *     which every role can read.

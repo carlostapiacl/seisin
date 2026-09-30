@@ -39,8 +39,8 @@ export const BASE = [
  * needs **set**, not forwarded.
  *
  * `GIT_OPTIONAL_LOCKS=0` is the whole list, and it is here because of what the
- * denial log looks like without it. Measured on a real portfolio: of the last
- * 60 refusals, **58 were `.git/index.lock`** — 97% — and most carried no owner
+ * denial log looks like without it. Measured on a multi-repo workspace: of the last
+ * 60 denials, **58 were `.git/index.lock`** — 97% — and most carried no owner
  * at all, so not one of them was a territory question. `git status` and
  * `git diff` refresh the index as a courtesy, refreshing it takes the lock, and
  * a role reading a repo it does not own trips the boundary while doing nothing
@@ -121,7 +121,7 @@ export function buildEnv(parent, role, extra = []) {
     if (!wanted.has(name)) { dropped.push(name); continue; }
     if (NEVER.test(name) && !(role.env ?? []).includes(name)) { dropped.push(name); continue; }
     // Not even when named: whoever can read the notify URL can send the person
-    // a fake "approve #3". Only the parent uses it (notify.js).
+    // a fake "grant #3". Only the parent uses it (notify.js).
     if (name === "SEISIN_NOTIFY_URL") { dropped.push(name); continue; }
     env[name] = value;
   }

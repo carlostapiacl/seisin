@@ -67,8 +67,8 @@ export function intake({ config, role, runId, observe = false, settings, notify 
    *
    * The sender is the process being recorded, so every field it supplies is
    * a claim. Two of them matter. `role` decides whose request this is — left
-   * alone, a frontend agent could file one as backend and wait for a human to
-   * approve it. `owners` decides who the queue says it belongs to, and the
+   * alone, a frontend agent could file one as backend and wait for a person to
+   * grant it. `owners` decides who the queue says it belongs to, and the
    * parent can work that out itself from the policy.
    *
    * So the role is overwritten with the role of this run, the owners are
@@ -203,7 +203,7 @@ export function intake({ config, role, runId, observe = false, settings, notify 
      *
      * Without this the two halves of the record disagree in the worst
      * direction: `review` would show a role stopped repeatedly on a directory
-     * while the queue held nothing to approve, so the one refusal a person most
+     * while the queue held nothing to grant, so the one refusal a person most
      * needed to see — the one that escaped the hook — would be the one with no
      * way to act on it.
      *

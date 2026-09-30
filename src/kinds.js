@@ -146,7 +146,7 @@ export function kindOf(target, { keyDirs = [] } = {}) {
 }
 
 /**
- * A name made unique per run: `pruebas-deuda-57141-2b32ca`, `run_8812`,
+ * A name made unique per run: `test-run-57141-2b32ca`, `run_8812`,
  * `out.4419525232`. The stem, and a tail of one or two tokens: the first with a
  * digit, the second with a digit or all hex (`-bfaeec` is a random suffix
  * that happened to draw no digit) — so `report-2026.json` never matches, since
@@ -164,7 +164,7 @@ export const GENERATED_SIBLINGS = 3;
  * One rule needs the set and not the path, and it is the one that mattered
  * most on the log it was measured on: a test that makes a directory with its
  * PID in the name produced 258 of 317 unowned paths, each one different. Alone,
- * `pruebas-deuda-57141-2b32ca` could be a real folder. The same stem with a
+ * `test-run-57141-2b32ca` could be a real folder. The same stem with a
  * different run-unique tail in three or more places under one parent is not a
  * folder anybody named — it is a generator, and granting it to whoever asked
  * would hand over the parent. A repeated name is a fact about this log, not a

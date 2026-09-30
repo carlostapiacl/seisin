@@ -1514,7 +1514,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     var kinds = st.unowned && st.unowned.kinds;
     if (f.unowned && kinds && kinds.territory && kinds.territory.paths < f.unowned)
       h += " Only <b>" + kinds.territory.paths.toLocaleString() + "</b> of those " +
-              (kinds.territory.paths === 1 ? "is" : "are") + " territory — the rest is " +
+              (kinds.territory.paths === 1 ? "is" : "are") + " ownable, a question of who owns what; the rest is " +
               ["git", "temporary", "build", "credential"].filter(function(k){ return kinds[k] && kinds[k].paths; })
                 .map(function(k){ return kinds[k].paths.toLocaleString() + " " + k; }).join(", ") +
               ", each with its own fix and none of them an owner.";
@@ -1660,7 +1660,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     set("k-wait", waiting ? "live" : "calm", waiting,
         waiting ? (waiting === 1 ? "decision" : "decisions") : "nothing to decide");
     set("k-open", off ? "alarm" : "calm", off,
-        off ? (off === 1 ? "role nothing is enforcing" : "roles nothing is enforcing") : "every role confined");
+        off ? (off === 1 ? "role running unconfined" : "roles running unconfined") : "every role confined");
     set("k-ref", f.total ? "live" : "calm", f.total.toLocaleString(),
         (f.total ? (f.distinct || f.causes.length).toLocaleString() + " distinct things" : "nothing was denied") +
         (RANGE === "all" ? "" : " · " + rangeLabel()));

@@ -19,7 +19,7 @@ import { WILD } from "./paths.js";
 /**
  * What every agent needs to write no matter which role it is.
  *
- * Found by running a real cell config through the sandbox: territory alone
+ * Found by running a policy with 32 roles through the sandbox: territory alone
  * looks correct and is unusable. An agent writes its session state under its
  * own config directory and its tools write scratch files to the temp dir, so a
  * policy of "your folders and nothing else" stops the agent before it starts.
@@ -68,7 +68,7 @@ export function roleHomeRoot(config) {
    *
    * This was `base64url(root).slice(-16)` — the TAIL of the encoded path, which
    * is the tail of the path itself. Two checkouts that end the same way get the
-   * same id: `/Users/ana/dev/proyecto` and `/Users/bob/dev/proyecto` collide, and
+   * same id: `/Users/ana/dev/project` and `/Users/bob/dev/project` collide, and
    * so do `/home/a/work/api` and `/home/b/work/api`. A collision here is not a
    * cosmetic clash — both repos' role `dev` would share one HOME, which is the
    * session token of one handed to the other. Measured on three of four ordinary

@@ -4,8 +4,8 @@
  * seisin answers *whose is this* at the moment of the refusal, once, in the
  * middle of a turn, and then the sentence is gone. Nothing carries it forward,
  * so the agent tries again — and the measurement that made this module exist
- * says how often: of 345 denials on a real team, **88 (25%) were a repeat of
- * something that same role had already been refused**. One role spent 37 calls
+ * says how often: of 345 denials in a multi-repo workspace, **88 (25%) were a repeat of
+ * something that same role had already been denied**. One role spent 37 calls
  * on two walls, hitting the same one nineteen times.
  *
  * A block that repeats nineteen times is not a boundary working. It is a
