@@ -86,6 +86,10 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
   were counted as another run's and dropped with their requests. A suffix is foreign now only when
   its ancestry reaches another run; a line without one that arrives inside the throttle window is
   held for the re-check instead of dropped.
+- **A run directory is swept only when its process is known to be gone.** The sweep called any
+  error from `kill(pid, 0)` other than EPERM "dead", and removed the directory — socket and scratch
+  keys — of a run it could not rule out. The log lock and the sweep now share one `alive()`: only
+  ESRCH is gone, and a pid file that is not a positive pid is left alone.
 
 ### Faster
 

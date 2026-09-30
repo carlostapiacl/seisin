@@ -4,12 +4,15 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { inspect } from "../src/inspect.js";
 import { wire, hookEntries } from "../src/commands/wire.js";
 import { TOOL_MATCHER } from "../src/hook.js";
+import { alive } from "../src/log.js";
+import { runsRoot, openRun } from "../src/rundir.js";
+import { recentKernelDenials } from "../src/diagnose.js";
 import { scratch, repoWith as policyRepo, CLI } from "./_tmp.js";
 
 const silently = (fn) => {
@@ -115,4 +118,72 @@ test("--help after the command's own words belongs to the command", () => {
   const reason = seisin(dir, "grant", "1", "--reason", "-h");
   assert.notEqual(reason.status, 0);
   assert.doesNotMatch(reason.stdout, /usage:/);
+});
+
+/* ── one alive(), one JSON-lines reader ──────────────────────────────── */
+
+const gonePid = () =>
+  Number(spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], { encoding: "utf8" }).stdout);
+
+test("alive() is false only for a process the kernel says is gone", () => {
+  assert.equal(alive(process.pid), true);
+  assert.equal(alive(gonePid()), false);
+  // pid 1 is there and not ours to signal (EPERM): alive, not gone
+  if (process.getuid?.() !== 0) assert.equal(alive(1), true);
+  // not a pid we can ask about — and kill(-n) would ask a whole group
+  for (const p of [0, -1, NaN, 1.5, undefined]) assert.equal(alive(p), true, String(p));
+});
+
+test("the run sweep removes a dead run's directory and keeps one it cannot rule dead", () => {
+  const base = scratch("seisin-sweep-");
+  const root = runsRoot(base);
+  const dead = mkdtempSync(join(root, "dead00-"));
+  writeFileSync(join(dead, "pid"), String(gonePid()));
+  // pid 1 answers EPERM to an ordinary user: rundir.js used to treat only
+  // EPERM as alive; this one must survive either way, and now so does anything
+  // the kernel did not call gone.
+  const unsure = mkdtempSync(join(root, "unsur-"));
+  writeFileSync(join(unsure, "pid"), "1");
+  const odd = mkdtempSync(join(root, "odd000-"));
+  writeFileSync(join(odd, "pid"), "-1");
+  const run = openRun({ base });
+  try {
+    assert.ok(!existsSync(dead), "a dead run's directory survived the next run");
+    assert.ok(existsSync(unsure), "a run that may be alive was swept");
+    assert.ok(existsSync(odd), "a pid file naming a process group was read as a dead run");
+  } finally {
+    run.close();
+  }
+});
+
+test("diagnose reads the log's last 512 KB, dropping the line the cut lands in", () => {
+  const dir = scratch("seisin-diag-");
+  const file = join(dir, "log.jsonl");
+  const now = Date.now();
+  const at = new Date(now - 1000).toISOString();
+  const denial = (target) => JSON.stringify({ at, role: "dev", verdict: "denied", source: "kernel", action: "write", target });
+  // one recent refusal far before the budget, then filler, then one at the end
+  const filler = JSON.stringify({ at, role: "other", verdict: "allowed", pad: "x".repeat(200) });
+  const lines = [denial("early/a.txt")];
+  let bytes = 0;
+  while (bytes < 700 * 1024) { lines.push(filler); bytes += filler.length + 1; }
+  lines.push(denial("late/b.txt"));
+  writeFileSync(file, lines.join("\n") + "\n");
+  const seen = recentKernelDenials(file, "dev", now - 60_000).map((e) => e.target);
+  assert.deepEqual(seen, ["late/b.txt"], "read past the byte budget, or missed the last line");
+
+  // The cut: 10 bytes into a refusal drops it; exactly on its first byte keeps it.
+  const BUDGET = 512 * 1024;
+  const L = denial("cut/c.txt");
+  const padded = (n) => JSON.stringify({ pad: "y".repeat(n - 10) });   // `{"pad":""}` is 10 bytes
+  const inside = join(dir, "inside.jsonl");
+  writeFileSync(inside, L + "\n" + padded(BUDGET + 10 - L.length - 2) + "\n");
+  assert.equal(statSync(inside).size, BUDGET + 10);
+  assert.deepEqual(recentKernelDenials(inside, "dev", now - 60_000), [], "half a line was read as a refusal");
+  const onEdge = join(dir, "edge.jsonl");
+  const X = denial("before/x.txt");
+  writeFileSync(onEdge, X + "\n" + L + "\n" + padded(BUDGET - L.length - 2) + "\n");
+  assert.equal(statSync(onEdge).size, BUDGET + X.length + 1);
+  assert.deepEqual(recentKernelDenials(onEdge, "dev", now - 60_000).map((e) => e.target), ["cut/c.txt"],
+    "a cut on a line boundary lost a whole line, or read past the budget");
 });
