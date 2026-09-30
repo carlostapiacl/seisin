@@ -109,9 +109,26 @@ export function reviewCommand(config, argv = []) {
 
   if (r.unowned.length) {
     out(`\n  ${C.b}Owned by nobody${C.off}\n`);
-    out(`  ${C.dim}touched by an agent, claimed by no role — holes in the map${C.off}\n\n`);
-    for (const u of cap(r.unowned)) out(`    ${String(u.times).padStart(4)}×  ${u.where}\n`);
-    more(r.unowned);
+    out(`  ${C.dim}touched by an agent, claimed by no role. Only \`territory\` is a hole in the map;${C.off}\n`);
+    out(`  ${C.dim}the rest is a kind of thing with its own answer, and none of them is an owner${C.off}\n\n`);
+    // Territory first: it is the part that is a decision, and on a real log it
+    // was 22 paths under 279 of a test's scratch — past the ten-row cap.
+    const ordered = [...r.unowned.filter((u) => u.kind === "territory"), ...r.unowned.filter((u) => u.kind !== "territory")];
+    const shown = cap(ordered);
+    const width = Math.max(...shown.map((u) => (u.kind ?? "").length));
+    for (const u of shown)
+      out(`    ${String(u.times).padStart(4)}×  ${u.kind ? `${C.dim}${u.kind.padEnd(width)}${C.off}  ` : ""}${u.where}\n`);
+    more(ordered);
+    // The advice once per kind shown, not once per row: a hundred rows of
+    // `.git` do not need the same sentence a hundred times.
+    const hints = new Map(shown.filter((u) => u.hint).map((u) => [u.kind, u.hint]));
+    if (hints.size) out("\n");
+    for (const [kind, hint] of hints) out(`  ${C.dim}${kind}: ${hint}${C.off}\n`);
+    // All of it by kind, so the part past the cap is still said in one line.
+    const tally = new Map();
+    for (const u of r.unowned) if (u.kind) tally.set(u.kind, (tally.get(u.kind) ?? 0) + u.times);
+    if (tally.size > 1)
+      out(`  ${C.dim}by kind: ${[...tally].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n.toLocaleString("en")}×`).join(" · ")}${C.off}\n`);
   }
 
   if (!r.friction.length && !r.guarded.length && !r.unused.length && !r.unowned.length && r.unusedKnowable)
