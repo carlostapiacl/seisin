@@ -297,6 +297,38 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
   .req input:focus{outline:2px solid var(--blue);outline-offset:1px}
   .req .empty{color:var(--dim);padding:18px 16px}
   .asked{font-variant-numeric:tabular-nums}
+
+  /* Control files. The one place on Roles that writes — so it never writes on the click
+     that changes it: the toggle asks the server what the profile would become, the
+     answer is shown, and only the second, separate button saves. */
+  .ctl{display:flex;flex-direction:column}
+  .ctl-row{display:flex;gap:14px;align-items:center;justify-content:space-between;padding:12px 16px;
+           border-top:1px solid var(--line)}
+  .ctl-row:first-child{border-top:0}
+  .ctl-row.glob{background:var(--side)}
+  .ctl-row .lbl{min-width:0}
+  .ctl-row .lbl b{font-weight:600;font-size:13px}
+  .ctl-row .lbl code{font-family:var(--mono);font-size:11.5px;color:var(--mid)}
+  .ctl-row .lbl p{margin:2px 0 0;font-size:12px;color:var(--mid);max-width:70ch}
+  button.sw[data-state="shut"]{color:var(--green)} button.sw[data-state="shut"] i{background:var(--green)}
+  button.sw[data-state="open"]{color:var(--amber);border-color:var(--amber)} button.sw[data-state="open"] i{background:var(--amber)}
+  button.sw:disabled{opacity:.45;cursor:not-allowed}
+  button.sw:disabled:hover{background:var(--bg)}
+  .preview{border-top:1px solid var(--line);padding:14px 16px;background:var(--side);display:flex;flex-direction:column;gap:10px}
+  .preview[hidden]{display:none}
+  .preview h3{margin:0;font-size:13px;font-weight:600}
+  .preview p{margin:0;font-size:12px;color:var(--mid)}
+  .preview p b{color:var(--fg)}
+  .preview code{font-family:var(--mono);font-size:11.5px;color:var(--fg)}
+  .diff{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+  .diff li{display:grid;grid-template-columns:14px 1fr;gap:6px;font-family:var(--mono);font-size:11.5px}
+  .diff li span{overflow-wrap:anywhere;color:var(--fg)}
+  .diff li em{display:block;font-family:ui-sans-serif,system-ui,sans-serif;font-style:normal;color:var(--dim);font-size:11px}
+  .diff li.open b{color:var(--amber)} .diff li.shut b{color:var(--green)}
+  .preview .act{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .preview input{font:inherit;font-size:12.5px;padding:6px 9px;border:1px solid var(--line);border-radius:6px;
+                 background:var(--bg);color:var(--fg);width:min(40vw,260px)}
+  .preview .err{color:var(--amber)}
 </style>
 </head>
 <body>
@@ -398,6 +430,15 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
         </table>
         <p class="nohits" id="nohits" hidden></p>
       </div>
+    </div>
+
+    <!-- Control files for the selected role. Beside the table rather than a column in it:
+         the two toggles only mean something with the explanation next to them, and a
+         change here is saved to seisin.toml — unlike the table above, which is a preview. -->
+    <div class="box">
+      <header><h2 id="ctl-title">Control files</h2><span class="note" id="ctl-note">files an editor or the next agent session acts on — protected unless the policy hands them over</span></header>
+      <div class="ctl" id="ctl"></div>
+      <div class="preview" id="ctl-preview" hidden aria-live="polite"></div>
     </div>
 
     <!-- The generated settings stay with Roles: they are not a fifth subject, they are what
@@ -503,7 +544,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
   let KEYS = ["netlify-token","database-url","sentry-dsn","registry-token","hetzner-ro"];
 
   let ROLES = [
-    {name:"frontend", writes:["src/web/**","public/**"], keys:["netlify-token"], sandbox:true,  blocks:3},
+    {name:"frontend", writes:["src/web/**","public/**"], keys:["netlify-token"], sandbox:true,  blocks:3, controlFiles:["ide"]},
     {name:"backend",  writes:["src/api/**","migrations/**"], keys:["database-url","sentry-dsn"], sandbox:true, blocks:2},
     {name:"docs",     writes:["docs/**","README.md"], keys:[], sandbox:true, blocks:0},
     {name:"release",  writes:[".github/**"], keys:["registry-token"], sandbox:true, blocks:1},
@@ -511,6 +552,11 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
   ];
 
   let KEYDIR = ".secrets";
+  // `[protect]` and the hash of the policy text the console last read, which a
+  // control-files save sends back so a file that moved in between is refused.
+  var PROTECT = { instructions: false };
+  var BASE = null;
+  var ROOT = "";
   var sel = "frontend";
 
   let LOG = [
@@ -594,7 +640,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
 
       var c1=document.createElement("td");
       c1.className="role"; c1.innerHTML="<i>●</i>"+esc(r.name); c1.tabIndex=0;
-      function pick(){sel=r.name;drawRows();drawCfg();}
+      function pick(){sel=r.name;drawRows();drawCfg();drawControls();}
       c1.onclick=pick;
       c1.onkeydown=function(e){if(e.key==="Enter"||e.key===" "){e.preventDefault();pick();}};
       tr.appendChild(c1);
@@ -773,10 +819,13 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     }
     var L=['<span class="c"># Anything not listed is denied.</span>',"",
            "[keys]",'dir = "'+esc(KEYDIR)+'"',"","[network]",'allow = ["github.com", "*.github.com"]',""];
+    if(PROTECT.instructions) L.push('<span class="k">[protect]</span>',"instructions = true","");
     ROLES.forEach(function(r){
       L.push('<span class="k">[roles.'+esc(r.name)+"]</span>");
       L.push("writes = ["+r.writes.map(function(w){return '"'+esc(w)+'"';}).join(", ")+"]");
       L.push("keys   = ["+r.keys.map(function(k){return '"'+esc(k)+'.txt"';}).join(", ")+"]");
+      if((r.controlFiles||[]).length)
+        L.push("control_files = ["+r.controlFiles.map(function(f){return '"'+esc(f)+'"';}).join(", ")+"]");
       L.push("");
     });
     document.getElementById("toml").innerHTML=L.join("\n");
@@ -840,6 +889,210 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     note("admin",anyOpen?"sandboxed":"unsandboxed","every role");
     draw();
   };
+
+  /* ── control files ────────────────────────────────────────────────────── */
+
+  /**
+   * The two families a policy can hand a role, and the one global switch.
+   *
+   * A toggle never saves. It asks the server (dryRun) what each sandbox profile
+   * would gain or lose and who could then write each family; that answer is
+   * shown, and a separate button saves it. The server's list is the only list:
+   * `.claude/`, git hooks, `.mcp.json` and `.envrc` are not offered here because
+   * no role is ever handed them.
+   */
+  var FAM = {
+    ide: { label: "Editor settings", files: ".vscode/ · .cursor/ · .windsurf/",
+           what: "Tasks, terminal profiles and settings the editor applies the moment they change, outside the box." },
+    instructions: { label: "Instruction files", files: "CLAUDE.md · AGENTS.md · GEMINI.md · .cursorrules …",
+           what: "What the next agent session reads as its instructions — how one role reaches another’s context." }
+  };
+  var PENDING = null;   // { edit, from, plan, error, busy, demo } — the change being looked at
+
+  function selRole(){ return ROLES.filter(function(x){ return x.name === sel; })[0]; }
+
+  function ctlRow(o){
+    var row = document.createElement("div"); row.className = "ctl-row" + (o.glob ? " glob" : "");
+    var l = document.createElement("div"); l.className = "lbl";
+    l.innerHTML = "<b>" + esc(o.title) + "</b> <code>" + esc(o.code) + "</code><p>" + o.desc + "</p>";
+    var b = document.createElement("button"); b.type = "button"; b.className = "sw"; b.id = o.id;
+    b.setAttribute("data-state", o.open ? "open" : "shut");
+    b.setAttribute("aria-pressed", o.pressed ? "true" : "false");
+    b.setAttribute("aria-label", o.aria);
+    b.innerHTML = "<i></i>" + esc(o.text);
+    if (o.disabled) { b.disabled = true; b.title = o.why || ""; }
+    else b.onclick = o.click;
+    row.appendChild(l); row.appendChild(b);
+    return row;
+  }
+
+  function drawControls(){
+    var host = document.getElementById("ctl"); if (!host) return;
+    var r = selRole();
+    document.getElementById("ctl-title").textContent = r ? "Control files · " + r.name : "Control files";
+    host.textContent = "";
+    var prot = !!PROTECT.instructions;
+    host.appendChild(ctlRow({
+      glob: true, id: "ctl-sw-protect", title: "Protect instruction files", code: "[protect] instructions",
+      desc: prot
+        ? "On, for every role: instruction files are refused to any role not handed them below."
+        : "Off, for every role: any role may edit instruction files inside its own territory.",
+      open: !prot, pressed: prot, text: prot ? "protected" : "not protected",
+      aria: "Protect instruction files for every role",
+      click: function(){ propose({ protect: !prot }, "ctl-sw-protect"); }
+    }));
+    if (!r) { drawPreview(); return; }
+    ["ide", "instructions"].forEach(function(f){
+      var mine = (r.controlFiles || []).indexOf(f) !== -1;
+      var idle = f === "instructions" && !prot;
+      var desc = idle
+        ? "Nothing to hand over while <code>[protect] instructions</code> is off: no role is refused these. Turn protection on above first."
+        : (mine ? esc(r.name) + " may edit these inside its own territory. "
+                : "Protected: " + esc(r.name) + " is refused writing them. ") + esc(FAM[f].what);
+      host.appendChild(ctlRow({
+        id: "ctl-sw-" + f, title: FAM[f].label + " (" + f + ")", code: FAM[f].files, desc: desc,
+        open: mine || idle, pressed: mine, text: idle ? "not protected" : mine ? "may edit" : "protected",
+        aria: "Let " + r.name + " edit " + FAM[f].label.toLowerCase() + " (" + f + ")",
+        disabled: idle, why: "Turn on [protect] instructions first",
+        click: function(){
+          var next = (r.controlFiles || []).filter(function(x){ return x !== f; });
+          if (!mine) next.push(f);
+          next = ["ide", "instructions"].filter(function(x){ return next.indexOf(x) !== -1; });
+          propose({ role: r.name, families: next }, "ctl-sw-" + f);
+        }
+      }));
+    });
+    drawPreview();
+  }
+
+  async function callControls(body){
+    var r = await fetch("/api/control-files", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-seisin-token": TOKEN },
+      body: JSON.stringify(body)
+    });
+    var out = await r.json();
+    if (!r.ok) { var err = new Error(out.error || "refused"); err.status = r.status; throw err; }
+    return out;
+  }
+
+  function sameEdit(a, b){ return JSON.stringify(a) === JSON.stringify(b); }
+
+  /** A toggle pressed: ask what it would do. Pressing the same one again puts it back. */
+  async function propose(edit, from){
+    if (PENDING && sameEdit(PENDING.edit, edit)) { cancelEdit(); return; }
+    var mine = PENDING = { edit: edit, from: from, plan: null, error: null, busy: LIVE, demo: !LIVE };
+    drawPreview();
+    if (!LIVE) return;
+    try { var out = await callControls(Object.assign({ dryRun: true }, edit)); if (PENDING === mine) mine.plan = out; }
+    catch (e) { if (PENDING === mine) mine.error = whyFailed(e, e.status); }
+    if (PENDING !== mine) return;
+    mine.busy = false;
+    drawPreview();
+    // Focus goes to the decision, so the keyboard path is toggle → Enter → Save.
+    var next = document.getElementById("ctl-save") || document.getElementById("ctl-cancel");
+    if (next) next.focus();
+  }
+
+  function cancelEdit(){
+    var from = PENDING && PENDING.from;
+    PENDING = null;
+    drawPreview();
+    var b = from && document.getElementById(from);
+    if (b) b.focus();
+  }
+
+  /** A path as a reader names it: relative to the repo, and a pattern for a file not
+   *  there yet (`.curso[r]`, see surface.js `exactly`) written as the name it matches. */
+  function rel(p){
+    var q = ROOT && p.indexOf(ROOT + "/") === 0 ? p.slice(ROOT.length + 1) : p;
+    return q.replace(/\[([^\]\/])\]$/, "$1");
+  }
+
+  function describe(edit){
+    if (edit.protect !== undefined)
+      return (edit.protect ? "Turn on" : "Turn off") + " protection of instruction files, for every role";
+    return "Set " + edit.role + "’s control_files to [" +
+      edit.families.map(function(f){ return '"' + f + '"'; }).join(", ") + "]";
+  }
+
+  function whoMay(list){ return list && list.length ? "<b>" + list.map(esc).join(", ") + "</b>" : "<b>no role</b>"; }
+
+  function drawPreview(){
+    var box = document.getElementById("ctl-preview"); if (!box) return;
+    var p = PENDING;
+    if (!p) { box.hidden = true; box.innerHTML = ""; return; }
+    box.hidden = false;
+    var h = "<h3>" + esc(describe(p.edit)) + "</h3>";
+    var buttons = '<button class="btn" id="ctl-cancel" type="button">Cancel</button>';
+    if (p.busy) h += "<p>Asking the server what this changes…</p>";
+    else if (p.error) h += '<p class="err">' + esc(p.error) + "</p>";
+    else if (p.demo) {
+      h += "<p>This is the example policy, and nothing here is saved. Served by <code>seisin ui</code>, this box lists " +
+           "the exact entries each role’s sandbox profile gains or loses — computed by the server from the edited " +
+           "policy — and nothing is written until you confirm.</p>";
+      buttons = '<button class="btn" id="ctl-save" type="button">Apply to the example</button>' + buttons;
+    } else if (p.plan && !p.plan.changed) {
+      h += "<p>seisin.toml already says this. Nothing to save.</p>";
+    } else if (p.plan) {
+      var d = p.plan.diff || [];
+      if (!d.length)
+        h += "<p>No sandbox profile changes today: no territory holds a project where these files are or could be " +
+             "created. The line is still written, and applies once one does.</p>";
+      d.forEach(function(x){
+        h += "<p><b>" + esc(x.role) + "</b>’s profile" + (x.error ? ': <span class="err">' + esc(x.error) + "</span>" : "") + "</p>";
+        if (x.error) return;
+        h += '<ul class="diff">' +
+          x.removed.map(function(e){ return '<li class="open"><b aria-label="no longer denied">−</b><span>' + esc(rel(e.path)) +
+            "<em>becomes writable · " + esc(e.why) + "</em></span></li>"; }).join("") +
+          x.added.map(function(e){ return '<li class="shut"><b aria-label="now denied">+</b><span>' + esc(rel(e.path)) +
+            "<em>becomes denied · " + esc(e.why) + "</em></span></li>"; }).join("") + "</ul>";
+      });
+      var a = p.plan.access || {};
+      h += "<p>Then editor settings may be edited by " + whoMay(a.ide) + "; instruction files " +
+           (a.instructions === null || a.instructions === undefined
+             ? "are not protected — <b>every role</b> may edit them in its own territory."
+             : "by " + whoMay(a.instructions) + ".") + "</p>";
+      buttons = '<input id="ctl-why" placeholder="why — written beside the line" aria-label="reason for this change">' +
+                '<button class="btn" id="ctl-save" type="button">Save to seisin.toml</button>' + buttons;
+    }
+    box.innerHTML = h + '<div class="act">' + buttons + "</div>";
+    document.getElementById("ctl-cancel").onclick = cancelEdit;
+    var save = document.getElementById("ctl-save");
+    if (save) save.onclick = saveEdit;
+    // Escape anywhere in the preview puts it away and returns to the toggle.
+    box.onkeydown = function(e){ if (e.key === "Escape") { e.preventDefault(); cancelEdit(); } };
+  }
+
+  /** The confirmation: the edit that was previewed, against the file it was previewed on. */
+  async function saveEdit(){
+    var p = PENDING; if (!p) return;
+    if (p.demo) {
+      if (p.edit.protect !== undefined) PROTECT = { instructions: p.edit.protect };
+      else { var r = ROLES.filter(function(x){ return x.name === p.edit.role; })[0]; if (r) r.controlFiles = p.edit.families.slice(); }
+      note("admin", "control files", describe(p.edit));
+      PENDING = null;
+      draw();
+      var b = document.getElementById(p.from); if (b) b.focus();
+      return;
+    }
+    var box = document.getElementById("ctl-preview");
+    box.querySelectorAll("button,input").forEach(function(e){ e.disabled = true; });
+    try {
+      await callControls(Object.assign({ base: p.plan.base, reason: (document.getElementById("ctl-why") || {}).value || "" }, p.edit));
+      PENDING = null;
+      var n = document.getElementById("ctl-note");
+      n.textContent = "saved to seisin.toml — the next `seisin run` of the role uses it";
+      n.style.color = "var(--green)";
+      setTimeout(function(){ n.textContent = "files an editor or the next agent session acts on — protected unless the policy hands them over"; n.style.color = ""; }, 5000);
+      await reload();
+      drawPreview();
+      var b2 = document.getElementById(p.from); if (b2) b2.focus();
+    } catch (e) {
+      if (PENDING === p) { p.error = whyFailed(e, e.status); p.plan = null; }
+      drawPreview();
+    }
+  }
 
   /* ── requests ─────────────────────────────────────────────────────────── */
 
@@ -1201,7 +1454,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
  * down, because zero is a plausible answer.
  */
 function draw(){
-  [drawRows, drawCfg, drawToml, drawLog, drawReqs, drawCauses, drawFamilies, drawWalls]
+  [drawRows, drawCfg, drawControls, drawToml, drawLog, drawReqs, drawCauses, drawFamilies, drawWalls]
     .forEach(function(f){ try { f(); } catch (e) { console.error("seisin: " + f.name + " failed", e); } });
 }
 
@@ -1336,6 +1589,15 @@ function draw(){
     var policy = changed("toml", s.toml);
     policy = changed("shape", shape) || policy;
     policy = changed("keyDirs", s.keyDirs) || policy;
+    policy = changed("protect", s.protect) || policy;
+    BASE = s.base || null;
+    // A preview computed against a file that has since moved describes a change
+    // to a policy that is no longer there. It is dropped, and says why, rather
+    // than saved into a 409.
+    if (policy && PENDING && PENDING.plan && PENDING.plan.base !== BASE) {
+      PENDING.plan = null;
+      PENDING.error = "seisin.toml changed on disk since this preview. Toggle again to see the change against what is there now.";
+    }
     if (policy) {
       KEYDIR = (s.keyDirs && s.keyDirs[0]) || ".secrets";
       KEYS = [...new Set(s.roles.flatMap(r => r.keys))].map(k => k.replace(/\.[^.]+$/, ""));
@@ -1350,8 +1612,11 @@ function draw(){
         neverWrites: r.neverWrites || [],
         localBinding: !!r.localBinding,
         localPorts: (r.localPorts || []).slice(),
-        trustd: !!r.trustd
+        trustd: !!r.trustd,
+        controlFiles: (r.controlFiles || []).slice()
       }));
+      PROTECT = s.protect || { instructions: false };
+      ROOT = s.root || "";
       ONDISK = s.toml || null;
       SETTINGS = {};
       // The demo selection does not survive the live load. `sel` starts at "frontend", a
@@ -1376,7 +1641,7 @@ function draw(){
     if (walls) WALLS = s.walls || {};
 
     var views = [];
-    if (policy) views.push(drawRows, drawCfg, drawToml);
+    if (policy) views.push(drawRows, drawCfg, drawControls, drawToml);
     else if (blocks) views.push(drawRows);
     if (log) views.push(drawLog);
     if (reqs) views.push(drawReqs);
@@ -1456,8 +1721,9 @@ function draw(){
     document.getElementById("toml-note").textContent = "the file on disk, as it stands";
     document.getElementById("foot-mode").textContent = "Live.";
     document.getElementById("foot-text").innerHTML =
-      "This page reads <b>" + esc(s.config) + "</b> and the log on disk. Editing the policy above is a preview \u2014 copy the " +
-      "<b>seisin.toml</b> to keep it. Approving a request is the one action that writes: it edits your config in place, with its reason.";
+      "This page reads <b>" + esc(s.config) + "</b> and the log on disk. Editing the policy table is a preview \u2014 copy the " +
+      "<b>seisin.toml</b> to keep it. Two actions write, each in place and stamped: approving a request, and saving a " +
+      "control-files change after its preview.";
     draw();
     poll();
   }
