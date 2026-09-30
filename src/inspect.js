@@ -14,7 +14,7 @@ import { ownersOf, covers, enforcedNeverWrites } from "./owners.js";
 import { ROLE_KEYS, closest } from "./config.js";
 import { entriesOf } from "./keys.js";
 import { SHAPES } from "./scan.js";
-import { wired } from "./commands/wire.js";
+import { wired, broadlyWired } from "./commands/wire.js";
 import { RUNTIME_WRITES, CREDENTIAL_HOMES, expand, settingsFor } from "./srt.js";
 import { realOrSelf } from "./grants.js";
 import { protections, resolveExecutable } from "./surface.js";
@@ -518,6 +518,16 @@ function warningsFor(config, roles, shared = sharedPaths(config, roles)) {
           : "the boundary holds either way — but on this platform the kernel's refusals are " +
             "not readable either, so log, watch, requests, grant and review all read a record " +
             "that nobody is writing. Run `seisin wire` once in this repo.",
+    });
+
+  else if (broadlyWired(config.root))
+    warnings.push({
+      kind: "hook-matcher-broad",
+      headline: "the hook runs on every tool call: it was wired before 0.5.0 with the matcher \"*\"",
+      detail:
+        "nothing is lost — every tool the hook reads is still covered — but each Read, Glob " +
+        "and TodoWrite starts a process that has nothing to say. Run `seisin wire` again: it " +
+        "narrows seisin's own entry in place and leaves everyone else's hooks alone.",
     });
 
   // A territory that leaves the repo is supported — a role can own its handover

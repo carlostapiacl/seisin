@@ -65,14 +65,36 @@ export function wired(root) {
 function narrow(settings) {
   let changed = false;
   for (const entry of settings.hooks?.PreToolUse ?? []) {
-    const ours = Array.isArray(entry?.hooks) && entry.hooks.length > 0 &&
-      entry.hooks.every((h) => typeof h?.command === "string" && h.command.includes("seisin hook"));
-    if (ours && (entry.matcher === "*" || entry.matcher === "" || entry.matcher === undefined)) {
+    if (broadOurs(entry)) {
       entry.matcher = TOOL_MATCHER;
       changed = true;
     }
   }
   return changed;
+}
+
+/** A PreToolUse entry that runs only `seisin hook`, on every tool. */
+function broadOurs(entry) {
+  const ours = Array.isArray(entry?.hooks) && entry.hooks.length > 0 &&
+    entry.hooks.every((h) => typeof h?.command === "string" && h.command.includes("seisin hook"));
+  return ours && (entry.matcher === "*" || entry.matcher === "" || entry.matcher === undefined);
+}
+
+/**
+ * Does this repo still run the hook on every tool call — the `"*"` matcher that
+ * versions before 0.5.0 installed? Correct, just slow: every Read, Glob and
+ * TodoWrite pays for a process start that answers nothing. `seisin wire` narrows
+ * it in place; this is how `check` knows to say so.
+ */
+export function broadlyWired(root) {
+  const file = join(root, SETTINGS);
+  if (!existsSync(file)) return false;
+  try {
+    const pre = JSON.parse(readFileSync(file, "utf8")).hooks?.PreToolUse;
+    return Array.isArray(pre) && pre.some(broadOurs);
+  } catch {
+    return false;                       // unreadable settings is reported elsewhere, if at all
+  }
 }
 
 export function wire(config) {
