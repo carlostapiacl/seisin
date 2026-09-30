@@ -11,6 +11,9 @@ import { covers, ownersOf, keyHolders, explain } from "../src/owners.js";
 import { loadConfig } from "../src/config.js";
 import { redactor } from "../src/redact.js";
 import { scan } from "../src/scan.js";
+import { inspect, sharedPaths } from "../src/inspect.js";
+import { parentInputs, denyFor, protections, writableRoots, protectedBy } from "../src/surface.js";
+import { review } from "../src/review.js";
 import { scratch } from "./_tmp.js";
 
 /** A policy on disk, loaded. */
@@ -231,4 +234,81 @@ test("a ] inside a quoted item does not end a multi-line array", () => {
 test("a key directory with a trailing slash matches its keys", () => {
   const cfg = policy(`[keys]\ndir = ".secrets/"\n[roles.a]\nwrites = ["a/**"]\nkeys = ["x.txt"]\n`);
   assert.deepEqual(keyHolders(cfg, ".secrets/x.txt"), ["a"]);
+});
+
+// ── performance work that must not change an answer ─────────────────────────
+
+test("the literal-head prefilter keeps every shape the matcher accepts", () => {
+  assert.equal(covers("src/api/**", "src/api"), true);
+  assert.equal(covers("a/**/b", "a/b"), true);
+  assert.equal(covers("a/**/b", "a/x/y/b"), true);
+  assert.equal(covers("**/.env", ".env"), true);
+  assert.equal(covers("src/*.ts", "src/a.ts"), true);
+  assert.equal(covers("src/*.ts", "srcx/a.ts"), false);
+  assert.equal(covers("src/[x]/**", "src/[x]/a"), true);
+  // A long pair past the shared buffer, then a short one reusing it.
+  const deep = "d/".repeat(800) + "f";
+  assert.equal(covers("**/f", deep), true);
+  assert.equal(covers("d/*/f", "d/e/f"), true);
+});
+
+test("sharedPaths answers the same when globs repeat across roles", () => {
+  const cfg = policy(`
+[roles.a]
+writes = ["src/**", "docs/**"]
+[roles.b]
+writes = ["src/**"]
+[roles.c]
+writes = ["docs/x.md", "lib/**"]
+`);
+  assert.deepEqual(sharedPaths(cfg).sort(), ["docs/x.md", "src/**"]);
+  const report = inspect(cfg);
+  assert.deepEqual(report.shared.sort(), ["docs/x.md", "src/**"]);
+  assert.equal(report.warnings.filter((w) => w.kind === "shared").length, 1);
+});
+
+test("key directories and the policy are protected by a field, not by their wording", () => {
+  const cfg = policy(`
+[keys]
+dir = ".secrets"
+[roles.a]
+writes = ["a/**"]
+`);
+  const inputs = parentInputs(cfg);
+  assert.ok(inputs.filter((e) => e.always).some((e) => e.why === "a key directory"));
+  assert.ok(inputs.filter((e) => e.always).some((e) => e.why === "the policy"));
+  // Outside a's territory, and still in its profile.
+  const denies = denyFor(cfg, cfg.roles.a, { platform: "darwin" });
+  assert.ok(denies.some((e) => e.path.endsWith("/.secrets")));
+  assert.ok(denies.some((e) => e.path.endsWith("/seisin.toml")));
+  // Never shown by check: closed since the first release.
+  assert.ok(!protections(cfg).some((e) => e.always || e.why === "a key directory"));
+  // Memoised per config, not per call.
+  assert.equal(writableRoots(cfg), writableRoots(cfg));
+  assert.equal(parentInputs(cfg), parentInputs(cfg));
+});
+
+test("protectedBy still names every control file, case-folded, and only whole segments", () => {
+  const cfg = policy(`[roles.a]\nwrites = ["**"]\n`);
+  for (const f of [".git/hooks/pre-commit", "x/.mcp.json", ".envrc", "p/.codex/config.toml", ".CLAUDE/settings.json"])
+    assert.ok(protectedBy(cfg, f, { platform: "darwin" }), f);
+  for (const f of ["xmcpxjson", "a.mcp.json", "x/.envrc.bak", "p/.codex/configxtoml"])
+    assert.equal(protectedBy(cfg, f, { platform: "darwin" }), null, f);
+  assert.ok(protectedBy(cfg, ".VSCODE/tasks.json", { platform: "darwin" }));
+  assert.equal(protectedBy(cfg, ".VSCODE/tasks.json", { platform: "linux" }), null);
+});
+
+test("review counts a write as use of its own role's territory only", () => {
+  const cfg = policy(`
+[roles.a]
+writes = ["src/**", "docs/**"]
+[roles.b]
+writes = ["src/**"]
+`);
+  mkdirSync(join(cfg.root, ".seisin"));
+  const line = (role, target) => JSON.stringify({ at: new Date().toISOString(), role, action: "write", target, verdict: "allowed" });
+  writeFileSync(join(cfg.root, ".seisin", "log.jsonl"),
+    [line("a", "src/x.ts"), line("a", "src/x.ts"), line("ghost", "docs/y.md")].join("\n") + "\n");
+  const { unused } = review(cfg);
+  assert.deepEqual(unused.map((u) => `${u.role} ${u.glob}`).sort(), ["a docs/**", "b src/**"]);
 });
