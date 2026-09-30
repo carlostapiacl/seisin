@@ -24,7 +24,18 @@ const SETTINGS = join(".claude", "settings.json");
 const CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "cli.js");
 
 /** A hook command that is seisin's, however it was spelled when it was wired. */
-const isOurs = (c) => typeof c === "string" && c.includes("seisin") && /\bhook"?\s*$/.test(c);
+const isOurs = (c) => typeof c === "string" && /\bhook"?\s*$/.test(c) && (c.includes("seisin") || runsSeisinScript(c));
+
+/**
+ * A hook written by its full path (`"<node>" "<…>/src/cli.js" hook`) names no
+ * `seisin` when the checkout sits in a folder called something else. It is
+ * ours when the script it runs belongs to a package named seisin.
+ */
+function runsSeisinScript(command) {
+  const script = /"([^"]+\.js)"\s+hook\s*$/.exec(command)?.[1];
+  if (!script) return false;
+  try { return JSON.parse(readFileSync(join(dirname(script), "..", "package.json"), "utf8")).name === "seisin"; } catch { return false; }
+}
 
 /**
  * The command that reaches THIS seisin from a hook, and how it was found.
@@ -170,19 +181,22 @@ export function wire(config) {
   if (wired(config.root)) {
     // A bare `seisin hook` where no seisin is on PATH fails on every call
     // without a word. Rewritten in place to the command that works here.
-    if (how.via !== "path" && repoint(settings, how.command)) {
-      writeFileSync(file, JSON.stringify(settings, null, 2) + "\n");
-      out(`\n  ${C.green}repointed${C.off}  ${SETTINGS}\n  ${C.dim}"seisin hook" is not on your PATH, so it never ran. ${saysWhich(how)}.${C.off}\n\n`);
-      return { changed: true, file, how };
-    }
+    // Both repairs in one pass: an install from before 0.5.0 on a machine
+    // without seisin on PATH needs the command repointed AND the matcher
+    // narrowed, and returning after the first left it half-fixed.
+    const repointed = how.via !== "path" && repoint(settings, how.command);
     // Wired before the matcher was narrowed: still correct, just slow, so
     // `wired()` keeps saying yes and nobody is told to redo anything. Running
     // `wire` again is the way to pick up the narrower one, in place.
-    if (narrow(settings)) {
+    const narrowed = narrow(settings);
+    if (repointed || narrowed) {
       writeFileSync(file, JSON.stringify(settings, null, 2) + "\n");
-      out(`\n  ${C.green}narrowed${C.off}  ${SETTINGS}\n` +
-        `  ${C.dim}PreToolUse now runs "seisin hook" only for the tools it reads, not for every tool${C.off}\n\n`);
-      return { changed: true, file };
+      if (repointed)
+        out(`\n  ${C.green}repointed${C.off}  ${SETTINGS}\n  ${C.dim}"seisin hook" is not on your PATH, so it never ran. ${saysWhich(how)}.${C.off}\n\n`);
+      if (narrowed)
+        out(`\n  ${C.green}narrowed${C.off}  ${SETTINGS}\n` +
+          `  ${C.dim}PreToolUse now runs seisin's hook only for the tools it reads, not for every tool${C.off}\n\n`);
+      return { changed: true, file, ...(repointed && { how }) };
     }
     out(`\n  ${C.dim}already wired — ${SETTINGS} runs seisin's hook${C.off}\n\n`);
     return { changed: false, file };
