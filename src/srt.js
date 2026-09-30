@@ -364,20 +364,3 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
     ...(role.trustd === true ? { enableWeakerNetworkIsolation: true } : {}),
   };
 }
-
-/**
- * The provider executables that live at a path, absolute.
- *
- * A command with no separator (`security`, `op`, `gpg`) is resolved by the OS
- * from PATH and is deliberately left alone: denying "wherever gpg happens to
- * be" would mean writing a rule about a machine rather than about a repo.
- */
-export function providerPaths(config) {
-  const out = [];
-  for (const p of Object.values(config.keyProviders ?? {})) {
-    const cmd = p.command?.[0];
-    if (!cmd || !cmd.includes("/")) continue;
-    out.push(cmd.startsWith("/") ? cmd : join(config.root ?? ".", cmd));
-  }
-  return [...new Set(out)];
-}

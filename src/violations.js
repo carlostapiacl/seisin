@@ -219,8 +219,8 @@ export function isOurs(tagged, argv) {
  * reimplementing the runtime's shell quoting and inheriting its bugs; a process
  * tree is a fact the OS already holds.
  *
- * One `ps` per unseen pid, and only until the session suffix is learned — after
- * that the suffix alone is exact, because it is generated once per `srt`
+ * At most one `ps` per TREE_MS, and only until the session suffix is learned —
+ * after that the suffix alone is exact, because it is generated once per `srt`
  * process. In practice that is one `ps` per run.
  */
 export function descends(pid, root, snapshot) {
@@ -336,7 +336,7 @@ export function scopeOf(settings, root) {
  * without `log` looks like — and the caller says so once rather than silently
  * logging less than it used to.
  */
-export function watchDenials(onDeny, { pid = null, argv = null, platform = process.platform, spawnFn = spawn, treeFn = processTree } = {}) {
+export function watchDenials(onDeny, { pid = null, argv = null, platform = process.platform, spawnFn = spawn, treeFn = processTree, now = () => performance.now() } = {}) {
   const stats = { attributed: 0, foreign: 0, unattributed: 0 };
 
   /**
@@ -370,9 +370,29 @@ export function watchDenials(onDeny, { pid = null, argv = null, platform = proce
 
   let suffix = null;               // learned once, exact from then on
   let tree = null;                 // refreshed only while still learning
+  let treeAt = -Infinity;          // when `tree` was taken
   let root = pid;                  // the srt pid; not known until after spawn
   const mine = new Set();          // pids already proven to be ours
   const held = [];                 // denials seen before they could be attributed
+  const foreignSuffixes = new Set(); // other sandboxes, proven while they were alive
+  let recheck = null;              // a deferred look, when a snapshot was refused
+
+  /**
+   * One `ps` per TREE_MS at most, and a later look instead of a skipped one.
+   *
+   * `ps` is synchronous and it was taken for every denial from another sandbox
+   * while this run had not learned its own suffix — which, for a run that is
+   * never refused anything, is the whole run. Several cells at once is exactly
+   * that: 83 ms of blocked event loop per foreign line, measured. A line whose
+   * process may be younger than the last snapshot is not decided on it; it is
+   * held, and looked at again once the window has passed.
+   */
+  const snapshot = () => { tree = treeFn(); treeAt = now(); };
+  const later = () => {
+    if (recheck) return;
+    recheck = setTimeout(() => { recheck = null; if (!suffix && held.length) revisit(); }, TREE_MS);
+    recheck.unref?.();
+  };
 
   /**
    * Two anchors, and either one is enough.
@@ -396,12 +416,24 @@ export function watchDenials(onDeny, { pid = null, argv = null, platform = proce
     }
     if (root === null) return false;   // nothing to descend from yet
     if (mine.has(d.pid)) return true;
-    if (tree === null) tree = treeFn();
+    // A suffix already proven foreign needs no `ps`: the suffix is per `srt`.
+    if (d.suffix && foreignSuffixes.has(d.suffix)) return false;
+    if (tree === null) snapshot();
     if (!descends(d.pid, root, tree)) {
-      // A pid we have never seen may simply be younger than the snapshot.
-      // Refresh once, then believe the answer.
-      tree = treeFn();
-      if (!descends(d.pid, root, tree)) return false;
+      // A pid the snapshot does not have may simply be younger than it.
+      // Refresh once, then believe the answer — unless the last refresh was
+      // moments ago, and then look again later rather than refresh now. A pid
+      // it does have is answered: its parents do not change into ours.
+      if (treeAt < d.seen && !tree.has(d.pid)) {
+        if (now() - treeAt < TREE_MS) { later(); return false; }
+        snapshot();
+      }
+      if (!descends(d.pid, root, tree)) {
+        // Alive, and not ours by either anchor — the tag did not match above.
+        // Every later line from that `srt` is someone else's without asking.
+        if (d.suffix && tree.has(d.pid)) foreignSuffixes.add(d.suffix);
+        return false;
+      }
     }
     mine.add(d.pid);
     // The first proven denial hands us the suffix for every later one.
@@ -445,7 +477,7 @@ export function watchDenials(onDeny, { pid = null, argv = null, platform = proce
     // child whose pid anchors attribution, or the process died before `ps`
     // could see it. Either way a foreign sandbox and one of ours look the same
     // from here, so hold the line rather than credit or discard it.
-    if (!suffix && d.suffix) {
+    if (!suffix && d.suffix && !foreignSuffixes.has(d.suffix)) {
       stats.unattributed++;
       held.push(d);
       // Bounded, because the common case on a busy machine is a run that is
@@ -473,7 +505,13 @@ export function watchDenials(onDeny, { pid = null, argv = null, platform = proce
     child = spawnFn("/usr/bin/log", ["stream", "--predicate", PREDICATE, "--style", "compact"],
       { stdio: ["ignore", "pipe", "ignore"] });
   } catch (e) {
-    return { available: false, reason: `could not start the log stream: ${e.message}`, stats, close() {} };
+    // The same shape as the unavailable watcher above, for the same reason:
+    // `run` calls attributeTo() and awaits close() unconditionally.
+    return {
+      available: false, reason: `could not start the log stream: ${e.message}`, stats,
+      attributeTo() {},
+      close: () => Promise.resolve(stats),
+    };
   }
 
   let buf = "";
@@ -486,6 +524,7 @@ export function watchDenials(onDeny, { pid = null, argv = null, platform = proce
       const chunk = buf.slice(0, cut + 4);
       buf = buf.slice(cut + 4);
       const d = parseChunk(chunk);
+      if (d) d.seen = now();
       // Deduplicated here and not in consider(), because a held denial goes
       // through consider() a second time when it is finally attributed. Doing
       // this there would drop every line that arrived before the child had a
@@ -528,6 +567,7 @@ export function watchDenials(onDeny, { pid = null, argv = null, platform = proce
      * nothing pending — costs one tick rather than the full window.
      */
     close({ drain = 0 } = {}) {
+      clearTimeout(recheck);
       const stop = () => { try { child.kill("SIGTERM"); } catch { /* already gone */ } };
       if (drain <= 0) { stop(); return Promise.resolve(stats); }
       return new Promise((resolve) => {
@@ -550,6 +590,15 @@ export function watchDenials(onDeny, { pid = null, argv = null, platform = proce
  * exiting. This is a floor against scheduling noise, not a guess at the lag.
  */
 const QUIET_MS = 60;
+
+/**
+ * The shortest time between two `ps` snapshots while attribution is learning.
+ *
+ * Long enough that a burst of foreign denials costs one snapshot, not one
+ * each; short enough that a line held for a younger process is decided before
+ * anyone reads the log.
+ */
+const TREE_MS = 250;
 
 /**
  * How many undecided denials to keep while waiting to learn our own suffix.

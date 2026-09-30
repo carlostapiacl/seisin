@@ -44,7 +44,17 @@ export async function hook(stdin = process.stdin, env = process.env) {
   if (event_ === "SessionStart") {
     try { return atSessionStart(config, role, event, { file: logPath(config.root) }); } catch { return null; }
   }
-  const decision = decide(config, role, event, { observe: env.SEISIN_OBSERVE === "1" });
+  // Caught like the two halves above, and for a sharper reason: PreToolUse is
+  // the one event where a crash is not silent. cli.js turns a throw into exit
+  // 2, and Claude Code reads exit 2 from this hook as "block the tool". A bug
+  // here would stop the agent's work — the one thing this command promises
+  // never to do. Said on stderr so the bug is still findable.
+  let decision = null;
+  try {
+    decision = decide(config, role, event, { observe: env.SEISIN_OBSERVE === "1" });
+  } catch (e) {
+    process.stderr.write(`seisin hook: ${e?.message ?? e} — no decision, the tool call goes ahead\n`);
+  }
   // The entries went to a socket, and cli.js exits as soon as we return. An
   // exit does not drain a socket, so the record would be lost precisely on the
   // turns that produced one.
