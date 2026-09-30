@@ -299,3 +299,21 @@ test("init --from-observations with nothing observed says where observations com
   assert.match(r.err, /a plain shell command goes through no hook/);
   assert.match(r.err, /keys stay denied/);
 });
+
+/* ── 7. check ─────────────────────────────────────────────────────────────── */
+
+test("check: a territory that matches nothing is a one-line warning; the paragraphs are behind --verbose", () => {
+  const dir = demo("ux-check-", TOML.replace('writes = ["qa/**"]', 'writes = ["src/web/**"]'));
+  const short = sh(dir, "check");
+  assert.equal(short.code, 0, short.all);
+  assert.match(short.out, /qa writes src\/web\/\*\* — matches nothing in this repo\n/);
+  assert.doesNotMatch(short.out, /fine if the role is about to create it/);
+  assert.match(short.out, /seisin check --verbose: .*standing limit\(s\)/);
+  assert.doesNotMatch(short.out, /a role can delete inside its own territory/);
+
+  const long = sh(dir, "check", "--verbose");
+  assert.equal(long.code, 0);
+  assert.match(long.out, /fine if the role is about to create it/);
+  assert.match(long.out, /a role can delete inside its own territory/);
+  assert.doesNotMatch(sh(dir, "check", "frontend").out, /matches nothing/);
+});

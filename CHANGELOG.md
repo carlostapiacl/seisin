@@ -243,6 +243,11 @@ From a first-run review with a small sample repo.
   --from-observations` with nothing observed says so: run `seisin wire`, observe an agent, not a
   plain shell command.
 
+- **`check` puts the map first.** Each warning is one line under the map; the protected paths,
+  why each warning matters and the standing limits are behind `--verbose`, and the last line says
+  how many there are. Exit codes are unchanged. A new warning names a territory that is not on
+  disk: `frontend writes src/web/** — matches nothing in this repo`.
+
 ## 0.4.2 — 2026-09-29
 
 - **Small hardening across the launcher.** A `--observe` written after the command
