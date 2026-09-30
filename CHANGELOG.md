@@ -29,12 +29,14 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
 - **`scan` never hides a certain hit behind the cap.** The limit counted everything, so 500 lines
   to review before a real token left it out and the command exited 0. The cap now applies only to
   what needs review, and says how many it left out. A key directory written with a trailing slash
-  is excluded, the root is resolved and `.pyc` is skipped. A nested checkout (a directory with its
-  own `.git`) is pruned only when the scan root is itself inside a repository, and is then named
-  in yellow with how to scan it; a root that is not a repository — a folder of projects — walks
-  them all. Pruned there too, a portfolio root read 20 certain hits out of 66 skipped checkouts
-  and said so in a dim line; walked, it found 1,137 (≈10 s → ≈155 s on that tree; work copies
-  too big to walk go in `[scan] ignore`).
+  is excluded, the root is resolved and `.pyc` is skipped.
+- **`scan` looks where the agents work.** A policy inside a repository scans that repository, as before, and prunes a checkout nested in it (somebody else's repository), naming it
+  in yellow with how to scan it. A policy at the root of a folder of repositories scans the
+  repositories its territories live in, whole — a credential at a repository's root is read by an
+  agent working anywhere in it — and names them; each finding says whose territory it is in.
+  `seisin scan --all` walks the whole folder. On one such folder: pruning every checkout read 20
+  certain hits and missed the projects; walking everything took ≈155 s and reported 1,137, most in
+  archives no agent works in; following the territories took ≈72 s and reported 45.
 - **A denial is counted with this attempt included** under `seisin run` too; the count was one
   behind when the entry went through the socket.
 

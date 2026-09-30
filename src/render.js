@@ -177,7 +177,14 @@ export function renderScan(result, keyDirs) {
   const { certain, review, skipped, truncated } = result;
   const links = result.links ?? [];
   const where = keyDirs.length ? keyDirs.join(", ") : `${C.yellow}nowhere — [keys] dir is unset${C.off}`;
-  const lines = [`\n  ${C.dim}protected: ${where}${C.off}\n\n`];
+  const lines = [`\n  ${C.dim}protected: ${where}${C.off}\n`];
+  // Scoped to the territories: say where it looked, and how to look everywhere.
+  if (result.scope) {
+    const shown = result.scope.slice(0, 10).map(safe).join(", ");
+    const more = result.scope.length > 10 ? ` and ${result.scope.length - 10} more` : "";
+    lines.push(`  ${C.dim}scanned: where the territories are — ${shown}${more}. ${C.b}seisin scan --all${C.off}${C.dim} walks the whole folder${C.off}\n`);
+  }
+  lines.push("\n");
 
   // A pruned checkout is part of what a clean result means, so it is said
   // even when there is nothing else to say — in yellow, not dim: every role
@@ -199,7 +206,10 @@ export function renderScan(result, keyDirs) {
 
   if (certain.length) {
     lines.push(`  ${C.red}${certain.length} credential(s)${C.off} — these shapes are issued, not written by accident\n\n`);
-    for (const h of certain) lines.push(`    ${C.b}${h.file}${C.off}${C.dim}:${h.line}${C.off}  ${h.shape}\n`);
+    for (const h of certain) {
+      const whose = h.owners?.length ? `  ${C.dim}in ${h.owners.map(safe).join(", ")}'s territory${C.off}` : "";
+      lines.push(`    ${C.b}${safe(h.file)}${C.off}${C.dim}:${h.line}${C.off}  ${h.shape}${whose}\n`);
+    }
     lines.push("\n");
   }
 

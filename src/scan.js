@@ -20,6 +20,7 @@
 import { readdirSync, readFileSync, statSync, realpathSync, existsSync } from "node:fs";
 import { join, relative, sep, dirname } from "node:path";
 import { covers } from "./owners.js";
+import { toWritePath } from "./grants.js";
 
 /**
  * A match is `certain` when the shape alone is enough — these strings are
@@ -120,7 +121,7 @@ const NUL = "\u0000";
  * config — and every role can read them all the same. Skipping them would
  * make the command quiet about the case it was written for.
  */
-export function scan(root, protectedDirs = [], ignore = [], limit = 500) {
+export function scan(root, protectedDirs = [], ignore = [], limit = 500, { roots = null } = {}) {
   // The real root, so a symlink's destination is compared like with like: on
   // macOS a tree under /tmp is really under /private/tmp, and every link
   // inside it pointed "out of the repo" until both sides were resolved.
@@ -132,7 +133,10 @@ export function scan(root, protectedDirs = [], ignore = [], limit = 500) {
   const hits = [];
   const skipped = { ignored: 0, protectedDirs: 0, reference: 0, placeholder: 0, nested: 0 };
   const nestedPaths = [];
-  const prune = insideRepo(root);
+  // With `roots`, only those directories are walked, and a checkout inside one
+  // is another repository — pruned, unless it is itself one of the roots.
+  const walked = roots ? roots.map((r) => { try { return realpathSync.native(r); } catch { return r; } }) : null;
+  const prune = walked ? true : insideRepo(root);
   let capped = 0;                         // review lines and links counted against `limit`
   let omitted = 0;                        // … and the ones dropped because of it
   const keep = (hit) => {
@@ -144,7 +148,7 @@ export function scan(root, protectedDirs = [], ignore = [], limit = 500) {
 
   const isIgnored = (rel) => patterns.some((p) => covers(p, rel));
 
-  (function walk(dir) {
+  function walk(dir) {
     let entries;
     try {
       entries = readdirSync(dir, { withFileTypes: true });
@@ -184,7 +188,10 @@ export function scan(root, protectedDirs = [], ignore = [], limit = 500) {
       }
 
       if (e.isDirectory()) {
-        if (prune && existsSync(join(full, ".git"))) { skipped.nested++; nestedPaths.push(rel); continue; }
+        if (prune && existsSync(join(full, ".git"))) {
+          if (walked?.includes(full)) continue;   // walked on its own
+          skipped.nested++; nestedPaths.push(rel); continue;
+        }
         walk(full);
         continue;
       }
@@ -216,7 +223,8 @@ export function scan(root, protectedDirs = [], ignore = [], limit = 500) {
         }
       }
     }
-  })(root);
+  }
+  for (const r of walked ?? [root]) walk(r);
 
   return { hits, skipped, nestedPaths, truncated: omitted > 0, omitted };
 }
@@ -232,3 +240,57 @@ export function insideRepo(dir) {
     if (dirname(d) === d) return false;
   }
 }
+
+/**
+ * What `seisin scan` walks when the policy sits in a folder that is not a
+ * repository — the repositories its territories live in, whole.
+ *
+ * A policy at the root of one repository scans that repository, and that is
+ * right: a `.env` at its root is outside every territory and every role reads
+ * it. A policy at the root of a folder that holds many repositories (a
+ * workspace, a monorepo of clones) is a different shape. Walking the whole
+ * folder read everything the operator ever kept there — archives, experiments,
+ * copies — measured at 155 s and 1,137 certain hits on one such folder, most of
+ * them in directories no agent works in. The question the command answers is
+ * "which credentials will an agent come across", and the agents work in their
+ * territories: so the scan follows the policy, and moves with it when the
+ * folder is reorganised. `--all` still walks everything.
+ *
+ * Each territory is widened to the repository that contains it, because a
+ * credential at a repository's root is read by an agent working anywhere in it.
+ * A territory outside any repository is walked as itself. Territories outside
+ * the policy's folder are left out: they are another folder's to scan.
+ */
+export function territoryRoots(config) {
+  const root = config.root;
+  const inside = (p) => p === root || p.startsWith(root + sep);
+  const found = new Set();
+  for (const role of Object.values(config.roles)) {
+    for (const glob of role.writes ?? []) {
+      let p;
+      try { p = join(root, toWritePath(glob)); } catch { continue; }
+      if (!inside(p)) continue;
+      found.add(repositoryOf(p, root));
+    }
+  }
+  // A plain folder inside another root is walked already; a checkout is not
+  // (the walk prunes checkouts), so it stays a root of its own.
+  const all = [...found];
+  return all.filter((r) => r === root || existsSync(join(r, ".git")) ||
+    !all.some((o) => o !== r && (o === root || r.startsWith(o + sep))));
+}
+
+/** The nearest checkout at or above `p`, stopping below `root`; else the territory itself. */
+function repositoryOf(p, root) {
+  let d = p;
+  while (d !== root && !isDir(d)) d = dirname(d);   // a file, or not created yet
+  const territory = d;
+  for (let at = d; at !== root && at.startsWith(root + sep); at = dirname(at))
+    if (existsSync(join(at, ".git"))) return at;
+  return territory;
+}
+
+function isDir(p) {
+  try { return statSync(p).isDirectory(); } catch { return false; }
+}
+
