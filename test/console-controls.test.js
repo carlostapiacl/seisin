@@ -287,3 +287,19 @@ test("no MCP tool can change control_files or [protect]", async () => {
   const src = readFileSync(new URL("../src/mcp.js", import.meta.url), "utf8");
   assert.ok(!/controls\.js|editPolicy|applyGrant|writeFileSync|renameSync/.test(src));
 });
+
+/* ── the page ──────────────────────────────────────────────────────────── */
+
+test("the page offers the two families only, and previews before it saves", () => {
+  const html = readFileSync(new URL("../ui/index.html", import.meta.url), "utf8");
+  const js = html.slice(html.indexOf("/* ── control files"), html.indexOf("/* ── requests"));
+  assert.match(js, /\["ide", "instructions"\]\.forEach/);
+  // Code only: the comments say why those are left out, by name.
+  const code = js.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  assert.ok(!/\.claude|\.mcp\.json|\.envrc|hooks/.test(code), "a never-offered family appears in the page");
+  // The toggle asks with dryRun; only the separate save sends the preview's base.
+  assert.match(js, /callControls\(Object\.assign\(\{ dryRun: true \}, edit\)\)/);
+  assert.match(js, /callControls\(Object\.assign\(\{ base: p\.plan\.base/);
+  // Instructions cannot be toggled while nothing protects them.
+  assert.match(js, /var idle = f === "instructions" && !prot;/);
+});
