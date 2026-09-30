@@ -6,7 +6,7 @@
 
 ## The suite
 
-**510 tests** (2026-09-29), on macOS and on Linux under bubblewrap, and in CI on
+**578 tests** (2026-09-30), on macOS and on Linux under bubblewrap, and in CI on
 Node 18/20/22/24 at every push ([workflow](../.github/workflows/test.yml)).
 
 Twenty-six of them are not unit tests: they run real commands through the real
@@ -94,7 +94,7 @@ what has not.
 
 | | macOS 15 · Seatbelt | Linux · bubblewrap |
 |---|---|---|
-| the suite | **510 tests, 509 pass, 1 skipped** (Linux-only) — 2026-09-29 | `ubuntu-latest` in CI at every push, and CI fails if the twenty-six sandbox tests skip. Last full count measured here: 326/326 — 2026-09-21, Node 22. Last full Docker run: 225/225 — 2026-09-14, Debian 12.15, bwrap 0.8.0, `--privileged` (bubblewrap mounts `/proc`) |
+| the suite | **578 tests, 577 pass, 1 skipped** (Linux-only) — 2026-09-30 | `ubuntu-latest` in CI at every push, and CI fails if the twenty-six sandbox tests skip. Last full count measured here: 326/326 — 2026-09-21, Node 22. Last full Docker run: 225/225 — 2026-09-14, Debian 12.15, bwrap 0.8.0, `--privileged` (bubblewrap mounts `/proc`) |
 | CI, every push | Node 18/20/22/24 | `ubuntu-latest`, Node 18/20/22/24 |
 | `[runtime] isolate = "home"` (`= true`) | ✅ — and it did not start here at all until the 104-byte socket fix | ✅ — `tmpdir()` is `/tmp`, so the path never came close |
 | `[runtime] isolate = "credentials"` | ✅ — no role home, so the socket limit cannot reach it | ✅ |
@@ -406,6 +406,13 @@ declared key, writes inside its territory, and is refused outside it.
   worktrees, but a glob that also caught the pointer file would deny the whole
   `.git` subtree and stop the agent committing. Closing it needs a runtime
   primitive or a check after the run; the ask is upstream.
+- **A chain stripped whole, with its record deleted.** Where the chain starts is
+  recorded beside the log (`log.jsonl.genesis`) the first time a chained line is
+  written, and `log verify` checks the oldest segment against it. Removing every
+  `prev` *and* that record leaves a log that reads like one written before the
+  chain existed; `verify` then says the start is not recorded rather than
+  broken. Keep the record where the agent cannot write it — it is inside
+  `.seisin/`, which no role can.
 
 ## The claim this supports
 

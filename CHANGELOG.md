@@ -6,11 +6,77 @@ history; what changed for someone who installs it is here.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
-## 0.5.0 — 2026-09-29
+## 0.5.0 — 2026-09-30
 
 **Breaking for a policy whose roles edit editor settings.** A role that writes a project's
 `.vscode/`, `.cursor/` or `.windsurf/` is refused from this version on, unless the policy hands it
 `control_files = ["ide"]`. `seisin check` names every role that has it.
+
+**Breaking for a policy with a misspelt setting.** An unknown key or table outside `[roles.*]`
+is refused with its line and the nearest real name (`"isolaet" … did you mean "isolate"`). It
+used to be ignored, and a misspelt `isolate` loaded as isolation off. `runtime.redact` must be a
+boolean, and `[network] allow = "one.domain"` is read as a list of one, not of its characters.
+
+### Answers that were wrong
+
+- **`explain` no longer calls a path outside the repository "inside" a role.** `**` matched
+  `../anything`, so a role with `writes = ["**"]` was told it owned paths the kernel refuses. A
+  path above the root now matches only a glob that also climbs (`../bitacora/**` still works).
+- **Only a file key grants a read.** A `keychain://` or `NAME=file://…#X` key made `explain` say
+  the role declares a file it cannot read.
+- **Redaction decodes across chunks.** A multi-byte character split between two chunks of the
+  agent's output came out as `a��o`, and a secret containing one could pass unmasked.
+- **`scan` never hides a certain hit behind the cap.** The limit counted everything, so 500 lines
+  to review before a real token left it out and the command exited 0. The cap now applies only to
+  what needs review, and says how many it left out. A key directory written with a trailing slash
+  is excluded, the root is resolved, `.pyc` is skipped, and a nested checkout (a directory with
+  its own `.git`) is pruned and named — scan it from its own root.
+- **A denial is counted with this attempt included** under `seisin run` too; the count was one
+  behind when the entry went through the socket.
+
+### The audit trail
+
+- **`log verify` detects a chain stripped whole.** Removing `prev` from every line made an edited
+  log read as a legacy one, and `verify` said intact. The start of the chain is now recorded
+  beside the log the first time a chained line is written, and checked. A last line longer than
+  64 KB no longer breaks the chain, and every reader crosses rotated segments, so the console,
+  `seisin_causes` and `walls` keep their history after the log rotates.
+- **The time of an entry is the parent's.** A line sent from inside the box carried its own `at`,
+  which could move its requests out of a window or mark them as stale.
+- **A decision is looked up, applied and settled under one lock** — in the console and in
+  `seisin grant` / `decline` alike, so the two can no longer both act on the same request.
+- Slack notifications escape `& < >` in what an agent chose.
+
+### The hook and `seisin run`
+
+- **The hook fails open.** A malformed event (`tool_input: null`, a path that is not a string)
+  threw, the CLI exited 2, and Claude Code read that as a block. It now exits 0 and says why on
+  stderr.
+- **The hook runs only for the tools it reads.** `seisin wire` installed it for every tool; it now
+  matches `Write|Edit|MultiEdit|NotebookEdit|Read|NotebookRead|Bash|mcp__.*`, and narrows an
+  existing seisin-only `"*"` entry in place. A command's code is loaded when it runs, not all of it
+  up front: a hook call went from about 140–170 ms to 90–100 ms, and Grep, Glob and TodoWrite no
+  longer start it at all.
+- **A successful Bash is not searched for refusals.** Output that merely contained "Permission
+  denied" waited ~400 ms for a kernel line that was never coming.
+- **A run that fails after it started cleans up.** A runtime that cannot start, or a key that
+  cannot be resolved, exits 2 and removes the run directory and its scratch keys. A runtime killed
+  by a signal exits 128+n. Attribution checks the process table at most every 250 ms instead of on
+  every foreign denial.
+
+### Faster
+
+- `seisin check` on a 32-role policy: ~1.8 s → ~0.6 s, same output byte for byte. `explain` with
+  key providers: 40–80 ms → under 1 ms.
+- The console answers an unchanged poll with 304, drops the per-role sandbox profile from the
+  poll (it is fetched for the role on screen, and is now the real one, not a profile rebuilt in the
+  page), polls only after the last answer arrives, and keeps the form you are typing in. A repeat
+  of the full state costs milliseconds instead of a second. `HEAD` is refused; an oversized body
+  gets 413, a failed write 500, a held lock 503.
+- The MCP server no longer loads the HTTP console to share one function, and `seisin_walls` reads
+  the log once.
+
+### Editor settings and instruction files
 
 - **Editor settings are control files.** `.vscode/`, `.cursor/` and `.windsurf/` are protected in
   every project inside a role's territory, like `.claude/` and git hooks: the editor applies them
