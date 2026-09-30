@@ -67,8 +67,16 @@ export function collapseSidecars(paths) {
   return out;
 }
 
-/** The `check` report, as text. Takes the object `inspect()` returns. */
-export function renderReport(report) {
+/**
+ * The `check` report, as text. Takes the object `inspect()` returns.
+ *
+ * The map and one line per warning first; the paragraphs behind `verbose`.
+ * On a three-role repo the full report ran to forty lines of explanation under
+ * a six-line map, and the one warning a person could act on sat in the middle.
+ * Nothing is dropped: the protected paths, each warning's reason and the
+ * standing limits are one flag away, and the footer says how many.
+ */
+export function renderReport(report, { verbose = true } = {}) {
   const lines = [`\n${C.b}${report.where}${C.off}\n\n`];
   const width = Math.max(...report.roles.map((r) => r.name.length), 4);
 
@@ -101,7 +109,7 @@ export function renderReport(report) {
   // What the kernel refuses inside a territory, and why. Shown because each one
   // takes something from a territory as written; capped because a monorepo has
   // a hooks directory per package and the reader needs the shape, not all 200.
-  if (report.protected?.length) {
+  if (report.protected?.length && verbose) {
     const root = report.where ? report.where.replace(/\/[^/]*$/, "/") : "";
     const show = (p) => (root && p.startsWith(root) ? p.slice(root.length) : p.replace(/^\/Users\/[^/]+|^\/home\/[^/]+/, "~"));
     lines.push(`  ${C.b}protected${C.off} ${C.dim}— inside a territory, refused anyway: something outside the box runs or reads it${C.off}\n`);
@@ -113,6 +121,18 @@ export function renderReport(report) {
     if (report.protected.length > LIMIT)
       lines.push(`  ${C.dim}… and ${report.protected.length - LIMIT} more${C.off}\n`);
     lines.push("\n");
+  }
+
+  if (!verbose) {
+    for (const w of report.warnings) lines.push(`  ${C.yellow}${w.headline}${C.off}\n`);
+    if (report.warnings.length) lines.push("\n");
+    const more = [
+      report.protected?.length ? `${report.protected.length} protected path(s)` : "",
+      report.warnings.some((w) => w.detail) ? "why each warning matters" : "",
+      report.limits?.length ? `${report.limits.length} standing limit(s)` : "",
+    ].filter(Boolean);
+    if (more.length) lines.push(`  ${C.dim}seisin check --verbose: ${more.join(", ")}${C.off}\n\n`);
+    return lines.join("");
   }
 
   for (const w of report.warnings) {
