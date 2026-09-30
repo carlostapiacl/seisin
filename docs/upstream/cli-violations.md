@@ -4,7 +4,8 @@ Issue for [anthropics/sandbox-runtime][repo]. Split out of
 [denyUnlink.md](denyUnlink.md) on 2026-09-13 — different ask, different answer,
 no platform debate, and it was diluting the other one.
 
-Verified against **0.0.76**, re-verified against **0.0.77** on 2026-09-20.
+Verified against **0.0.76**, re-verified against **0.0.77** on 2026-09-20 and against **0.0.78** on
+2026-09-30: the CLI still reads no violations.
 
 [repo]: https://github.com/anthropics/sandbox-runtime
 
