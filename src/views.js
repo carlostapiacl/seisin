@@ -73,7 +73,7 @@ export function verdicts(cfg, { now = Date.now() } = {}) {
  * of the log — a cause that has been granted since is history, not friction,
  * and leaving it on the page sends somebody to fix what is already fixed.
  */
-export function causesOf(cfg, entries, { ask = explain } = {}) {
+export function causesOf(cfg, entries, { ask = explain, limit = 12 } = {}) {
   const by = new Map();
   for (const e of entries) {
     if (e.verdict !== "denied" || !e.target || !e.action) continue;
@@ -170,9 +170,23 @@ export function causesOf(cfg, entries, { ask = explain } = {}) {
     piles.unowned.kinds[g.nature.kind].denials += g.times;
   }
 
+  /**
+   * What each refusal was about — a file, a key, a network destination or an
+   * MCP tool — counted over every cause, not the ones listed. The console
+   * shows keys, network and tools apart from files: "no role owns this" is a
+   * sentence about paths, and said of a port or a tool it is simply wrong.
+   */
+  const about = Object.fromEntries(ABOUT.map((k) => [k, { paths: 0, denials: 0 }]));
+  for (const g of by.values()) {
+    const a = aboutOf(g.kind);
+    about[a].paths++;
+    about[a].denials += g.times;
+  }
+
   return {
     total,
     unowned: piles.unowned.paths,
+    about,
     standing: piles,
     // The real number of distinct causes, not the length of the list below.
     // The page says "over N distinct paths" and the list is capped at twelve,
@@ -182,8 +196,9 @@ export function causesOf(cfg, entries, { ask = explain } = {}) {
     families: families.slice(0, 8),
     causes: [...by.values()]
       .sort((a, b) => b.times - a.times)
-      .slice(0, 12)
+      .slice(0, limit)
       .map((g) => ({
+        about: aboutOf(g.kind),
         action: g.action,
         target: g.target,
         times: g.times,
@@ -202,6 +217,47 @@ export function causesOf(cfg, entries, { ask = explain } = {}) {
         stillRefused: [...g.roles].filter((r) => cfg.roles[r] && !ask(cfg, r, g.action, g.target).allowed).length,
       })),
   };
+}
+
+/** What a log line was about. Lines from before the field existed are files. */
+const ABOUT = ["file", "key", "network", "tool"];
+function aboutOf(kind) {
+  return ABOUT.includes(kind) ? kind : "file";
+}
+
+/**
+ * Walls as the console shows them: each with what it was about and, when no
+ * role owns the path, the same kind and hint the Denied screen gives it.
+ *
+ * Without this the two screens contradicted each other about one path: Walls
+ * said `.env.local` "has no owner — no role can write it until one claims it",
+ * an invitation to give it one, while Denied said it is a credential and never
+ * to grant a write to it. The hint is kinds.js's, so it is the same sentence.
+ *
+ * A copy: the MCP server hands out walls() as it is, and this adds to it.
+ */
+export function describeWalls(cfg, byRole, entries) {
+  const kindOfLine = new Map();
+  for (const e of entries) if (e.verdict === "denied" && e.target) kindOfLine.set(`${e.role}\u0000${e.action}\u0000${e.target}`, e.kind);
+  const standOf = standingOf(cfg);
+  const out = {};
+  const unowned = [];
+  for (const [role, list] of Object.entries(byRole)) {
+    out[role] = list.map((w) => {
+      const about = aboutOf(kindOfLine.get(`${role}\u0000${w.action}\u0000${w.target}`));
+      const x = { ...w, about, retried: w.times - 1 };
+      if (about === "file" && !(w.owners ?? []).length) {
+        const s = standOf({ kind: "file", target: w.target });
+        x.standing = s.kind;
+        if (s.why) x.why = s.why;
+        if (s.kind === "unowned") unowned.push(x);
+      }
+      return x;
+    });
+  }
+  const natures = kindsOf(unowned.map((w) => w.target), { keyDirs: cfg.keyDirs ?? [] });
+  for (const w of unowned) Object.assign(w, natures.get(w.target));
+  return out;
 }
 
 /**

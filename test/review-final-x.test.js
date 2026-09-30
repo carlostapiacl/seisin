@@ -145,7 +145,7 @@ test("the console closes the same request the same way", async (t) => {
   const q = requestsPath(box);
   record(q, { role: "a", action: "write", target: "a/x.ts", owners: [] });
   const { post } = await consoleOn(t, box);
-  const r = await post("/api/decide", JSON.stringify({ key: pending(q)[0].key, decision: "granted" }));
+  const r = await post("/api/decide", JSON.stringify({ key: pending(q)[0].key, decision: "granted", reason: "the same request" }));
   assert.equal(r.status, 200, await r.text());
   assert.equal(pending(q).length, 0);
   assert.equal(pending(q, { includeSettled: true })[0].state, "granted");

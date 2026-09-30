@@ -187,6 +187,22 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
   made unique per run in three or more sibling places counts as scratch. On that log, 318 paths
   and 3,161 refusals read as decisions; 22 and 69 are. Nothing about what is allowed changed.
 
+### The console
+
+- **A decision from the console needs a reason.** Approve, Decline and Decline all were one click
+  with an optional box beside them, so most grants reached `seisin.toml` with no word of why. The
+  server now refuses `/api/decide` and `/api/decline-all` without one (400), and an approval
+  answers with the line it wrote and its number in the file, so the page can say exactly what
+  changed. `seisin grant` and `seisin decline` are unchanged.
+- **Walls and Denied say the same thing about one path.** Walls said `.env.local` "has no owner —
+  no role can write it until one claims it", an invitation to give it one, while Denied said it is
+  a credential and never to grant it. A wall on an unowned path now carries the same `kind` and
+  `hint` as the cause, and every wall says what it was about (a file, a key, the network or an MCP
+  tool) and how many of its hits were retries. The MCP's walls are unchanged.
+- **Denied is no longer cut at twelve without saying so**, and keys, network and MCP denials are
+  counted apart from files (`about` on each cause and `causes.about` per kind). The page is sent up
+  to 200 causes and shows how many there are.
+
 ## 0.4.2 — 2026-09-29
 
 - **Small hardening across the launcher.** A `--observe` written after the command
