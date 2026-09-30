@@ -411,8 +411,10 @@ declared key, writes inside its territory, and is refused outside it.
   written, and `log verify` checks the oldest segment against it. Removing every
   `prev` *and* that record leaves a log that reads like one written before the
   chain existed; `verify` then says the start is not recorded rather than
-  broken. Keep the record where the agent cannot write it — it is inside
-  `.seisin/`, which no role can.
+  broken. Deleting only the record does show: with chained lines and no record
+  `verify` warns, and the record the next entry writes is marked late, with how
+  many chained lines stood before it. Keep the record where the agent cannot
+  write it — it is inside `.seisin/`, which no role can.
 
 ## The claim this supports
 

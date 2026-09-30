@@ -371,19 +371,32 @@ export function verifyChain(file, seed = GENESIS) {
  * Written under the log lock, by `append`, and never rewritten. A log whose
  * record is missing (written by an older seisin and not appended to since, or
  * the record deleted) verifies as before and says the genesis is unrecorded.
+ *
+ * ── Recorded late ──
+ * The record is only as good as the moment it was taken. Written with the
+ * first chained line, it pins a start nobody could have edited yet. Written
+ * later — a log chained by an older seisin, or a record deleted and re-made by
+ * the next append — it pins whatever the log says by then, tampered or not.
+ * That is still worth pinning (nothing after it can be rewritten unseen), but
+ * it must not read as the same guarantee: such a record says `late`, how many
+ * chained lines already stood before it, and `verify` repeats both.
  */
 export function genesisPath(file) {
   return file + ".genesis";
 }
 
 function recordGenesis(file) {
-  const oldest = logSegments(file)[0];
-  if (!oldest) return;
-  const r = walk(oldest);
+  const segs = logSegments(file);
+  if (!segs.length) return;
+  const r = walk(segs[0]);
   if (!r.first) return;               // nothing chained yet: nothing to pin
-  writeFileSync(genesisPath(file), JSON.stringify({
-    at: new Date().toISOString(), legacy: r.unchained, digest: r.digest, first: r.first,
-  }) + "\n", { flag: "wx" });
+  // Chained lines that stood before the one `append` just wrote. Any at all
+  // means the start is being pinned after the fact.
+  let before = r.chained - 1;
+  segs.slice(1).forEach((seg) => { before += walk(seg, { legacy: false }).chained; });
+  const record = { at: new Date().toISOString(), legacy: r.unchained, digest: r.digest, first: r.first };
+  if (before > 0) Object.assign(record, { late: true, after: before });
+  writeFileSync(genesisPath(file), JSON.stringify(record) + "\n", { flag: "wx" });
 }
 
 function readGenesis(file) {
@@ -405,11 +418,19 @@ function readGenesis(file) {
  *
  * `genesis` says whether the chain's starting point was checked against its
  * record: `recorded`, `unrecorded` (no record yet — see recordGenesis), or
- * `pruned` (the segment it described was dropped for retention).
+ * `pruned` (the segment it described was dropped for retention). `late` is
+ * `{ at, after }` when the record was made after chained lines already stood.
+ *
+ * A record whose first chained hash differs, over a chain that otherwise
+ * holds, is not an edit inside this log: it describes a different start.
+ * That happens when the operator archives the log by hand and leaves the
+ * record behind — or when the log was rewritten from its first line. Both are
+ * reported as a break (the second is exactly what the record exists to catch),
+ * but marked `foreign`, so `verify` can say which file to move or remove.
  */
 export function verifyLog(file) {
   const segs = logSegments(file);
-  const agg = { lines: 0, unchained: 0, chained: 0, breaks: [], segments: segs.length, dropped: countLines(droppedPath(file)), genesis: "unrecorded" };
+  const agg = { lines: 0, unchained: 0, chained: 0, breaks: [], segments: segs.length, dropped: countLines(droppedPath(file)), genesis: "unrecorded", late: null };
   const pinned = readGenesis(file);
   let seed = GENESIS;
   segs.forEach((seg, i) => {
@@ -418,9 +439,17 @@ export function verifyLog(file) {
       if (r.rotated) agg.genesis = "pruned";
       else {
         agg.genesis = "recorded";
+        if (pinned.late) agg.late = { at: pinned.at ?? null, after: Number.isInteger(pinned.after) ? pinned.after : null };
         // Where the first chained line should be, and what it should hash to.
         const at = pinned.legacy + 1;
-        if (r.unchained !== pinned.legacy || r.first !== pinned.first)
+        // A different first line in a chain that otherwise holds is a
+        // different start, not an edit — an edit to the first line would also
+        // break the line after it. A log with no chain left at all was not
+        // replaced by another seisin log (those chain from their first line):
+        // it was stripped.
+        if (r.first && r.first !== pinned.first && r.breaks.length === 0)
+          r.breaks.unshift({ line: at, expected: pinned.first, found: r.first, genesis: true, foreign: true });
+        else if (r.unchained !== pinned.legacy || r.first !== pinned.first)
           r.breaks.unshift({ line: at, expected: pinned.first, found: r.unchained !== pinned.legacy ? null : r.first, genesis: true });
         else if ((r.digest ?? null) !== (pinned.digest ?? null))
           r.breaks.unshift({ line: 1, expected: pinned.digest, found: r.digest, genesis: true });
