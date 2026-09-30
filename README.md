@@ -215,6 +215,25 @@ seisin wire                              # install the PreToolUse hook in this r
 seisin ui                                # a console for editing the map
 ```
 
+`seisin <command> --help` lists a command's flags, examples and exit codes. The exit codes, so
+the commands compose in a script, a pre-commit hook or CI:
+
+| command | 0 | 1 | other |
+|---|---|---|---|
+| `run` | — | — | the command's own status; 127 if it is not on the role's PATH; 128+n when killed by signal n (130 for ctrl-c) |
+| `check` | the policy can be enforced (warnings included) | a role cannot be enforced as written | |
+| `explain` | allowed | denied | |
+| `scan` | no certain credential | a certain credential outside the key dirs | |
+| `review` | no role stopped repeatedly | a role stopped repeatedly | |
+| `walls` | no walls | walls listed | |
+| `requests` | nothing pending | requests pending | |
+| `log verify` | the chain holds | the chain is broken | |
+| `whose`, `grant`, `decline`, `log`, `init`, `wire`, `ui`, `watch`, `mcp` | done | — | |
+| `hook` | always | — | |
+
+Every command exits **2** on a usage error — an unknown command, flag, role or action — and when
+there is no `seisin.toml` here or above.
+
 ## Configure
 
 One file at the root of your repo. Anything not listed is denied — there is no permissive default.
@@ -392,9 +411,16 @@ the first unjustified denial is when the tool gets uninstalled. So don't write i
 write:
 
 ```bash
-seisin run frontend --observe -- claude -p "…"   # records, denies nothing
+seisin wire                                      # the hook is what records
+seisin run frontend --observe -- claude -p "…"   # the repo opens, the network does not
 seisin init --from-observations                  # writes seisin.toml.observed
 ```
+
+What `--observe` changes: the whole repo is writable for that run, so a write outside the
+territory is recorded instead of refused. What it does not: the key directories, the policy and
+`.seisin/` stay denied, and so does every domain not on the allowlist. What gets recorded is what
+the hook sees — the tool calls of an agent (Claude Code, Codex…) in a repo where `seisin wire` ran.
+A plain shell command (`--observe -- npm test`) goes through no hook and records nothing.
 
 It lands as `.observed`, not as your config. A policy generated behind your back is not a
 policy: diff it, then move it.
