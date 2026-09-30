@@ -20,14 +20,6 @@ import { TOOL_MATCHER } from "../hook.js";
 
 const SETTINGS = join(".claude", "settings.json");
 
-/** Where the PreToolUse entry lives, and what it has to say. */
-export function hookEntry(command = "seisin hook") {
-  return {
-    matcher: "*",
-    hooks: [{ type: "command", command }],
-  };
-}
-
 /**
  * Every event `seisin hook` answers, and the matcher each one needs.
  *

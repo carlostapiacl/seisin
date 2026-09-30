@@ -27,31 +27,11 @@
  * else did.
  */
 import { createServer, createConnection, Socket } from "node:net";
-import { unlinkSync, existsSync, mkdtempSync, chmodSync, openSync, writeSync, closeSync, constants } from "node:fs";
+import { unlinkSync, existsSync, openSync, writeSync, closeSync, constants } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
 
 /** The env var a confined hook looks for. Absent means "write the file". */
 export const SOCK_ENV = "SEISIN_SPOOL";
-
-/**
- * Where the socket lives.
- *
- * Not under the repo: the point is a path the role's territory does not cover.
- * Kept short because a unix socket path is capped near 104 bytes on macOS and
- * the failure when it is too long is an unhelpful EINVAL.
- */
-export function spoolPath() {
-  // A random directory, 0700, rather than a name anyone can guess from the pid.
-  // The socket itself is already denyWrite so the agent cannot unlink it, but
-  // any other process running as this user could otherwise connect and add
-  // lines. That does not let them erase anything — forgery is the part that
-  // stays open — but a predictable path invites it for free.
-  const dir = mkdtempSync(join(tmpdir(), "seisin-"));
-  chmodSync(dir, 0o700);
-  return join(dir, "spool.sock");
-}
 
 /**
  * Listens for lines from inside the box and hands each to `sink`.
@@ -125,7 +105,7 @@ function fifoSpool(sink, path) {
   });
 }
 
-export function spool(sink, path = spoolPath()) {
+export function spool(sink, path) {
   if (path.endsWith(FIFO_SUFFIX)) return fifoSpool(sink, path);
   if (existsSync(path)) unlinkSync(path);
 
@@ -161,11 +141,11 @@ export function spool(sink, path = spoolPath()) {
       close() {
         server.close();
         // Only the socket. The first version removed `dirname(path)` too,
-        // reasoning that spoolPath() had just made that directory — but a
+        // reasoning that the spool had just made that directory — but a
         // caller passing its own path makes dirname the system temp directory,
         // and closing the spool deleted it. That is a caller's whole scratch
         // space gone, for a cleanup. Whoever created the directory removes it:
-        // see `run`, which owns the one spoolPath() makes.
+        // see `run`, whose run directory (rundir.js) holds the socket.
         try { unlinkSync(path); } catch {}
       },
       });
