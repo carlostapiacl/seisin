@@ -44,10 +44,20 @@ test("a keyed run keeps the child's exit status and its output, redacted", { ski
 test("a keyed run does not wait out the exit guard", { skip }, () => {
   // Measured before the fix: 3.0 s keyed against 1.2 s plain, the difference
   // being the 2-second ceiling taken every time. Compared with a plain run on
-  // the same machine rather than against a fixed number, so load moves both.
-  // The fastest of five of each, and a margin under the 2 s it exists to catch:
-  // with three and 1.2 s it failed once at load 330, and passed alone.
-  const plain = Math.min(...[0, 1, 2, 3, 4].map(() => timed("plain", "true").ms));
-  const keyed = Math.min(...[0, 1, 2, 3, 4].map(() => timed("keyed", "true").ms));
-  assert.ok(keyed - plain < 1500, `keyed ${keyed} ms vs plain ${plain} ms`);
+  // the same machine rather than against a fixed number, so load moves both,
+  // with a margin under the 2 s it exists to catch.
+  //
+  // Sequential, stopping at the first pair that clears: the guard is a floor
+  // under every keyed run, so no amount of retrying lets a regression through
+  // unless every plain run is also 500 ms slower than it can be. Usually one
+  // pair (2 runs); up to four under load. It was five of each, every time —
+  // 17 s, 44 % of the suite.
+  const plain = [];
+  const keyed = [];
+  for (let i = 0; i < 4; i++) {
+    plain.push(timed("plain", "true").ms);
+    keyed.push(timed("keyed", "true").ms);
+    if (Math.min(...keyed) - Math.min(...plain) < 1500) break;
+  }
+  assert.ok(Math.min(...keyed) - Math.min(...plain) < 1500, `keyed ${keyed} ms vs plain ${plain} ms`);
 });
