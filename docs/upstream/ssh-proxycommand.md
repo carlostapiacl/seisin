@@ -69,7 +69,7 @@ proxy, and fails at authentication, which is the one that looks like a bug in
 the user's network rather than a configuration the library chose.
 
 Measured on macOS 15 (Darwin 24.6.0), 0.0.76; the same `ProxyCommand` string
-and the same `NEVER tunnelled` note are present in 0.0.77.
+and the same `NEVER tunnelled` note are present in 0.0.77 and 0.0.78.
 
 ## Ask
 

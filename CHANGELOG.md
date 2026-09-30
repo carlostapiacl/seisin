@@ -76,6 +76,14 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
 - The MCP server no longer loads the HTTP console to share one function, and `seisin_walls` reads
   the log once.
 
+### Runtime
+
+- **Bumped to `@anthropic-ai/sandbox-runtime` 0.0.78** (from 0.0.77). Its changes are on Linux
+  (a failing command reported 0 under zsh with the network restricted; a deny path created while
+  the wrap is set up is bound), `srt --version` reports the real version, and it imports `zod/v3`
+  so a tree that resolves zod 4 does not break it. Nothing in the macOS profile changed. Full suite
+  green on macOS against it; the Linux half runs in CI.
+
 ### Editor settings and instruction files
 
 - **Editor settings are control files.** `.vscode/`, `.cursor/` and `.windsurf/` are protected in

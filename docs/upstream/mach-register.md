@@ -2,7 +2,7 @@
 
 **Already tracked, don't file again:** issue [#210][210] (open since 2026-04-06) and
 [PR #598][598] (opened 2026-09-22, awaiting review), which adds `network.allowMachRegister`.
-Not in 0.0.76 or 0.0.77 as of 2026-09-23.
+Not in 0.0.76, 0.0.77 or 0.0.78 as of 2026-09-30.
 
 **Our part on the PR, 2026-09-23:**
 - [Review](https://github.com/anthropics/sandbox-runtime/pull/598#pullrequestreview-5295911678):
