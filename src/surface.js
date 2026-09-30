@@ -28,7 +28,7 @@
  * with the reason for each entry.
  */
 import { readdirSync, statSync, accessSync, existsSync, realpathSync, constants } from "node:fs";
-import { join, isAbsolute, delimiter, dirname, resolve, basename } from "node:path";
+import { join, isAbsolute, delimiter, dirname, resolve, basename, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { writePathsOf, realOrSelf } from "./grants.js";
@@ -604,7 +604,8 @@ export function protectedBy(config, target, { platform = process.platform, role 
   const f = CLAUDE_DIR.test(target)
     ? ".claude"
     : CONTROL_RES.find(([, re]) => re.test(target))?.[0];
-  if (f && (platform !== "linux" || existsSync(isAbsolute(target) ? target : join(config.root, target)))) {
+  const re = f === ".claude" ? CLAUDE_DIR : CONTROL_RES.find(([name]) => name === f)?.[1];
+  if (f && (platform !== "linux" || heldOnLinux(config, target, re))) {
     const why = f === ".claude"
       ? ".claude, whose settings, hooks and skills Claude Code runs outside the box"
       : `${f}, run by ${RUNNER(f)} outside the box`;
@@ -623,12 +624,28 @@ export function protectedBy(config, target, { platform = process.platform, role 
   for (const family of active)
     for (const [name, re] of compiled[family]) {
       if (!re.test(target)) continue;
-      if (platform === "linux" && !existsSync(isAbsolute(target) ? target : join(config.root, target))) continue;
+      if (platform === "linux" && !heldOnLinux(config, target, re)) continue;
       return { path: target, why: familyWhy(family, name), family };
     }
   const full = realOrSelf(isAbsolute(target) ? target : join(config.root, target));
   return parentInputs(config)
     .find((e) => under(full, realOrSelf(e.path)) || under(join(config.root, target), e.path)) ?? null;
+}
+
+/**
+ * Whether the Linux kernel holds `target`: the path itself, or a directory
+ * above it that the same rule names, exists — bubblewrap denies what exists,
+ * and a denied directory takes everything created inside it. Checking only the
+ * target called `web/.vscode/settings.json` unprotected while `web/.vscode` was
+ * denied whole, so a grant for it went through and changed nothing.
+ */
+function heldOnLinux(config, target, re) {
+  const full = isAbsolute(target) ? target : join(config.root, target);
+  for (let at = full; ; at = dirname(at)) {
+    const rel = at.startsWith(config.root + sep) ? at.slice(config.root.length + 1) : at;
+    if (re.test(rel) && existsSync(at)) return true;
+    if (at === config.root || dirname(at) === at || !re.test(rel)) return false;
+  }
 }
 
 /**
