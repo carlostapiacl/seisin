@@ -46,7 +46,20 @@ const under = (p, root) => p === root || p.startsWith(root.endsWith("/") ? root 
  * provider script can still wait for the role that can. The repo root is in
  * it because `--observe` grants the whole repo to whichever role it runs.
  */
+const ROOTS_OF = new WeakMap();          // config -> writable roots
+
 export function writableRoots(config) {
+  // Once per config: protectedBy asks for it through parentInputs on every
+  // call, and on the portfolio that was 1.7 ms each — 50 ms for a hook call
+  // with two providers. A config is reloaded whenever the policy can have
+  // changed (hook, console, MCP), so a memory per object is never stale for
+  // longer than the object lives.
+  let roots = ROOTS_OF.get(config);
+  if (!roots) ROOTS_OF.set(config, (roots = computeWritableRoots(config)));
+  return roots;
+}
+
+function computeWritableRoots(config) {
   const root = realOrSelf(config.root);
   const out = new Set([root]);
   // A grant inside the repo is covered by the repo root already, so only the
@@ -233,17 +246,32 @@ function dedupe(entries) {
  * was: these are cheap to list and a role that can write one of them has no
  * policy.
  */
+const INPUTS = new WeakMap();            // config -> PATH -> entries
+
 export function parentInputs(config, { env = process.env } = {}) {
+  const byPath = INPUTS.get(config) ?? INPUTS.set(config, new Map()).get(config);
+  const key = env.PATH ?? "";
+  if (!byPath.has(key)) byPath.set(key, computeParentInputs(config, env));
+  return byPath.get(key);
+}
+
+/**
+ * `always` marks the three that are denied whatever the territory — the
+ * policy, `.seisin/` and the key directories. It is a field, not a comparison
+ * against the wording of `why`: that sentence is for people, and rewording it
+ * would have quietly moved a key directory out of every profile.
+ */
+function computeParentInputs(config, env) {
   const abs = (p) => (isAbsolute(p) ? p : join(config.root, p));
   const policy = abs(config.path ?? CONFIG_NAME);
   const out = [
-    { path: policy, why: "the policy" },
+    { path: policy, why: "the policy", always: true },
     // `seisin.toml.observed` is the proposal `init --from-observations` writes
     // for a person to diff and move onto the policy; a role that could write it
     // could plant a policy the operator then promotes in good faith.
-    { path: policy + ".observed", why: "the policy" },
-    { path: abs(STATE_DIR), why: "seisin's log and request queue" },
-    ...(config.keyDirs ?? []).map((d) => ({ path: abs(d), why: "a key directory" })),
+    { path: policy + ".observed", why: "the policy", always: true },
+    { path: abs(STATE_DIR), why: "seisin's log and request queue", always: true },
+    ...(config.keyDirs ?? []).map((d) => ({ path: abs(d), why: "a key directory", always: true })),
   ];
   for (const [scheme, p] of Object.entries(config.keyProviders ?? {})) {
     const cmd = p.command?.[0];
@@ -293,13 +321,17 @@ export const CONTROL_FILES = [
 const RUNNER = (f) =>
   f.startsWith(".git/") ? "git" : f === ".envrc" ? "direnv" : f.startsWith(".codex/") ? "Codex" : "Claude Code";
 
-// Case-insensitive, because the disk is: on APFS `.CLAUDE/Settings.json` is
-// the same file, and the kernel was measured refusing it.
-const CONTROL_RE = new RegExp(
-  `(^|/)(${CONTROL_FILES.map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})(/|$)`, "i");
+/** `s` as a literal inside a RegExp — every metacharacter, not only `.`. */
+const literal = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Does this path name a control file, at any depth? What `explain` asks. */
-export const isControlPath = (p) => CONTROL_RE.test(p);
+/** `name` as a whole path segment run, anywhere in a path. */
+const segment = (name, flags = "") => new RegExp(`(^|/)${literal(name)}(/|$)`, flags);
+
+// Case-insensitive, because the disk is: on APFS `.CLAUDE/Settings.json` is
+// the same file, and the kernel was measured refusing it. Compiled once: this
+// used to build one RegExp per control file on every call to protectedBy.
+const CLAUDE_DIR = segment(".claude", "i");
+const CONTROL_RES = CONTROL_FILES.map((c) => [c, segment(c, "i")]);
 
 /**
  * Two more families of control files, which a role may be let to edit.
@@ -331,6 +363,12 @@ export const FAMILIES = {
 };
 
 const EDITOR = { ".vscode": "VS Code", ".cursor": "Cursor", ".windsurf": "Windsurf" };
+// The families, compiled once per case rule (see protectedBy).
+const FAMILY_RES = {
+  fold: Object.fromEntries(Object.entries(FAMILIES).map(([f, names]) => [f, names.map((n) => [n, segment(n, "i")])])),
+  exact: Object.fromEntries(Object.entries(FAMILIES).map(([f, names]) => [f, names.map((n) => [n, segment(n)])])),
+};
+
 const familyWhy = (family, name) => family === "ide"
   ? `${name}, whose settings and tasks ${EDITOR[name]} applies outside the box`
   : `${name}, which the next agent session reads as its instructions`;
@@ -408,7 +446,7 @@ function controlsOf(dir, platform, families = []) {
   if (git?.isFile()) out.push({ path: join(dir, ".git"), why: "a worktree's pointer to its repository, read by git" });
   if (git?.isDirectory())
     for (const f of [".git/hooks", ".git/config"])
-      out.push({ path: join(dir, f), why: `${f}, run by git outside the box` });
+      out.push({ path: join(dir, f), why: `${f}, run by git outside the box`, ifPresent: true });
   /**
    * `.claude` whole, as one entry, rather than its seven control files.
    *
@@ -426,7 +464,7 @@ function controlsOf(dir, platform, families = []) {
   // refuse creating them, and a literal each would be start-up for nothing.
   for (const f of [".mcp.json", ".envrc", ".codex/config.toml"]) {
     const p = join(dir, f);
-    if (existsSync(p)) out.push({ path: p, why: `${f}, run by ${RUNNER(f)} outside the box` });
+    if (existsSync(p)) out.push({ path: p, why: `${f}, run by ${RUNNER(f)} outside the box`, ifPresent: true });
   }
   // The families literally only where they exist, on every platform. Where
   // they do not, macOS gets a pattern for creating them (computeDenies) and
@@ -454,7 +492,7 @@ function homeControls(platform) {
     ".claude/settings.json", ".claude/settings.local.json", ".claude/hooks", ".claude/plugins",
     ".claude/skills", ".claude/commands", ".claude/agents", ".codex/config.toml",
   ]
-    .map((f) => ({ path: join(home, f), why: `${f}, run by ${RUNNER(f)} outside the box` }))
+    .map((f) => ({ path: join(home, f), why: `${f}, run by ${RUNNER(f)} outside the box`, ifPresent: true }))
     .filter((e) => platform !== "linux" || existsSync(e.path));
 }
 
@@ -544,8 +582,7 @@ function computeDenies(config, role, { env, platform, observe }) {
   // territory, as they always were. What the providers and `file://` keys
   // point at is denied where this role can write it: `/usr/bin/security` in
   // every profile would be a rule about the machine, and no role reaches it.
-  const always = new Set(["the policy", "seisin's log and request queue", "a key directory"]);
-  const inputs = parentInputs(config, { env }).filter((e) => always.has(e.why) || inMine(e.path));
+  const inputs = parentInputs(config, { env }).filter((e) => e.always || inMine(e.path));
 
   return dedupe([...inputs, ...surface, ...controls, ...globs]);
 }
@@ -564,9 +601,9 @@ export function protectedBy(config, target, { platform = process.platform, role 
    * that exist, so only those are called protected there: a sentence stricter
    * than the boundary is the direction this project refuses.
    */
-  const f = /(^|\/)\.claude(\/|$)/i.test(target)
+  const f = CLAUDE_DIR.test(target)
     ? ".claude"
-    : CONTROL_FILES.find((c) => new RegExp(`(^|/)${c.replace(/\./g, "\\.")}(/|$)`, "i").test(target));
+    : CONTROL_RES.find(([, re]) => re.test(target))?.[0];
   if (f && (platform !== "linux" || existsSync(isAbsolute(target) ? target : join(config.root, target)))) {
     const why = f === ".claude"
       ? ".claude, whose settings, hooks and skills Claude Code runs outside the box"
@@ -582,9 +619,9 @@ export function protectedBy(config, target, { platform = process.platform, role 
    * so the caller can ask whose it is.
    */
   const active = role ? familiesFor(config, config.roles?.[role]) : familiesFor(config, null);
+  const compiled = platform === "darwin" ? FAMILY_RES.fold : FAMILY_RES.exact;
   for (const family of active)
-    for (const name of FAMILIES[family]) {
-      const re = new RegExp(`(^|/)${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(/|$)`, platform === "darwin" ? "i" : "");
+    for (const [name, re] of compiled[family]) {
       if (!re.test(target)) continue;
       if (platform === "linux" && !existsSync(isAbsolute(target) ? target : join(config.root, target))) continue;
       return { path: target, why: familyWhy(family, name), family };
@@ -605,19 +642,21 @@ export function protectedBy(config, target, { platform = process.platform, role 
  * surface.js.
  */
 export function protections(config, roles = Object.values(config.roles), opts = {}) {
-  const always = new Set(["the policy", "seisin's log and request queue", "a key directory"]);
   const byPath = new Map();
   for (const role of roles) {
     let entries;
     try { entries = denyFor(config, role, opts); } catch { continue; }
     for (const e of entries) {
-      if (always.has(e.why) || /[*?[\]]/.test(e.path)) continue;
+      if (e.always || /[*?[\]]/.test(e.path)) continue;
       // Only what the role could otherwise write: a literal control-file path
       // is listed for every project in the territory whether it exists or not,
       // and the ones that do not exist are shown only if their project does.
-      const hit = byPath.get(e.path) ?? byPath.set(e.path, { path: e.path, why: e.why, roles: [] }).get(e.path);
+      const hit = byPath.get(e.path) ??
+        byPath.set(e.path, { path: e.path, why: e.why, roles: [], ifPresent: e.ifPresent === true }).get(e.path);
       hit.roles.push(role.name);
     }
   }
-  return [...byPath.values()].filter((e) => existsSync(e.path) || !e.why.includes(" run by "));
+  return [...byPath.values()]
+    .filter((e) => !e.ifPresent || existsSync(e.path))
+    .map(({ ifPresent, ...e }) => e);
 }

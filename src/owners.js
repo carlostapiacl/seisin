@@ -57,6 +57,10 @@ export function covers(glob, path) {
   // The path itself, or anything beneath it. The `/` is load-bearing: without
   // it `src/api` would also cover `src/apifoo.ts`, which the kernel does not.
   if (m.prefix !== null) return p === m.prefix || p.startsWith(m.prefix + "/");
+  // The literal head of the glob, before its first wildcard, has to be the
+  // head of the path too. Most pairs fail here, for the price of a
+  // startsWith — `check` asks ~400k of them on a real policy.
+  if (!p.startsWith(m.head)) return false;
   return matchGlob(m.glob, p);
 }
 
@@ -81,7 +85,7 @@ function matcherOf(glob) {
   let g = normalize(glob);
   if (glob.endsWith("/")) g += "/**";
   const wild = WILD.test(g);
-  m = { prefix: wild ? null : g, glob: wild ? g : null, climbs: climbs(g) };
+  m = { prefix: wild ? null : g, glob: wild ? g : null, climbs: climbs(g), head: wild ? headOf(g) : "" };
   if (GLOBS.size >= MAX_CACHED) GLOBS.clear();
   GLOBS.set(glob, m);
   return m;
@@ -98,6 +102,13 @@ function normalized(path) {
 
 /** The four characters the matcher treats as wildcards. */
 export const WILD = /[*?[\]]/;
+
+/**
+ * What every path a glob matches starts with: its text up to the first
+ * wildcard, minus a final `/` — `src/api/**` matches `src/api` itself, and
+ * `a/**\/b` matches `a/b`.
+ */
+const headOf = (g) => g.slice(0, g.search(WILD)).replace(/\/$/, "");
 
 /** Does a normalised path start above the repo root? */
 const climbs = (p) => p === ".." || p.startsWith("../");
@@ -159,10 +170,24 @@ export function normalize(s) {
  * including `/`, `**\/` zero or more whole directories, a trailing `/**` the
  * subtree. Characters are compared literally; nothing is treated as regex.
  */
+let MEMO = new Uint8Array(4096);
+
 function matchGlob(glob, path) {
   const G = glob.length, P = path.length;
-  // memo[gi * (P+1) + pi]: 0 unknown, 1 true, 2 false. One flat array, reused.
-  const memo = new Uint8Array((G + 1) * (P + 1));
+  // memo[gi * (P+1) + pi]: 0 unknown, 1 true, 2 false. One flat array, kept
+  // between calls and cleared over the part this call uses: allocating it
+  // fresh was most of the cost of a call that fails on its second character.
+  // Nothing re-enters matchGlob while it runs, so sharing it is safe.
+  // An outsized pair gets its own array, so one long path does not pin
+  // megabytes for the life of a server.
+  const size = (G + 1) * (P + 1);
+  let memo;
+  if (size > 1 << 20) memo = new Uint8Array(size);
+  else {
+    if (MEMO.length < size) MEMO = new Uint8Array(Math.max(size, MEMO.length * 2));
+    memo = MEMO;
+    memo.fill(0, 0, size);
+  }
   const at = (gi, pi) => {
     for (;;) {
       const key = gi * (P + 1) + pi;

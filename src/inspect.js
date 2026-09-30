@@ -28,6 +28,9 @@ import { protections, resolveExecutable } from "./surface.js";
 export function inspect(config, only = null, where = config.path) {
   if (only && !config.roles[only]) throw new Error(`unknown role "${only}"`);
   const roles = only ? [config.roles[only]] : Object.values(config.roles);
+  // Once: it is listed on its own and again as a warning, and it is the most
+  // expensive thing check computes.
+  const shared = sharedPaths(config, roles);
 
   return {
     where,
@@ -43,7 +46,7 @@ export function inspect(config, only = null, where = config.path) {
     providers: Object.values(config.keyProviders ?? {}).map((p) => ({
       name: p.name, command: p.command, mode: p.mode,
     })),
-    shared: sharedPaths(config, roles),
+    shared,
     /**
      * What the kernel will refuse a role inside its own territory, and why:
      * programs installed where a role writes, the hooks and settings of each
@@ -52,7 +55,7 @@ export function inspect(config, only = null, where = config.path) {
      * quietly. See surface.js for the family and the measurements.
      */
     protected: protections(config, roles),
-    warnings: warningsFor(config, roles),
+    warnings: warningsFor(config, roles, shared),
     limits: LIMITS,
   };
 }
@@ -251,10 +254,17 @@ function nearest(word, candidates) {
  * that it stays a decision somebody made rather than a thing that drifted.
  */
 export function sharedPaths(config, roles = Object.values(config.roles)) {
+  // Asked once per distinct glob: a real policy repeats them (1,332 writes,
+  // 303 distinct on the portfolio), and each question is every glob of every
+  // role again.
   const seen = new Set();
+  const asked = new Map();
   for (const r of roles)
-    for (const glob of r.writes)
-      if (ownersOf(config, glob.replace(/\/\*\*$/, "")).length > 1) seen.add(glob);
+    for (const glob of r.writes) {
+      let many = asked.get(glob);
+      if (many === undefined) asked.set(glob, (many = ownersOf(config, glob.replace(/\/\*\*$/, "")).length > 1));
+      if (many) seen.add(glob);
+    }
   /**
    * A shared database counts once, not four times.
    *
@@ -366,7 +376,7 @@ function onPath(cmd) {
   return dirs.some((d) => existsSync(join(d, cmd)));
 }
 
-function warningsFor(config, roles) {
+function warningsFor(config, roles, shared = sharedPaths(config, roles)) {
   const warnings = [];
 
   // A pattern the kernel cannot be given is not a policy, it is a sentence that
@@ -415,8 +425,6 @@ function warningsFor(config, roles) {
       headline: `PATH has ${unanchored.length} relative entr${unanchored.length === 1 ? "y" : "ies"} (${unanchored.map((d) => JSON.stringify(d)).join(", ")})`,
       detail: "They resolve inside the repo, where roles write, so seisin skips them when it looks for a program to run outside the box.",
     });
-  const shared = sharedPaths(config, roles);
-
   if (shared.length)
     warnings.push({
       kind: "shared",
