@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { writeFileSync, readFileSync } from "node:fs";
+import { writeFileSync, readFileSync, mkdirSync, appendFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { scratch } from "./_tmp.js";
@@ -16,6 +16,8 @@ import { scratch } from "./_tmp.js";
 import { targetsOf, TOOL_MATCHER } from "../src/hook.js";
 import { loadConfig } from "../src/config.js";
 import { wire, wired } from "../src/commands/wire.js";
+import { afterTool } from "../src/diagnose.js";
+import { logPath } from "../src/log.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI = join(HERE, "..", "src", "cli.js");
@@ -105,4 +107,48 @@ test("an install with the old '*' matcher is still wired, and wire narrows it in
   assert.equal(pre[0].matcher, TOOL_MATCHER);
   assert.equal(pre[1].matcher, "*", "another tool's hook was narrowed");
   assert.equal(wire(loadConfig(join(dir, "seisin.toml"))).changed, false, "a second wire has nothing to do");
+});
+
+/* ── P1-11: PostToolUse on a successful Bash does not wait ─────────────── */
+
+/** A kernel refusal of `target` for `role`, as the parent writes it. */
+function kernelLine(dir, role, target) {
+  mkdirSync(join(dir, ".seisin"), { recursive: true });
+  appendFileSync(logPath(dir), JSON.stringify({
+    at: new Date().toISOString(), role, tool: "kernel", source: "kernel",
+    action: "write", kind: "file", target, verdict: "denied", owners: [], reason: "file-write-create",
+  }) + "\n");
+}
+
+test("a successful Bash that prints 'Permission denied' costs no waits and says nothing (review P1-11)", async () => {
+  const { dir } = policy();
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  const file = logPath(dir);
+  // The default schedule, on purpose: that is what a real hook pays.
+  const quiet = { hook_event_name: "PostToolUse", tool_name: "Bash",
+    tool_response: { stdout: "grep: /etc/x: Permission denied\n", stderr: "", interrupted: false } };
+  let t = performance.now();
+  assert.equal(await afterTool(cfg, "web", quiet, { file }), null);
+  assert.ok(performance.now() - t < 90, `took ${Math.round(performance.now() - t)} ms — it waited`);
+
+  // Even with a refusal of this role in the log: stdout of a success is not evidence.
+  kernelLine(dir, "web", "src/api/x.ts");
+  assert.equal(await afterTool(cfg, "web", quiet, { file }), null);
+
+  // On stderr of a success it gets one look, and no waits.
+  const clean = policy();
+  const onStderr = { ...quiet, tool_response: { stdout: "", stderr: "sh: y: Permission denied\n" } };
+  t = performance.now();
+  assert.equal(await afterTool(loadConfig(join(clean.dir, "seisin.toml")), "web", onStderr, { file: logPath(clean.dir) }), null);
+  assert.ok(performance.now() - t < 90, `took ${Math.round(performance.now() - t)} ms — it waited`);
+});
+
+test("a Bash that reports failure on stderr still gets the sentence", async () => {
+  const { dir } = policy();
+  kernelLine(dir, "web", "src/api/x.ts");
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  const failed = { hook_event_name: "PostToolUse", tool_name: "Bash",
+    tool_response: { stdout: "", stderr: "sh: src/api/x.ts: Operation not permitted\n", exit_code: 1 } };
+  const out = await afterTool(cfg, "web", failed, { file: logPath(dir), wait: [0] });
+  assert.match(out.hookSpecificOutput.additionalContext, /src\/api\/x\.ts belongs to api/);
 });
