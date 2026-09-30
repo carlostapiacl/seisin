@@ -39,6 +39,11 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
   archives no agent works in; following the territories took ≈72 s and reported 45.
 - **A denial is counted with this attempt included** under `seisin run` too; the count was one
   behind when the entry went through the socket.
+- **`--help` is a question.** No command looked for it, so each took it as an argument: `ui --help`
+  started the console on 4178, `wire --help` wrote `.claude/settings.json`, `watch` and `mcp` sat
+  waiting, and `seisin --help` exited 2. Every command now prints its own usage for `--help` or
+  `-h` and exits 0 without reading a policy; `seisin help <command>` does the same. Words after
+  `--`, or after `run <role> <command>`, are still the agent's.
 
 ### The audit trail
 
@@ -68,6 +73,10 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
   existing seisin-only `"*"` entry in place. A command's code is loaded when it runs, not all of it
   up front: a hook call went from about 140–170 ms to 90–100 ms, and Grep, Glob and TodoWrite no
   longer start it at all.
+- **`seisin check` says when the hook still matches `"*"`.** A repo wired before 0.5.0 keeps
+  working, so nothing asked anyone to re-run `wire`; `check` now names it (`hook-matcher-broad`) and
+  says `seisin wire` narrows it in place. A `"*"` entry that also runs another command is not
+  seisin's alone, `wire` leaves it, and `check` stays quiet about it.
 - **A successful Bash is not searched for refusals.** Output that merely contained "Permission
   denied" waited ~400 ms for a kernel line that was never coming.
 - **A run that fails after it started cleans up.** A runtime that cannot start, or a key that
@@ -79,6 +88,16 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
   were counted as another run's and dropped with their requests. A suffix is foreign now only when
   its ancestry reaches another run; a line without one that arrives inside the throttle window is
   held for the re-check instead of dropped.
+- **A run directory is swept only when its process is known to be gone.** The sweep called any
+  error from `kill(pid, 0)` other than EPERM "dead", and removed the directory — socket and scratch
+  keys — of a run it could not rule out. The log lock and the sweep now share one `alive()`: only
+  ESRCH is gone, and a pid file that is not a positive pid is left alone.
+- **seisin installed as a project's dependency uses the runtime it pins.** `run` looked for `srt`
+  only inside seisin's own `node_modules`, where npm does not put it once it hoists the runtime to
+  the project's. `npx seisin` found it anyway through PATH; `./node_modules/.bin/seisin` and
+  `node node_modules/seisin/src/cli.js` said "not found", or ran under a global `srt` of another
+  version. The runtime is now found the way Node finds a dependency, up through every
+  `node_modules`, before PATH.
 
 ### Faster
 
