@@ -72,6 +72,11 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
   cannot be resolved, exits 2 and removes the run directory and its scratch keys. A runtime killed
   by a signal exits 128+n. Attribution checks the process table at most every 250 ms instead of on
   every foreign denial.
+- **A child that outlives its parent stays this run's.** A descendant reparented to init
+  (`cmd &`, a package manager's daemon) made the run's own suffix look foreign, and its refusals
+  were counted as another run's and dropped with their requests. A suffix is foreign now only when
+  its ancestry reaches another run; a line without one that arrives inside the throttle window is
+  held for the re-check instead of dropped.
 
 ### Faster
 
