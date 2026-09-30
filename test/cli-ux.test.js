@@ -317,3 +317,53 @@ test("check: a territory that matches nothing is a one-line warning; the paragra
   assert.match(long.out, /a role can delete inside its own territory/);
   assert.doesNotMatch(sh(dir, "check", "frontend").out, /matches nothing/);
 });
+
+/* ── 8. wire ──────────────────────────────────────────────────────────────── */
+
+test("wire writes a hook command that reaches this seisin, and says which", async () => {
+  const { hookCommand } = await import("../src/commands/wire.js");
+  const dir = demo();
+  const bare = hookCommand(dir, { path: "" });
+  assert.equal(bare.via, "absolute");
+  assert.match(bare.command, /src\/cli\.js" hook$/);
+
+  mkdirSync(join(dir, "node_modules", ".bin"), { recursive: true });
+  writeFileSync(join(dir, "node_modules", ".bin", "seisin"), "");
+  const local = hookCommand(dir, { path: "" });
+  assert.equal(local.via, "local");
+  assert.equal(local.command, '"$CLAUDE_PROJECT_DIR"/node_modules/.bin/seisin hook');
+
+  const bin = boxed("ux-bin-");
+  writeFileSync(join(bin, "seisin"), "#!/bin/sh\necho 0.0.1\n", { mode: 0o755 });
+  const stale = hookCommand(dir, { path: bin });
+  assert.equal(stale.via, "local", "an older seisin on PATH is not the one to run");
+  assert.equal(stale.onPath.version, "0.0.1");
+});
+
+test("wire outside git does not say to commit; without seisin on PATH it writes a working command", () => {
+  const dir = demo();
+  const env = { ...process.env, NO_COLOR: "1", PATH: "/usr/bin:/bin" };
+  delete env.SEISIN_ROLE;
+  const r = spawnSync(process.execPath, [CLI, "wire"], { cwd: dir, env, encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /the hook runs this seisin by its full path — seisin is not on your PATH/);
+  assert.doesNotMatch(r.stdout, /Commit this file/);
+  const settings = JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf8"));
+  assert.match(settings.hooks.PreToolUse[0].hooks[0].command, /cli\.js" hook$/);
+  const again = spawnSync(process.execPath, [CLI, "wire"], { cwd: dir, env, encoding: "utf8" });
+  assert.match(again.stdout, /already wired/);
+});
+
+test("wire repoints a bare 'seisin hook' when no seisin is on PATH", () => {
+  const dir = demo();
+  const bare = { type: "command", command: "seisin hook" };
+  mkdirSync(join(dir, ".claude"));
+  writeFileSync(join(dir, ".claude", "settings.json"), JSON.stringify({ hooks: {
+    PreToolUse: [{ matcher: "Bash", hooks: [bare] }], PostToolUse: [{ matcher: "Bash", hooks: [bare] }],
+    PostToolUseFailure: [{ matcher: "*", hooks: [bare] }], SessionStart: [{ matcher: "startup", hooks: [bare] }],
+  } }));
+  const env = { ...process.env, NO_COLOR: "1", PATH: "/usr/bin:/bin" };
+  const r = spawnSync(process.execPath, [CLI, "wire"], { cwd: dir, env, encoding: "utf8" });
+  assert.match(r.stdout, /repointed/);
+  assert.doesNotMatch(readFileSync(join(dir, ".claude", "settings.json"), "utf8"), /"seisin hook"/);
+});
