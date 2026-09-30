@@ -48,7 +48,7 @@ export const MIN_HITS = 2;
  * different repositories are two walls, and merging them hides which one was
  * hit.
  */
-export function walls(config, role, { file, entries = null, min = MIN_HITS, since = null, limit = 6, fresh = false } = {}) {
+export function walls(config, role, { file, entries = null, min = MIN_HITS, since = null, limit = 6, fresh = false, ask = explain } = {}) {
   // `entries`: the log already read, for a caller asking about every role at
   // once (the console asks for 32 on a real policy) — one read instead of 32.
   const denied = entries
@@ -69,7 +69,9 @@ export function walls(config, role, { file, entries = null, min = MIN_HITS, sinc
     if (w.times < min) continue;
     // The policy as it stands, not as it stood. A granted wall is not a wall,
     // and the whole point of saying this to an agent is that it is true now.
-    const verdict = explain(config, role, w.action, w.target);
+    // `ask` is explain, or a remembered one (views.js) for a caller asking
+    // about every role at once.
+    const verdict = ask(config, role, w.action, w.target);
     if (verdict.allowed) continue;
     out.push({ ...w, reason: verdict.reason, owners: verdict.owners });
   }
