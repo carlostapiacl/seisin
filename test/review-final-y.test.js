@@ -23,7 +23,7 @@ const TOKEN = (c) => "ghp_" + c.repeat(36) + "\n";
 
 /* ── scan: nested checkouts ──────────────────────────────────────────── */
 
-// A folder of projects that is not itself a repository — the portfolio root.
+// A folder of projects that is not itself a repository — a multi-repo workspace.
 function projects() {
   const box = scratch("seisin-scan-");
   assert.equal(insideRepo(box), false, "the scratch dir must not sit inside a checkout");
