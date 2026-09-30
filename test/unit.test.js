@@ -12,7 +12,7 @@ import { realpathSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSy
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildEnv, DEFAULTS as ENV_DEFAULTS } from "../src/env.js";
-import { scratch } from "./_tmp.js";
+import { scratch, CLI } from "./_tmp.js";
 
 /** The names that crossed FROM THE PARENT, which is what these tests are about.
  *  `buildEnv` also SETS a couple of variables the parent never had (see
@@ -241,7 +241,7 @@ test("a secret split across two chunks is still masked", () => {
 });
 
 test("scan reports loose credentials and skips the protected directory", () => {
-  const box = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), "scan-"));
+  const box = scratch("seisin-scan-");
   mkdirSync(join(box, ".secrets"), { recursive: true });
   writeFileSync(join(box, ".secrets", "ok.txt"), "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
   writeFileSync(join(box, "loose.env"), "API_TOKEN=abcdefghijklmnop\n");
@@ -254,7 +254,7 @@ test("scan reports loose credentials and skips the protected directory", () => {
 test("a value read from the environment is not a finding", () => {
   // Measured on a real tree: 46 of 159 loose findings were exactly this, so the
   // scanner was flagging the correct way to handle a secret.
-  const box = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), "scan-"));
+  const box = scratch("seisin-scan-");
   writeFileSync(join(box, "good.py"), 'API_TOKEN = os.environ["API_TOKEN"]\n');
   writeFileSync(join(box, "good.ts"), "const API_TOKEN = process.env.API_TOKEN;\n");
   writeFileSync(join(box, "bad.env"), "API_TOKEN=abcdefghijklmnop\n");
@@ -268,7 +268,7 @@ test("a value read from the environment is not a finding", () => {
 });
 
 test("findings are split by how much the shape alone proves", () => {
-  const box = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), "scan-"));
+  const box = scratch("seisin-scan-");
   writeFileSync(join(box, "issued.txt"), "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
   writeFileSync(join(box, "maybe.env"), "DB_PASSWORD=hunter2hunter2hunter2\n");
   const { hits } = scan(box, []);
@@ -280,7 +280,7 @@ test("findings are split by how much the shape alone proves", () => {
 test("caches and .bak copies are ignored by default", () => {
   // Both were most of the noise in the first real run: a scraped page carrying
   // someone else's API key, and one config repeated across five backups.
-  const box = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), "scan-"));
+  const box = scratch("seisin-scan-");
   mkdirSync(join(box, "_cache"), { recursive: true });
   writeFileSync(join(box, "_cache", "page.html"), "AIzaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
   writeFileSync(join(box, "settings.json.bak-2026"), "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
@@ -331,7 +331,7 @@ test("observed paths collapse to directories, not to the whole tree", () => {
 });
 
 test("a half-written log line is skipped, not fatal", () => {
-  const box = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), "log-"));
+  const box = scratch("seisin-log-");
   const f = join(box, "log.jsonl");
   writeFileSync(f, '{"role":"a","target":"x","action":"write","verdict":"denied"}\n{"role":"b",\n');
   const entries = read(f);
@@ -468,7 +468,7 @@ test("the public API exposes decisions, not rendering", () => {
 test("many denials in one directory are one request, not many", () => {
   // Un agente frenado en a.ts y después en b.ts no hace dos preguntas, y una
   // cola que dice que sí se vuelve una cola que nadie lee.
-  const box = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), "req-"));
+  const box = scratch("seisin-req-");
   const f = join(box, "requests.jsonl");
   for (const t of ["src/api/a.ts", "src/api/b.ts", "src/api/a.ts"])
     record(f, { role: "frontend", action: "write", target: t, owners: ["backend"] });
@@ -482,7 +482,7 @@ test("many denials in one directory are one request, not many", () => {
 
 test("a settled request leaves the queue but not the file", () => {
   // Append-only: una decisión que se puede reescribir no es evidencia.
-  const box = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), "req-"));
+  const box = scratch("seisin-req-");
   const f = join(box, "requests.jsonl");
   record(f, { role: "qa", action: "write", target: "docs/x.md", owners: [] });
   const [req] = pending(f);
@@ -1611,7 +1611,7 @@ test("handoff · deciding changes no policy and settles no request", () => {
 
 /** A queue file with one denial already in it, for the handoff-visibility tests. */
 function queueWithOneDenial() {
-  const box = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), "req-"));
+  const box = scratch("seisin-req-");
   const f = join(box, "requests.jsonl");
   record(f, { role: "frontend", action: "write", target: "src/api/orders.ts", owners: ["backend"] });
   return { box, f };
@@ -1824,12 +1824,32 @@ test("SEC-05 a later [roles] cannot replace a role declared above it", () => {
   assert.deepEqual(load(role + '\n[roles]\n')().roles.a.network, []);
 });
 
+/**
+ * A time budget that follows the machine: `ms` on an idle one, and under load
+ * `factor` times what a linear pass takes right now — measured here, so load
+ * moves both. Anything super-linear still blows through it; a busy CI runner
+ * no longer fails a parser that is fine.
+ */
+function budget(ms, factor, linear) {
+  const t0 = performance.now();
+  linear();
+  return Math.max(ms, factor * (performance.now() - t0));
+}
+
 test("an unclosed multi-line array is refused quickly", () => {
   const box = scratch("seisin-long-");
-  writeFileSync(join(box, "seisin.toml"), '[roles.a]\nwrites = [\n' + '  "x",\n'.repeat(100_000));
-  const t0 = Date.now();
+  const text = '[roles.a]\nwrites = [\n' + '  "x",\n'.repeat(100_000);
+  writeFileSync(join(box, "seisin.toml"), text);
+  // Baseline: read the same file and walk its lines once each — what any
+  // parser has to do at least.
+  const limit = budget(2000, 20, () => {
+    for (let i = 0; i < 3; i++)
+      readFileSync(join(box, "seisin.toml"), "utf8").split("\n").map((l) => l.trim()).filter((l) => /^"/.test(l));
+  });
+  const t0 = performance.now();
   assert.throws(() => loadConfig(join(box, "seisin.toml")));
-  assert.ok(Date.now() - t0 < 2000, `took ${Date.now() - t0} ms`);
+  const took = performance.now() - t0;
+  assert.ok(took < limit, `took ${Math.round(took)} ms, budget ${Math.round(limit)} ms`);
 });
 
 test("SEC-06 init --from-observations ignores lines the parent disputed", () => {
@@ -1859,15 +1879,18 @@ test("SEC-09 a leading-slash CODEOWNERS path maps to a repo-relative territory",
 test("SEC-22a covers() does not backtrack catastrophically on a crafted glob", () => {
   const glob = "**/a/".repeat(15) + "**/*.zz";
   const path = "a/".repeat(40) + "b.ts";
-  const t0 = Date.now();
+  // Baseline: the same path against a glob of the same length that cannot
+  // backtrack, 2000 times. Exponential matching is minutes, not a factor.
+  const flat = "src/".repeat(15) + "**/*.zz";
+  const limit = budget(500, 50, () => { for (let i = 0; i < 2000; i++) covers(flat, path); });
+  const t0 = performance.now();
   assert.equal(covers(glob, path), false);
-  assert.ok(Date.now() - t0 < 500, `took ${Date.now() - t0} ms`);
+  const took = performance.now() - t0;
+  assert.ok(took < limit, `took ${Math.round(took)} ms, budget ${Math.round(limit)} ms`);
 });
 
 test("SEC-07 two concurrent grants both land — neither is lost", async () => {
   const { spawn } = await import("node:child_process");
-  const { fileURLToPath } = await import("node:url");
-  const CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "cli.js");
   const box = scratch("seisin-race-");
   writeFileSync(join(box, "seisin.toml"),
     '[roles.a]\nwrites = ["a/**"]\nkeys = []\n\n[roles.b]\nwrites = ["b/**"]\nkeys = []\n');

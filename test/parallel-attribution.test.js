@@ -15,30 +15,47 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveSrt } from "../src/commands/run.js";
-import { boxed } from "./_tmp.js";
+import { boxed, CLI } from "./_tmp.js";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const CLI = join(HERE, "..", "src", "cli.js");
-const BOX = join(HERE, ".sandbox-box");
 
 const skip = resolveSrt() === null ? "sandbox runtime not installed"
   : process.platform !== "darwin" ? "kernel denials are read on macOS only" : false;
 
+/** The denied lines of a log, skipping one that is still being written. */
+function deniedIn(log) {
+  if (!existsSync(log)) return [];
+  return readFileSync(log, "utf8").split("\n").filter(Boolean)
+    .flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } })
+    .filter((e) => e.verdict === "denied");
+}
+
 test("a denial is logged once, against the run that caused it", { skip }, async () => {
-  mkdirSync(BOX, { recursive: true });
   const dir = boxed("parallel-");
   for (const d of ["a", "b", "c"]) mkdirSync(join(dir, d));
   writeFileSync(join(dir, "seisin.toml"),
     '[roles.ra]\nwrites = ["a/**"]\n\n[roles.rb]\nwrites = ["b/**"]\n\n[roles.rc]\nwrites = ["c/**"]\n');
-  // The same argv for all three; only ra writes, into rb's territory.
-  const cmd = 'if [ "$SEISIN_ROLE" = ra ]; then sleep 0.5; echo x > b/intruso.txt; fi; sleep 2';
-  await Promise.all(["ra", "rb", "rc"].map((role) => new Promise((ok) =>
-    spawn(process.execPath, [CLI, "run", role, "--", "sh", "-c", cmd], { cwd: dir, stdio: "ignore" }).on("close", ok))));
+  // The same argv for all three; only ra writes, into rb's territory. On
+  // conditions, not on a clock: ra writes once rb and rc are running (each says
+  // so in its own territory), and all three stay until this test has seen the
+  // denial in the log and says `release` — so every watcher is alive when the
+  // kernel's line arrives, however loaded the machine is. Each wait has its own
+  // ceiling (30 s) so a broken run ends instead of hanging.
+  const wait = (cond) => `n=0; until ${cond} || [ $n -ge 600 ]; do sleep 0.05; n=$((n+1)); done`;
+  const cmd =
+    'case "$SEISIN_ROLE" in ' +
+    `ra) ${wait("[ -e b/up ] && [ -e c/up ]")}; echo x > b/intruso.txt;; ` +
+    'rb) touch b/up;; rc) touch c/up;; esac; ' +
+    wait("[ -e release ]");
+  const runs = ["ra", "rb", "rc"].map((role) => new Promise((ok) =>
+    spawn(process.execPath, [CLI, "run", role, "--", "sh", "-c", cmd], { cwd: dir, stdio: "ignore" }).on("close", ok)));
 
   const log = join(dir, ".seisin", "log.jsonl");
-  const denied = existsSync(log)
-    ? readFileSync(log, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((e) => e.verdict === "denied")
-    : [];
+  const deadline = Date.now() + 30_000;
+  while (!deniedIn(log).length && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+  writeFileSync(join(dir, "release"), "");
+  await Promise.all(runs);
+
+  const denied = deniedIn(log);
   assert.deepEqual(denied.map((e) => [e.role, e.target]), [["ra", "b/intruso.txt"]],
     `expected one line, by ra: ${JSON.stringify(denied.map((e) => e.role))}`);
 });

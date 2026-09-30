@@ -14,11 +14,10 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { boxed } from "./_tmp.js";
+import { boxed, CLI } from "./_tmp.js";
 
 import { resolveSrt } from "../src/commands/run.js";
 
-const CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "cli.js");
 // Resolved the way `seisin run` resolves it, not the way a shell would. This
 // asked `command -v srt` — the global install only — so a checkout whose
 // bundled runtime was right there skipped fourteen tests and reported green.
@@ -34,8 +33,6 @@ before(() => {
   // space to every role, so a repo living inside it is writable by all of them —
   // which would let "a role cannot write outside it" pass by accident. It did,
   // once, and this is the fix.
-  const box = join(dirname(fileURLToPath(import.meta.url)), ".sandbox-box");
-  mkdirSync(box, { recursive: true });
   repo = boxed("repo-");
   mkdirSync(join(repo, "src", "web"), { recursive: true });
   mkdirSync(join(repo, "src", "api"), { recursive: true });
@@ -119,12 +116,21 @@ test("output still arrives in full when it is redacted", { skip }, () => {
 });
 
 test("check exits clean on a valid config", { skip: false }, () => {
-  execFileSync(process.execPath, [CLI, "check"], { cwd: repo, encoding: "utf8" });
+  // execFileSync throws on a non-zero exit; what it printed has to be this
+  // policy, and nothing in it may be one the sandbox cannot enforce.
+  const out = execFileSync(process.execPath, [CLI, "check"], { cwd: repo, encoding: "utf8" });
+  assert.match(out, /frontend\s+writes src\/web\/\*\*/);
+  assert.match(out, /backend\s+writes src\/api\/\*\*/);
+  assert.doesNotMatch(out, /cannot be enforced/);
 });
 
 test("explain exits 1 when it denies, so it composes in a script", { skip: false }, () => {
-  const r = spawnSync(process.execPath, [CLI, "explain", "frontend", "write", "src/api/server.ts"], { cwd: repo });
+  const r = spawnSync(process.execPath, [CLI, "explain", "frontend", "write", "src/api/server.ts"],
+    { cwd: repo, encoding: "utf8" });
   assert.equal(r.status, 1);
+  // The denial and whose it is — the half of the answer seisin exists for.
+  assert.match(r.stdout, /denied\s+frontend write src\/api\/server\.ts/);
+  assert.match(r.stdout, /src\/api\/server\.ts belongs to backend/);
 });
 
 test("the agent's own flags are not eaten by the sandbox", { skip }, () => {
@@ -195,7 +201,6 @@ test("seisin refuses to run inside seisin, by name", () => {
  * the arithmetic; only this can check that it runs.
  */
 test("an isolated role starts, and loses the credentials the ordinary mode leaves open", { skip }, () => {
-  const box = join(dirname(fileURLToPath(import.meta.url)), ".sandbox-box");
   const iso = boxed("iso-");
   mkdirSync(join(iso, "src"), { recursive: true });
   writeFileSync(join(iso, "seisin.toml"),

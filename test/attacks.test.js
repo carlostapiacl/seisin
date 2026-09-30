@@ -12,24 +12,20 @@
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync, execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, lstatSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, lstatSync, rmSync, rmdirSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { resolveSrt } from "../src/commands/run.js";
 import { resolveRef } from "../src/keys.js";
-import { boxed } from "./_tmp.js";
+import { boxed, CLI, srtSkip } from "./_tmp.js";
 
-const CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "cli.js");
 const macOnly = process.platform === "darwin" ? false : "glob and rename semantics measured on macOS";
-const skip = resolveSrt() ? false : "sandbox runtime not installed";
+const skip = srtSkip();
 
 let repo, trusted, outside;
 before(() => {
   // Not under the temp dir: every role writes it, so a repo there would be
   // writable by all of them and every "cannot" below would pass by accident.
-  const box = join(dirname(fileURLToPath(import.meta.url)), ".sandbox-box");
-  mkdirSync(box, { recursive: true });
   const root = boxed("attack-");
   repo = join(root, "repo");
   trusted = join(root, "trusted");
@@ -55,6 +51,13 @@ before(() => {
   writeFileSync(join(repo, "src", "nested", ".vscode", "settings.json"), "{}\n");
   writeFileSync(join(repo, "src", "nested", "AGENTS.md"), "trusted instructions\n");
 });
+
+/**
+ * The shell's line for a write the kernel refused, naming the file. macOS says
+ * EPERM; bubblewrap's read-only binds say EROFS.
+ */
+const refusalOf = (file) =>
+  new RegExp(`${file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}: (Operation not permitted|Read-only file system|Permission denied)`);
 
 /** The PATH of an ordinary machine with a bin/ of the repo in front of it. */
 const env = () => ({ ...process.env, PATH: `${join(repo, "bin")}:${trusted}:${process.env.PATH}` });
@@ -117,8 +120,24 @@ test("ATTACK-005 the home's Claude settings cannot be opened for writing", { ski
   // Before: every role opened it for append through the shared ~/.claude
   // scratch. Opened and closed without a byte written, so nothing changes
   // even if this ever regresses.
-  const r = as("narrow", '(exec 3>>"$HOME/.claude/settings.json")');
-  assert.notEqual(r.status, 0);
+  // In the same run, a write the role is entitled to: without it, a run that
+  // failed for any other reason (no runtime, a bad policy) would pass as a
+  // refusal. And the refusal has to be the kernel's, naming this file.
+  const file = join(homedir(), ".claude", "settings.json");
+  const before = statSync(file);
+  const control = join(repo, "src", "control-005");
+  rmSync(control, { force: true });
+  const r = as("narrow", `echo ok > src/control-005; (exec 3>>"$HOME/.claude/settings.json")`);
+  try {
+    assert.equal(readFileSync(control, "utf8"), "ok\n", `the role could not write its own territory: ${r.stderr}`);
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, refusalOf(file));
+    const after = statSync(file);
+    assert.equal(after.size, before.size);
+    assert.equal(after.mtimeMs, before.mtimeMs);
+  } finally {
+    rmSync(control, { force: true });
+  }
 });
 
 test("ATTACK-012 a role cannot write the git files that run in a submodule or worktree", { skip: skip || macOnly }, () => {
@@ -175,8 +194,29 @@ test("ATTACK-011 the runtime's convenience logs are not a shared writable direct
   // sandbox-runtime grants both behind the caller's allowWrite. Before the
   // deny, a role created a real file in ~/.npm/_logs while its printed
   // territory said nothing of it.
-  for (const path of ["$HOME/.npm/_logs", "$HOME/.claude/debug"])
-    assert.notEqual(as("narrow", `(exec 3>>${path}/seisin-probe)`).status, 0, path);
+  // Each directory has to exist, or the open fails with "No such file" and the
+  // test passes on a machine that never ran npm. Made outside the box when it
+  // is missing, and removed again only if this test made it.
+  for (const rel of [".npm/_logs", ".claude/debug"]) {
+    const dir = join(homedir(), rel);
+    const made = mkdirSync(dir, { recursive: true });
+    const probe = join(dir, "seisin-probe");
+    const control = join(repo, "src", "control-011");
+    rmSync(probe, { force: true });
+    rmSync(control, { force: true });
+    try {
+      const r = as("narrow", `echo ok > src/control-011; (exec 3>>"$HOME/${rel}/seisin-probe")`);
+      assert.equal(readFileSync(control, "utf8"), "ok\n", `the role could not write its own territory: ${r.stderr}`);
+      assert.notEqual(r.status, 0, rel);
+      assert.match(r.stderr, refusalOf(probe), rel);
+      assert.ok(!existsSync(probe), `a role created ${probe}`);
+    } finally {
+      rmSync(control, { force: true });
+      rmSync(probe, { force: true });
+      // Only what this test made, deepest first, and only while it is empty.
+      if (made) for (let d = dir; d.length >= made.length; d = dirname(d)) try { rmdirSync(d); } catch { break; }
+    }
+  }
 });
 
 test("ATTACK-006 a failing provider's stderr does not carry the secret out", () => {

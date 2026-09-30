@@ -11,7 +11,6 @@
  * read-only review of 2026-09-22. Now every surface asks `toRepoRelative`, and
  * this runs the same cases through all three.
  */
-import { rmSync } from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, realpathSync } from "node:fs";
@@ -24,16 +23,12 @@ import { explainCommand } from "../src/commands/explain.js";
 import { HANDLERS } from "../src/mcp.js";
 import { decide } from "../src/hook.js";
 import { toRepoRelative } from "../src/paths.js";
+import { boxed, scratch } from "./_tmp.js";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
 
-const made = [];
-process.on("exit", () => { for (const d of made) try { rmSync(d, { recursive: true, force: true }); } catch {} });
-
-function repo(parent) {
-  mkdirSync(parent, { recursive: true });
-  const dir = mkdtempSync(join(parent, "surf-"));
-  made.push(dir);
+/** A repo under test/.sandbox-box, or under the system temp dir with `inTmp`. */
+function repo(inTmp = false) {
+  const dir = inTmp ? scratch("surf-") : boxed("surf-");
   writeFileSync(join(dir, "seisin.toml"), '[roles.api]\nwrites = ["src/api/**"]\n\n[roles.web]\nwrites = ["src/web/**"]\n');
   return dir;
 }
@@ -53,14 +48,14 @@ function ask(dir, role, target) {
 }
 
 test("an absolute path gets the same answer from the CLI, MCP and the hook", () => {
-  const dir = repo(join(HERE, ".sandbox-box"));
+  const dir = repo();
   assert.deepEqual(ask(dir, "api", join(dir, "src/api/x.ts")), { cli: true, mcp: true, hook: true });
   assert.deepEqual(ask(dir, "web", join(dir, "src/api/x.ts")), { cli: false, mcp: false, hook: false });
 });
 
 test("a path spelled through a symlink is the same path", () => {
   // tmpdir() on macOS is /var/folders/…, a link to /private/var/folders/….
-  const dir = repo(tmpdir());
+  const dir = repo(true);
   const real = realpathSync(dir);
   const via = real === dir ? dir : real;          // the other spelling, where there is one
   assert.deepEqual(ask(dir, "api", join(via, "src/api/x.ts")), { cli: true, mcp: true, hook: true });
@@ -68,7 +63,7 @@ test("a path spelled through a symlink is the same path", () => {
 });
 
 test("a path outside the repo is left as written, and owns nothing", () => {
-  const dir = repo(join(HERE, ".sandbox-box"));
+  const dir = repo();
   const cfg = loadConfig(join(dir, "seisin.toml"));
   assert.equal(toRepoRelative(cfg, "/etc/hosts"), "/etc/hosts");
   assert.equal(toRepoRelative(cfg, "src/api/x.ts"), "src/api/x.ts");
