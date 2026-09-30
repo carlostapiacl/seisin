@@ -266,6 +266,10 @@ From a first-run review with a small sample repo.
   not `.example`, `.sample` or `.template` — found outside the key dirs are always listed, as
   *files that usually hold secrets*, not certain and without changing the exit code.
 
+- **`walls` at a terminal speaks to the operator** (`frontend keeps hitting:` … `2 of its calls
+  went into retrying these`). The second-person voice — *you have already been denied these* —
+  stays where an agent reads it: the hook and the MCP server.
+
 ## 0.4.2 — 2026-09-29
 
 - **Small hardening across the launcher.** A `--observe` written after the command
