@@ -382,3 +382,29 @@ test("a console's link carries the policy it serves; --link warns when it is not
   assert.match(other, /it serves \/work\/a\/seisin\.toml — not \/work\/b\/seisin\.toml, the policy for this directory/);
   assert.match(servesWhich(null, "/work/b/seisin.toml"), /not recorded/);
 });
+
+/* ── 10. scan ─────────────────────────────────────────────────────────────── */
+
+test("scan: a password in a URL is certain; a stand-in is not; secret-named files are listed as not certain", () => {
+  const dir = demo("ux-scan-", TOML, [".secrets/stripe.txt", "backend/.env.example", "frontend/cert.pem", "id_ed25519.pub"]);
+  writeFileSync(join(dir, ".env"), "DATABASE_URL=postgres://u:p@h/db\n");
+  writeFileSync(join(dir, "backend", "settings.py"), 'DB = "postgres://app:${DB_PASS}@db/prod"\nX = "mysql://root:password@localhost/x"\n');
+  writeFileSync(join(dir, "frontend", ".env.local"), "DEBUG=1\n");
+  const r = sh(dir, "scan");
+  assert.equal(r.code, 1, r.all);
+  assert.match(r.out, /\.env:1\s+password in a URL/);
+  assert.doesNotMatch(r.out, /settings\.py/);
+  assert.match(r.out, /2 file\(s\) that usually hold secrets — by their name, not certain/);
+  assert.match(r.out, /frontend\/\.env\.local/);
+  assert.match(r.out, /frontend\/cert\.pem/);
+  assert.doesNotMatch(r.out, /\.env\.example|id_ed25519\.pub/);
+});
+
+test("scan: a secret-named file alone is listed and exits 0", () => {
+  const dir = demo("ux-scan-", TOML, [".secrets/stripe.txt"]);
+  writeFileSync(join(dir, ".env"), "DEBUG=1\n");
+  const r = sh(dir, "scan");
+  assert.equal(r.code, 0, r.all);
+  assert.match(r.out, /1 file\(s\) that usually hold secrets/);
+  assert.doesNotMatch(r.out, /nothing credential-shaped/);
+});
