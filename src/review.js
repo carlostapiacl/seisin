@@ -29,6 +29,7 @@
  */
 import { read, logPath } from "./log.js";
 import { covers, standingOf } from "./owners.js";
+import { kindsOf } from "./kinds.js";
 
 /**
  * One reading of the log against the policy.
@@ -159,13 +160,21 @@ function findings(config, entries, minDenials) {
   // the repository is outside every territory: none of them is a hole in the
   // map. This used to skip keys and ports and count the rest, protected ones
   // included, while the console counted all four — one word, two numbers.
-  const unowned = new Map();
+  //
+  // Each row also says what kind of thing it is (kinds.js), by directory and
+  // kind together: `.git` holding a lock and a folder holding a source file
+  // are different answers, and only `territory` is a hole somebody has to fill.
   const standOf = standingOf(config);
-  for (const e of entries) {
-    if (!e.target) continue;
-    if (standOf(e).kind !== "unowned") continue;
-    const dir = dirOf(e.target);
-    unowned.set(dir, (unowned.get(dir) ?? 0) + 1);
+  const loose = entries.filter((e) => e.target && standOf(e).kind === "unowned");
+  const natures = kindsOf(loose.map((e) => e.target), { keyDirs: config.keyDirs ?? [] });
+  const unowned = new Map();
+  for (const e of loose) {
+    const { kind, hint } = natures.get(e.target);
+    const where = dirOf(e.target);
+    const k = `${kind}\u0000${where}`;
+    const row = unowned.get(k) ?? { where, times: 0, kind, hint };
+    row.times++;
+    unowned.set(k, row);
   }
 
   return {
@@ -174,9 +183,7 @@ function findings(config, entries, minDenials) {
     connects,
     unused,
     unusedKnowable: knowable,
-    unowned: [...unowned.entries()]
-      .map(([where, times]) => ({ where, times }))
-      .sort((a, b) => b.times - a.times),
+    unowned: [...unowned.values()].sort((a, b) => b.times - a.times),
   };
 }
 

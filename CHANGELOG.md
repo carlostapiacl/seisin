@@ -167,6 +167,16 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
   disk around them (a key file that became a link, a provider that was installed, a control file
   that now exists) showed as first seen for the server's life. The state's tag and body also
   come from one reading now, not two.
+- **An unowned path says what kind of thing it is, not who should own it.** Suggesting an owner
+  was measured first, on one deployment's 318 unowned paths: right about one time in twenty, and
+  the rest widened a role over git's lock files, a test's scratch and a credential. Each unowned
+  cause now carries `kind` — `git`, `credential`, `temporary`, `build` or `territory` — and a
+  one-line `hint` with the move that fits (a git lock: `GIT_OPTIONAL_LOCKS`, grant the
+  repository and never the file; a credential: declare it as a key, never grant a write).
+  Additive: in the console's causes, `seisin_causes` (and `standing.unowned.kinds`, the count per
+  kind) and each `seisin review` row, which lists `territory` first and tallies the rest. A name
+  made unique per run in three or more sibling places counts as scratch. On that log, 318 paths
+  and 3,161 refusals read as decisions; 22 and 69 are. Nothing about what is allowed changed.
 
 ## 0.4.2 — 2026-09-29
 
