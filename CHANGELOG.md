@@ -42,7 +42,12 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
 
 - **`log verify` detects a chain stripped whole.** Removing `prev` from every line made an edited
   log read as a legacy one, and `verify` said intact. The start of the chain is now recorded
-  beside the log the first time a chained line is written, and checked. A last line longer than
+  beside the log the first time a chained line is written, and checked. A record made after
+  chained lines already stood — a log chained by 0.4, or a record deleted and re-made — says
+  `late` and how many, and `verify` repeats it: tampering before it cannot be excluded. Chained
+  lines with no record are a yellow warning, not a footnote. A record left behind when the log
+  was archived by hand is named as belonging to another log, with what to move or remove, and
+  still fails `verify`. A last line longer than
   64 KB no longer breaks the chain, and every reader crosses rotated segments, so the console,
   `seisin_causes` and `walls` keep their history after the log rotates.
 - **The time of an entry is the parent's.** A line sent from inside the box carried its own `at`,
