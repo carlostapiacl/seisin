@@ -9,7 +9,7 @@ changed rather than failing on the old spelling.
 ## 0.5.0 — 2026-09-30
 
 **Breaking for a policy whose roles edit editor settings.** A role that writes a project's
-`.vscode/`, `.cursor/` or `.windsurf/` is refused from this version on, unless the policy hands it
+`.vscode/`, `.cursor/` or `.windsurf/` is denied from this version on, unless the policy hands it
 `control_files = ["ide"]`. `seisin check` names every role that has it.
 
 **Breaking for a policy with a misspelt setting.** An unknown key or table outside `[roles.*]`
@@ -20,8 +20,8 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
 ### Answers that were wrong
 
 - **`explain` no longer calls a path outside the repository "inside" a role.** `**` matched
-  `../anything`, so a role with `writes = ["**"]` was told it owned paths the kernel refuses. A
-  path above the root now matches only a glob that also climbs (`../bitacora/**` still works).
+  `../anything`, so a role with `writes = ["**"]` was told it owned paths the kernel denies. A
+  path above the root now matches only a glob that also climbs (`../shared/**` still works).
 - **Only a file key grants a read.** A `keychain://` or `NAME=file://…#X` key made `explain` say
   the role declares a file it cannot read.
 - **Redaction decodes across chunks.** A multi-byte character split between two chunks of the
@@ -57,7 +57,7 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
   still fails `verify`. A last line longer than
   64 KB no longer breaks the chain, and every reader crosses rotated segments, so the console,
   `seisin_causes` and `walls` keep their history after the log rotates.
-- **The time of an entry is the parent's.** A line sent from inside the box carried its own `at`,
+- **The time of an entry is the parent's.** A line sent from inside the sandbox carried its own `at`,
   which could move its requests out of a window or mark them as stale.
 - **A decision is looked up, applied and settled under one lock** — in the console and in
   `seisin grant` / `decline` alike, so the two can no longer both act on the same request.
@@ -77,14 +77,14 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
   working, so nothing asked anyone to re-run `wire`; `check` now names it (`hook-matcher-broad`) and
   says `seisin wire` narrows it in place. A `"*"` entry that also runs another command is not
   seisin's alone, `wire` leaves it, and `check` stays quiet about it.
-- **A successful Bash is not searched for refusals.** Output that merely contained "Permission
+- **A successful Bash is not searched for denials.** Output that merely contained "Permission
   denied" waited ~400 ms for a kernel line that was never coming.
 - **A run that fails after it started cleans up.** A runtime that cannot start, or a key that
   cannot be resolved, exits 2 and removes the run directory and its scratch keys. A runtime killed
   by a signal exits 128+n. Attribution checks the process table at most every 250 ms instead of on
   every foreign denial.
 - **A child that outlives its parent stays this run's.** A descendant reparented to init
-  (`cmd &`, a package manager's daemon) made the run's own suffix look foreign, and its refusals
+  (`cmd &`, a package manager's daemon) made the run's own suffix look foreign, and its denials
   were counted as another run's and dropped with their requests. A suffix is foreign now only when
   its ancestry reaches another run; a line without one that arrives inside the throttle window is
   held for the re-check instead of dropped.
@@ -123,7 +123,7 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
 
 - **Editor settings are control files.** `.vscode/`, `.cursor/` and `.windsurf/` are protected in
   every project inside a role's territory, like `.claude/` and git hooks: the editor applies them
-  outside the box as soon as they change — tasks, auto-approval, MCP servers. `sandbox-runtime`
+  outside the sandbox as soon as they change — tasks, auto-approval, MCP servers. `sandbox-runtime`
   protects `.vscode` only under the directory a run starts in
   ([#432](https://github.com/anthropics/sandbox-runtime/issues/432)), so anywhere else it was the
   role's to change.
@@ -133,8 +133,8 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
   them, and keeping them current is ordinary work for most teams.
 - **`control_files = ["ide", "instructions"]` hands a family to one role**, inside its own
   territory. Nothing else can be handed: `.claude`, git hooks, `.mcp.json` and `.envrc` stay closed
-  to every role, and an unknown value refuses to load. `explain` says which key would change a
-  refusal and files no request, because it is a decision about the policy, not a grant.
+  to every role, and an unknown value refuses to load. `explain` says which setting would change a
+  denial and files no request, because it is a decision about the policy, not a grant.
 - **Never by `**`, never in `node_modules`.** Both families are denied literally where they exist
   and, on macOS, by one exact pattern per project root where they do not, so npm still unpacks a
   package's own `.vscode` or `AGENTS.md`, and the literal count — which is what start-up pays
@@ -149,7 +149,7 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
 - **Both settings can be changed from the console.** Each role's panel has a toggle per family,
   and there is one for `[protect] instructions` (the `instructions` toggle is disabled, and says
   why, while nothing protects them). A toggle saves nothing: the console first shows the
-  `denyWrite` entries each sandbox profile gains or loses — computed by the server from the edited
+  `denyWrite` entries each role's sandbox settings gain or lose — computed by the server from the edited
   policy — and who could then write each family; a second button saves. The edit touches only that
   role's table (or creates `[protect]` above the first role), keeps every comment, is stamped
   `# set in the console <date>`, and goes through the grants' lock. A policy that moved since the
@@ -160,12 +160,12 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
 
 - **The policy's lock and temp file moved into `.seisin/`.** Both sat beside `seisin.toml` under
   names anyone could predict, in a directory an `--observe` run or `writes = ["**"]` can write.
-  A symlink planted at the temp name made the next approval turn the policy into a link into the
-  role's territory; a `seisin.toml.lock` holding a live pid blocked every grant and decline. The
+  A symlink planted at the temp name made the next grant turn the policy into a link into the
+  role's territory; a `seisin.toml.lock` holding a live pid stopped every grant and decline. The
   temp name is now random and opened exclusively, and no role can reach either.
-- **No request for a protected file, and no grant of one.** The hook still queued a refusal of
-  `.vscode/` or `.claude/` outside `seisin run`, and approving it added `web/.vscode/**` to
-  `writes` while the kernel kept refusing it. The hook now says nothing was queued, and `grant`
+- **No request for a protected file, and no grant of one.** The hook still queued a denial of
+  `.vscode/` or `.claude/` outside `seisin run`, and granting it added `web/.vscode/**` to
+  `writes` while the kernel kept denying it. The hook now says nothing was queued, and `grant`
   and the console refuse such a request: a family names `control_files`, the rest can never be
   granted.
 - **"Already has it" closes the request everywhere.** The console settled it as granted;
@@ -185,13 +185,13 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
   Additive: in the console's causes, `seisin_causes` (and `standing.unowned.kinds`, the count per
   kind) and each `seisin review` row, which lists `territory` first and tallies the rest. A name
   made unique per run in three or more sibling places counts as scratch. On that log, 318 paths
-  and 3,161 refusals read as decisions; 22 and 69 are. Nothing about what is allowed changed.
+  and 3,161 denials read as decisions; 22 and 69 are. Nothing about what is allowed changed.
 
 ### The console
 
 - **A decision from the console needs a reason.** Approve, Decline and Decline all were one click
   with an optional box beside them, so most grants reached `seisin.toml` with no word of why. The
-  server now refuses `/api/decide` and `/api/decline-all` without one (400), and an approval
+  server now refuses `/api/decide` and `/api/decline-all` without one (400), and a grant
   answers with the line it wrote and its number in the file, so the page can say exactly what
   changed. `seisin grant` and `seisin decline` are unchanged.
 - **Walls and Denied say the same thing about one path.** Walls said `.env.local` "has no owner —
@@ -202,12 +202,12 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
 - **Denied is no longer cut at twelve without saying so**, and keys, network and MCP denials are
   counted apart from files (`about` on each cause and `causes.about` per kind). The page is sent up
   to 200 causes and shows how many there are.
-- **Approving says what it grants before the click.** "Asked for `docs/api.md` → approving grants
-  all of `docs/**`", with whose it is today. Approving another role's path takes a second click that
+- **Granting says what it covers before the click.** "Asked for `docs/api.md` → granting covers
+  all of `docs/**`", with whose it is today. Granting another role's path takes a second click that
   names it ("Click again to share src/api/** with frontend"), like Decline all; a Decline with an
   empty reason fills in the default and asks again, so what is recorded is on screen first. After
   a decision a notice stays with the line written and a link to it, marked, in Config file.
-  Approve is the filled button; Decline is neutral. The grant is still the folder the request is
+  Grant is the filled button; Decline is neutral. The grant is still the folder the request is
   keyed by: granting the one file would need the queue keyed by file, or a later ask for a
   sibling would fold into the settled request unseen.
 - **Live, the roles table is read-only.** Its × on a path, "+ folder" and key toggles were thrown
@@ -235,6 +235,36 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
   meets AA in both themes; the role cell is a button; focus rings reach inputs; a toggle's name
   starts with its visible words. On a phone, requests stack with full-width actions and roles
   become cards. The KPI cards are full only on the landing view. Links to the README and glossary.
+
+### Words
+
+One word per thing, across the CLI, the console, the MCP server, the hook, the README and the
+site. [The glossary](docs/glossary.md) was rewritten by context (policy, enforcement, decisions,
+audit, observation, surfaces), each term with what the same word means in the tools people
+already use, and a warning where that meaning differs. No setting, command, MCP tool name or
+JSON field was renamed.
+
+- **Three actors, three verbs.** The boundary — the kernel, and the runtime's proxy — **denies**.
+  A person **grants** or **declines**. seisin **refuses** only input it will not accept. The npm
+  description, the README and the site said the kernel "blocks" or "refuses"; they say denies.
+  Diagnose's message no longer calls seisin the sandbox: the sandbox seisin set up denied it.
+- **Grant, not Approve.** The console's button, its texts, the notification (`Grant: seisin grant
+  …`) and the MCP descriptions say grant, which is the command. An approval elsewhere lets one
+  action run now; a grant edits the policy for the next run.
+- **The console's Decline sends `"declined"`.** `/api/decide` still accepts `"denied"`, and the
+  queue still stores it: renaming a stored value is breaking and waits for its own release.
+- **Unconfined, not unsandboxed or open.** It exists only in the example's what-if, because
+  `seisin.toml` cannot express it; the live console no longer shows a card that could only say 0.
+  Observed log entries are labelled observed, not "you", and the unowned kind `territory` is shown
+  as *ownable*.
+- **A person, not the operator or a human**, in the MCP server's texts; **team** and **run**, not
+  the author's own *cell* and *round*, in the docs; example paths and test fixtures that named
+  the author's repositories are neutral now.
+- **New lines in the glossary:** run directory, unconfined, revoke, repeated denials, standing,
+  kind, id, a person. The key mode `scratch` is documented as landing in the run's private
+  directory, which it has since the run-directory fix.
+- **`test/words.test.js`** reads what each surface says and fails on a word the glossary does
+  not use, with each exception written down beside its reason.
 
 ## 0.4.2 — 2026-09-29
 

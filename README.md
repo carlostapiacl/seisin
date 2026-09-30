@@ -735,12 +735,12 @@ the same kernel or workspace, and which one you want depends on what you are pro
 
 ## Status
 
-`0.5.0`, 710 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
+`0.5.0`, 748 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 when there were eighteen of them, they skipped on Linux for a day, behind a runtime check that looked for the global
 install and missed the bundled one, and hid a defect that broke `seisin run` on that platform
-entirely. **710 tests on macOS 15, 708 passing and 2 skipped** (they are Linux-only) — 2026-09-30;
+entirely. **748 tests on macOS 15, 743 passing, 2 skipped** (they are Linux-only) **and 3 marked todo** (word rules not yet promoted) — 2026-09-30;
 `ubuntu-latest` under bubblewrap runs the same suite, Node 18/20/22/24 in CI at every push — and 225/225 the same way on Debian 12.15
 with bubblewrap 0.8.0, the last time the suite was run in Docker.
 [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),
