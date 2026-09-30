@@ -112,7 +112,7 @@ const segmentsOf = (p) => String(p).replace(/\\/g, "/").split("/").filter((s) =>
  *
  * `keyDirs` are the policy's declared key directories: a path under one is a
  * credential whatever it is called. The order is the safe one — a name that is
- * both a credential and scratch (`secrets.tmp`) is said as a credential, since
+ * both a credential and scratch (`.env.tmp`) is said as a credential, since
  * that is the reading that never ends in a grant.
  */
 export function kindOf(target, { keyDirs = [] } = {}) {
