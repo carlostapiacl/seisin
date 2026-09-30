@@ -56,8 +56,13 @@ function verify(config) {
   const dropped = r.dropped
     ? `  ${C.yellow}${r.dropped} entr${r.dropped === 1 ? "y was" : "ies were"} never written${C.off}  another writer held the lock too long; see ${LOG_NAME}.dropped\n`
     : "";
+  // Where the chain starts is only checked once it has been recorded. Until
+  // then a log whose chain was stripped whole reads like one that never had it.
+  const genesis = r.unchained && r.genesis === "unrecorded"
+    ? `  ${C.dim}where the chain starts is not recorded yet — it will be on the next entry${C.off}\n`
+    : r.genesis === "pruned" ? `  ${C.dim}the oldest segments were rotated away; the chain is checked from the oldest one kept${C.off}\n` : "";
   if (!r.breaks.length) {
-    out(`\n  ${C.green}intact${C.off}  ${head}${r.chained} chained line(s)${segs}\n${dropped}\n`);
+    out(`\n  ${C.green}intact${C.off}  ${head}${r.chained} chained line(s)${segs}\n${genesis}${dropped}\n`);
     return r;
   }
   out(`\n  ${C.red}broken${C.off}  ${head}${r.chained} chained line(s), ${r.breaks.length} break(s):\n`);
