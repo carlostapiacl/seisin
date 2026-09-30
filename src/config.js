@@ -611,7 +611,7 @@ function readProviders(table, path) {
 /**
  * A SQLite database is four files, and a policy should say it once.
  *
- * `bitacora/x/equipo.sqlite` is not the database — it is one of the files the
+ * `data/x/app.sqlite` is not the database — it is one of the files the
  * database is made of. Writing to it in WAL mode also writes `-wal` and
  * `-shm`; in rollback mode, `-journal`. So "this role writes this database"
  * takes four lines, and a policy with eight databases and thirty-one roles
@@ -626,7 +626,7 @@ function readProviders(table, path) {
  * it, or corrupt it. The sidecar is not a second resource — it is the same one.
  *
  * It is also not a glob. The kernel grants a path and everything under it, so
- * `equipo.sqlite*` is unenforceable and `seisin check` refuses it; these are
+ * `app.sqlite*` is unenforceable and `seisin check` refuses it; these are
  * emitted as literal paths, exactly as if they had been typed.
  *
  * **The suffix list is closed on purpose** and this is the line that keeps the
@@ -834,9 +834,9 @@ function readNeverWrites(value, where) {
  * for a path on the machine and make `explain` (which reads absolute as outside
  * the repo) disagree with what the profile grants — see the CODEOWNERS `/apps/`
  * case. `..` is allowed on purpose: a role legitimately writes a sibling
- * directory (`../bitacora/...`), and it is resolved relative to the root, so a
- * territory that climbs above it grants what it resolves to, by the operator's
- * choice.
+ * directory (`../shared/...`), and it is resolved relative to the root, so a
+ * territory that climbs above it grants what it resolves to, by the choice of
+ * whoever wrote the policy.
  */
 function assertNotAbsolute(list, where) {
   for (const g of list) {

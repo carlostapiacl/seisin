@@ -50,7 +50,7 @@ const ROOTS_OF = new WeakMap();          // config -> writable roots
 
 export function writableRoots(config) {
   // Once per config: protectedBy asks for it through parentInputs on every
-  // call, and on the portfolio that was 1.7 ms each — 50 ms for a hook call
+  // call, and on a multi-repo workspace that was 1.7 ms each — 50 ms for a hook call
   // with two providers. A config is reloaded whenever the policy can have
   // changed (hook, console, MCP), so a memory per object is never stale for
   // longer than the object lives.
@@ -64,7 +64,7 @@ function computeWritableRoots(config) {
   const out = new Set([root]);
   // A grant inside the repo is covered by the repo root already, so only the
   // ones outside it are resolved. Resolving all of them was most of the cost:
-  // 301 paths for the portfolio's 32 roles, most of them sidecars that do not
+  // 301 paths for a policy with 32 roles, most of them sidecars that do not
   // exist, 200 ms of failed realpath calls to learn nothing.
   for (const role of Object.values(config.roles ?? {}))
     for (const p of writePathsOf(config, role)) {
@@ -153,8 +153,8 @@ function fileRefTargets(config) {
  * root. With nothing recognisable on the way, the binary's own directory.
  *
  * The first version protected the top-level entry under the writable root
- * instead, and on the portfolio that was `01-activos/`: every project, denied
- * to every role, because seisin itself lives in one of them.
+ * instead, and in a multi-repo workspace that was the folder holding every
+ * project: all of them, denied to every role, because seisin itself lives in one.
  */
 function packageRoot(p, root) {
   let dir = dirname(p);
@@ -183,7 +183,7 @@ const SURFACES = new WeakMap();          // config -> PATH -> entries
 
 export function executionSurface(config, env = process.env, roots = null) {
   // Once per config and PATH: `check` asks for every role's denies, and the
-  // PATH scan is the same answer 32 times on the portfolio.
+  // PATH scan is the same answer 32 times for a policy with 32 roles.
   const byPath = SURFACES.get(config) ?? SURFACES.set(config, new Map()).get(config);
   const key = env.PATH ?? "";
   if (!roots && byPath.has(key)) return byPath.get(key);
@@ -406,12 +406,12 @@ const MARKERS = new Set([".git", ".claude", ".mcp.json", ".envrc", ".codex",
 /**
  * How deep under a territory to look for projects.
  *
- * Measured on the portfolio over every territory at once: depth 3 finds 128
+ * Measured on a multi-repo workspace over every territory at once: depth 3 finds 128
  * project roots reading 2.6k directories (~0.4 s under load); depth 4 finds
  * 130 reading 5.5k (0.9 s); depth 6, 132 and 2.1 s. The four below depth 3
  * are `.claude` folders agents left inside source trees (`features/…`,
  * `tests/Feature/Api`), not projects anybody opens — and on macOS the pattern
- * layer still refuses writing into them. The whole portfolio at depth 8 is
+ * layer still denies writing into them. The whole workspace at depth 8 is
  * 23k directories, which is why the walk is per role and never over the repo.
  */
 const SCAN_DEPTH = 3;
@@ -510,7 +510,7 @@ const ROOTS = new WeakMap();             // config -> dir -> project roots under
 
 export function denyFor(config, role, { env = process.env, platform = process.platform, observe = false } = {}) {
   // Memoised per config: `check` builds every role's settings and then asks
-  // for the same list again to show it; on the portfolio that was 2.6 s twice.
+  // for the same list again to show it; on a multi-repo workspace that was 2.6 s twice.
   const memo = DENIES.get(config) ?? DENIES.set(config, new Map()).get(config);
   const key = `${role.name}\0${observe}\0${platform}\0${env.PATH ?? ""}`;
   if (memo.has(key)) return memo.get(key);

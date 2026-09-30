@@ -51,7 +51,7 @@ export function covers(glob, path) {
    * `../../etc/passwd` is a path the kernel refuses to every role, and `**`
    * matched it as a string, so `explain` answered "inside territory" for it.
    * A territory reaches outside the repo only by saying so — the
-   * `../bitacora/lab/dev.md` a cell writes beside its own directory — and
+   * `../shared/lab/dev.md` a role writes beside its own directory — and
    * that one still matches, because both sides start with the same `..`.
    */
   if (climbs(p) && !m.climbs) return false;
@@ -542,7 +542,7 @@ export function explain(config, role, action, target) {
    * same reason; nono and Gemini grant the whole of it. Here it stays refused
    * and is said for what it is — not "belongs to X, ask them", which filed a
    * request per lock file (327 of them for one index.lock in one multi-repo workspace)
-   * that nobody could sensibly approve. The requests side skips it too.
+   * that nobody could sensibly grant. The requests side skips it too.
    */
   if (isGitMetadata(target))
     return {

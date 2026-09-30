@@ -155,7 +155,7 @@ function kindOf(config, path) {
  * it that anything was pending. It closes two loops the bare refusal leaves
  * open: retrying, because the queue deduplicates and a second attempt only
  * raises a counter; and waiting, because nothing inside the sandbox can
- * approve.
+ * grant.
  *
  * It deliberately says nothing about the MCP server. The hook cannot know
  * whether one is configured — `wire` writes `.claude/settings.json` and MCP
@@ -242,7 +242,7 @@ export function decide(config, role, event, { observe = false, now = append, ask
     });
     // A denial already carries everything a request needs, so leave one behind:
     // the refusal stops being a dead end and becomes something a person can act
-    // on in one command. Observing records nothing to approve — there was no
+    // on in one command. Observing records nothing to grant — there was no
     // denial to answer. See docs/permission-requests.md.
     //
     // Except a `never_writes` refusal. That one is the policy saying no on
@@ -271,10 +271,10 @@ export function decide(config, role, event, { observe = false, now = append, ask
    * How many times this exact denial has already been handed to this role.
    *
    * The sentence below is correct every time and that has not been enough:
-   * measured on a real team, 25% of all denials were a repeat of something the
-   * same role had already been refused, one of them nineteen times. Correct
+   * measured on a multi-repo workspace, 25% of all denials were a repeat of something the
+   * same role had already been denied, one of them nineteen times. Correct
    * and *heard* are different properties, and only the first was being
-   * measured. So the refusal carries its own history: the second time, it says
+   * measured. So the denial carries its own history: the second time, it says
    * it is the second time.
    *
    * The earlier refusals, read before this one was recorded, plus this one —
