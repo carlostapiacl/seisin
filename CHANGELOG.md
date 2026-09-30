@@ -124,6 +124,9 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
   `writes` while the kernel kept refusing it. The hook now says nothing was queued, and `grant`
   and the console refuse such a request: a family names `control_files`, the rest can never be
   granted.
+- **"Already has it" closes the request everywhere.** The console settled it as granted;
+  `seisin grant` threw and left it pending for good. It now says it was already granted, closes
+  it, and exits 0.
 
 ## 0.4.2 — 2026-09-29
 
