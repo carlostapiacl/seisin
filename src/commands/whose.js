@@ -1,7 +1,7 @@
 /**
  * `seisin whose <path>` — the lookup a confined process is allowed to run.
  *
- * The README's opening claim is that a refusal names an owner. That is true
+ * The README's opening claim is that a denial names an owner. That is true
  * through the hook, and false for anyone who only wraps a process: the kernel
  * carries no reason, so the child sees `Operation not permitted` and guesses.
  * Measured in the field twice — an agent diagnosed a territory denial as
@@ -14,7 +14,7 @@
  *
  * It reads and prints. There is deliberately nothing here that could make it
  * worth attacking, because unlike everything else in this tool it is meant to
- * be called *from inside* the box.
+ * be called *from inside* the sandbox.
  */
 import { toRepoRelative, fromCwd } from "../paths.js";
 import { ownersOf, keyHolders } from "../owners.js";
@@ -52,7 +52,7 @@ export function whose(config, argv = []) {
   out(
     `\n  ${C.b}${rel}${C.off} ${verb} ${C.b}${owners.join(", ")}${C.off}\n` +
     (mine
-      ? `  ${C.green}that is you${C.off}${C.dim} — if it was refused, the reason is not ownership.${C.off}\n\n`
+      ? `  ${C.green}that is you${C.off}${C.dim} — if it was denied, the reason is not ownership.${C.off}\n\n`
       : asking
         ? `  ${C.dim}you are ${asking}. Hand it over rather than working around it.${C.off}\n\n`
         : "\n")
@@ -65,7 +65,7 @@ export function whose(config, argv = []) {
  * The same file in the other checkouts of this repo, when it is owned
  * differently there.
  *
- * This is the line the EPERM was missing. An agent refused inside a worktree
+ * This is the line the EPERM was missing. An agent denied inside a worktree
  * asks whose the file is, hears "nobody", and concludes the map has a hole —
  * when the map is fine and names the canonical checkout. A twin owned exactly
  * the same way says nothing new and gets no line.

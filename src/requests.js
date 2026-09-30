@@ -1,29 +1,29 @@
 /**
- * The queue of permissions an agent asked for and cannot have yet.
+ * The queue of requests: what an agent asked for and cannot have yet.
  *
  * ── Two words, kept apart on purpose ──
- * **Refused** is what the boundary does. **Declined** is what a person does to
+ * **Denied** is what the boundary does. **Declined** is what a person does to
  * a request. They used to be one word in one command: an entry read `first
  * refused on src/api/x.ts` and `seisin deny` answered `refused frontend ✕
  * src/api/**`. One means the kernel said no, the other means you did, and a
  * reader had nothing to tell them apart by.
  *
  * The entry says **asked** now, because refused was not always true. Asking for
- * a permission before reaching for it is reasonable, and nothing required a
+ * a path before reaching for it is reasonable, and nothing required a
  * denial to have happened first — so the queue could print a sentence about an
  * event that never occurred, in front of a person about to grant something.
- * `seisin run` drops any request the policy does not actually refuse; what is
+ * `seisin run` drops any request the policy does not actually deny; what is
  * left is "you cannot have this, and you asked", which holds whether the agent
  * tried or simply asked.
  *
  * A denial already contains everything a request needs — the hook knows the
- * role, the path and the owner — so the refusal leaves something behind that a
+ * role, the path and the owner — so the denial leaves something behind that a
  * person can act on in one command instead of in an editor. See
- * `docs/permission-requests.md` for why approving is deliberately not something
+ * `docs/permission-requests.md` for why granting is deliberately not something
  * an agent can do.
  *
  * Append-only, beside the log, for the same reason: a decision that can be
- * rewritten is not evidence. A request that is granted or refused is not
+ * rewritten is not evidence. A request that is granted or declined is not
  * deleted — it is followed by a line saying what happened to it.
  */
 import { neverWrites, isGitMetadata, covers, keyHolders, inKeyDir } from "./owners.js";
@@ -125,7 +125,7 @@ export function withDeclarers(config, queue) {
 }
 
 /** Records that a role asked for something the policy denies it. Safe to call
- *  on every denial; `seisin run` drops anything the policy does not refuse. */
+ *  on every denial; `seisin run` drops anything the policy does not deny. */
 export function record(file, { role, action, target, owners }) {
   return write(file, { kind: "asked", key: keyOf({ role, action, target }), role, action, target, owners: owners ?? [] });
 }
@@ -239,7 +239,7 @@ function reduce(file) {
 /**
  * How many runs of the role, after the last time it asked, make a request old.
  *
- * A request is recorded again on every refusal, so one the role still needs
+ * A request is recorded again on every denial, so one the role still needs
  * keeps a fresh `last`. One whose need went away — the work moved somewhere the
  * role may write, or the task ended — stops being asked while the role keeps
  * running. Three runs is enough to say "not since" and few enough that a queue
@@ -302,9 +302,9 @@ export function markStale(queue, entries, { runs = STALE_RUNS, gapMs = RUN_GAP_M
  * Refuses a grant that `never_writes` would cancel, before anything is written.
  *
  * A request filed before the subtraction existed can still be in the queue.
- * Approving it would add the path to `writes` and change nothing — denyWrite
+ * Granting it would add the path to `writes` and change nothing — denyWrite
  * wins — so the person would believe they granted something the kernel still
- * refuses. The two keys contradict each other, and which one should win is the
+ * denies. The two settings contradict each other, and which one should win is the
  * decision; seisin will not make it by writing one of them silently.
  */
 export function refuseIfBarred(config, request) {
@@ -316,8 +316,8 @@ export function refuseIfBarred(config, request) {
       `${request.target} is under never_writes of ${request.role} ("${hit}"), which wins over ` +
       `writes. Granting it would change nothing. If the subtraction is wrong, remove that ` +
       `entry from [roles.${request.role}]; otherwise decline this request.`);
-  // A protected file stays refused whatever `writes` says: the kernel is given
-  // it as a deny, and explain answers the same. Approving `web/.vscode/**`
+  // A protected file stays denied whatever `writes` says: the kernel is given
+  // it as a deny, and explain answers the same. Granting `web/.vscode/**`
   // used to add the line and change nothing — a grant that reads as done.
   const guard = protectedBy(config, request.target, { role: request.role });
   if (guard)
@@ -366,7 +366,7 @@ export function editPolicy(config, mutate, { waitMs = 10000, after = null } = {}
  *
  * It was `seisin.toml.lock`, next to the file. Any role that writes the repo
  * root — every `--observe` run, any `writes = ["**"]` — could create that name
- * holding a live pid and block every grant and every decline for as long as
+ * holding a live pid and hold up every grant and every decline for as long as
  * it liked. `.seisin/` is denied to every role (surface.js, parentInputs), so
  * nothing confined can hold this one. withLock adds the `.lock`.
  */
@@ -382,11 +382,11 @@ export function policyLockBase(config) {
  * The temp was `seisin.toml.tmp-<pid>` beside the policy: a predictable name,
  * in a directory roles can write, opened by writeFileSync — which follows a
  * symlink. A role could plant that name as a link into its own territory, and
- * the next approval made the policy itself a symlink the role could rewrite.
+ * the next grant made the policy itself a symlink the role could rewrite.
  * Now the temp sits in `.seisin/`, has a random name, and is opened with `wx`
  * (O_CREAT|O_EXCL), which refuses anything already there, a link included.
  *
- * A `.seisin/` on another filesystem (a symlink the operator made) cannot be
+ * A `.seisin/` on another filesystem (a symlink a person made) cannot be
  * renamed across; then the temp goes beside the policy, still random and still
  * exclusive, which is what defeats a planted name.
  */
@@ -416,9 +416,9 @@ function writePolicy(config, text) {
  *
  * The edit is bounded to the role's own section, and that is not tidiness. The
  * first version searched from the role header to the next `writes =` anywhere
- * in the file, so approving for a role that had no `writes` line wrote the
- * grant into the NEXT role — with a comment saying who it was for. A human
- * approved one thing and the file recorded another. In a permission tool that
+ * in the file, so granting for a role that had no `writes` line wrote the
+ * grant into the NEXT role — with a comment saying who it was for. A person
+ * granted one thing and the file recorded another. In a permission layer that
  * is the worst possible bug, and it is not exotic: a role with only `keys`
  * declared is an ordinary config.
  */
@@ -444,7 +444,7 @@ export function applyGrant(toml, request, note = "") {
   // The subset has no escapes, so a value carrying a quote or a newline cannot
   // be written down at all. The strict parser would reject the result rather
   // than widen anything — but leaving someone with a config that no longer
-  // loads, after they approved something, is its own kind of broken.
+  // loads, after they granted something, is its own kind of broken.
   tomlString(request.grant);   // refuses what the format cannot hold
 
   const start = open.index + open[0].length;
@@ -456,9 +456,9 @@ export function applyGrant(toml, request, note = "") {
    *
    * The list used to be re-written from every quoted string between its
    * brackets — comments included. `"src/web/**",  # was "src/**"` came back as
-   * two grants, so approving anything also granted what a comment mentioned,
-   * and the reason an approver typed (quoted in the provenance comment) became
-   * a path on the next approval. Every earlier provenance comment was lost on
+   * two grants, so granting anything also granted what a comment mentioned,
+   * and the reason a person typed (quoted in the provenance comment) became
+   * a path on the next grant. Every earlier provenance comment was lost on
    * the way. Now the items are the strings outside comments, what is there is
    * left as it is, and the new entry goes last. The reason is set off with
    * «», never a double quote, so no older reader can take it for a value.
@@ -502,14 +502,14 @@ function scanList(text, start) {
 }
 
 /**
- * The approver's own words, made safe to put in a config file.
+ * The reason a person typed, made safe to put in a config file.
  *
  * A reason is free text typed by a person, and a person can be talked into
  * typing something — "paste this as the reason" is a plausible thing for an
  * agent to suggest. Newlines in a comment would end the comment, and what
  * follows is parsed as TOML. The strict parser rejects the result rather than
  * widening anything, so the worst case is a config that no longer loads, but a
- * permission file that can be broken by a sentence is still broken.
+ * policy that can be broken by a sentence is still broken.
  */
 export function cleanReason(s) {
   return String(s ?? "")

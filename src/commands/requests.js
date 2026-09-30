@@ -1,5 +1,5 @@
 /**
- * `seisin requests`, `grant` and `deny` — the human end of the loop.
+ * `seisin requests`, `grant` and `decline` — a person's end of the loop.
  *
  * These live in the CLI and in the console, and deliberately NOT in the MCP
  * server. An agent may ask and may draft; turning a request into policy takes a
@@ -17,9 +17,9 @@ import { C, out, safe } from "../render.js";
  * "Stable while you read it" was the old claim and it is false exactly where it
  * matters. The queue is filled by agents that are still running: on a live
  * repository it grew and shrank between a listing and the next command, and
- * `deny 1` settled a different request than the one printed as #1 seconds
+ * `seisin deny 1` (now `decline`) settled a different request than the one printed as #1 seconds
  * earlier. That is time-of-check-to-time-of-use in the one command whose whole
- * job is deciding a permission, and it happened twice in one session.
+ * job is deciding a request, and it happened twice in one session.
  *
  * A position is still accepted, because reading a list and typing a number is
  * how anyone will use this. An argument that is not a number is matched against
@@ -128,9 +128,9 @@ export function handoffNote(h) {
     case "throttled":
       return `handoff held: ${limitWords(h.limit, h.role)} ${h.max}/${h.max} — still to do`;
     case "cycle":
-      return `handoff stopped: ${h.role} is already in this chain — needs a person to split the work`;
+      return `handoff stopped: ${h.role} is already in this handoff chain — needs a person to split the work`;
     case "depth":
-      return `handoff stopped: chain reached ${h.depth} of ${h.max} — needs a person`;
+      return `handoff stopped: handoff chain reached ${h.depth} of ${h.max} — needs a person`;
     case "human":
       return `handoff stopped: ${h.reason === "ambiguous" ? "more than one role owns this" : "no role owns this"}`;
     case "route":
@@ -144,7 +144,7 @@ export function handoffNote(h) {
 
 /** The limit names are internal; what a person reads should not be a field name. */
 function limitWords(limit, role) {
-  if (limit === "senderChains") return "open chains for this role";
+  if (limit === "senderChains") return "open handoff chains for this role";
   if (limit === "receiverConcurrent") return `${role ?? "the owner"} already running`;
   return limit ?? "a limit";
 }

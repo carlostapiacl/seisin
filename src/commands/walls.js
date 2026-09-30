@@ -1,4 +1,4 @@
-/** `seisin walls <role>` — what that role keeps being refused, and what it cost. */
+/** `seisin walls <role>` — what that role keeps being denied, and what it cost. */
 import { unknownRole } from "../suggest.js";
 import { walls, wasted } from "../walls.js";
 import { STALE_RUNS } from "../requests.js";
@@ -24,7 +24,7 @@ export function wallsCommand(config, argv = []) {
   const old = every.filter((w) => w.stale).length;
   // Nothing to say prints nothing, the way `scan` does when a repo is clean.
   // A command that always speaks is one whose output stops being read.
-  if (list.length) out(renderForOperator(role, list));
+  if (list.length) out(renderForPerson(role, list));
   if (old && !all) out(`  (${old} older wall(s) not hit in the last ${STALE_RUNS}+ runs: seisin walls ${role} --all)\n`);
   return list;
 }
@@ -34,9 +34,9 @@ export function wallsCommand(config, argv = []) {
  *
  * `render` speaks to the agent — "you have already been denied these… do not
  * retry" — because the hook and the MCP server put it in a prompt. Printed at
- * a terminal, that voice addressed the operator as if they were the agent.
+ * a terminal, that voice addressed the person reading it as if they were the agent.
  */
-export function renderForOperator(role, list) {
+export function renderForPerson(role, list) {
   const lines = [`\n  ${C.b}${safe(role)}${C.off} keeps hitting:\n\n`];
   for (const w of list) {
     const why = w.owners?.length ? `belongs to ${w.owners.map(safe).join(", ")}` : safe(w.reason);

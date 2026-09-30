@@ -273,7 +273,7 @@ test("seisin review splits unowned rows by kind and says each kind's advice once
   reviewCommand(cfg, ["--all"]);
   t.mock.restoreAll();
   const text = lines.join("").replace(/\x1b\[[0-9;]*m/g, "");
-  assert.match(text, /Only `territory` is a hole in the map/);
+  assert.match(text, /Only an ownable path \(kind `territory`\)\s+is a hole in the map/);
   assert.match(text, /6×\s+git\s+other\/\.git/);
   assert.match(text, /territory\s+legacy/);
   assert.equal(text.split("GIT_OPTIONAL_LOCKS").length - 1, 1, "the advice is said once per kind, not per row");

@@ -236,7 +236,7 @@ export function init(cwd = process.cwd(), { force = false } = {}) {
     // Said once, here, where someone with one agent decides whether to go on.
     (found.agents <= 1
       ? `  ${C.dim}one agent? its own sandbox covers most of this. seisin adds a built environment, a key dir no role reads\n` +
-        `  unless it is declared, and an owner named on every refusal — it earns its setup at two roles.${C.off}\n`
+        `  unless it is declared, and an owner named on every denial — it earns its setup at two roles.${C.off}\n`
       : "") +
     `\n  next:  seisin check\n\n`
   );

@@ -50,7 +50,7 @@ export function inspect(config, only = null, where = config.path) {
     })),
     shared,
     /**
-     * What the kernel will refuse a role inside its own territory, and why:
+     * What the kernel will deny a role inside its own territory, and why:
      * programs installed where a role writes, the hooks and settings of each
      * project, provider scripts and `file://` targets. Each takes something
      * away from a territory as written, so it is shown rather than applied
@@ -66,8 +66,8 @@ export function inspect(config, only = null, where = config.path) {
  * What the tool cannot do at all — as opposed to `warnings`, which are things
  * wrong with *this* config.
  *
- * Kept apart on purpose. A limit printed as a warning reads as something the
- * operator could fix, and after the third run it reads as nothing at all.
+ * Kept apart on purpose. A limit printed as a warning reads as something a
+ * person could fix, and after the third run it reads as nothing at all.
  *
  * These are the sentences someone needs before they trust the map on screen
  * more than it deserves, so `check` prints them every time rather than behind a
@@ -77,11 +77,11 @@ export function inspect(config, only = null, where = config.path) {
 const LIMITS = [
   ...(process.platform === "darwin" ? [] : [{
     kind: "kernel-denials-unreadable",
-    headline: "refusals by the kernel are not recorded on this platform",
+    headline: "denials by the kernel are not recorded on this platform",
     detail:
       "on macOS `seisin run` reads them out of the system log, so a denial the hook never " +
       "saw still lands in `seisin log` with its owner and still queues a request. There is no " +
-      "equivalent to read here — bubblewrap does not log refusals, and the runtime's substitute " +
+      "equivalent to read here — bubblewrap does not log denials, and the runtime's substitute " +
       "is not reachable from outside it. The boundary holds exactly as well; what you lose is " +
       "seeing it work. Run `seisin wire` so the hook records what it can. The ask is upstream: " +
       "github.com/carlostapiacl/seisin/blob/main/docs/upstream/cli-violations.md",
@@ -100,7 +100,7 @@ const LIMITS = [
     headline: "`--observe` opens the filesystem, never the network",
     detail:
       "so it cannot tell you which domains an agent needs. The runtime does record every " +
-      "refusal the proxy makes — host, port and reason — but only a caller that embeds the " +
+      "denial the proxy makes — host, port and reason — but only a caller that embeds the " +
       "library can read them; nothing reaches a caller that runs the binary, which is what " +
       "seisin does. So for an agent whose endpoints are not published, the options are to " +
       "find them another way or drop the network restriction for it. The ask is upstream: " +
@@ -113,14 +113,14 @@ const LIMITS = [
       "bubblewrap denies a path by mounting over it, and for a path that is not there it would " +
       "create it on your disk. So on Linux a role can still create a .git/hooks entry or a " +
       ".claude/settings.json in a project of its territory that had none. On macOS the kernel " +
-      "refuses creating them too.",
+      "denies creating them too.",
   }] : []),
   {
     kind: "shared-scratch",
     headline: "roles share ~/.cache, ~/.local/share and the temp dir unless isolate = \"home\"",
     detail:
       "programs installed there that are on your PATH are protected, and so are Claude Code's " +
-      "settings and plugins. Anything else a program outside the box reads from those places — a " +
+      "settings and plugins. Anything else a program outside the sandbox reads from those places — a " +
       "cache it executes, a tool not on PATH — is writable by every role. isolate = \"home\" " +
       "gives each role its own.",
   },
@@ -142,18 +142,18 @@ const LIMITS = [
  * Two things, both about `never_writes` and both ways a subtraction can look
  * written and not be:
  *
- *   - a key seisin does not know. It used to be dropped without a word, which
+ *   - a setting seisin does not know. It used to be dropped without a word, which
  *     for `writes` is a role with less than it thinks, and for a misspelt
  *     `never_writes` is a role with MORE than its owner thinks — the one
- *     direction a permission file must not fail in. Named with the nearest
- *     known key when there is one close enough to be the intended spelling.
+ *     direction a policy must not fail in. Named with the nearest
+ *     known setting when there is one close enough to be the intended spelling.
  *   - a `never_writes` entry that no `writes` of the same role covers. It
  *     subtracts from nothing, so it is either a typo in the path or a rule
  *     that stopped applying when the territory moved. Either way it reads as
  *     protection and is not.
  *
  * Silent when `never_writes` is absent. Absent is valid; a check that asks for
- * the key would turn an optional subtraction into a required migration.
+ * the setting would turn an optional subtraction into a required migration.
  */
 function roleKeyWarnings(roles, config = null) {
   const warnings = [];
@@ -172,9 +172,9 @@ function roleKeyWarnings(roles, config = null) {
       const near = nearest(k, ROLE_KEYS);
       warnings.push({
         kind: "unknown-role-key",
-        headline: `${r.name}: unknown key "${k}" in [roles.${r.name}] — ignored` +
+        headline: `${r.name}: unknown setting "${k}" in [roles.${r.name}] — ignored` +
           (near ? `. Did you mean "${near}"?` : ""),
-        detail: `Known keys: ${ROLE_KEYS.join(", ")}. ` +
+        detail: `Known settings: ${ROLE_KEYS.join(", ")}. ` +
           (near === "never_writes"
             ? "As written this subtracts nothing: the role can still write every path it lists."
             : "Nothing in it takes effect."),
@@ -189,7 +189,7 @@ function roleKeyWarnings(roles, config = null) {
           ? `${r.name}: control_files = ["ide"] — may edit .vscode/, .cursor/ and .windsurf/ in its territory`
           : `${r.name}: control_files = ["instructions"] — may edit CLAUDE.md, AGENTS.md and their kin in its territory`,
         detail: f === "ide"
-          ? "Your editor applies what it writes there — tasks, settings, auto-approval, MCP servers — outside the box. " +
+          ? "Your editor applies what it writes there — tasks, settings, auto-approval, MCP servers — outside the sandbox. " +
             "Hand it only to a role that maintains those files, and review its changes to them."
           : "The next agent session reads what it writes there as its instructions, whichever role that session is.",
       });
@@ -257,7 +257,7 @@ function nearest(word, candidates) {
  */
 export function sharedPaths(config, roles = Object.values(config.roles)) {
   // Asked once per distinct glob: a real policy repeats them (1,332 writes,
-  // 303 distinct on the portfolio), and each question is every glob of every
+  // 303 distinct in a multi-repo workspace), and each question is every glob of every
   // role again.
   const seen = new Set();
   const asked = new Map();
@@ -312,7 +312,7 @@ function homeReachWarning(config) {
           `isolate = "credentials" denies ${where} and the rest. What stays open is ` +
           "~/.claude and ~/.codex, which is what keeps the agent logged in, so the roles " +
           'share one session and can read each other. `isolate = "home"` closes those ' +
-          "too, and then every CLI in the box will ask you to log in again.",
+          "too, and then every CLI in the sandbox will ask you to log in again.",
       }
     : {
         kind: "home-open",
@@ -391,7 +391,7 @@ function warningsFor(config, roles, shared = sharedPaths(config, roles)) {
 
   // A pattern the kernel cannot be given is not a policy, it is a sentence that
   // reads like one. `run` refuses it; `check` exists precisely so you find that
-  // out while reading the map rather than mid-turn.
+  // out while reading the map rather than mid-run.
   for (const r of roles) {
     try {
       settingsFor(config, r.name);
@@ -426,14 +426,14 @@ function warningsFor(config, roles, shared = sharedPaths(config, roles)) {
 
   // PATH entries that are not absolute resolve against wherever the parent is
   // standing, which is the repo. They are ignored for every lookup seisin makes
-  // outside the box; said here because a lookup that skips them can find a
+  // outside the sandbox; said here because a lookup that skips them can find a
   // different program than your shell does.
   const unanchored = (process.env.PATH ?? "").split(delimiter).filter((d) => !d || !d.startsWith("/"));
   if (unanchored.length)
     warnings.push({
       kind: "relative-path",
       headline: `PATH has ${unanchored.length} relative entr${unanchored.length === 1 ? "y" : "ies"} (${unanchored.map((d) => JSON.stringify(d)).join(", ")})`,
-      detail: "They resolve inside the repo, where roles write, so seisin skips them when it looks for a program to run outside the box.",
+      detail: "They resolve inside the repo, where roles write, so seisin skips them when it looks for a program to run outside the sandbox.",
     });
   if (shared.length)
     warnings.push({
@@ -497,7 +497,7 @@ function warningsFor(config, roles, shared = sharedPaths(config, roles)) {
   }
 
   // Without the hook, half the record is missing rather than all of it: on macOS
-  // `seisin run` reads the kernel's own refusals, so denials still land and
+  // `seisin run` reads the kernel's own denials, so they still land and
   // still queue a request. What goes unrecorded is everything the kernel
   // allowed — which is the half `init --from-observations` is built out of, and
   // the half that tells "nothing was denied" apart from "nobody was watching".
@@ -511,12 +511,12 @@ function warningsFor(config, roles, shared = sharedPaths(config, roles)) {
       headline: "only denials are being recorded: the agent has not been told to run the hook",
       detail:
         process.platform === "darwin"
-          ? "the boundary holds either way, and refusals are still logged and still queue a " +
+          ? "the boundary holds either way, and denials are still logged and still queue a " +
             "request — `seisin run` reads them from the kernel. What is missing is every " +
-            "action that was allowed, so `review` cannot tell you which grants are dead and " +
+            "action that was allowed, so `review` cannot tell you which grants are unused and " +
             "`init --from-observations` has nothing to build from. Run `seisin wire` once in " +
             "this repo."
-          : "the boundary holds either way — but on this platform the kernel's refusals are " +
+          : "the boundary holds either way — but on this platform the kernel's denials are " +
             "not readable either, so log, watch, requests, grant and review all read a record " +
             "that nobody is writing. Run `seisin wire` once in this repo.",
     });
@@ -552,7 +552,7 @@ function warningsFor(config, roles, shared = sharedPaths(config, roles)) {
    *
    * A proposal written for another repo — or one typo — reads as a working
    * policy: `check` printed the map and the first sign of anything wrong was a
-   * refusal inside the agent. Said per glob, as a warning and never a failure:
+   * denial inside the agent. Said per glob, as a warning and never a failure:
    * a role can own a folder it is about to create.
    */
   for (const r of roles) {
@@ -575,7 +575,7 @@ function warningsFor(config, roles, shared = sharedPaths(config, roles)) {
   /**
    * A file granted by name does not come with its neighbours.
    *
-   * Measured, in production, and it survived two human reviews of the policy:
+   * Measured, in production, and it survived two reviews of the policy by people:
    * a role was granted its database file and still could not write the
    * database. The database opens a second file beside the first — a journal —
    * and the sibling was outside the grant, so the write failed in the
@@ -773,7 +773,7 @@ function warningsFor(config, roles, shared = sharedPaths(config, roles)) {
       detail:
         "every key of that scheme will stop the run rather than resolve. Nothing is " +
         "substituted for a key that did not resolve, so this fails closed — but it fails " +
-        "at the start of a turn, not here.",
+        "at the start of a run, not here.",
     });
   }
 

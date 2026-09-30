@@ -36,7 +36,7 @@ export const COMMAND_HELP = {
   whose: {
     usage: ["seisin whose <path>"],
     flags: [],
-    notes: ["Safe to call from inside the box. A relative path is relative to the directory you are in."],
+    notes: ["Safe to call from inside the sandbox. A relative path is relative to the directory you are in."],
     examples: ["seisin whose backend/src/server.py"],
     exits: [["0", "answered"], ["2", "usage error"]],
   },
@@ -51,7 +51,7 @@ export const COMMAND_HELP = {
     values: ["--min"],
     flags: [["--all", "every row, not the first ten per section"], ["--min <n>", "denials before a place counts as repeated (default 3)"]],
     examples: ["seisin review", "seisin review --min 5 --all"],
-    exits: [["0", "no role stopped repeatedly"], ["1", "a role was stopped repeatedly"], ["2", "usage error"]],
+    exits: [["0", "no role denied repeatedly"], ["1", "a role was denied repeatedly"], ["2", "usage error"]],
   },
   walls: {
     usage: ["seisin walls <role> [--all] [--since <iso>] [--min <n>]"],
@@ -94,7 +94,7 @@ export const COMMAND_HELP = {
     values: ["--role", "--verdict", "--limit"],
     flags: [["--role <r>", "only this role"], ["--verdict <v>", "allowed, denied or observed"], ["--limit <n>", "how many entries (default 40)"]],
     examples: ["seisin log --role frontend --verdict denied", "seisin log verify"],
-    exits: [["0", "printed; for verify, the chain holds"], ["1", "verify: the chain is broken"], ["2", "usage error"]],
+    exits: [["0", "printed; for verify, the hash chain holds"], ["1", "verify: the hash chain is broken"], ["2", "usage error"]],
   },
   watch: {
     usage: ["seisin watch"],

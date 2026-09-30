@@ -143,27 +143,27 @@ export async function run(config, argv) {
    * than the outer one: the inner run dies in the runtime with rc=13 and a Node
    * warning about an unsettled await — no role named, no boundary named, and it
    * reads as seisin crashing rather than as a refusal. Before that it failed
-   * even earlier, on a $TMPDIR the outer box had already reshaped.
+   * even earlier, on a $TMPDIR the outer sandbox had already reshaped.
    *
    * This is the refusal, not a fix, because the shape it is usually reached for
-   * is wrong anyway: a dispatcher that starts roles from inside one role's box
-   * makes every worker a descendant of the box that should hold the least. Such
+   * is wrong anyway: a dispatcher that starts roles from inside one role's sandbox
+   * makes every worker a descendant of the sandbox that should hold the least. Such
    * a dispatcher belongs above the roles and gets asked, rather than running
    * inside one of them.
    */
   const outer = process.env.SEISIN_ROLE;
   if (outer)
     throw new Error(
-      `already inside the box as "${outer}" — seisin does not nest.\n` +
+      `already inside a seisin sandbox as "${outer}" — seisin does not nest.\n` +
       `  Starting "${role}" from in here does not give it its own territory: the run dies in the\n` +
-      `  sandbox runtime, and what territory a second box would even hold is undefined.\n` +
+      `  sandbox runtime, and what territory a second sandbox would even hold is undefined.\n` +
       `  Run roles as siblings from outside instead. Something that needs to start roles belongs\n` +
       `  above them — asked by the role that wants the work done, not run inside it.`,
     );
 
   /**
    * The audit spool: this process holds the log and the queue, and the hook
-   * inside the box gets a socket instead of a directory. That is the whole
+   * inside the sandbox gets a socket instead of a directory. That is the whole
    * reason `.seisin/` is no longer in anybody's allowWrite — see spool.js.
    *
    * Entries arrive with their own `at` already set by the sender, so what lands
@@ -171,7 +171,7 @@ export async function run(config, argv) {
    */
   const observe = mine.includes("--observe");
   // Built before the first request can arrive; the POST leaves from here, the
-  // parent, never from inside the box (notify.js).
+  // parent, never from inside the sandbox (notify.js).
   const notify = notifier(config);
   // Everything that belongs to this run alone — socket, settings, scratch keys
   // — in one private directory, with one id. See rundir.js.
@@ -227,7 +227,7 @@ export async function run(config, argv) {
    *
    * The ordering is the security property, not a convenience. The provider
    * command holds the vault's own credential — the keychain prompt, the
-   * 1Password session — and running it inside the box would mean putting that
+   * 1Password session — and running it inside the sandbox would mean putting that
    * credential in there too, which is the thing this feature exists to avoid.
    * The confined side cannot reach the parent; the parent can reach the vault;
    * so the parent resolves and hands over the result.
@@ -243,7 +243,7 @@ export async function run(config, argv) {
     if (mode === "env") { env[entry.name] = value; continue; }
     // `scratch`: the value lands in the per-run directory this process already
     // makes for the spool and already removes on exit, so its lifetime is the
-    // turn's by construction rather than by a cleanup somebody has to remember.
+    // run's by construction rather than by a cleanup somebody has to remember.
     // The variable carries the PATH, which is the convention every tool that
     // wants a secret from a file already reads (`_FILE`), and it means the
     // value itself is not in the environment of a process that may print it.
@@ -301,7 +301,7 @@ export async function run(config, argv) {
   if (mine.includes("--debug-env")) err(`${C.dim}seisin: dropped ${dropped.join(" ")}${C.off}\n`);
 
   /**
-   * A command the role cannot find, said as that — before the box starts.
+   * A command the role cannot find, said as that — before the sandbox starts.
    *
    * It used to reach the runtime, which runs it through `env`, and the only
    * word on screen was `env: nosuchcmd: No such file or directory`: seisin's
@@ -352,11 +352,11 @@ export async function run(config, argv) {
   // `claude -c`, `claude --debug`. Found by passing --settings to claude and
   // watching the sandbox reject it as its own malformed config.
   /**
-   * The kernel's own refusals, alongside the hook's.
+   * The kernel's own denials, alongside the hook's.
    *
    * Started BEFORE the spawn, and that ordering is the whole difference between
    * this working and this recording nothing. `log stream` is a separate process
-   * with its own startup; a `sh -c` that gets refused is over in single-digit
+   * with its own startup; a `sh -c` that gets denied is over in single-digit
    * milliseconds. Started after the spawn, the first version of this caught
    * zero denials on exactly the short commands an agent runs most.
    *
@@ -366,12 +366,12 @@ export async function run(config, argv) {
    *
    * What each denial becomes — a log line, a request, or a count — is decided
    * in intake.js, beside the hook's lines: the kernel is the thing that
-   * actually refused, so when the two disagree, it is the one that is right.
+   * actually denied, so when the two disagree, it is the one that is right.
    */
-  // What actually runs inside the box, computed once and used by both ends. The
+  // What actually runs inside the sandbox, computed once and used by both ends. The
   // watcher recognises a denial by comparing the runtime's command tag with this
   // argv; handed `cmd` while `srt` was handed `env NO_PROXY=… cmd`, it recognised
-  // nothing for a role with `local_ports`, and every short refusal of those roles
+  // nothing for a role with `local_ports`, and every short denial of those roles
   // — writes included — left no line (measured: 0 of 5, and 5 of 5 without the key).
   //
   // And a nonce in front, because the tag alone does not tell runs apart: an
@@ -475,9 +475,9 @@ export async function run(config, argv) {
     // one entry behind is how a request goes unnoticed for a day.
     audit.close();
     // Same reason, one layer further out: the kernel writes its line through a
-    // separate process, so the last refusal of a run can still be in flight
+    // separate process, so the last denial of a run can still be in flight
     // here. This is the only wait the mechanism adds and it is per run — it
-    // returns as soon as the stream goes quiet, so a run that was refused
+    // returns as soon as the stream goes quiet, so a run that was denied
     // nothing pays a tick.
     await denials.close({ drain: DRAIN_MS });
     // The run made this directory, so the run removes it.
@@ -486,7 +486,7 @@ export async function run(config, argv) {
     // Say what was dropped rather than only what was kept. A filter nobody can
     // see is indistinguishable from a monitor that is not working, and this one
     // drops the majority of what the kernel says on a busy run.
-    // Only when something was actually recorded. A run where every refusal was
+    // Only when something was actually recorded. A run where every denial was
     // filtered out has nothing to contextualise, and `0 recorded, 1 outside the
     // policy's paths` is a line that answers a question nobody asked — the
     // counts exist to explain a filter, not to announce that one ran.

@@ -3,7 +3,7 @@
  * seisin — give each agent its own folders and its own keys.
  *
  * This file is dispatch and nothing else: parse argv, load the config, call one
- * command, turn a thrown error into an exit code. Every command lives in
+ * command, make a thrown error an exit code. Every command lives in
  * `commands/` and every decision lives in a module beside it, so that a change
  * to how something is printed cannot change what is allowed.
  *
@@ -43,14 +43,14 @@ ${C.b}seisin${C.off} — give each agent its own folders and its own keys
   seisin run <role> --observe -- <cmd>  open the repo and watch — the network stays shut
   seisin check [role] [--verbose]       print the map, run nothing
   seisin explain <role> read|write|mcp <path, key or server>
-  seisin whose <path>                   who owns it — safe to call from inside the box
+  seisin whose <path>                   who owns it — safe to call from inside the sandbox
   seisin scan [--all]                   find secrets outside the declared key dirs
   seisin review [--all]                 what the log says about the policy
   seisin walls <role> [--all]           what that role keeps being denied, and what it cost
   seisin wire                           let the agent record what it does
   seisin requests                       what the agents asked for and cannot have
-  seisin grant <n> [--reason "…"]       approve one, with its provenance
-  seisin decline <n> [--reason "…"]     turn one down, and record why
+  seisin grant <n> [--reason "…"]       grant one: add it to ${CONFIG_NAME}, with its provenance
+  seisin decline <n> [--reason "…"]     decline one, and record why
   seisin log [--role r] [--verdict denied] [--limit n]
   seisin log verify                     does the log's hash chain hold
   seisin watch                          follow the log live

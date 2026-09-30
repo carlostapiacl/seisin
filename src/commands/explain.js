@@ -51,7 +51,7 @@ export function explainCommand(config, argv = []) {
    * check a boundary was the one that was wrong.
    *
    * Wrong in the direction that matters, too: it reported a path as unowned and
-   * refused while the kernel allowed it — see "Refusing beats widening" in
+   * denied while the kernel allowed it — see "Refusing beats widening" in
    * docs/decisions.md. A path outside the root is left exactly as written,
    * because that is a question about somewhere else and it still deserves its
    * honest "no owner".
@@ -76,7 +76,7 @@ export function explainCommand(config, argv = []) {
  * The same question, asked about the same file in the other checkouts.
  *
  * Only a twin that gets a DIFFERENT answer is worth a line. A worktree where
- * the role is equally allowed, or equally refused, changes nothing about what
+ * the role is equally allowed, or equally denied, changes nothing about what
  * was just printed, and a diagnosis that mentions it anyway is the noise this
  * tool keeps having to remove.
  *
@@ -94,7 +94,7 @@ function elsewhere(config, role, target, verdict) {
 
 /**
  * Three lines: where the other checkout is, what the answer is there, and
- * which of the two the policy names — the sentence the refusal never carried.
+ * which of the two the policy names — the sentence the denial never carried.
  */
 function renderElsewhere(t) {
   const there = t.verdict.allowed
@@ -103,12 +103,12 @@ function renderElsewhere(t) {
   const named = t.asked.allowed ? t.here : t;
   const other = t.asked.allowed ? t : t.here;
   // "allowed" is the answer that misleads, so it is the one that gets told
-  // where the refusal is. After "denied" that clause would only repeat it.
-  const refused = t.asked.allowed ? ` — a write in ${kind(other)} is refused` : "";
+  // where the denial is. After "denied" that clause would only repeat it.
+  const denied = t.asked.allowed ? ` — a write in ${kind(other)} is denied` : "";
   return (
     `  ${C.yellow}worktree${C.off}  ${t.where}\n` +
     `  ${C.dim}          the same file there is ${C.off}${C.b}${t.rel}${C.off}${C.dim}, and it ${there}.\n` +
-    `            The policy names ${kind(named)}, not ${kind(other)}${refused}.${C.off}\n\n`
+    `            The policy names ${kind(named)}, not ${kind(other)}${denied}.${C.off}\n\n`
   );
 }
 
