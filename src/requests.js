@@ -302,8 +302,11 @@ export function refuseIfBarred(config, request) {
  * so a crash mid-write cannot leave a half-written, partly-privileged policy.
  *
  * `mutate(toml)` returns `{ toml, changed }`. Nothing is written when unchanged.
+ * `after(result)` runs once the file is written, still under the lock — for
+ * the queue line that records the decision, so a decision and its edit are
+ * one step to anyone else taking this lock.
  */
-export function editPolicy(config, mutate, { waitMs = 10000 } = {}) {
+export function editPolicy(config, mutate, { waitMs = 10000, after = null } = {}) {
   return withLock(config.path, () => {
     const before = readFileSync(config.path, "utf8");
     const result = mutate(before);
@@ -312,6 +315,7 @@ export function editPolicy(config, mutate, { waitMs = 10000 } = {}) {
       writeFileSync(tmp, result.toml);
       renameSync(tmp, config.path);
     }
+    after?.(result);
     return result;
   }, { waitMs });
 }
