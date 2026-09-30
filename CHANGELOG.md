@@ -187,6 +187,23 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
   made unique per run in three or more sibling places counts as scratch. On that log, 318 paths
   and 3,161 refusals read as decisions; 22 and 69 are. Nothing about what is allowed changed.
 
+### At the prompt
+
+From a first-run review with a small sample repo.
+
+- **`explain <role> read <file>` answers the read that happens.** Reads are open outside the
+  `[keys]` dirs, and `explain dev read .env` said *denied — no role declares .env* about a file
+  every role reads. It now says allowed, and why: outside every key dir, so every role reads it;
+  move it into the key dir to make it a key. A read inside a key dir, or of a key by name, keeps
+  its answer, and the advice for an undeclared key names it the way keys are written
+  (`"new.txt"`, not `".secrets/new.txt"`). The MCP server's `seisin_explain` answers the same.
+- **A relative path is relative to where you stand.** `explain` and `whose` read it against the
+  policy's root, so from `frontend/src`, `explain frontend write app.js` said *no owner*. The
+  answer prints the path the policy was asked about, root-relative.
+- **`explain` refuses an action it does not know** (`unknown action "delete" — use read, write or
+  mcp`, exit 2) instead of answering it as a write, and an unknown role lists the known ones with
+  the nearest.
+
 ## 0.4.2 — 2026-09-29
 
 - **Small hardening across the launcher.** A `--observe` written after the command
