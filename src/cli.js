@@ -19,6 +19,8 @@ import { fileURLToPath } from "node:url";
 import { findConfig, loadConfig } from "./config.js";
 import { CONFIG_NAME } from "./layout.js";
 import { C, out, err } from "./render.js";
+import { COMMAND_HELP, flagsOf, renderHelp } from "./help.js";
+import { nearest, checkFlags } from "./suggest.js";
 
 /**
  * Each command is imported when it is the one being run, not before.
@@ -39,22 +41,25 @@ ${C.b}seisin${C.off} — give each agent its own folders and its own keys
 
   seisin run <role> -- <command...>     run a command as that role
   seisin run <role> --observe -- <cmd>  open the repo and watch — the network stays shut
-  seisin check [role]                   print the map, run nothing
-  seisin explain <role> read|write <path>
+  seisin check [role] [--verbose]       print the map, run nothing
+  seisin explain <role> read|write|mcp <path, key or server>
   seisin whose <path>                   who owns it — safe to call from inside the box
-  seisin scan                           find secrets outside the declared key dirs
+  seisin scan [--all]                   find secrets outside the declared key dirs
   seisin review [--all]                 what the log says about the policy
   seisin walls <role> [--all]           what that role keeps being denied, and what it cost
   seisin wire                           let the agent record what it does
   seisin requests                       what the agents asked for and cannot have
   seisin grant <n> [--reason "…"]       approve one, with its provenance
   seisin decline <n> [--reason "…"]     turn one down, and record why
-  seisin log [--role r] [--verdict denied]
+  seisin log [--role r] [--verdict denied] [--limit n]
   seisin log verify                     does the log's hash chain hold
   seisin watch                          follow the log live
-  seisin init [--from-observations]     propose a ${CONFIG_NAME} for this repo
+  seisin init [--force]                 propose a ${CONFIG_NAME} for this repo
+  seisin init --from-observations       write ${CONFIG_NAME}.observed from observed runs
   seisin ui [--port n] [--link]         open the console, live (--link reopens a running one)
   seisin mcp                            an MCP server on stdio — read-only
+
+seisin <command> --help lists a command's flags, examples and exit codes.
 
 Enforcement comes from @anthropic-ai/sandbox-runtime, which asks the OS.
 seisin decides what to ask for, and says whose file it was when the answer is no.
@@ -65,6 +70,12 @@ function config() {
   const path = findConfig();
   if (!path) throw new Error(`no ${CONFIG_NAME} found here or above. Run "seisin init" to write one.`);
   return loadConfig(path);
+}
+
+/** The policy here, or null — for a command that can answer without one. */
+function maybeConfig() {
+  const path = findConfig();
+  return path ? loadConfig(path) : null;
 }
 
 /**
@@ -86,9 +97,11 @@ const COMMANDS = {
   watch: async () => void (await import("./commands/log.js")).watch(config()),
   init: async () => {
     const { init, initFromObservations } = await import("./commands/init.js");
-    void (argv.includes("--from-observations") ? initFromObservations(config()) : init());
+    void (argv.includes("--from-observations") ? initFromObservations(config()) : init(process.cwd(), { force: argv.includes("--force") }));
   },
-  ui: async () => (await import("./commands/ui.js")).ui(config(), argv),
+  // --link only reads a record; it answers without a policy here too, and
+  // says so when the console it finds serves another one.
+  ui: async () => (await import("./commands/ui.js")).ui(argv.includes("--link") ? maybeConfig() : config(), argv),
   whose: async () => void (await import("./commands/whose.js")).whose(config(), argv),
   wire: async () => void (await import("./commands/wire.js")).wire(config()),
   review: async () => ((await import("./commands/review.js")).reviewCommand(config(), argv).friction.length ? 1 : 0),
@@ -162,11 +175,11 @@ function asksHelp(name, args) {
   return false;
 }
 
-/** The lines of USAGE about one command, or the whole of it. */
+/** One command's help: its flags, examples and exit codes, or the whole usage. */
 function helpFor(name) {
+  if (COMMAND_HELP[name]) return renderHelp(name, C);
   const alias = name === "deny" ? "decline" : name;
   const lines = USAGE.split("\n").filter((l) => l.startsWith(`  seisin ${alias} `) || l === `  seisin ${alias}`);
-  if (alias === "hook") lines.push("  seisin hook                           Claude Code's hook: one event on stdin, a decision on stdout. `seisin wire` installs it");
   if (!lines.length) return USAGE;
   return `\nusage:\n${lines.join("\n")}\n\n  ${C.dim}seisin --help for every command${C.off}\n\n`;
 }
@@ -177,9 +190,14 @@ if (command === undefined || command === "help" || HELP.has(command)) {
   process.exit(0);
 }
 
-const chosen = COMMANDS[command];
+const chosen = Object.hasOwn(COMMANDS, command) ? COMMANDS[command] : null;
 if (!chosen) {
-  out(USAGE);
+  // One line, and the nearest command. The whole usage, printed for a typo,
+  // pushed the one line that mattered off the screen.
+  const near = command.startsWith("-") ? nearest(command, ["--help", "--version"])
+    : nearest(command, Object.keys(COMMANDS).filter((c) => !c.startsWith("-") && c !== "deny"));
+  err(`${C.red}seisin:${C.off} unknown ${command.startsWith("-") ? "option" : "command"} "${command}"` +
+    `${near ? ` — did you mean "${near}"?` : ""}\n  seisin --help lists every command\n`);
   process.exit(2);
 }
 if (!command.startsWith("-") && asksHelp(command, argv)) {
@@ -188,9 +206,33 @@ if (!command.startsWith("-") && asksHelp(command, argv)) {
 }
 
 try {
+  refuseUnknownFlags(command, argv);
   const code = await chosen();
   if (typeof code === "number") process.exit(code);
 } catch (e) {
   err(`${C.red}seisin:${C.off} ${e.message}\n`);
-  process.exit(2);
+  // A command that was not found is 127 wherever a shell runs it; everything
+  // else seisin refuses is a usage or policy error.
+  process.exit(e.exitCode ?? 2);
+}
+
+/**
+ * A flag a command does not take is an error, never ignored: `check --verbsoe`
+ * printed the short map as if nothing had been asked. For `run`, only seisin's
+ * own part of the line — before `--`, or the leading options — is checked.
+ */
+function refuseUnknownFlags(name, args) {
+  const f = flagsOf(name);
+  if (!f || name === "hook" || name === "mcp") return;
+  let ours = args;
+  if (name === "run") {
+    const split = args.indexOf("--");
+    if (split !== -1) ours = args.slice(1, split);
+    else {
+      let i = 1;
+      while (i < args.length && args[i].startsWith("-")) i++;
+      ours = args.slice(1, i);
+    }
+  }
+  checkFlags(name === "deny" ? "decline" : name, ours, f.known, f.values);
 }

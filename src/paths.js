@@ -56,3 +56,31 @@ export function toRepoRelative(config, target) {
   if (inside(realRoot, realTarget)) return relative(realRoot, realTarget) || ".";
   return target;
 }
+
+/**
+ * A path typed at a prompt, made absolute the way a shell user means it:
+ * against the directory they are standing in. Relative arguments used to be
+ * read against the policy's root, so `seisin explain web write app.js` from
+ * web/src asked about ./app.js at the root and answered "no owner".
+ *
+ * Only when the working directory is inside the repo. From anywhere else —
+ * `SEISIN_CONFIG` pointing at a policy elsewhere, a test harness — a relative
+ * path keeps meaning what it always meant: relative to the root.
+ */
+export function fromCwd(config, target, cwd = process.cwd()) {
+  if (typeof target !== "string" || isAbsolute(target)) return target;
+  const root = config.root;
+  const inside = (r, t) => t === r || t.startsWith(r + sep);
+  // The cwd and the root compared in the same spelling: as written, or both
+  // through their symlinks (on macOS /tmp is /private/tmp).
+  let base = root, here = cwd;
+  if (!inside(root, cwd)) {
+    base = realAncestor(root);
+    here = realAncestor(cwd);
+    if (!inside(base, here)) return target;
+  }
+  const rel = relative(base, join(here, target));
+  if (rel === "") return root;
+  if (rel === ".." || rel.startsWith(".." + sep)) return join(here, target);
+  return join(root, rel);
+}

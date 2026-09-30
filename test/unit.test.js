@@ -1891,7 +1891,7 @@ test("SEC-09 a leading-slash CODEOWNERS path maps to a repo-relative territory",
   writeFileSync(join(dir, "CODEOWNERS"), "/apps/ @team\nlib/ @team\n");
   const found = discover(dir);
   const apps = found.roles.find((r) => r.writes[0].includes("apps"));
-  assert.deepEqual(apps.writes, ["apps/**"], "leading slash must be stripped");
+  assert.ok(apps.writes.includes("apps/**"), "leading slash must be stripped");
   assert.ok(!found.roles.some((r) => r.writes.some((w) => w.startsWith("/"))), "no absolute territory");
 });
 

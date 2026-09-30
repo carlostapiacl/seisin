@@ -26,7 +26,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { toRepoRelative } from "./paths.js";
-import { explain, ownersOf } from "./owners.js";
+import { explain, ownersOf, keyHolders, inKeyDir } from "./owners.js";
 import { append, logPath } from "./log.js";
 import { record, requestsPath } from "./requests.js";
 import { inScope, scopeOf, reachedForContent } from "./violations.js";
@@ -224,8 +224,11 @@ export function intake({ config, role, runId, observe = false, settings, notify 
     // path has always had this check; the kernel path did not, which is how a
     // role ended up asking for its own territory.
     const granted = verdict?.allowed === true;
+    // A key is declared, not owned: who a write lookup finds for `.secrets/x`
+    // is always nobody, and the queue said "(unowned)" over another role's key.
+    const whose = d.action === "read" && inKeyDir(config, rel) ? keyHolders(config, rel) : ownersOf(config, rel);
     if (rel !== d.path && !barred && !unaskable && !granted)
-      ask({ role, action: d.action, target: rel, owners: ownersOf(config, rel) });
+      ask({ role, action: d.action, target: rel, owners: whose });
 
     log({
       role,
