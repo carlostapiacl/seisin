@@ -131,12 +131,18 @@ function findings(config, entries, minDenials) {
   // hold a credential for the one turn a month that needs it — but a folder a
   // role owns and has never written to in the whole log is a line nobody would
   // miss, and the only evidence anyone will ever have for removing it.
+  // Straight to the line's own role, and each (role, target) once: walking
+  // every role's globs for every line to keep only one role's was the cost.
   const used = new Set();
+  const seen = new Set();
   for (const e of entries) {
     if (e.verdict !== "allowed" || e.disputed || e.action !== "write" || !e.target) continue;
-    for (const role of Object.values(config.roles))
-      for (const glob of role.writes)
-        if (role.name === e.role && covers(glob, e.target)) used.add(`${role.name} ${glob}`);
+    if (!Object.prototype.hasOwnProperty.call(config.roles, e.role)) continue;
+    const k = `${e.role}\u0000${e.target}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    for (const glob of config.roles[e.role].writes)
+      if (covers(glob, e.target)) used.add(`${e.role} ${glob}`);
   }
 
   const unused = [];

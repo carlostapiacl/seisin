@@ -20,6 +20,7 @@
  * README spends its time avoiding.
  */
 import { Transform } from "node:stream";
+import { StringDecoder } from "node:string_decoder";
 
 /** Reads the values this role may read. Unreadable or huge files are skipped. */
 export function secretsOf(settings, readFile) {
@@ -49,10 +50,18 @@ export function secretsOf(settings, readFile) {
  * It carries the tail of each chunk forward, because a value split across a
  * buffer boundary would otherwise sail through — which is the one case a
  * naive implementation always gets wrong and never notices.
+ *
+ * Bytes are decoded with a StringDecoder that lives as long as the stream. A
+ * chunk boundary falls wherever the pipe put it, including inside a multibyte
+ * character: decoding each chunk on its own turned `año` into `a��o`, and a
+ * secret with an `ñ` in it split that way was never seen whole, so it was
+ * never masked. The same care applies to the cut below, which must not leave
+ * half of a surrogate pair on either side.
  */
 export function redactor(secrets, label = "redacted") {
   if (secrets.length === 0) return null;
   const longest = secrets[0].length;
+  const decoder = new StringDecoder("utf8");
   let tail = "";
 
   return new Transform({
@@ -61,19 +70,24 @@ export function redactor(secrets, label = "redacted") {
       // — masking only the part about to be emitted — lets a secret that
       // straddles the cut through in two innocent halves. Written that way
       // first; the split-buffer test caught it on the first run.
-      const masked = mask(tail + chunk.toString("utf8"), secrets, label);
-      const keep = Math.min(longest - 1, masked.length);
-      this.push(masked.slice(0, masked.length - keep));
-      tail = masked.slice(masked.length - keep);
+      const text = typeof chunk === "string" ? chunk : decoder.write(chunk);
+      const masked = mask(tail + text, secrets, label);
+      let cut = masked.length - Math.min(longest - 1, masked.length);
+      if (cut > 0 && isHighSurrogate(masked.charCodeAt(cut - 1))) cut--;
+      if (cut > 0) this.push(masked.slice(0, cut));
+      tail = masked.slice(cut);
       done();
     },
     flush(done) {
-      this.push(mask(tail, secrets, label));
+      const rest = mask(tail + decoder.end(), secrets, label);
+      if (rest) this.push(rest);
       tail = "";
       done();
     },
   });
 }
+
+const isHighSurrogate = (c) => c >= 0xd800 && c <= 0xdbff;
 
 function mask(text, secrets, label) {
   let out = text;
