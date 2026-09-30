@@ -248,6 +248,13 @@ From a first-run review with a small sample repo.
   how many there are. Exit codes are unchanged. A new warning names a territory that is not on
   disk: `frontend writes src/web/** — matches nothing in this repo`.
 
+- **`wire` writes a hook that runs.** It wrote a bare `seisin hook`; with seisin installed in a
+  project there is no `seisin` on PATH, and the hook failed on every call without a word (exit
+  127). It now writes `seisin hook` when this version is on PATH, the project's
+  `node_modules/.bin/seisin` when there is one, and this seisin by its full path otherwise — and
+  says which. An existing bare `seisin hook` with no seisin on PATH is repointed. Outside a git
+  repository it no longer says to commit the file.
+
 ## 0.4.2 — 2026-09-29
 
 - **Small hardening across the launcher.** A `--observe` written after the command

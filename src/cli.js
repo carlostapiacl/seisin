@@ -172,7 +172,6 @@ function helpFor(name) {
   if (COMMAND_HELP[name]) return renderHelp(name, C);
   const alias = name === "deny" ? "decline" : name;
   const lines = USAGE.split("\n").filter((l) => l.startsWith(`  seisin ${alias} `) || l === `  seisin ${alias}`);
-  if (alias === "hook") lines.push("  seisin hook                           Claude Code's hook: one event on stdin, a decision on stdout. `seisin wire` installs it");
   if (!lines.length) return USAGE;
   return `\nusage:\n${lines.join("\n")}\n\n  ${C.dim}seisin --help for every command${C.off}\n\n`;
 }
