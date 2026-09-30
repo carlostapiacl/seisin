@@ -266,6 +266,89 @@ JSON field was renamed.
 - **`test/words.test.js`** reads what each surface says and fails on a word the glossary does
   not use, with each exception written down beside its reason.
 
+### At the prompt
+
+From a first-run review with a small sample repo.
+
+- **`explain <role> read <file>` answers the read that happens.** Reads are open outside the
+  `[keys]` dirs, and `explain dev read .env` said *denied — no role declares .env* about a file
+  every role reads. It now says allowed, and why: outside every key dir, so every role reads it;
+  move it into the key dir to make it a key. A read inside a key dir, or of a key by name, keeps
+  its answer, and the advice for an undeclared key names it the way keys are written
+  (`"new.txt"`, not `".secrets/new.txt"`). The MCP server's `seisin_explain` answers the same.
+- **A relative path is relative to where you stand.** `explain` and `whose` read it against the
+  policy's root, so from `frontend/src`, `explain frontend write app.js` said *no owner*. The
+  answer prints the path the policy was asked about, root-relative.
+- **`explain` refuses an action it does not know** (`unknown action "delete" — use read, write or
+  mcp`, exit 2) instead of answering it as a write, and an unknown role lists the known ones with
+  the nearest.
+
+- **A request for another role's key says whose it is.** It showed `(unowned)`, because a key
+  was looked up as write territory. It now shows `(declared by backend)`; `grant` warns that the
+  key is shared (`shared: stripe.txt is also declared by backend — both roles read it now`) and
+  writes `stripe.txt`, the form hand-written keys use, instead of `.secrets/stripe.txt`.
+- **Numbers are positions, and the CLI says so.** `requests` notes that `#n` shifts as requests
+  are settled and the id does not; `grant` and `decline` end with the queue renumbered on one line
+  (`left, renumbered: #1 …`). Without an argument they print a usage line pointing at
+  `seisin requests`.
+
+- **`run` says only what it added.** It reprinted the whole pending queue after every run. Now
+  it lists the requests this run filed, with the numbers `grant` takes, and one line —
+  `this run: 1 new request(s) · 3 older pending — seisin requests` — and nothing when nothing is new.
+- **`run`'s header names the territory:** `writes frontend/** (+7 scratch) · keys netlify.txt`
+  instead of `writes 8 path(s) · reads 1 key(s)`. A command the role cannot find is
+  `seisin: "nosuchcmd" not found on the role's PATH`, exit 127, instead of the runtime's
+  `env: nosuchcmd: No such file or directory`. A missing sandbox runtime is fixed the way seisin
+  was installed (in the project, globally, or in a checkout), not always with `npm i -g`.
+- **Mistakes are one line, exit 2.** An unknown command says `unknown command "chek" — did you
+  mean "check"?` instead of printing the whole usage; a flag a command does not take is refused
+  (`check --bogus`); every unknown role lists the known ones with the nearest; `log --verdict` is
+  checked, and `log --role x` with nothing for x says which roles the log does hold. `review` in a
+  wired repo with no allowed action yet says so, instead of asking for `seisin wire` again.
+- **`seisin <command> --help`** lists that command's flags, one or two examples and its exit
+  codes. The README has the exit codes too.
+
+- **`init` proposes what is there.** In a repo with no `.claude/agents` and no CODEOWNERS it
+  proposed `src/web/**` and `src/api/**` whatever the repo held; now it is one role per top-level
+  folder that holds code (dot-folders, dependencies and build output skipped), and `[keys] dir` is
+  written when `.secrets/`, `secrets/` or `.keys/` exists. From CODEOWNERS it makes one role per
+  owner with all of that owner's paths, instead of one per line cut at eight. The file says each
+  role runs as its own `seisin run`, and that a Claude Code subagent has its parent's role. A
+  second `init` points at `--force`, which keeps the old policy as `seisin.toml.bak`; `.seisin/` is
+  added to an existing `.gitignore`, and said. With one agent or none, one line says what seisin
+  adds over the agent's own sandbox and that it earns its setup at two roles.
+- **`--observe` is described as what it does.** The README said it "records, denies nothing"; the
+  key dirs, the policy and the network stay shut, and what is recorded comes from the hook. `init
+  --from-observations` with nothing observed says so: run `seisin wire`, observe an agent, not a
+  plain shell command.
+
+- **`check` puts the map first.** Each warning is one line under the map; the protected paths,
+  why each warning matters and the standing limits are behind `--verbose`, and the last line says
+  how many there are. Exit codes are unchanged. A new warning names a territory that is not on
+  disk: `frontend writes src/web/** — matches nothing in this repo`.
+
+- **`wire` writes a hook that runs.** It wrote a bare `seisin hook`; with seisin installed in a
+  project there is no `seisin` on PATH, and the hook failed on every call without a word (exit
+  127). It now writes `seisin hook` when this version is on PATH, the project's
+  `node_modules/.bin/seisin` when there is one, and this seisin by its full path otherwise — and
+  says which. An existing bare `seisin hook` with no seisin on PATH is repointed. Outside a git
+  repository it no longer says to commit the file.
+
+- **`ui --link` says which policy it serves.** The link record is per port, so in one repo it
+  returned the console another repo had started. The record now carries the policy's path;
+  `--link` prints it and warns when it is not this directory's, and `ui` prints the full path of
+  the policy it reads.
+
+- **`scan` finds the `.env` it called clean.** A password in a URL (`postgres://u:p@h/db`) is a
+  certain finding unless the password is a stand-in (`password`, `${DB_PASS}`, `<pass>`). And files
+  that usually hold secrets by their name — `.env*`, `*.pem`, `*.key`, `id_rsa`, `id_ed25519`… but
+  not `.example`, `.sample` or `.template` — found outside the key dirs are always listed, as
+  *files that usually hold secrets*, not certain and without changing the exit code.
+
+- **`walls` at a terminal speaks to the operator** (`frontend keeps hitting:` … `2 of its calls
+  went into retrying these`). The second-person voice — *you have already been denied these* —
+  stays where an agent reads it: the hook and the MCP server.
+
 ## 0.4.2 — 2026-09-29
 
 - **Small hardening across the launcher.** A `--observe` written after the command

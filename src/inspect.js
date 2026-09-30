@@ -8,6 +8,7 @@
  * does — each one is a way the policy silently does not hold — so they belong
  * where they can be exercised directly.
  */
+import { unknownRole } from "./suggest.js";
 import { resolve, dirname, basename, relative, join, delimiter } from "node:path";
 import { lstatSync, readdirSync, existsSync, readFileSync, statSync } from "node:fs";
 import { ownersOf, covers, enforcedNeverWrites } from "./owners.js";
@@ -27,7 +28,7 @@ import { protections, resolveExecutable } from "./surface.js";
  * answering it with silence is how a typo becomes a belief.
  */
 export function inspect(config, only = null, where = config.path) {
-  if (only && !config.roles[only]) throw new Error(`unknown role "${only}"`);
+  if (only && !config.roles[only]) throw unknownRole(config, only);
   const roles = only ? [config.roles[only]] : Object.values(config.roles);
   // Once: it is listed on its own and again as a warning, and it is the most
   // expensive thing check computes.
@@ -544,6 +545,31 @@ function warningsFor(config, roles, shared = sharedPaths(config, roles)) {
         headline: `${r.name} writes outside this repo: ${out.join(" ")}`,
         detail: "the sandbox will grant it. Nothing here checks what lives there.",
       });
+  }
+
+  /**
+   * A territory that is not on disk.
+   *
+   * A proposal written for another repo — or one typo — reads as a working
+   * policy: `check` printed the map and the first sign of anything wrong was a
+   * refusal inside the agent. Said per glob, as a warning and never a failure:
+   * a role can own a folder it is about to create.
+   */
+  for (const r of roles) {
+    for (const g of r.writes) {
+      if (g === "**" || g.startsWith("/") || g.startsWith("../")) continue;
+      const fixed = [];
+      for (const part of g.split("/")) {
+        if (/[*?[\]]/.test(part)) break;
+        fixed.push(part);
+      }
+      if (!fixed.length || existsSync(join(config.root, ...fixed))) continue;
+      warnings.push({
+        kind: "writes-match-nothing",
+        headline: `${r.name} writes ${g} — matches nothing in this repo`,
+        detail: "fine if the role is about to create it; otherwise the territory points at a folder that is not there.",
+      });
+    }
   }
 
   /**

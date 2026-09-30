@@ -14,7 +14,6 @@
  * failing. See uilink.js.
  */
 import { spawnSync } from "node:child_process";
-import { relative } from "node:path";
 import { serve } from "../serve.js";
 import { writeUiLink, readUiLink, clearUiLink } from "../uilink.js";
 import { C, out } from "../render.js";
@@ -33,7 +32,8 @@ export async function ui(config, argv = []) {
   if (argv.includes("--link")) {
     const found = readUiLink(port);
     if (found && found.alive !== false) {
-      out(`\n  ${C.b}${found.url}${C.off}\n  ${C.dim}the link a seisin ui on ${port} is serving. open it here, do not paste it anywhere.${C.off}\n\n`);
+      out(`\n  ${C.b}${found.url}${C.off}\n  ${C.dim}the link a seisin ui on ${port} is serving. open it here, do not paste it anywhere.${C.off}\n` +
+        servesWhich(found.policy, config?.path) + "\n");
       open(found.url);
       return;
     }
@@ -53,7 +53,8 @@ export async function ui(config, argv = []) {
       if (found && found.alive !== false) {
         out(
           `\n  ${C.b}${found.url}${C.off}\n` +
-          `  ${C.dim}a seisin ui is already running on ${port}; reopening its link. ctrl-c that terminal to stop it.${C.off}\n\n`
+          `  ${C.dim}a seisin ui is already running on ${port}; reopening its link. ctrl-c that terminal to stop it.${C.off}\n` +
+          servesWhich(found.policy, config.path) + "\n"
         );
         open(found.url);
         return;
@@ -69,7 +70,7 @@ export async function ui(config, argv = []) {
   const bound = server.address().port;
   const url = `http://127.0.0.1:${bound}/#t=${server.seisinToken}`;
   // Recorded before we print, so `--link` and a second `seisin ui` can find it.
-  writeUiLink(bound, url);
+  writeUiLink(bound, url, undefined, config.path);
 
   // local_binding opens every port (macOS); local_ports opens the ones it
   // names, on every platform — so only a role that names THIS port counts.
@@ -79,7 +80,7 @@ export async function ui(config, argv = []) {
 
   out(
     `\n  ${C.b}${url}${C.off}\n` +
-    `  ${C.dim}reading ${relative(process.cwd(), config.path)} and the log, live. ctrl-c to stop.${C.off}\n` +
+    `  ${C.dim}reading ${config.path} and the log, live. ctrl-c to stop.${C.off}\n` +
     `  ${C.dim}the link carries this run's token: open it here, do not paste it anywhere.${C.off}\n` +
     `  ${C.dim}lost it? this terminal has it above, or run: seisin ui --link${bound === 4178 ? "" : ` --port ${bound}`}${C.off}\n` +
     (reach.length
@@ -94,4 +95,16 @@ export async function ui(config, argv = []) {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
   return server;
+}
+
+/**
+ * Which policy a running console serves, and a warning when it is not the one
+ * this directory would use. `here` is null when there is no policy here.
+ */
+export function servesWhich(served, here) {
+  if (!served) return `  ${C.dim}(started by an older seisin: which seisin.toml it serves is not recorded)${C.off}\n`;
+  if (here && served !== here)
+    return `  ${C.yellow}it serves ${served} — not ${here}, the policy for this directory.${C.off}\n` +
+      `  ${C.dim}for this one, start another: seisin ui --port <n>${C.off}\n`;
+  return `  ${C.dim}serving ${served}${C.off}\n`;
 }

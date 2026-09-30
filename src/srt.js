@@ -13,6 +13,7 @@
  *      back to its defaults. Emitting the whole object removes that class of
  *      error, which is most of what this file is for.
  */
+import { unknownRole } from "./suggest.js";
 import { existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { STATE_DIR, CONFIG_NAME } from "./layout.js";
@@ -92,7 +93,7 @@ export function loopbackVia(role, cmd) {
 
 export function settingsFor(config, roleName, spool = null, observe = false) {
   const role = config.roles[roleName];
-  if (!role) throw new Error(`unknown role "${roleName}". Known: ${Object.keys(config.roles).join(", ")}`);
+  if (!role) throw unknownRole(config, roleName);
 
   const abs = (p) => (p.startsWith("/") ? p : join(config.root, p));
   // "credentials" closes the places credentials live; "home" does that and

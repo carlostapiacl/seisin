@@ -66,6 +66,29 @@ const PLACEHOLDER = /^(?:changeme|change_me|xxx+|your[-_a-z]*|example|placeholde
  * finding repeated five times, and three keys belonging to a company that is
  * not the one running the scan.
  */
+/**
+ * A password inside a URL — `postgres://app:hunter2@db/prod`.
+ *
+ * The commonest way a database credential sits in a repo, and no issued shape
+ * covers it: `.env` with a DATABASE_URL scanned clean. Certain, because a URL
+ * with a password in it is a credential whatever the password is, unless the
+ * password is plainly a stand-in (`password`, `${DB_PASS}`, `<pass>`, `xxx`).
+ */
+export const URL_CREDENTIAL = /\b[a-z][a-z0-9+.-]*:\/\/([^\s:@\/'"]+):([^\s@\/'"]+)@[^\s\/'"]+/i;
+const PASSWORD_STANDIN = /^(?:pass(?:word)?|passwd|pwd|pw|secret|user|username)$|[{}$<>%]/i;
+
+/**
+ * Files that usually hold secrets, by their name alone.
+ *
+ * Listed, never read for this — a name is not proof, and the list says so.
+ * A `.env` of `DEBUG=1` is a false alarm; a `.env` nobody declared that holds
+ * the production database is the most common credential there is, and a scan
+ * that only knows issued shapes calls it clean. `.example`, `.sample`,
+ * `.template` and `.dist` are the checked-in stand-ins and are left out.
+ */
+export const SECRET_NAMES = /^(?:\.env(?:\..+)?|.+\.(?:pem|key|p12|pfx|jks|keystore)|id_(?:rsa|dsa|ecdsa|ed25519)|\.netrc|\.pgpass|credentials\.json|service-account.*\.json)$/i;
+const STAND_IN_FILE = /\.(?:example|sample|template|dist|tmpl)$|\.(?:example|sample|template)\./i;
+
 export const DEFAULT_IGNORE = [
   "**/node_modules/**", "**/.git/**", "**/dist/**", "**/build/**", "**/.next/**",
   "**/vendor/**", "**/__pycache__/**", "**/.venv/**", "**/venv/**", "**/coverage/**",
@@ -195,7 +218,10 @@ export function scan(root, protectedDirs = [], ignore = [], limit = 500, { roots
         walk(full);
         continue;
       }
-      if (!e.isFile() || SKIP_EXT.test(e.name)) continue;
+      if (!e.isFile()) continue;
+      if (SECRET_NAMES.test(e.name) && !STAND_IN_FILE.test(e.name))
+        keep({ file: rel, line: 0, level: "named", shape: "usually holds secrets, by its name" });
+      if (SKIP_EXT.test(e.name)) continue;
 
       let text;
       try {
@@ -209,6 +235,12 @@ export function scan(root, protectedDirs = [], ignore = [], limit = 500, { roots
       const lines = text.split(/\r?\n/);
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
+        const url = URL_CREDENTIAL.exec(line);
+        if (url) {
+          const pw = url[2];
+          if (PASSWORD_STANDIN.test(pw) || PLACEHOLDER.test(pw) || /^[x*]+$/i.test(pw)) skipped.placeholder++;
+          else { keep({ file: rel, line: i + 1, shape: "password in a URL", level: "certain" }); continue; }
+        }
         for (const [level, shape, re] of SHAPES) {
           const m = re.exec(line);
           if (!m) continue;
@@ -225,6 +257,11 @@ export function scan(root, protectedDirs = [], ignore = [], limit = 500, { roots
     }
   }
   for (const r of walked ?? [root]) walk(r);
+
+  // A file with a certain finding is already listed with its line; naming it
+  // again as "usually holds secrets" says less about the same file.
+  const sure = new Set(hits.filter((h) => h.level === "certain").map((h) => h.file));
+  for (let i = hits.length - 1; i >= 0; i--) if (hits[i].level === "named" && sure.has(hits[i].file)) hits.splice(i, 1);
 
   return { hits, skipped, nestedPaths, truncated: omitted > 0, omitted };
 }

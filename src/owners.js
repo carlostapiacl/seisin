@@ -11,11 +11,11 @@
  * exception, and they are handled separately below.
  */
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import { protectedBy } from "./surface.js";
 import { entriesOf } from "./keys.js";
-import { WILD } from "./paths.js";
+import { WILD, fromCwd, toRepoRelative } from "./paths.js";
 
 /**
  * Does this glob cover this path? Supports `**`, `*`, `?` and a trailing `/`.
@@ -362,6 +362,92 @@ export function neverWrites(role, path, config = null) {
   return enforcedNeverWrites(config, role).find((g) => covers(g, path)) ?? null;
 }
 
+/** A key dir as the policy's paths spell it: no leading `./`, no trailing `/`. */
+const dirSpelling = (d) => String(d).replace(/^\.\/+/, "").replace(/\/+$/, "");
+
+/** Is the repo-relative `rel` one of the key directories, or inside one? */
+export function inKeyDir(config, rel) {
+  return (config.keyDirs ?? []).some((d) => {
+    const k = dirSpelling(d);
+    const r = k.startsWith("/") ? relFromRoot(config, k) : k;
+    return r !== null && (rel === r || rel.startsWith(r + "/"));
+  });
+}
+
+function relFromRoot(config, abs) {
+  const root = config.root ?? "";
+  return abs === root ? "." : abs.startsWith(root + "/") ? abs.slice(root.length + 1) : null;
+}
+
+/**
+ * How a key is written in a role's `keys` list: relative to the first key
+ * directory when it lives there, with its directory otherwise — the same form
+ * settingsFor and keyHolders resolve back.
+ */
+export function keyName(config, target) {
+  const t = String(target ?? "");
+  const first = config.keyDirs?.length ? dirSpelling(config.keyDirs[0]) : null;
+  return first && t.startsWith(first + "/") ? t.slice(first.length + 1) : t;
+}
+
+/**
+ * A read of a FILE — a path, not a key name — and whether the role gets it.
+ *
+ * Reads are open by design: every role reads everything outside the `[keys]`
+ * dirs (and, under `isolate`, outside the credential homes). `explain` used to
+ * send every read through the key question, so `explain dev read .env` said
+ * "denied — no role declares .env" about a file every role could read. A wrong
+ * no from the tool whose job is saying what the kernel will do. Now a path
+ * inside a key directory is a key question; anything else is answered as the
+ * open read it is, with how to make it a key.
+ */
+export function explainFileRead(config, role, rel, credentialHomes = []) {
+  // Only a key directory makes a key: settingsFor refuses a key declared
+  // anywhere else, so nothing outside one is denied by being a key.
+  if (inKeyDir(config, rel)) return explain(config, role, "read", rel);
+  const level = config.isolate === true ? "home" : config.isolate;
+  if ((level === "credentials" || level === "home") && rel.startsWith("/")) {
+    const hit = credentialHomes.find((h) => rel === h || rel.startsWith(h + "/"));
+    if (hit)
+      return {
+        allowed: false, owners: [],
+        reason: `${rel} is under ${hit}, which isolate = "${level}" closes to every role`,
+      };
+  }
+  const dirs = (config.keyDirs ?? []).map(dirSpelling);
+  return {
+    allowed: true, owners: [], open: true,
+    reason: dirs.length
+      ? `${rel} is outside every [keys] dir (${dirs.join(", ")}), so every role reads it. ` +
+        `Move it into ${dirs[0]}/ to make it a key`
+      : `no [keys] dir is declared, so every role reads every file. ` +
+        `Declare one under [keys] and move ${rel} into it to make it a key`,
+  };
+}
+
+/**
+ * What a read is about: a key, named the way the policy names keys, or a file.
+ *
+ * `explain dev read stripe` asks about a key — a bare name some role declares,
+ * or one sitting in a key directory. Everything else is a path, resolved from
+ * where you stand, and inside a key directory it is a key question again.
+ */
+export function readTarget(config, target, cwd = process.cwd()) {
+  if (!target.includes("/") && !isAbsolute(target)) {
+    const declared = keyHolders(config, target).length > 0;
+    const bare = (s) => s.replace(/\.[^.]+$/, "");
+    const inDir = (config.keyDirs ?? []).some((d) => {
+      const dir = isAbsolute(d) ? d : join(config.root, d);
+      if (existsSync(join(dir, target))) return true;
+      try { return readdirSync(dir).some((f) => bare(f) === target); } catch { return false; }
+    });
+    const here = fromCwd(config, target, cwd);
+    const isFileHere = existsSync(here) && !inKeyDir(config, toRepoRelative(config, here));
+    if ((declared || inDir) && !isFileHere) return { key: true, target };
+  }
+  return { key: false, target: toRepoRelative(config, fromCwd(config, target, cwd)) };
+}
+
 /** Every role allowed to read `key`, matched with or without its extension. */
 export function keyHolders(config, key) {
   const dirs = config.keyDirs ?? [];
@@ -488,8 +574,15 @@ export function explain(config, role, action, target) {
   if (action === "read") {
     const holders = keyHolders(config, target);
     if (holders.includes(role)) return { allowed: true, owners: holders, reason: `${role} declares ${target}` };
-    if (holders.length === 0)
-      return { allowed: false, owners: [], reason: `no role declares ${target} — add it under a [roles.<name>] keys list` };
+    if (holders.length === 0) {
+      // A key is written as a name relative to the key directory — `stripe.txt`,
+      // not `.secrets/stripe.txt` — so the advice says the name to write.
+      const name = keyName(config, target);
+      return {
+        allowed: false, owners: [],
+        reason: `no role declares ${target} — add "${name}" to a role's keys: [roles.<name>] keys = ["${name}"]`,
+      };
+    }
     return { allowed: false, owners: holders, reason: `${target} belongs to ${holders.join(", ")}` };
   }
 

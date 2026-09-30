@@ -26,9 +26,15 @@ function linkFile(port, base) {
   return join(runsRoot(base), `ui-${port}.url`);
 }
 
-/** Records this run's live URL for the port it bound. */
-export function writeUiLink(port, url, base) {
-  writeFileSync(linkFile(port, base), JSON.stringify({ url, pid: process.pid }) + "\n", { mode: 0o600 });
+/**
+ * Records this run's live URL for the port it bound, and the policy it serves.
+ *
+ * The record is per port, not per repo, so `ui --link` in one repo found the
+ * console another repo had started — and opened a page about the wrong policy
+ * with nothing on it to say so. The policy's path travels with the link now.
+ */
+export function writeUiLink(port, url, base, policy = null) {
+  writeFileSync(linkFile(port, base), JSON.stringify({ url, pid: process.pid, policy }) + "\n", { mode: 0o600 });
 }
 
 /**
@@ -46,7 +52,7 @@ export function readUiLink(port, base) {
     // Signal 0 tests for the process without touching it: it throws if gone.
     try { process.kill(e.pid, 0); alive = true; } catch { alive = false; }
   }
-  return { url: e.url, pid: e.pid ?? null, alive };
+  return { url: e.url, pid: e.pid ?? null, alive, policy: typeof e.policy === "string" ? e.policy : null };
 }
 
 /** Removes the record. Called on exit, and when a stale one is found. */

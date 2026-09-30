@@ -29,7 +29,8 @@
 import { toRepoRelative } from "./paths.js";
 import { loadConfig, findConfig } from "./config.js";
 import { inspect } from "./inspect.js";
-import { explain, ownersOf } from "./owners.js";
+import { explain, explainFileRead, ownersOf, readTarget } from "./owners.js";
+import { CREDENTIAL_HOMES, expand } from "./grants.js";
 import { settingsFor } from "./srt.js";
 import { pending, requestsPath, refuseIfBarred, shellId } from "./requests.js";
 import { read, logPath } from "./log.js";
@@ -190,6 +191,14 @@ const HANDLERS = {
     if (!cfg.roles[role])
       return { error: `unknown role "${role}"`, known: Object.keys(cfg.roles) };
     if (action === "mcp") return explain(cfg, role, "mcp", target);
+    // A read of a file outside every key dir is open, as it is for the CLI.
+    // The server has no working directory of its own, so the root stands in.
+    if (action === "read") {
+      const asked = readTarget(cfg, target, cfg.root);
+      return asked.key
+        ? explain(cfg, role, "read", asked.target)
+        : explainFileRead(cfg, role, asked.target, CREDENTIAL_HOMES.map(expand));
+    }
     const rel = toRepoRelative(cfg, target);
     const verdict = explain(cfg, role, action, rel);
     return { ...verdict, alsoOwnedBy: action === "write" ? ownersOf(cfg, rel) : undefined };
@@ -197,7 +206,7 @@ const HANDLERS = {
 
   seisin_requests() {
     const cfg = config();
-    const queue = requestQueue(cfg.root, read(logPath(cfg.root)));
+    const queue = requestQueue(cfg.root, read(logPath(cfg.root)), cfg.keyDirs);
     return {
       pending: queue.map((r, i) => ({
         number: i + 1, id: r.key, role: r.role, action: r.action,
@@ -265,7 +274,7 @@ const HANDLERS = {
 
   seisin_draft_grant({ id, number } = {}) {
     const cfg = config();
-    const queue = pending(requestsPath(cfg.root));
+    const queue = pending(requestsPath(cfg.root), { keyDirs: cfg.keyDirs });
     let req;
     if (typeof id === "string" && id) {
       req = queue.find((r) => r.key === id);

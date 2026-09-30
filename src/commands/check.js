@@ -3,7 +3,8 @@ import { inspect } from "../inspect.js";
 import { renderReport, out } from "../render.js";
 
 export function check(config, argv = []) {
-  const report = inspect(config, argv[0] ?? null, config.path);
-  out(renderReport(report));
+  const role = argv.find((a) => !a.startsWith("-")) ?? null;
+  const report = inspect(config, role, config.path);
+  out(renderReport(report, { verbose: argv.includes("--verbose") }));
   return report;
 }
