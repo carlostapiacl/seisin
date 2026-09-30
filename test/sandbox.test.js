@@ -116,12 +116,21 @@ test("output still arrives in full when it is redacted", { skip }, () => {
 });
 
 test("check exits clean on a valid config", { skip: false }, () => {
-  execFileSync(process.execPath, [CLI, "check"], { cwd: repo, encoding: "utf8" });
+  // execFileSync throws on a non-zero exit; what it printed has to be this
+  // policy, and nothing in it may be one the sandbox cannot enforce.
+  const out = execFileSync(process.execPath, [CLI, "check"], { cwd: repo, encoding: "utf8" });
+  assert.match(out, /frontend\s+writes src\/web\/\*\*/);
+  assert.match(out, /backend\s+writes src\/api\/\*\*/);
+  assert.doesNotMatch(out, /cannot be enforced/);
 });
 
 test("explain exits 1 when it denies, so it composes in a script", { skip: false }, () => {
-  const r = spawnSync(process.execPath, [CLI, "explain", "frontend", "write", "src/api/server.ts"], { cwd: repo });
+  const r = spawnSync(process.execPath, [CLI, "explain", "frontend", "write", "src/api/server.ts"],
+    { cwd: repo, encoding: "utf8" });
   assert.equal(r.status, 1);
+  // The denial and whose it is — the half of the answer seisin exists for.
+  assert.match(r.stdout, /denied\s+frontend write src\/api\/server\.ts/);
+  assert.match(r.stdout, /src\/api\/server\.ts belongs to backend/);
 });
 
 test("the agent's own flags are not eaten by the sandbox", { skip }, () => {
