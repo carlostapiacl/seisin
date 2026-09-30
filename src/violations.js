@@ -473,7 +473,13 @@ export function watchDenials(onDeny, { pid = null, argv = null, platform = proce
     child = spawnFn("/usr/bin/log", ["stream", "--predicate", PREDICATE, "--style", "compact"],
       { stdio: ["ignore", "pipe", "ignore"] });
   } catch (e) {
-    return { available: false, reason: `could not start the log stream: ${e.message}`, stats, close() {} };
+    // The same shape as the unavailable watcher above, for the same reason:
+    // `run` calls attributeTo() and awaits close() unconditionally.
+    return {
+      available: false, reason: `could not start the log stream: ${e.message}`, stats,
+      attributeTo() {},
+      close: () => Promise.resolve(stats),
+    };
   }
 
   let buf = "";
