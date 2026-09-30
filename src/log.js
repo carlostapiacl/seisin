@@ -279,10 +279,23 @@ export function withLock(file, fn, { waitMs = 6000, staleMs = 5000 } = {}) {
   }
 }
 
-/** True if the process is still there. EPERM means it is, and not ours to signal. */
-function alive(pid) {
+/**
+ * Is this process still there? False only when the kernel says there is no
+ * such process (ESRCH).
+ *
+ * The one answer both callers need, and it leans the same way for both: an
+ * answer that is not "gone" — EPERM (there, and not ours to signal), anything
+ * unexpected, a pid that is not a positive integer — counts as alive. For a
+ * lock that means waiting on a holder that might be done; for a run directory
+ * it means leaving one that might be stale. Both are cheaper than the other
+ * mistake: breaking a lock someone holds, or deleting a live run's socket and
+ * keys from under it. rundir.js used to call every error but EPERM "dead" and
+ * swept on it.
+ */
+export function alive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return true;   // not a pid we can ask about; kill(-n) is a group
   try { process.kill(pid, 0); return true; }
-  catch (e) { return e.code !== "ESRCH"; }
+  catch (e) { return e?.code !== "ESRCH"; }
 }
 
 /**

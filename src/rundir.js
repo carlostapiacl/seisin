@@ -25,6 +25,7 @@ import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { realOrSelf } from "./grants.js";
 import { channelName } from "./spool.js";
+import { alive } from "./log.js";
 
 export const RUNS_NAME = "snr";
 
@@ -48,11 +49,6 @@ export function runsRoot(base = tmpdir()) {
   return root;
 }
 
-/** Is the process that owns a run directory still alive? */
-function alive(pid) {
-  try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; }
-}
-
 /**
  * Removes the directories of runs whose process is gone.
  *
@@ -66,6 +62,8 @@ function sweep(root) {
     const dir = join(root, name);
     let pid;
     try { pid = Number(readFileSync(join(dir, "pid"), "utf8")); } catch { continue; }
+    // Only a process the kernel says is gone: a directory kept one sweep too
+    // long costs disk, one removed early takes a live run's socket and keys.
     if (pid && !alive(pid)) rmSync(dir, { recursive: true, force: true });
   }
 }
