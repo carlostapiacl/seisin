@@ -573,6 +573,34 @@ function warningsFor(config, roles, shared = sharedPaths(config, roles)) {
   }
 
   /**
+   * A territory inside a key directory.
+   *
+   * Seen in use: a role's whole territory sat under the folder declared as
+   * `[keys] dir`, which is closed to every role, so the role could write
+   * nothing at all — and `check` printed its territory as if it held. A key
+   * directory is read by the roles that declare a key in it and written by
+   * none; a folder a role must write belongs somewhere else.
+   */
+  const keyRoots = (config.keyDirs ?? []).map((d) => d.replace(/\/+$/, "")).filter(Boolean);
+  for (const r of roles) {
+    for (const g of r.writes) {
+      const fixed = [];
+      for (const part of g.split("/")) {
+        if (/[*?[\]]/.test(part)) break;
+        fixed.push(part);
+      }
+      const at = fixed.join("/");
+      const dir = at && keyRoots.find((d) => at === d || at.startsWith(d + "/"));
+      if (!dir) continue;
+      warnings.push({
+        kind: "territory-in-key-dir",
+        headline: `${r.name} writes ${g} — inside the key directory ${dir}, which no role can write`,
+        detail: "a key directory is read by the roles that declare its keys and written by none. Move what this role writes out of it, or drop the territory.",
+      });
+    }
+  }
+
+  /**
    * A file granted by name does not come with its neighbours.
    *
    * Measured, in production, and it survived two reviews of the policy by people:
