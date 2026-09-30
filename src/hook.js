@@ -29,6 +29,18 @@ const FILE_TOOLS = {
 };
 
 /**
+ * The tools {@link targetsOf} has anything to say about, as a hook matcher.
+ *
+ * `seisin wire` used to install PreToolUse with `"*"`, so Claude Code started
+ * this hook for Grep, Glob and TodoWrite too — a whole Node start-up, measured
+ * at 218 ms, to return nothing. Built from the same table targetsOf reads, so
+ * a tool added there is matched here. Anchored, because Claude Code reads a
+ * matcher as a regular expression and an unanchored `Write` matches
+ * `TodoWrite`.
+ */
+export const TOOL_MATCHER = `^(${[...Object.keys(FILE_TOOLS), "Bash"].join("|")}|mcp__.*)$`;
+
+/**
  * Paths a shell command is going to write.
  *
  * Redirections and the handful of commands whose job is to put bytes
