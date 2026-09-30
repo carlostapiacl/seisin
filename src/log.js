@@ -13,7 +13,7 @@
  * tries the parent's socket first for exactly that reason; writing the file
  * directly is what happens when there is no parent, outside the box.
  */
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, statSync, unlinkSync, writeSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 import { STATE_DIR, LOG_NAME } from "./layout.js";
@@ -44,9 +44,14 @@ export function append(file, entry) {
       // segment. Done here so the size check and the append never race.
       maybeRotate(file);
       // `prev` goes last and is computed from the previous line exactly as it
-      // sits on disk, so verifying needs nothing but the file.
-      const line = JSON.stringify({ at: new Date().toISOString(), ...entry, prev: hashOf(lastLine(file)) });
+      // sits on disk, so verifying needs nothing but the file. `at` is this
+      // process's clock, whatever the entry says: named again after the spread
+      // so a caller's `at` cannot replace it (the key keeps its first place).
+      const now = new Date().toISOString();
+      const line = JSON.stringify({ at: now, ...entry, at: now, prev: hashOf(lastLine(file)) });
       appendFileSync(file, line + "\n");
+      // Once per log: pin where the chain begins. See recordGenesis.
+      if (!existsSync(genesisPath(file))) { try { recordGenesis(file); } catch {} }
     }, { waitMs: envInt("SEISIN_LOG_LOCK_WAIT_MS", 6000) });
     return true;
   } catch (e) {
@@ -65,7 +70,52 @@ export function droppedPath(file) {
 }
 
 function countLines(file) {
-  try { return readFileSync(file, "utf8").split("\n").filter((l) => l.trim()).length; } catch { return 0; }
+  return readLines(file).length;
+}
+
+/**
+ * The complete lines of a JSON-lines file, raw and non-blank, oldest first.
+ *
+ * The one reader the JSONL files here share (the log, its segments, the
+ * request queue, the tail the hook counts from). With `tail`, only the last
+ * that many bytes are read, and the line the cut lands in is dropped — unless
+ * the cut falls exactly on a line boundary, which is checked by reading one
+ * byte earlier rather than guessed from string lengths (a byte count and a
+ * UTF-16 length disagree on every "ñ"). A missing file is no lines.
+ */
+export function readLines(file, { tail = 0 } = {}) {
+  let fd;
+  try { fd = openSync(file, "r"); } catch { return []; }
+  try {
+    const { size } = fstatSync(fd);
+    const from = tail > 0 ? Math.max(0, size - tail) : 0;
+    const start = from > 0 ? from - 1 : 0;
+    const buf = Buffer.alloc(size - start);
+    let got = 0;
+    while (got < buf.length) {
+      const n = readSync(fd, buf, got, buf.length - got, start + got);
+      if (n === 0) break;
+      got += n;
+    }
+    const lines = buf.subarray(0, got).toString("utf8").split("\n");
+    // Started one byte early: the first piece is either empty (the cut was on
+    // a newline) or the fragment the cut landed in. Dropped either way.
+    if (from > 0) lines.shift();
+    return lines.filter((l) => l.trim());
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** `readLines`, parsed. A malformed line — a half-written one from a killed process — is skipped. */
+export function readEntries(file, opts) {
+  const out = [];
+  for (const line of readLines(file, opts)) {
+    let e;
+    try { e = JSON.parse(line); } catch { continue; }
+    if (e && typeof e === "object") out.push(e);
+  }
+  return out;
 }
 
 /**
@@ -140,9 +190,9 @@ function maybeRotate(file) {
  * from nono's audit trail; the Merkle root and the signature it adds on top
  * are left for when someone asks for them.
  *
- * The first chained line of a file points at GENESIS. A file started by
- * rotation should point at the last line of the one before it; there is no
- * rotation yet, and when there is, that is what it has to do.
+ * The first chained line of a log points at GENESIS (or, after a legacy
+ * prefix, at the last legacy line). A segment started by rotation points at
+ * the last line of the one before it — see maybeRotate and verifyLog.
  */
 export const GENESIS = "0".repeat(32);
 
@@ -150,18 +200,34 @@ export function hashOf(line) {
   return line == null ? GENESIS : createHash("sha256").update(line).digest("hex").slice(0, 32);
 }
 
-/** The last complete line of the file, or null when there is none. */
+/**
+ * The last complete line of the file, or null when there is none.
+ *
+ * Read backwards a chunk at a time until a newline is found before it. It
+ * read a fixed 64 KB, so a single line longer than that came back as its own
+ * tail, the next `prev` hashed a fragment, and the chain broke with nobody
+ * having touched the file.
+ */
 function lastLine(file) {
-  if (!existsSync(file)) return null;
-  const { size } = statSync(file);
-  if (size === 0) return null;
-  const from = Math.max(0, size - 64 * 1024);
-  const fd = openSync(file, "r");
+  let fd;
+  try { fd = openSync(file, "r"); } catch { return null; }
   try {
-    const buf = Buffer.alloc(size - from);
-    readSync(fd, buf, 0, buf.length, from);
-    const lines = buf.toString("utf8").split("\n").filter((l) => l.trim());
-    return lines.length ? lines[lines.length - 1] : null;
+    const CHUNK = 64 * 1024;
+    let pos = fstatSync(fd).size;
+    let acc = Buffer.alloc(0);
+    while (pos > 0) {
+      const from = Math.max(0, pos - CHUNK);
+      const buf = Buffer.alloc(pos - from);
+      readSync(fd, buf, 0, buf.length, from);
+      acc = Buffer.concat([buf, acc]);
+      pos = from;
+      const lines = acc.toString("utf8").split("\n");
+      let i = lines.length - 1;
+      while (i >= 0 && !lines[i].trim()) i--;
+      // Whole once something precedes it in the buffer, or the file starts here.
+      if (i > 0 || (i === 0 && pos === 0)) return lines[i];
+    }
+    return null;
   } finally {
     closeSync(fd);
   }
@@ -243,21 +309,30 @@ function reapable(lock, staleMs) {
  * Walk the file and say where the chain breaks.
  *
  * Lines written before the chain existed have no `prev`; they are counted as an
- * unchained prefix, not reported as tampering. After the first chained line,
- * a line without `prev` is itself a break.
+ * unchained prefix, not reported as tampering — but only where such a prefix
+ * can be: at the head of the oldest segment (`legacy`). After the first chained
+ * line, and anywhere in a segment that rotation started, a line without `prev`
+ * is itself a break. So is a rotation marker without one: seisin never wrote
+ * such a marker.
+ *
+ * `digest` hashes the unchained prefix and `first` is the hash of the first
+ * chained line: what the genesis record pins (see recordGenesis).
  */
-function walk(file, { seed = GENESIS, startLine = 0 } = {}) {
-  const out = { lines: 0, unchained: 0, chained: 0, breaks: [], tail: null };
-  if (!existsSync(file)) return out;
+function walk(file, { seed = GENESIS, startLine = 0, legacy = true } = {}) {
+  const out = { lines: 0, unchained: 0, chained: 0, breaks: [], tail: null, digest: null, first: null, rotated: false };
+  const prefix = createHash("sha256");
   let previous = null;
   let started = false;
-  for (const line of readFileSync(file, "utf8").split("\n")) {
-    if (!line.trim()) continue;
+  for (const line of readLines(file)) {
     out.lines++;
     let e = null;
     try { e = JSON.parse(line); } catch {}
     const prev = e?.prev;
-    if (!started && prev === undefined) { out.unchained++; previous = line; continue; }
+    if (out.lines === 1 && e?.event === "rotated") out.rotated = true;
+    if (!started && prev === undefined && legacy && !out.rotated) {
+      out.unchained++; prefix.update(line + "\n"); previous = line; continue;
+    }
+    if (!started) out.first = hashOf(line);
     started = true;
     const first = out.chained === 0 && out.unchained === 0;
     // A rotation marker leading a segment we have nothing to check it against —
@@ -266,20 +341,56 @@ function walk(file, { seed = GENESIS, startLine = 0 } = {}) {
     // called a break. For any later segment the seed is the real previous tail,
     // so the marker's `prev` IS checked, and a whole segment deleted or
     // reordered in the middle shows.
-    const rotationStart = first && e?.event === "rotated" && seed === GENESIS;
+    const rotationStart = first && e?.event === "rotated" && prev !== undefined && seed === GENESIS;
     const expected = first ? seed : hashOf(previous);
-    const ok = rotationStart || prev === expected || (first && prev === hashOf(previous));
+    const ok = prev !== undefined && (rotationStart || prev === expected || (first && prev === hashOf(previous)));
     if (!ok) out.breaks.push({ line: startLine + out.lines, expected, found: prev ?? null });
     out.chained++;
     previous = line;
   }
   out.tail = previous;
+  out.digest = out.unchained ? prefix.digest("hex").slice(0, 32) : null;
   return out;
 }
 
 export function verifyChain(file, seed = GENESIS) {
   const r = walk(file, { seed });
   return { lines: r.lines, unchained: r.unchained, chained: r.chained, breaks: r.breaks };
+}
+
+/**
+ * Where the chain begins, written once beside the log.
+ *
+ * The unchained prefix was taken on trust, and that was the hole: strip `prev`
+ * from every line and the whole log becomes "from before the chain", so an
+ * edit or a deletion anywhere in it verified as intact. The record pins the
+ * boundary the first time a chained line is written by a seisin that knows to
+ * — how many legacy lines there were, a digest of them, and the hash of the
+ * first chained line — so a log that no longer matches it is broken, not old.
+ *
+ * Written under the log lock, by `append`, and never rewritten. A log whose
+ * record is missing (written by an older seisin and not appended to since, or
+ * the record deleted) verifies as before and says the genesis is unrecorded.
+ */
+export function genesisPath(file) {
+  return file + ".genesis";
+}
+
+function recordGenesis(file) {
+  const oldest = logSegments(file)[0];
+  if (!oldest) return;
+  const r = walk(oldest);
+  if (!r.first) return;               // nothing chained yet: nothing to pin
+  writeFileSync(genesisPath(file), JSON.stringify({
+    at: new Date().toISOString(), legacy: r.unchained, digest: r.digest, first: r.first,
+  }) + "\n", { flag: "wx" });
+}
+
+function readGenesis(file) {
+  try {
+    const g = JSON.parse(readFileSync(genesisPath(file), "utf8"));
+    return g && Number.isInteger(g.legacy) && typeof g.first === "string" ? g : null;
+  } catch { return null; }
 }
 
 /**
@@ -291,40 +402,72 @@ export function verifyChain(file, seed = GENESIS) {
  * single segment and this is exactly `verifyChain`. What it cannot see is a
  * segment dropped off the *oldest* end by the keep limit: that is retention, not
  * tampering, and the count of segments is reported so the drop is not silent.
+ *
+ * `genesis` says whether the chain's starting point was checked against its
+ * record: `recorded`, `unrecorded` (no record yet — see recordGenesis), or
+ * `pruned` (the segment it described was dropped for retention).
  */
 export function verifyLog(file) {
   const segs = logSegments(file);
-  const agg = { lines: 0, unchained: 0, chained: 0, breaks: [], segments: segs.length, dropped: countLines(droppedPath(file)) };
+  const agg = { lines: 0, unchained: 0, chained: 0, breaks: [], segments: segs.length, dropped: countLines(droppedPath(file)), genesis: "unrecorded" };
+  const pinned = readGenesis(file);
   let seed = GENESIS;
-  for (const seg of segs) {
-    const r = walk(seg, { seed, startLine: agg.lines });
+  segs.forEach((seg, i) => {
+    const r = walk(seg, { seed, startLine: agg.lines, legacy: i === 0 });
+    if (i === 0 && pinned) {
+      if (r.rotated) agg.genesis = "pruned";
+      else {
+        agg.genesis = "recorded";
+        // Where the first chained line should be, and what it should hash to.
+        const at = pinned.legacy + 1;
+        if (r.unchained !== pinned.legacy || r.first !== pinned.first)
+          r.breaks.unshift({ line: at, expected: pinned.first, found: r.unchained !== pinned.legacy ? null : r.first, genesis: true });
+        else if ((r.digest ?? null) !== (pinned.digest ?? null))
+          r.breaks.unshift({ line: 1, expected: pinned.digest, found: r.digest, genesis: true });
+      }
+    }
     agg.lines += r.lines;
     agg.unchained += r.unchained;
     agg.chained += r.chained;
     agg.breaks.push(...r.breaks);
     seed = hashOf(r.tail);
-  }
+  });
   return agg;
 }
 
-/** Reads entries, newest last. A malformed line is skipped, never fatal. */
+/**
+ * Reads entries, newest last, across every segment. A malformed line is
+ * skipped, never fatal.
+ *
+ * It read the current segment only, so the first rotation (8 MiB) took the
+ * history out from under everything that reads a window — the console, causes,
+ * walls, the staleness of a request — without a word. Segments are read newest
+ * first and the walk stops at the first one that ends before `since`, or once
+ * `limit` entries are in hand.
+ */
 export function read(file, { role, verdict, since, limit = 0 } = {}) {
-  if (!existsSync(file)) return [];
-  let out = [];
-  for (const line of readFileSync(file, "utf8").split("\n")) {
-    if (!line.trim()) continue;
-    let e;
-    try {
-      e = JSON.parse(line);
-    } catch {
-      continue; // a half-written line from a killed process is not an error
+  const parts = [];
+  let have = 0;
+  for (const seg of logSegments(file).reverse()) {
+    if (since && seg !== file) {
+      // A retired segment that ended before the window has nothing in it.
+      let last = null;
+      try { last = JSON.parse(lastLine(seg)); } catch {}
+      if (typeof last?.at === "string" && last.at < since) break;
     }
-    if (e.event === "rotated") continue; // a structural marker, not a decision
-    if (role && e.role !== role) continue;
-    if (verdict && e.verdict !== verdict) continue;
-    if (since && e.at < since) continue;
-    out.push(e);
+    const got = [];
+    for (const e of readEntries(seg)) {
+      if (e.event === "rotated") continue; // a structural marker, not a decision
+      if (role && e.role !== role) continue;
+      if (verdict && e.verdict !== verdict) continue;
+      if (since && e.at < since) continue;
+      got.push(e);
+    }
+    parts.unshift(got);
+    have += got.length;
+    if (limit > 0 && have >= limit) break;
   }
+  let out = parts.flat();
   if (limit > 0 && out.length > limit) out = out.slice(-limit);
   return out;
 }
