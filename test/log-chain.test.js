@@ -11,11 +11,8 @@ import { boxed } from "./_tmp.js";
 
 import { append, withLock, droppedPath, verifyChain, verifyLog, logSegments, read, GENESIS } from "../src/log.js";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const BOX = join(HERE, ".sandbox-box");
 
 function logFile() {
-  mkdirSync(BOX, { recursive: true });
   return join(boxed("chain-"), ".seisin", "log.jsonl");
 }
 const write = (f, n) => { for (let i = 0; i < n; i++) append(f, { role: "r", action: "write", target: `t${i}`, verdict: "denied" }); };

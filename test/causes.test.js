@@ -110,8 +110,6 @@ test("the time window narrows what comes from the log, and nothing else", async 
   const { mkdtempSync, mkdirSync, writeFileSync } = await import("node:fs");
   const { join, dirname } = await import("node:path");
   const { fileURLToPath } = await import("node:url");
-  const box = join(dirname(fileURLToPath(import.meta.url)), ".sandbox-box");
-  mkdirSync(box, { recursive: true });
   const dir = boxed("window-");
   writeFileSync(join(dir, "seisin.toml"), '[roles.a]\nwrites = ["src/**"]\n');
   mkdirSync(join(dir, ".seisin"));
@@ -139,8 +137,6 @@ test("'all' is never smaller than a window inside it", async () => {
   const { mkdtempSync, mkdirSync, writeFileSync } = await import("node:fs");
   const { join, dirname } = await import("node:path");
   const { fileURLToPath } = await import("node:url");
-  const box = join(dirname(fileURLToPath(import.meta.url)), ".sandbox-box");
-  mkdirSync(box, { recursive: true });
   const dir = boxed("window-");
   writeFileSync(join(dir, "seisin.toml"), '[roles.a]\nwrites = ["src/**"]\n');
   mkdirSync(join(dir, ".seisin"));
