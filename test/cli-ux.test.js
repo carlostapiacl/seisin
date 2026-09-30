@@ -408,3 +408,18 @@ test("scan: a secret-named file alone is listed and exits 0", () => {
   assert.match(r.out, /1 file\(s\) that usually hold secrets/);
   assert.doesNotMatch(r.out, /nothing credential-shaped/);
 });
+
+/* ── 15. walls at a terminal ──────────────────────────────────────────────── */
+
+test("walls from a terminal speaks to the operator, not to the agent", async () => {
+  const { append, logPath } = await import("../src/log.js");
+  const dir = demo();
+  for (let i = 0; i < 3; i++)
+    append(logPath(dir), { role: "frontend", action: "write", target: "backend/src/server.py", verdict: "denied", owners: ["backend"] });
+  const r = sh(dir, "walls", "frontend");
+  assert.equal(r.code, 1, r.all);
+  assert.match(r.out, /frontend keeps hitting:/);
+  assert.match(r.out, /3×\s+write backend\/src\/server\.py\s+belongs to backend/);
+  assert.match(r.out, /2 of its calls went into retrying these/);
+  assert.doesNotMatch(r.out, /you have|your calls|Do not retry/);
+});
