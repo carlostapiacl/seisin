@@ -912,6 +912,15 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       lede += " <b>" + f.unowned.toLocaleString() + "</b> of the " + (f.distinct || f.causes.length).toLocaleString() +
               " are on paths <b>no role owns</b> \u2014 a grant cannot settle those until " +
               "somebody claims them.";
+    /* Of those, what is a decision. The rest is git's locks, a tool's scratch, build output
+       or a credential: each has its own answer, and handing it to whoever asked widens. */
+    var kinds = st.unowned && st.unowned.kinds;
+    if (f.unowned && kinds && kinds.territory && kinds.territory.paths < f.unowned)
+      lede += " Only <b>" + kinds.territory.paths.toLocaleString() + "</b> of those " +
+              (kinds.territory.paths === 1 ? "is" : "are") + " territory \u2014 the rest is " +
+              ["git", "temporary", "build", "credential"].filter(function(k){ return kinds[k] && kinds[k].paths; })
+                .map(function(k){ return kinds[k].paths.toLocaleString() + " " + k; }).join(", ") +
+              ", each with its own fix and none of them an owner.";
     var closed = (st.protected ? st.protected.paths : 0);
     if (closed)
       lede += " <b>" + closed.toLocaleString() + "</b> " + (closed === 1 ? "is" : "are") +
@@ -936,7 +945,9 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
         '<div class="who">' + esc(who) +
           (c.standing === "protected" ? ' · protected: ' + esc(c.why || "") :
            c.standing === "outside" ? ' · ' + esc(c.why || "outside the map") :
-           c.owners && c.owners.length ? ' · owned by ' + esc(c.owners.join(", ")) : ' · owned by nobody') +
+           c.owners && c.owners.length ? ' · owned by ' + esc(c.owners.join(", ")) :
+           ' · owned by nobody' + (c.kind ? ' · <b title="' + escA(c.hint || "") + '">' + esc(c.kind) + '</b>' +
+             (c.kind !== "territory" && c.hint ? ': ' + esc(c.hint) : '') : '')) +
           (cold ? ' · <b>granted since</b>' : '') + '</div>' +
         '<div class="t"><span class="f" style="width:' + w + '%"></span></div></div>' +
         '<div class="num">' + c.times.toLocaleString() +
