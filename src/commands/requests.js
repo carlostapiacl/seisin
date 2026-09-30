@@ -119,24 +119,20 @@ function limitWords(limit, role) {
 }
 
 export function grant(config, argv = []) {
-  const req = pick(config, argv[0]);
   const i = argv.indexOf("--reason");
   const reason = i === -1 ? "" : argv[i + 1] ?? "";
 
-  refuseIfBarred(config, req);
-  // Under a lock, and written atomically: a concurrent grant (another terminal
-  // or the console) must not clobber this one. See editPolicy.
-  let changed;
-  try {
-    ({ changed } = editPolicy(config, (before) => applyGrant(before, req, reason)));
-  } catch (e) {
-    if (e.code === "ELOCKED")
-      throw new Error("another grant is in progress — run this again in a moment");
-    throw e;
-  }
+  // Looked up, applied and settled under one lock — the one the console's
+  // decide takes too. Picking before the lock let this and the console both
+  // find the same request open and act on it twice.
+  let req;
+  const { changed } = underLock(() => editPolicy(config, (before) => {
+    req = pick(config, argv[0]);
+    refuseIfBarred(config, req);
+    return applyGrant(before, req, reason);
+  }, { after: (r) => { if (r.changed) settle(requestsPath(config.root), req.key, "granted", reason); } }));
   if (!changed) throw new Error(`${req.role} already has ${req.grant} — nothing to add`);
 
-  settle(requestsPath(config.root), req.key, "granted", reason);
   out(
     `\n  ${C.green}granted${C.off}  ${req.role} → ${C.b}${req.grant}${C.off}\n` +
     `  ${C.dim}written into ${config.path} with its provenance. It applies on the next run.${C.off}\n\n`
@@ -144,12 +140,28 @@ export function grant(config, argv = []) {
   return { request: req, grant: req.grant };
 }
 
+/** A held lock is another decision in flight, not a failure of this one. */
+function underLock(fn) {
+  try {
+    return fn();
+  } catch (e) {
+    if (e.code === "ELOCKED")
+      throw new Error("another decision is in progress — run this again in a moment");
+    throw e;
+  }
+}
+
 export function deny(config, argv = []) {
-  const req = pick(config, argv[0]);
   const i = argv.indexOf("--reason");
   const reason = i === -1 ? "" : argv[i + 1] ?? "";
 
-  settle(requestsPath(config.root), req.key, "denied", reason);
+  // The policy is not edited, but the lock is still the policy's: it is the one
+  // every decision takes, so a decline cannot settle what a grant is applying.
+  let req;
+  underLock(() => editPolicy(config, (before) => {
+    req = pick(config, argv[0]);
+    return { toml: before, changed: false };
+  }, { after: () => settle(requestsPath(config.root), req.key, "denied", reason) }));
   out(
     `\n  ${C.yellow}declined${C.off}  ${req.role} ✕ ${req.grant}\n` +
     `  ${C.dim}${reason || "no reason recorded"}${C.off}\n\n`

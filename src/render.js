@@ -179,8 +179,13 @@ export function renderScan(result, keyDirs) {
   const where = keyDirs.length ? keyDirs.join(", ") : `${C.yellow}nowhere — [keys] dir is unset${C.off}`;
   const lines = [`\n  ${C.dim}protected: ${where}${C.off}\n\n`];
 
+  // A pruned checkout is part of what a clean result means, so it is said
+  // even when there is nothing else to say.
+  const nested = skipped.nested
+    ? `  ${C.dim}not scanned: ${skipped.nested} nested checkout(s) — scan each from its own root${C.off}\n\n`
+    : "";
   if (certain.length === 0 && review.length === 0 && links.length === 0) {
-    lines.push(`  ${C.green}nothing credential-shaped outside the declared directories${C.off}\n\n`);
+    lines.push(`  ${C.green}nothing credential-shaped outside the declared directories${C.off}\n\n`, nested);
     return lines.join("");
   }
 
@@ -217,7 +222,9 @@ export function renderScan(result, keyDirs) {
   if (skipped.ignored) quiet.push(`${skipped.ignored} ignored path(s)`);
   if (skipped.protectedDirs) quiet.push(`${skipped.protectedDirs} inside declared key dir(s)`);
   if (quiet.length) lines.push(`  ${C.dim}not reported: ${quiet.join(" · ")}${C.off}\n`);
-  if (truncated) lines.push(`  ${C.yellow}stopped at the limit — there are more${C.off}\n`);
+  // Only the ones to review are capped; a certain hit is always listed above.
+  if (truncated) lines.push(`  ${C.yellow}${result.omitted ?? "more"} more to review were not listed — the cap applies to review, never to certain hits${C.off}\n`);
+  if (nested) lines.push(nested.trimEnd() + "\n");
   lines.push(`  ${C.dim}seisin does not move these. Where a credential lives is your call.${C.off}\n\n`);
   return lines.join("");
 }

@@ -8,13 +8,14 @@ import { scan } from "../scan.js";
 import { renderScan, out } from "../render.js";
 
 export function scanCommand(config) {
-  const { hits, skipped, truncated } = scan(config.root, config.keyDirs, config.scanIgnore);
+  const { hits, skipped, truncated, omitted } = scan(config.root, config.keyDirs, config.scanIgnore);
   const result = {
     certain: hits.filter((h) => h.level === "certain"),
     review: hits.filter((h) => h.level === "review"),
     links: hits.filter((h) => h.level === "link"),
     skipped,
     truncated,
+    omitted,
   };
   out(renderScan(result, config.keyDirs));
   return result;

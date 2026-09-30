@@ -15,6 +15,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { CLI, repoWith } from "./_tmp.js";
+import { record } from "../src/requests.js";
 
 const POLICY = '[roles.dev]\nwrites = ["src/**"]\n\n[roles.infra]\nwrites = ["deploy/**"]\n';
 
@@ -107,4 +108,33 @@ test("no command prints the usage and exits 0; an unknown one exits 2", () => {
   const typo = seisin(dir, "wals", "dev");
   assert.equal(typo.status, 2);
   assert.match(typo.stdout, /seisin walls <role>/);
+});
+
+/* ── what the CLI says it did not do ─────────────────────────────────── */
+
+test("scan names the nested checkouts it pruned", () => {
+  const dir = repoWith("cli-", POLICY, ["src/"]);
+  mkdirSync(join(dir, "libs", "other", ".git"), { recursive: true });
+  writeFileSync(join(dir, "libs", "other", "k.txt"), "ghp_" + "B".repeat(36) + "\n");
+  const r = seisin(dir, "scan");
+  assert.equal(r.status, 0, r.stdout);
+  assert.match(r.stdout, /1 nested checkout\(s\)/);
+});
+
+test("log verify says when the start of the chain is not recorded yet", () => {
+  const dir = repoWithLog([denial("dev", "deploy/a.yml")]);
+  const r = seisin(dir, "log", "verify");
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /intact/);
+  assert.match(r.stdout, /not recorded yet/);
+});
+
+test("a declined request is settled once, through the same lock a grant takes", () => {
+  const dir = repoWith("cli-", POLICY, ["src/"]);
+  mkdirSync(join(dir, ".seisin"), { recursive: true });
+  record(join(dir, ".seisin", "requests.jsonl"), { role: "dev", action: "write", target: "deploy/x", owners: ["infra"] });
+  const first = seisin(dir, "decline", "1");
+  assert.equal(first.status, 0, first.stderr);
+  const again = seisin(dir, "decline", "1");
+  assert.notEqual(again.status, 0, "a settled request cannot be settled again");
 });
