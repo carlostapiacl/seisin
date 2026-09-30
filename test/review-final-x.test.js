@@ -63,3 +63,51 @@ test("the policy's lock lives in the state dir, which every role is denied", () 
   assert.equal(base, join(box, ".seisin", "policy"));
   assert.ok(existsSync(join(box, ".seisin")));
 });
+
+/* ── a protected file is not something to ask for ─────────────────────── */
+
+const WEB = '[roles.web]\nwrites = ["web/**"]\nkeys = []\n';
+
+test("the hook files no request for a protected file, and says nothing was queued", async () => {
+  const { decide } = await import("../src/hook.js");
+  const box = repo("seisin-x-hookprot-", WEB);
+  mkdirSync(join(box, "web", ".vscode"), { recursive: true });
+  writeFileSync(join(box, "web", ".vscode", "settings.json"), "{}");
+  const cfg = loadConfig(join(box, "seisin.toml"));
+  const asked = [];
+  const out = decide(cfg, "web",
+    { tool_name: "Write", tool_input: { file_path: join(box, "web", ".vscode", "settings.json") } },
+    { now: () => true, ask: (_f, r) => asked.push(r) });
+  assert.equal(out.decision, "deny");
+  assert.deepEqual(asked, [], "a request no grant can satisfy was queued");
+  assert.match(out.hookSpecificOutput.permissionDecisionReason, /Nothing was queued/);
+  assert.doesNotMatch(out.hookSpecificOutput.permissionDecisionReason, /Already queued/);
+});
+
+test("a grant for a family the role is not handed is refused, naming control_files", () => {
+  const box = repo("seisin-x-grantfam-", WEB);
+  mkdirSync(join(box, "web", ".vscode"), { recursive: true });
+  // A request queued before the hook stopped filing these.
+  record(requestsPath(box), { role: "web", action: "write", target: "web/.vscode/settings.json", owners: [] });
+  const cfg = loadConfig(join(box, "seisin.toml"));
+  const before = readFileSync(join(box, "seisin.toml"), "utf8");
+  assert.throws(() => grant(cfg, ["1"]), /control_files = \["ide"\]/);
+  assert.equal(readFileSync(join(box, "seisin.toml"), "utf8"), before, "the policy was edited anyway");
+  assert.equal(pending(requestsPath(box)).length, 1, "left for a person to decline");
+});
+
+test("a grant for a file no role can have says it can never be granted", () => {
+  const box = repo("seisin-x-grantclaude-", WEB);
+  mkdirSync(join(box, "web", ".claude"), { recursive: true });
+  record(requestsPath(box), { role: "web", action: "write", target: "web/.claude/settings.json", owners: [] });
+  const cfg = loadConfig(join(box, "seisin.toml"));
+  assert.throws(() => grant(cfg, ["1"]), /no role can ever be granted it/);
+});
+
+test("once the policy hands the family, the same grant goes through", () => {
+  const box = repo("seisin-x-grantide-", '[roles.web]\nwrites = ["src/**"]\nkeys = []\ncontrol_files = ["ide"]\n');
+  record(requestsPath(box), { role: "web", action: "write", target: "web/.vscode/settings.json", owners: [] });
+  const cfg = loadConfig(join(box, "seisin.toml"));
+  grant(cfg, ["1"]);
+  assert.match(readFileSync(join(box, "seisin.toml"), "utf8"), /web\/\.vscode/);
+});
