@@ -252,3 +252,30 @@ test("seisin_causes carries kind and hint, and keeps every field it had", async 
   assert.match(desc, /`kind`/);
   assert.match(desc, /territory/);
 });
+
+test("seisin review splits unowned rows by kind and says each kind's advice once", async (t) => {
+  const { loadConfig } = await import("../src/config.js");
+  const { review } = await import("../src/review.js");
+  const { reviewCommand } = await import("../src/commands/review.js");
+  const dir = repo();
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  const r = review(cfg);
+  const row = (where) => r.unowned.find((u) => u.where === where);
+  assert.equal(row("other/.git").kind, "git");
+  assert.equal(row("other/.git").times, 6);
+  assert.equal(row("legacy").kind, "territory");
+  assert.equal(row("pkg").kind, "credential");
+  assert.equal(row("bitacora").kind, "temporary", "the generated siblings, read over the whole log");
+  assert.ok(r.unowned.every((u) => u.hint === KINDS[u.kind] || u.kind === "git"));
+
+  const lines = [];
+  t.mock.method(process.stdout, "write", (s) => { lines.push(String(s)); return true; });
+  reviewCommand(cfg, ["--all"]);
+  t.mock.restoreAll();
+  const text = lines.join("").replace(/\x1b\[[0-9;]*m/g, "");
+  assert.match(text, /Only `territory` is a hole in the map/);
+  assert.match(text, /6×\s+git\s+other\/\.git/);
+  assert.match(text, /territory\s+legacy/);
+  assert.equal(text.split("GIT_OPTIONAL_LOCKS").length - 1, 1, "the advice is said once per kind, not per row");
+  assert.match(text, /credential: credential-shaped: never grant a write/);
+});

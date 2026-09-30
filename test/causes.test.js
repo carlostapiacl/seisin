@@ -209,7 +209,7 @@ test("`seisin review` and the console mean the same thing by unowned", async () 
   const cfg = loadConfig(path);
   // review skipped keys and ports and counted protected paths; the console
   // counted all four. One word, two numbers.
-  assert.deepEqual(review(cfg).unowned, [{ where: "legacy", times: 1 }]);
+  assert.deepEqual(review(cfg).unowned.map(({ where, times }) => ({ where, times })), [{ where: "legacy", times: 1 }]);
   assert.equal(causesOf(cfg, MIXED).unowned, 1);
 });
 
