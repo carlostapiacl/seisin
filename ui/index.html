@@ -437,6 +437,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     #kpis.compact .card{flex:0 0 auto}
     .ctl-row{flex-direction:column;align-items:flex-start}
     .preview input{width:100%}
+    .places li{flex-direction:column;gap:2px}
   }
 </style>
 </head>
@@ -1984,7 +1985,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     var from = document.getElementById("range-from");
     var isFrom = RANGE.indexOf("from:") === 0;
     document.querySelectorAll("#range .seg button").forEach(function(b){
-      var on = b.dataset.r === RANGE || (b.dataset.r === "custom" && (isFrom || CUSTOM));
+      var on = b.dataset.r === "custom" ? (isFrom || CUSTOM) : (b.dataset.r === RANGE && !CUSTOM);
       b.classList.toggle("on", on);
       b.setAttribute("aria-pressed", on ? "true" : "false");
     });
