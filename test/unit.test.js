@@ -23,7 +23,7 @@ import { redactor } from "../src/redact.js";
 import { scan } from "../src/scan.js";
 import { targetsOf, decide } from "../src/hook.js";
 import { read, generalise } from "../src/log.js";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 import { inspect, sharedPaths } from "../src/inspect.js";
 import { renderReport, renderVerdict } from "../src/render.js";
 import { renderConfig, renderObserved, discover } from "../src/commands/init.js";
@@ -126,8 +126,14 @@ test("sandbox-runtime convenience logs are removed from every role", () => {
   // The runtime adds these write grants behind the caller's allowWrite list.
   // A read deny makes it omit that implicit grant; the write deny also closes
   // .claude/debug beneath Seisin's intentional ~/.claude scratch grant.
+  // On Linux only the ones that exist once the profile is built are named (a
+  // missing one is not creatable there, or seisin creates it first).
   const { denyRead, denyWrite } = settingsFor(cfg, "frontend").filesystem;
   for (const suffix of ["/.npm/_logs", "/.claude/debug"]) {
+    if (process.platform === "linux" && !existsSync(join(homedir(), suffix))) {
+      assert.ok(!denyWrite.some((p) => p.endsWith(suffix)), `${suffix} named although missing`);
+      continue;
+    }
     assert.ok(denyRead.some((p) => p.endsWith(suffix)), `${suffix} still readable`);
     assert.ok(denyWrite.some((p) => p.endsWith(suffix)), `${suffix} still writable`);
   }

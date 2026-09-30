@@ -14,7 +14,7 @@ import { alive } from "../src/log.js";
 import { runsRoot, openRun } from "../src/rundir.js";
 import { recentKernelDenials } from "../src/diagnose.js";
 import { resolveSrt } from "../src/commands/run.js";
-import { scratch, repoWith as policyRepo, CLI } from "./_tmp.js";
+import { scratch, boxed, repoWith as policyRepo, CLI } from "./_tmp.js";
 
 const silently = (fn) => {
   const w = process.stdout.write;
@@ -224,4 +224,29 @@ test("without a .bin link the runtime's own bin entry is used; with no runtime, 
   const bare = scratch("seisin-nodep-");
   assert.equal(resolveSrt({ from: bare, path: c.global }), join(c.global, "srt"));
   assert.equal(resolveSrt({ from: bare, path: "" }), null);
+});
+
+/* ── the runtime's log directories on Linux ───────────────────────────── */
+
+test("on Linux a missing runtime log dir is made first where a role could make it, and left out where it could not", { skip: process.platform !== "linux" && "Linux only" }, async () => {
+  const { settingsFor } = await import("../src/srt.js");
+  const { loadConfig } = await import("../src/config.js");
+  // Not under the temp dir: that is a runtime scratch every role may write, and
+  // a ~/.npm there would be creatable — and rightly made first and denied.
+  const home = boxed("seisin-home-");
+  mkdirSync(join(home, ".claude"));                   // the scratch every role gets
+  mkdirSync(join(home, ".npm"));                      // not granted to any role
+  const repo = scratch("seisin-logs-");
+  writeFileSync(join(repo, "seisin.toml"), '[roles.dev]\nwrites = ["src/**"]\n');
+  const was = process.env.HOME;
+  process.env.HOME = home;
+  try {
+    const { denyWrite } = settingsFor(loadConfig(join(repo, "seisin.toml")), "dev").filesystem;
+    assert.ok(existsSync(join(home, ".claude", "debug")), "~/.claude/debug was not made first");
+    assert.ok(denyWrite.some((p) => p.endsWith("/.claude/debug")), "~/.claude/debug is not denied");
+    assert.ok(!denyWrite.some((p) => p.endsWith("/.npm/_logs")), "a missing ~/.npm/_logs was named");
+    assert.ok(!existsSync(join(home, ".npm", "_logs")), "~/.npm/_logs was created");
+  } finally {
+    process.env.HOME = was;
+  }
 });
