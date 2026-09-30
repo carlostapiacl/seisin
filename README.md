@@ -106,7 +106,7 @@ On Linux, [three system packages first](#install). Everything below is why it wo
 
 ## Why this exists
 
-Two things are true about agent permissions today, and both are in the official docs.
+Two things are true about how agents are kept in bounds today, and both are in the official docs.
 
 **1. Permission rules match text, not behaviour.** From the Claude Code documentation:
 
@@ -224,10 +224,10 @@ the commands compose in a script, a pre-commit hook or CI:
 | `check` | the policy can be enforced (warnings included) | a role cannot be enforced as written | |
 | `explain` | allowed | denied | |
 | `scan` | no certain credential | a certain credential outside the key dirs | |
-| `review` | no role stopped repeatedly | a role stopped repeatedly | |
+| `review` | no role denied repeatedly | a role denied repeatedly | |
 | `walls` | no walls | walls listed | |
 | `requests` | nothing pending | requests pending | |
-| `log verify` | the chain holds | the chain is broken | |
+| `log verify` | the hash chain holds | the hash chain is broken | |
 | `whose`, `grant`, `decline`, `log`, `init`, `wire`, `ui`, `watch`, `mcp` | done | — | |
 | `hook` | always | — | |
 
@@ -374,18 +374,34 @@ actually happened and tells you where the config was wrong about it.
 ```
 $ seisin review
 
-  60 decisions, 2026-08-23 to 2026-09-11
+  60 entries, 2026-08-23 to 2026-09-11
 
-  Stopped, repeatedly
+  Denied repeatedly
+  a role denied on the same place over and over is a policy that is wrong,
+  not an agent that is misbehaving
+
        9×  frontend write src/api/checkout — belongs to backend
        4×  backend write src/web — belongs to frontend
 
-  Granted, never used
-    frontend  public/**
-    backend   migrations/**
+  seisin grant, or move the territory. Either way it is a decision, not noise.
 
-  Owned by nobody
-       5×  legacy
+  Granted, never used
+  nothing was written here in the window above. This is the only evidence
+  anyone will ever have for making a policy smaller
+
+    frontend  public/**
+    backend  migrations/**
+
+  A short window proves nothing. Check the dates before you delete a line.
+
+  Unowned
+  touched by an agent, claimed by no role. Only an ownable path (kind `territory`)
+  is a hole in the map; the rest is a kind of thing with its own answer, and none
+  of them is an owner
+
+       4×  territory  legacy
+
+  territory: an ownable path no role claims: a real decision — give it an owner, or tell the agent not to write there
 ```
 
 Three questions, and the middle one is the reason this exists. **Every
@@ -429,8 +445,8 @@ policy: diff it, then move it.
 
 A permission tool that can only say no is a tool people uninstall — the loop of *denied,
 stop, edit a config, run again* is three context switches for one line of policy, and the
-cheapest way to stop it is to widen the policy and never look again. That is how a permission
-file becomes seven hundred entries nobody reads.
+cheapest way to stop it is to widen the policy and never look again. That is how an allowlist
+becomes seven hundred entries nobody reads.
 
 So a denial leaves something to act on, and many denials in one directory are **one** request:
 
@@ -639,14 +655,25 @@ And the standing list is a command:
 
 ```
 $ seisin walls dev
-WALLS — you have already been denied these, and the policy still denies them.
-Do not retry; the reason is where the other way in is.
-  19× write ../shared/.git/index.lock
-      belongs to platform
-  6× read ~/.npmrc
-      no role declares ~/.npmrc — add it under a [roles.<name>] keys list
-  (23 of your calls went into retrying these.)
+
+  dev keeps hitting:
+
+     19×  write ../shared/.git/index.lock  belongs to platform
+      6×  read ~/.npmrc  no role declares ~/.npmrc — add it under a [roles.<name>] keys list
+
+  23 of its calls went into retrying these.
 ```
+
+That is the list said to the person at the terminal. The agent gets it in its own voice, at the
+start of every session the hook is wired for:
+
+```
+Already denied more than once, and still denied — do not try again, hand it over:
+- write ../shared/.git/index.lock (19×) — belongs to platform
+- read ~/.npmrc (6×) — no role declares ~/.npmrc — add it under a [roles.<name>] keys list
+```
+
+and, on request, as data from the MCP server's `seisin_walls`.
 
 **A wall is recomputed against the policy, not read out of the log.** If the role would be
 allowed today, it is not a wall — whatever happened yesterday. The obvious implementation is a
@@ -732,7 +759,7 @@ This space already has good work, and seisin is not the first thing here:
 
 - [`anthropics/sandbox-runtime`](https://github.com/anthropics/sandbox-runtime) — the enforcement. seisin is a thin thing on top of a serious one.
 - [`kornysietsma/claude-code-permissions-hook`](https://github.com/kornysietsma/claude-code-permissions-hook) — granular `PreToolUse` rules, one global policy.
-- [`XuebinMa/agent-guard`](https://github.com/XuebinMa/agent-guard) — a permission-enforcement SDK, also one global policy.
+- [`XuebinMa/agent-guard`](https://github.com/XuebinMa/agent-guard) — an SDK that enforces what an agent may do, also one global policy.
 - [`NVIDIA/OpenShell`](https://github.com/NVIDIA/openshell) — a runtime that sandboxes an agent with Landlock and seccomp, under a declarative policy. Serious, and the closest thing here by weight. It was evaluated as a possible backend; [the measured compatibility decision](docs/openshell.md) explains why it is currently an execution target candidate rather than a drop-in replacement.
 - [`dredozubov/hazmat`](https://github.com/dredozubov/hazmat) — runs the agent as a different system user, with `pf` rules and snapshots.
 - [`nolabs-ai/nono`](https://github.com/nolabs-ai/nono) — a kernel sandbox for agents on the host (Seatbelt, Landlock), with per-tool child sandboxes, a credential proxy with endpoint filtering, approval webhooks and a tamper-evident audit log. The most complete sandbox here, and on a Mac the one that enforces through the same kernel seisin does. `nono why` explains *which rule* denied something and how to allow it; it has no notion of *whose* it was.
@@ -761,12 +788,12 @@ the same kernel or workspace, and which one you want depends on what you are pro
 
 ## Status
 
-`0.5.0`, 748 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
+`0.5.0`, 776 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 when there were eighteen of them, they skipped on Linux for a day, behind a runtime check that looked for the global
 install and missed the bundled one, and hid a defect that broke `seisin run` on that platform
-entirely. **748 tests on macOS 15, 743 passing, 2 skipped** (they are Linux-only) **and 3 marked todo** (word rules not yet promoted) — 2026-09-30;
+entirely. **776 tests on macOS 15, 774 passing and 2 skipped** (they are Linux-only) — 2026-09-30;
 `ubuntu-latest` under bubblewrap runs the same suite, Node 18/20/22/24 in CI at every push — and 225/225 the same way on Debian 12.15
 with bubblewrap 0.8.0, the last time the suite was run in Docker.
 [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),
