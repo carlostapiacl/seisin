@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync, existsSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
-import { CLI, boxed, repoWith, srtSkip } from "./_tmp.js";
+import { CLI, boxed, scratch, repoWith, srtSkip } from "./_tmp.js";
 
 const TOML = `[keys]
 dir = ".secrets"
@@ -194,7 +194,9 @@ test("an unknown command, flag, role or action is one line and exit 2", () => {
 });
 
 test("without a policy every command says so in one line", () => {
-  const dir = boxed("ux-empty-");
+  // Not under the checkout: seisin looks for a policy upward, and a checkout
+  // that sits inside a governed folder would find that folder's seisin.toml.
+  const dir = scratch("ux-empty-");
   for (const cmd of [["check"], ["requests"], ["explain", "a", "read", "x"], ["log"]]) {
     const r = sh(dir, ...cmd);
     assert.equal(r.code, 2, cmd.join(" "));
