@@ -74,6 +74,29 @@ test("a well-formed denial still comes back as a decision through the CLI", () =
   const r = hook(env, { hook_event_name: "PreToolUse", tool_name: "Write", tool_input: { file_path: "src/api/x.ts" } });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, "deny");
+  // Nothing beyond the protocol: Codex drops a hook answer with any other field.
+  assert.deepEqual(Object.keys(JSON.parse(r.stdout)), ["hookSpecificOutput"]);
+});
+
+test("a Codex apply_patch names its files in the patch headers, and those are the targets", () => {
+  // The event as codex 0.150.1 sends it (2026-09-30): the patch in tool_input.command.
+  const patch = "*** Begin Patch\n*** Update File: /r/front/README.md\n@@\n-a\n+b\n" +
+    "*** Add File: src/new.ts\n+x\n*** Delete File: old.txt\n" +
+    "*** Update File: a.ts\n*** Move to: b.ts\n*** End Patch\n";
+  assert.deepEqual(targetsOf("apply_patch", { command: patch }).map((t) => t.path),
+    ["/r/front/README.md", "src/new.ts", "old.txt", "a.ts", "b.ts"]);
+  assert.ok(targetsOf("apply_patch", { command: patch }).every((t) => t.action === "write"));
+  assert.deepEqual(targetsOf("apply_patch", { command: "+*** Add File: not-a-header" }), []);
+  assert.deepEqual(targetsOf("apply_patch", null), []);
+  assert.match("apply_patch", new RegExp(TOOL_MATCHER));
+});
+
+test("a Codex apply_patch outside the territory is denied by the hook, before the kernel", () => {
+  const { env } = policy();
+  const r = hook(env, { hook_event_name: "PreToolUse", tool_name: "apply_patch",
+    tool_input: { command: "*** Begin Patch\n*** Add File: src/api/x.ts\n+x\n*** End Patch\n" } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, "deny");
 });
 
 /* ── P1-9: the PreToolUse matcher ──────────────────────────────────────── */

@@ -14,7 +14,7 @@ actually been exercised:
 | **Claude Code** (`claude -p`) | 2.1.x | Territory and keys enforced; HTTP(S) egress denied an undeclared domain by name |
 | **opencode** (`opencode run`) | **1.18.30** | Same, **on a free model with no API key at all** |
 | **LangGraph** (`python graph.py`) | **1.2.11** | Same, **enforced against the interpreter's own `open()`** — in-process tools, no child command to match |
-| **codex** (`codex exec`) | **0.150.1** | Same, with its own sandbox off — see below. Denied twice: its patch tool, then the shell redirect it fell back to |
+| **codex** (`codex exec`) | **0.150.1** | Same, with its own sandbox off (`-s danger-full-access`) — see below. Denied twice: its patch tool, then the shell redirect it fell back to. Signed in with ChatGPT, it needs `chatgpt.com` |
 
 **seisin now says this before it starts one.** The error you get otherwise —
 `sandbox-exec: sandbox_apply: Operation not permitted` — names neither seisin, nor the agent,
@@ -26,8 +26,10 @@ The codex run is the one that needed a flag. **An agent that sandboxes itself ha
 own `sandbox-exec` profile, and macOS refuses to apply a second Seatbelt profile to a process
 that already has one — `sandbox_apply: Operation not permitted`, with the most permissive
 profile that can be written, on both layers. So an agent like that runs under seisin with its
-own sandbox turned off — `codex exec --dangerously-bypass-approvals-and-sandbox`, whose own
-help says it is "intended solely for running in environments that are externally sandboxed".
+own sandbox turned off — `codex exec -s danger-full-access`, which turns off the sandbox and
+nothing else. (`--dangerously-bypass-approvals-and-sandbox`, whose help says it is "intended
+solely for running in environments that are externally sandboxed", also works; it turns off
+approvals too, which `codex exec` does not ask for anyway.)
 It starts fine either way (`codex 0.150.1`, `gemini 0.57.0`, both verified), which is why this
 is worth saying out loud: the failure arrives later, on the first command the agent tries to
 confine.
@@ -44,6 +46,43 @@ failed too:
 Same shape as opencode, including the wrong diagnosis — it reasoned about file permissions,
 not about ownership. That is the case for the hook: the boundary holds either way, but only the
 hook can say *whose* it was.
+
+**Codex has the hook too.** Measured again on 2026-09-30 with `codex 0.150.1` signed in with a
+ChatGPT account, five short turns in a toy repository:
+
+- **Network.** With ChatGPT sign-in Codex talks to `chatgpt.com` — the model, over a websocket,
+  and its apps — and never to `api.openai.com`. Without `chatgpt.com` on the role's list it does
+  not fail: it retries without end and prints nothing to stdout, a turn that looks like thinking.
+  `ab.chatgpt.com` was denied in every turn and every turn finished. Refreshing the sign-in
+  goes to `auth.openai.com` (named in the binary; no refresh happened during the measurement).
+- **Its home.** Every turn writes `~/.codex/` — sessions, `logs_2.sqlite`, `state_5.sqlite`,
+  `models_cache.json`, `cache/` — which the default runtime grants. What Codex runs or obeys
+  from there is protected: `config.toml` (MCP servers, profiles, and the trust a hook needs),
+  `hooks.json`, `rules/`, `skills/`, `plugins/`, `managed_config.toml` and any `<name>.config.toml`
+  profile; and a project's `.codex/` whole, as `.claude/`. Codex tries to rewrite `config.toml`
+  at every start and to install OpenAI's curated plugins into `plugins/cache/`; both are denied,
+  both show in the log, and the turn goes on.
+- **The hook.** Codex sends PreToolUse and PostToolUse the event Claude Code sends — `Bash` with
+  `tool_input.command` — and its file edits as `apply_patch`, the patch in `tool_input.command`.
+  `seisin hook` reads the patch headers, so an edit is logged as `allowed` or denied before it
+  runs, like a `Write`. Codex wants the trust for a hook stored in `config.toml`, which no role
+  writes, so a confined run passes the hooks on the command line:
+
+```
+seisin run front -- codex exec -s danger-full-access --dangerously-bypass-hook-trust \
+  -c 'hooks.PreToolUse=[{matcher="^(Bash|apply_patch)$",hooks=[{type="command",command="seisin hook"}]}]' \
+  -c 'hooks.PostToolUse=[{matcher="*",hooks=[{type="command",command="seisin hook"}]}]' "…"
+```
+
+```
+  02:04:45  allowed  front write front/README.md
+  02:04:48  denied   front write fuera2.txt
+```
+
+The second line is the hook's: Codex did not run the command, and the agent was told
+`fuera2.txt has no owner`. Codex validates a hook's answer against a schema with no room for
+other fields and drops an answer that does not fit, so `seisin hook` prints only
+`hookSpecificOutput` now; before, the same turn ran the command into the kernel.
 
 All four on macOS 15 (Seatbelt). Linux is no longer a one-off measurement on one machine:
 [CI](../.github/workflows/test.yml) runs the whole suite on Ubuntu and macOS, Node 18/20/22/24,
