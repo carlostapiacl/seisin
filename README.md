@@ -754,8 +754,10 @@ than smoothed over, because the alternative is a claim the numbers do not carry.
 
 Territory alone is correct and unusable: an agent writes session state under its own config
 directory and its tools write to the temp dir, so *your folders and nothing else* stops the
-agent from starting. Every role gets `~/.claude`, `~/.cache`, `$TMPDIR` and `/tmp` — and that
-is a real hole, because two roles share a temp directory and territory does not hold in it.
+agent from starting. Every role gets `~/.cache`, `$TMPDIR` and `/tmp`, and a run of Claude Code
+or Codex gets that agent's own directory (`~/.claude`, `~/.codex`) — never the other's, nor the
+other's sign-in. Shared scratch is a real hole, because two roles share a temp directory and
+territory does not hold in it.
 It is one line to turn off.
 
 **[What that costs, and how to close it →](docs/scratch.md)**
@@ -844,12 +846,12 @@ the same kernel or workspace, and which one you want depends on what you are pro
 
 ## Status
 
-`main` (after 0.5.0), 796 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
+`main` (after 0.5.0), 811 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 when there were eighteen of them, they skipped on Linux for a day, behind a runtime check that looked for the global
 install and missed the bundled one, and hid a defect that broke `seisin run` on that platform
-entirely. **796 tests on macOS 15, 794 passing and 2 skipped** (they are Linux-only) — 2026-09-30;
+entirely. **811 tests on macOS 15, 809 passing and 2 skipped** (they are Linux-only) — 2026-09-30;
 `ubuntu-latest` under bubblewrap runs the same suite, Node 18/20/22/24 in CI at every push — and 225/225 the same way on Debian 12.15
 with bubblewrap 0.8.0, the last time the suite was run in Docker.
 [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),

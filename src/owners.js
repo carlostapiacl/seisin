@@ -16,6 +16,7 @@ import { isAbsolute, join } from "node:path";
 import { protectedBy } from "./surface.js";
 import { entriesOf, parseKey, BUILTIN } from "./keys.js";
 import { WILD, fromCwd, toRepoRelative } from "./paths.js";
+import { AGENTS, AGENT_CREDENTIALS, expand } from "./grants.js";
 
 /**
  * Does this glob cover this path? Supports `**`, `*`, `?` and a trailing `/`.
@@ -401,6 +402,26 @@ export function keyName(config, target) {
  * inside a key directory is a key question; anything else is answered as the
  * open read it is, with how to make it a key.
  */
+/**
+ * An agent's sign-in file: closed to every run but a run of that agent, which
+ * is a fact about the command and not the role (AGENT_CREDENTIALS, grants.js).
+ * explain has no command, so it answers for the ordinary case and names the
+ * exception. Nothing to grant either way, and the sentence says so: the advice
+ * it replaced was "add it to a role's keys", which would hand a ChatGPT token
+ * to a role by policy.
+ */
+function signInAnswer(role, target) {
+  if (!String(target ?? "").startsWith("/")) return null;
+  const agent = AGENTS.find((a) => AGENT_CREDENTIALS[a].map(expand).includes(target));
+  if (!agent) return null;
+  return {
+    allowed: false, owners: [], signIn: agent,
+    reason: `${target} is ${agent}'s sign-in: only a run whose command is ${agent} reads it ` +
+      `(seisin run ${role} -- ${agent} …), and the commands that run inside it. ` +
+      `Any other command run as ${role} is denied it, and there is nothing to grant`,
+  };
+}
+
 export function explainFileRead(config, role, rel, credentialHomes = []) {
   // Only a key directory makes a key: settingsFor refuses a key declared
   // anywhere else, so nothing outside one is denied by being a key.
@@ -414,6 +435,8 @@ export function explainFileRead(config, role, rel, credentialHomes = []) {
         reason: `${rel} is under ${hit}, which isolate = "${level}" closes to every role`,
       };
   }
+  const signIn = signInAnswer(role, rel);
+  if (signIn) return signIn;
   const dirs = (config.keyDirs ?? []).map(dirSpelling);
   return {
     allowed: true, owners: [], open: true,
@@ -636,6 +659,8 @@ export function explain(config, role, action, target) {
   if (action === "read") {
     const ref = refOf(target);
     if (ref) return explainRef(config, role, ref);
+    const signIn = signInAnswer(role, target);
+    if (signIn) return signIn;
     const holders = keyHolders(config, target);
     if (holders.includes(role)) return { allowed: true, owners: holders, reason: `${role} declares ${target}` };
     if (holders.length === 0) {

@@ -61,7 +61,17 @@ ChatGPT account, five short turns in a toy repository:
   `hooks.json`, `rules/`, `skills/`, `plugins/`, `managed_config.toml` and any `<name>.config.toml`
   profile; and a project's `.codex/` whole, as `.claude/`. Codex tries to rewrite `config.toml`
   at every start and to install OpenAI's curated plugins into `plugins/cache/`; both are denied,
-  both show in the log, and the turn goes on.
+  both show in the log, and the turn goes on. `--disable plugins` removes the plugin denials
+  (measured: the turn finished, one denial left, `config.toml`). So is `.tmp/plugins`, Codex's
+  copy of the curated marketplace: `codex plugin add` installs from it as it is on disk —
+  measured in a scratch `CODEX_HOME`, a file and an `.mcp.json` planted in the copy landed in
+  `plugins/cache/` and the plugin was enabled. With `CODEX_HOME` set, the same files are
+  protected where it points.
+- **Its sign-in.** `~/.codex` is scratch for a run of Codex only, and every other run is denied
+  `~/.codex/auth.json` — the ChatGPT tokens. Measured: a `cat` run as a role read them before,
+  and is denied now; a Codex turn under the change still ran. A Codex run can read its own
+  `auth.json`, because Codex and the commands it runs share one sandbox; only
+  `cli_auth_credentials_store = "keyring"` takes the tokens off the disk.
 - **The hook.** Codex sends PreToolUse and PostToolUse the event Claude Code sends — `Bash` with
   `tool_input.command` — and its file edits as `apply_patch`, the patch in `tool_input.command`.
   `seisin hook` reads the patch headers, so an edit is logged as `allowed` or denied before it

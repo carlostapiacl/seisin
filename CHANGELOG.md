@@ -36,6 +36,28 @@ repository). What it needs and what changed is in [docs/agents.md](docs/agents.m
   answer that carries any other field, so a denial was ignored and the command ran into the
   kernel. And it reads Codex's `apply_patch`, so a file edit is recorded as `allowed` or denied
   before it runs, like a `Write`.
+- **An agent's home goes to a run of that agent, and its sign-in to no other run.** `~/.claude`
+  and `~/.codex` were scratch for every run, and reads are open, so any role — a `cat` — read
+  `~/.codex/auth.json`, the ChatGPT tokens. `seisin run` now reads the agent off the command
+  (`claude`, `codex`, through `env`, `node`/`npx` and `sh -c`), grants only that agent's home,
+  and denies the other agents' sign-in files, read and write (`~/.codex/auth.json`,
+  `~/.claude/.credentials.json`). A command that is no agent gets neither home. An explicit
+  `[runtime] writes` is filtered the same way. `--agent claude|codex|none` names it for a wrapper
+  script. `check`, the console and `explain`, which have no command, show the most a run gets,
+  and `check` lists it among the standing limits. What stays open: a run of Codex reads its own
+  `auth.json`.
+  *Breaking for a run whose command hides the agent* (`./wrapper.sh` that starts `claude`): add
+  `--agent claude`, or the agent cannot write its home.
+- **`explain` and `walls` call a sign-in a sign-in.** A denied read of `~/.codex/auth.json` said
+  "add it to a role's keys", which would hand a token to a role by policy.
+- **`~/.codex/.tmp/plugins` is protected.** It is Codex's copy of the curated plugin marketplace,
+  and `codex plugin add` installs from it as it is on disk.
+- **`CODEX_HOME` is followed.** When it is set, the files Codex runs or obeys are protected
+  where it points, as they are under `~/.codex`.
+- **`check` warns a role that a ChatGPT sign-in cannot reach.** When Codex on this machine is
+  signed in with ChatGPT and a role's list names something under `openai.com` but not
+  `chatgpt.com` (or `auth.openai.com`), it says so: without `chatgpt.com` a Codex run hangs
+  without printing anything. A role whose `env` passes `OPENAI_API_KEY` is left out.
 
 ## 0.5.0 — 2026-09-30
 

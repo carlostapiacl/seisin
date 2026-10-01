@@ -235,7 +235,7 @@ function refuseUnknownFlags(name, args) {
     if (split !== -1) ours = args.slice(1, split);
     else {
       let i = 1;
-      while (i < args.length && args[i].startsWith("-")) i++;
+      while (i < args.length && args[i].startsWith("-")) i += args[i] === "--agent" ? 2 : 1;
       ours = args.slice(1, i);
     }
   }

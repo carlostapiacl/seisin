@@ -10,10 +10,12 @@
  */
 export const COMMAND_HELP = {
   run: {
-    usage: ["seisin run <role> [--observe] [--debug-env] -- <command...>"],
+    usage: ["seisin run <role> [--observe] [--debug-env] [--agent <name>] -- <command...>"],
+    values: ["--agent"],
     flags: [
       ["--observe", "open the repo for this run and record what the agent writes; keys and network stay shut"],
       ["--debug-env", "print the environment variables the role does not get"],
+      ["--agent <name>", "claude, codex or none: which agent the command runs, when seisin cannot tell from it (a wrapper script). Its home is the run's scratch; the other agents' sign-in is closed"],
     ],
     notes: ["Everything after -- is the command's own, flags included: `-- claude --settings x.json` goes to claude."],
     examples: ['seisin run frontend -- claude', 'seisin run backend --observe -- claude -p "…"'],
