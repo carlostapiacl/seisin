@@ -94,7 +94,7 @@ is stable:
 | **success** | exit `0`, the value on **stdout**. Exactly one trailing newline is stripped |
 | **failure** | any non-zero exit, or empty output. The run stops; nothing is substituted |
 | **diagnostics** | **stderr** is passed through to the person running it. `stdout` never is, so a provider that prints the secret and then fails does not leak it into the terminal or the log |
-| **where it runs** | the parent, unsandboxed, before the child starts — it holds your vault's credential and the confined side must not reach it |
+| **where it runs** | the parent, outside the sandbox, before the child starts — it holds your vault's credential and the confined side must not reach it |
 | **what it must not do** | prompt on a tty an agent does not have. Cache your session first (`op signin`, `gpg-agent`, an unlocked keychain) |
 
 #### Recipes
@@ -160,7 +160,7 @@ how much a leak costs you.
 **Four rules, each of which is the feature rather than a precaution around it:**
 
 - **The value never enters the `.toml`, the log or the console.** What is written, recorded
-  and approved is the reference. That is what makes a key policy reviewable in a diff.
+  and granted is the reference. That is what makes a key policy reviewable in a diff.
 - **An unknown scheme is refused, not ignored.** `keys = ["vault://x"]` with no
   `[keys.providers.vault]` is a configuration error, never a key that quietly never arrives.
 - **The parent runs the provider, never the confined process.** The provider command holds
@@ -175,7 +175,7 @@ policy is visible without asking anyone's keychain for a password. It also **pri
 provider commands**, because of the next paragraph.
 
 > ⚠️ **A provider command is the one thing in a `seisin.toml` that executes.** Everything
-> else in the file describes a boundary; this runs, in the parent, unsandboxed, as you. So
+> else in the file describes a boundary; this runs, in the parent, outside the sandbox, as you. So
 > a `seisin.toml` that came with a repository you cloned is code you are about to run —
 > the same trust you already extend to a `Makefile` or a `package.json` script, and worth
 > saying out loud precisely because the rest of this tool invites the opposite assumption.

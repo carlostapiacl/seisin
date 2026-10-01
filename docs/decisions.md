@@ -332,11 +332,13 @@ and a denied `sh -c` is over in single-digit milliseconds. So the stream starts
 first and the pid is handed over afterwards, with anything that arrives in the
 gap held rather than credited on faith.
 
-Cost, since the constraint was explicit — this runs alongside a hook that fires
-on **every** tool call, tens of thousands of times in one team's history:
+Cost, since the constraint was explicit — this runs alongside a hook that fired
+on **every** tool call, tens of thousands of times in one team's history (since
+0.5.0 `wire` installs it only for the file, shell and MCP tools it reads):
 **nothing is added to that path at all.** The monitor is a sibling process and
-the hook never touches it, so the number that mattered for `whose` — 166 ms,
-which is why it lives only on the denial path — has no equivalent here.
+the hook never touches it, so the number that mattered for `whose` — the cost of
+starting the CLI, which is why it lives only on the denial path (the 166 ms
+first quoted here [did not reproduce](field-notes.md)) — has no equivalent here.
 
 What it does cost, measured rather than reasoned about: **128 ms per run**, from
 683 ms to 811 ms over eight runs of the same denied command with and without the
@@ -363,7 +365,8 @@ runtime synthesises them by observing write-intent syscalls through its own
 the traced process's memory — its own comment calls those events
 attacker-controlled and racy. That is not attachable from outside and not worth
 reimplementing. On Linux the watcher reports itself unavailable with the reason,
-`seisin run` says so once, and the boundary is unchanged. **Claims are made per
+`seisin check` lists it among the standing limits (it used to be a notice on
+every `seisin run`), and the boundary is unchanged. **Claims are made per
 platform here or they are not made.**
 
 ## `review` answers two questions it used to get wrong, and now abstains on one
@@ -462,7 +465,7 @@ you is the failure being fixed.
 
 **What it does not fix, and is worth knowing.** A settled request does not
 reopen. A later `asked` for the same key raises its counter and leaves the state
-alone, so a mistaken `deny` cannot be undone by the agent asking again — the
+alone, so a mistaken `decline` cannot be undone by the agent asking again — the
 file is append-only and nothing rewrites a line. That is correct for evidence
 and wrong for recovery, and it is unresolved: the honest repair today is to
 grant the permission on its merits, which is a decision about the policy rather
@@ -736,8 +739,14 @@ could write it. `seisin check` prints the part that takes something from a terri
 - **`~/.claude` is protected file by file**, never whole: Claude Code keeps its sessions there
   and writes them from inside the sandbox.
 - **Providers are looked up only where no role writes**, and run with that PATH.
-- **Not protected: instructions.** `CLAUDE.md`, memory files and prompts shape what a future
-  session does, but they do not execute. Protecting them would take a role's docs from it.
+- **Editor settings are protected; instruction files when the policy asks** (0.5.0). `.vscode/`,
+  `.cursor/` and `.windsurf/` are applied by the editor outside the sandbox the moment they
+  change, so they are denied like `.claude/`. `CLAUDE.md`, `AGENTS.md` and their kin do not
+  execute, but the next agent session reads them as its instructions; protecting them by
+  default would take a role's docs from it, so they are off unless `[protect] instructions =
+  true`. Either family can be handed to one role, inside its own territory, with
+  `control_files = ["ide"]` or `["instructions"]`; `.claude/`, git hooks, `.mcp.json` and
+  `.envrc` cannot. Neither family is denied by `**` or inside `node_modules`.
 - **Not protected: whatever else a program reads from the shared scratch** (`~/.cache`,
   `~/.local/share`) that is not on PATH. `isolate = "home"` gives each role its own.
 

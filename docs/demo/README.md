@@ -14,7 +14,7 @@ nowhere else, which is the ordinary case a sandbox is for. Then it runs
     .git holds:   COMMIT_EDITMSG HEAD config description hooks index info logs objects refs
 
   $ srt --settings settings.json -- sh -c 'rm -rf proj/.git'
-    rm was refused 17 time(s); every refusal was under .git/hooks or
+    rm was denied 17 time(s); every denial was under .git/hooks or
     .git/config, the paths this runtime denies on purpose. Everything
     else it asked to delete, it deleted.
 

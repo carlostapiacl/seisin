@@ -39,7 +39,7 @@ JSON
 echo "  \$ srt --settings settings.json -- sh -c 'rm -rf proj/.git'"
 salida=$($SRT --settings settings.json -- sh -c "rm -rf $R/proj/.git" 2>&1 || true)
 negados=$(printf '%s\n' "$salida" | grep -c '^rm:' || true)
-printf '    rm was refused %s time(s); every refusal was under .git/hooks or\n' "$negados"
+printf '    rm was denied %s time(s); every denial was under .git/hooks or\n' "$negados"
 printf '    .git/config, the paths this runtime denies on purpose. Everything\n'
 printf '    else it asked to delete, it deleted.\n\n'
 
