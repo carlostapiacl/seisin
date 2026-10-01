@@ -9,7 +9,8 @@
  * where they can be exercised directly.
  */
 import { unknownRole } from "./suggest.js";
-import { resolve, dirname, basename, relative, join, delimiter } from "node:path";
+import { resolve, dirname, basename, relative, join, delimiter, isAbsolute } from "node:path";
+import { homedir } from "node:os";
 import { lstatSync, readdirSync, existsSync, readFileSync, statSync } from "node:fs";
 import { ownersOf, covers, enforcedNeverWrites } from "./owners.js";
 import { ROLE_KEYS, closest } from "./config.js";
@@ -123,6 +124,19 @@ const LIMITS = [
       "settings and plugins. Anything else a program outside the sandbox reads from those places — a " +
       "cache it executes, a tool not on PATH — is writable by every role. isolate = \"home\" " +
       "gives each role its own.",
+  },
+  {
+    kind: "agent-sign-in",
+    headline: "~/.claude goes only to runs of claude, ~/.codex only to runs of codex",
+    detail:
+      "seisin reads the agent off the command after `--`, and a run is denied the other " +
+      "agents' sign-in files (~/.codex/auth.json, ~/.claude/.credentials.json). What a run " +
+      "of an agent can still read is its own: Codex and every command Codex runs share one " +
+      "sandbox, so with a ChatGPT sign-in kept in ~/.codex/auth.json they can read those tokens. " +
+      "Codex keeps them in the keychain instead with cli_auth_credentials_store = \"keyring\" " +
+      "in its config. A wrapper script is not followed: `seisin run <role> --agent codex -- ./script` " +
+      "names it. The protected paths above are for every agent at once, because a role can be " +
+      "run as any of them.",
   },
   {
     kind: "unlink-uncovered",
@@ -310,8 +324,9 @@ function homeReachWarning(config) {
         headline: "your credentials are closed to every role; the agent's own directories are not",
         detail:
           `isolate = "credentials" denies ${where} and the rest. What stays open is ` +
-          "~/.claude and ~/.codex, which is what keeps the agent logged in, so the roles " +
-          'share one session and can read each other. `isolate = "home"` closes those ' +
+          "~/.claude to runs of claude and ~/.codex to runs of codex, which is what keeps the " +
+          "agent signed in, so the runs of one agent share its session and can read each other's. " +
+          '`isolate = "home"` closes those ' +
           "too, and then every CLI in the sandbox will ask you to log in again.",
       }
     : {
@@ -383,6 +398,67 @@ function onPath(cmd, config) {
   } catch (e) {
     return /a role can write/.test(e.message);
   }
+}
+
+/**
+ * How Codex is signed in on this machine: "chatgpt", "apikey", or null.
+ *
+ * Read from `auth.json` in `CODEX_HOME` or `~/.codex`, by the parent, which
+ * `check` is. Only the shape is looked at — which fields are set — and
+ * nothing from the file is kept or printed.
+ */
+export function codexSignIn(env = process.env) {
+  const home = env.CODEX_HOME && isAbsolute(env.CODEX_HOME) ? env.CODEX_HOME : join(homedir(), ".codex");
+  let auth;
+  try { auth = JSON.parse(readFileSync(join(home, "auth.json"), "utf8")); } catch { return null; }
+  if (!auth || typeof auth !== "object") return null;
+  if (typeof auth.OPENAI_API_KEY === "string" && auth.OPENAI_API_KEY) return "apikey";
+  if (auth.tokens && typeof auth.tokens === "object" && auth.tokens.refresh_token) return "chatgpt";
+  return null;
+}
+
+/**
+ * A role that looks set up for OpenAI and would leave Codex hanging.
+ *
+ * Signed in with ChatGPT, Codex talks to `chatgpt.com` for the model and to
+ * `auth.openai.com` to renew the sign-in — never to `api.openai.com` (measured
+ * 2026-09-30, codex 0.150.1: 0 connections). Without `chatgpt.com` it does not
+ * fail: it retries without end and prints nothing, which reads as an agent
+ * thinking. And the proxy's refusal does not reach seisin's log.
+ *
+ * `check` does not know which CLI a role runs, so the signal is the two facts
+ * it can see: this machine's Codex is signed in with ChatGPT, and the role's
+ * list names something under `openai.com` — a list written for OpenAI — but
+ * not `chatgpt.com`. A role whose `env` passes `OPENAI_API_KEY` is left out:
+ * it is set up for the API, where `api.openai.com` is right. Wrong costs a
+ * sentence, never a run, the same trade as the model-endpoint warning above.
+ */
+function codexSignInWarnings(config, roles, env = process.env) {
+  if (codexSignIn(env) !== "chatgpt") return [];
+  const reaches = (list, host) => list.some((d) => d === "*" || d === host ||
+    (d.startsWith("*.") && host.endsWith(d.slice(1))));
+  const out = [];
+  for (const r of roles) {
+    const list = r.network ?? config.allowedDomains ?? [];
+    if (!list.some((d) => /(^|\.)openai\.com$/i.test(d))) continue;
+    if ((r.env ?? []).includes("OPENAI_API_KEY")) continue;
+    const missing = ["chatgpt.com", "auth.openai.com"].filter((h) => !reaches(list, h));
+    if (!missing.length) continue;
+    out.push({
+      kind: "codex-chatgpt-endpoint",
+      headline: `${r.name} allows ${list.filter((d) => /openai\.com$/i.test(d)).join(" ")} but not ${missing.join(" ")}`,
+      detail:
+        "Codex on this machine is signed in with ChatGPT, and with that sign-in it talks to " +
+        "chatgpt.com for the model and to auth.openai.com to renew the sign-in, never to " +
+        "api.openai.com. " +
+        (missing.includes("chatgpt.com")
+          ? "Without chatgpt.com a Codex run does not fail: it retries without end and prints " +
+            "nothing, and the proxy's denial does not reach seisin's log. "
+          : "Without auth.openai.com a Codex run works until the sign-in has to be renewed. ") +
+        `If ${r.name} runs Codex, add ${missing.join(" and ")}; if it does not, this is not about it.`,
+    });
+  }
+  return out;
 }
 
 /** Every way this policy does not hold, each with what to do about it. */
@@ -495,6 +571,8 @@ function warningsFor(config, roles, shared = sharedPaths(config, roles), { scope
         "not a verdict.",
     });
   }
+
+  warnings.push(...codexSignInWarnings(config, roles));
 
   // Without the hook, half the record is missing rather than all of it: on macOS
   // `seisin run` reads the kernel's own denials, so they still land and
