@@ -46,7 +46,7 @@ not about ownership. That is the case for the hook: the boundary holds either wa
 hook can say *whose* it was.
 
 All four on macOS 15 (Seatbelt). Linux is no longer a one-off measurement on one machine:
-[CI](../.github/workflows/test.yml) runs the whole suite on Ubuntu and macOS, Node 18/20/22,
+[CI](../.github/workflows/test.yml) runs the whole suite on Ubuntu and macOS, Node 18/20/22/24,
 on every push — and fails if the sandbox half *skips*.
 
 The opencode run is the interesting one, because **opencode has no per-path sandbox flag** —

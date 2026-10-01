@@ -304,7 +304,7 @@ a grant is a policy edit that applies next run, and calling it "approve" invites
 expectation. *Approve* appears only when contrasting with those tools.
 
 **provenance** — the comment a grant writes next to the line it adds: date, how many times it was
-asked, the reason. `# granted 2026-09-12 · asked 3× · "…"`.
+asked, the reason. `# granted 2026-09-12 · asked 3× · «…»`.
 
 **decline** — what a person does to a request they will not grant. Recorded with a reason; the
 policy is not touched. *Not:* deny, refuse, reject, turn down. *Where:* `seisin decline`, the

@@ -209,15 +209,15 @@ svg.flow path,svg.flow line{stroke:var(--line); fill:none}
     </figure>
 
     <div class="term"><span class="p">$</span> <span class="cmd">seisin run frontend -- sh -c 'echo // fix &gt;&gt; src/api/orders.ts'</span>
-  <span class="no">sh: src/api/orders.ts: Operation not permitted</span>
-  seisin: 1 kernel denial(s) recorded
-
-  1 pending request(s)
+<span class="note">seisin: frontend · writes src/web/** (+7 scratch) · keys none · env 18 kept, 55 dropped</span>
+<span class="no">sh: src/api/orders.ts: Operation not permitted</span>
+<span class="note">seisin: 1 kernel denial(s) recorded</span>
 
     <span class="yes">#1  frontend wants write on src/api/** (owned by backend)</span>
         first asked over src/api/orders.ts
+        id frontend:write:src/api
 
-    <span class="note">seisin grant &lt;n&gt; [--reason "…"]   ·   seisin decline &lt;n&gt; [--reason "…"]</span></div>
+  <span class="note">this run: 1 new request(s) — seisin requests</span></div>
 
     <p class="small dim">The agent can ask before it reaches, too — <code>seisin whose src/api/orders.ts</code> answers from inside the sandbox.</p>
   </div>
@@ -230,7 +230,7 @@ svg.flow path,svg.flow line{stroke:var(--line); fill:none}
     <p class="dim">Nothing is granted by an agent, and nothing is granted through the MCP server. Granting happens in a terminal or in the console, by a person.</p>
 
     <div class="flow-wrap">
-    <svg class="flow" viewBox="0 0 840 250" role="img" aria-label="Flow diagram: an agent running as a role writes a path; the kernel denies it; seisin reads the denial and looks up the policy, producing both the owner's name and a queued request; a person grants or declines, editing seisin.toml, which produces the settings the kernel enforces.">
+    <svg class="flow" viewBox="0 0 840 250" role="img" aria-label="Flow diagram: an agent running as a role writes a path; the kernel denies it; seisin reads the denial and looks up the policy, producing the owner's name, one hash-chained line in the log, and a queued request; a person grants or declines with a reason, editing seisin.toml, which seisin run turns into the sandbox settings the kernel enforces.">
       <defs>
         <marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
           <path d="M0 0 L8 4 L0 8 z" fill="currentColor" stroke="none" style="color:var(--dim)"/>
@@ -256,23 +256,28 @@ svg.flow path,svg.flow line{stroke:var(--line); fill:none}
       <text x="446" y="126" text-anchor="middle" class="sm">reads the denial</text>
 
       <path d="M514 104 L570 62" marker-end="url(#a)"/>
+      <path d="M514 115 H570" marker-end="url(#a)"/>
       <path d="M514 126 L570 168" marker-end="url(#a)"/>
 
       <rect x="572" y="36" width="150" height="50" rx="9" style="stroke:var(--own)"/>
       <text x="647" y="57" text-anchor="middle">whose it was</text>
       <text x="647" y="73" text-anchor="middle" class="sm">belongs to backend</text>
 
+      <rect x="572" y="92" width="150" height="46" rx="9"/>
+      <text x="647" y="111" text-anchor="middle">the log</text>
+      <text x="647" y="127" text-anchor="middle" class="sm">one hash-chained line</text>
+
       <rect x="572" y="144" width="150" height="50" rx="9"/>
       <text x="647" y="165" text-anchor="middle">a request</text>
       <text x="647" y="181" text-anchor="middle" class="sm">queued, waiting</text>
 
-      <path d="M647 196 V222 H302" marker-end="url(#a)"/>
-      <rect x="150" y="198" width="148" height="46" rx="9" style="stroke:var(--accent)"/>
+      <path d="M647 196 V222 H322" marker-end="url(#a)"/>
+      <rect x="128" y="198" width="192" height="46" rx="9" style="stroke:var(--accent)"/>
       <text x="224" y="218" text-anchor="middle">a person</text>
-      <text x="224" y="233" text-anchor="middle" class="sm">grants or declines</text>
+      <text x="224" y="233" text-anchor="middle" class="sm">grants or declines, with a reason</text>
 
       <path d="M224 198 V172 H258 V146" marker-end="url(#a)"/>
-      <text x="272" y="176" text-anchor="start" class="sm">edits seisin.toml → settings</text>
+      <text x="272" y="176" text-anchor="start" class="sm">edits seisin.toml → seisin run → sandbox settings</text>
     </svg>
     </div>
   </div>
@@ -312,11 +317,22 @@ svg.flow path,svg.flow line{stroke:var(--line); fill:none}
     <h2>A policy can get smaller, with evidence.</h2>
     <p class="dim"><code>seisin review</code> turns runtime history into questions you can act on: where a role keeps being denied, which grants were never used, and which paths nobody owns.</p>
 
-    <div class="term"><span class="no">Denied repeatedly</span>    frontend → src/api/**
-<span class="note">Granted, never used</span>  frontend → public/**
-<span class="yes">Unowned</span>              legacy/**</div>
+    <div class="term"><span class="p">$</span> <span class="cmd">seisin review</span>
 
-    <p class="small dim">This is not automatic policy mutation. It is evidence for a person deciding whether to narrow, transfer or add ownership.</p>
+  60 entries, 2026-08-23 to 2026-09-11
+
+  <span class="no">Denied repeatedly</span>
+       9×  frontend write src/api/checkout — belongs to backend
+       4×  backend write src/web — belongs to frontend
+
+  <span class="note">Granted, never used</span>
+    frontend  public/**
+    backend  migrations/**
+
+  <span class="yes">Unowned</span>
+       4×  territory  legacy</div>
+
+    <p class="small dim">Trimmed: each section also says why it matters, and an unowned path says what <i>kind</i> of thing it is — <code>territory</code> (ownable), or git's, temporary, build output, a credential — because only the first one wants an owner. This is not automatic policy mutation. It is evidence for a person deciding whether to narrow, transfer or add ownership.</p>
   </div>
 </section>
 
@@ -327,8 +343,8 @@ svg.flow path,svg.flow line{stroke:var(--line); fill:none}
 
     <ol class="steps">
       <li><code>npm install -g seisin</code><span class="why">On Linux, three system packages first — the README lists them.</span></li>
-      <li><code>seisin init</code><span class="why">Proposes a policy from what your repo already says: <code>.claude/agents/</code>, then <code>CODEOWNERS</code>, then a blank start. It <b>proposes</b> — a generated policy you did not read is not a policy.</span></li>
-      <li><code>seisin check</code><span class="why">The map, and every way it does not hold. Read it before you trust it.</span></li>
+      <li><code>seisin init</code><span class="why">Proposes a policy from what your repo already says: <code>.claude/agents/</code>, then <code>CODEOWNERS</code>, then one role per top-level folder that holds code. It <b>proposes</b> — a generated policy you did not read is not a policy.</span></li>
+      <li><code>seisin check</code><span class="why">The map first, then one line for each way it does not hold — <code>--verbose</code> says why each matters. Read it before you trust it.</span></li>
       <li><code>seisin wire</code><span class="why">Lets the agent record what it does, so a denial can be explained afterwards.</span></li>
       <li><code>seisin run frontend -- claude -p "…"</code><span class="why">Runs the agent inside its own territory. Anything not listed is denied — there is no permissive default.</span></li>
     </ol>
@@ -354,7 +370,11 @@ keys   = [<span class="s">"netlify-token.txt"</span>]
 <span class="c">[roles.backend]</span>
 writes  = [<span class="s">"src/api/**"</span>, <span class="s">"migrations/**"</span>]
 keys    = [<span class="s">"database-url.txt"</span>]
-network = [<span class="s">"api.stripe.com"</span>]</code></pre>
+network = [<span class="s">"api.stripe.com"</span>]
+
+<span class="c">[roles.ops]</span>
+writes        = [<span class="s">"deploy/**"</span>]
+control_files = [<span class="s">"ide"</span>]  <span class="c"># its own .vscode/</span></code></pre>
 
       <dl class="reads">
         <dt>writes</dt>
@@ -363,11 +383,13 @@ network = [<span class="s">"api.stripe.com"</span>]</code></pre>
         <dd>What the role may <b>hold</b>. Either a file under the declared key directory, or a <code>scheme://</code> reference a provider resolves outside the sandbox — the role gets the value, never the file.</dd>
         <dt>network</dt>
         <dd>Per-role, and it <b>replaces</b> the global list rather than adding to it: a domain in <code>[network]</code> is reachable by every role, including the ones whose job is to reach nothing.</dd>
+        <dt>control_files</dt>
+        <dd>Files that make something happen outside the sandbox. Git hooks, <code>.claude/</code> and <code>.mcp.json</code> are closed to every role. Editor settings (<code>.vscode/</code>, <code>.cursor/</code>, <code>.windsurf/</code>) are protected too, unless a role is handed <code>"ide"</code>; instruction files (<code>CLAUDE.md</code>, <code>AGENTS.md</code>…) only when <code>[protect] instructions = true</code>.</dd>
       </dl>
     </div>
 
     <div class="note-box">
-      <strong>HTTP(S) works; SSH does not.</strong> The allow list is enforced by proxies the runtime starts. One of them is a SOCKS5 proxy that could carry SSH, but the chain breaks at its last link: it requires authentication and the <code>ProxyCommand</code> the runtime wires up cannot send any. Use an HTTPS remote for git, and run SSH deploys outside the confined turn.
+      <strong>HTTP(S) works; SSH does not.</strong> The allow list is enforced by proxies the runtime starts. One of them is a SOCKS5 proxy that could carry SSH, but the chain breaks at its last link: it requires authentication and the <code>ProxyCommand</code> the runtime wires up cannot send any. Use an HTTPS remote for git, and run SSH deploys outside the confined run.
     </div>
   </div>
 </section>
@@ -387,7 +409,7 @@ network = [<span class="s">"api.stripe.com"</span>]</code></pre>
       <div class="card">
         <div class="who">Console</div>
         <h3>For deciding</h3>
-        <p><code>seisin ui</code> — opens on what is waiting on a person, not on a dashboard.</p>
+        <p><code>seisin ui</code> — opens on what is waiting on a person. A grant needs a reason, says what it covers before the click, and shows the line it wrote.</p>
       </div>
       <div class="card">
         <div class="who">MCP server</div>
@@ -397,8 +419,8 @@ network = [<span class="s">"api.stripe.com"</span>]</code></pre>
     </div>
 
     <figure>
-      <img src="img/console.gif" alt="The seisin console: a row of counters across the top, a queue of requests waiting on a person, the day's denials grouped by cause, the walls a role keeps hitting, and the policy behind them.">
-      <figcaption>The console opens on what needs a decision. Then: the day’s denials grouped by <b>cause</b>, the <b>walls</b> a role keeps hitting, and the policy behind them.</figcaption>
+      <img src="img/console.gif" alt="The seisin console: four counters across the top, requests waiting on a person with a required reason, a grant of another role's path that asks for a second click, the line the grant wrote, the denials grouped by path with the kind of each unowned one, the walls each role keeps hitting, the roles, and a control-files change previewed before it is saved.">
+      <figcaption>The console opens on what needs a decision: a grant takes a reason, and a second click when the path is another role’s. Then the denials grouped by path, each unowned one with its <b>kind</b>; the <b>walls</b> a role keeps hitting; the roles, read-only live; and a control-files change, previewed before it is saved.</figcaption>
     </figure>
   </div>
 </section>
@@ -414,6 +436,8 @@ network = [<span class="s">"api.stripe.com"</span>]</code></pre>
           <li><b>OS-enforced write territories.</b> Seatbelt or bubblewrap applies the boundary.</li>
           <li><b>Declared secret isolation.</b> Roles read only the keys assigned to them.</li>
           <li><b>Per-role network policy.</b> Egress follows the runtime’s proxy allow list.</li>
+          <li><b>Control files closed.</b> What acts outside the sandbox the moment it changes — git hooks, <code>.claude/</code>, <code>.mcp.json</code> — is denied to every role, and so are editor settings unless the policy hands them to one.</li>
+          <li><b>A tamper-evident log.</b> Each line carries the hash of the one before, the chain’s start is recorded, and <code>seisin log verify</code> says when either was changed.</li>
           <li><b>Ownership, and handoffs to a person.</b> A denial names who owns the path; agents cannot grant themselves anything.</li>
         </ul>
       </div>

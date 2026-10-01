@@ -130,7 +130,9 @@ The most uncomfortable number on this page, and the reason `file://` is now buil
 
 *Method: the 151 and 134 are `find` by name — `.env`, `*.env`, `*.pem`, `*.key` — excluding
 `node_modules`, `.git` and the declared key directories, with `-perm -o+r` for the second.
-The 13 is `seisin scan`, which reads content shapes rather than names. The gap between the
+The 13 is `seisin scan`, which then read content shapes rather than names; since 0.5.0 it also
+lists files whose names usually hold secrets, apart from the certain hits and without
+changing its exit code. The gap between the
 methods is the point: names over-count, content under-counts what it is unsure of, and
 neither is the truth on its own.*
 
@@ -164,8 +166,10 @@ hours of pure latency across a window; asked only when something was denied, it 
 queries over 378 runs. Whatever the per-call figure is on your machine, that ratio is the
 design.
 
-*(210 ms to load the modules of a CLI that a hook calls on every denial is not good, and it
-is not a measurement problem. It is on the list.)*
+*(210 ms to load the modules of a CLI that a hook calls on every denial was not good, and it
+was not a measurement problem. 0.5.0 loads a command's code only when it runs and installs the
+hook only for the tools it reads; the release measured a hook call going from about 140–170 ms
+to 90–100 ms, and Grep, Glob and TodoWrite no longer start it at all.)*
 
 ---
 
@@ -182,7 +186,7 @@ Nothing here needs the deployment. Against your own policy and log:
 
 ```bash
 seisin check                  # the map, and every way it does not hold
-seisin scan                   # credential shapes outside the declared key directories
+seisin scan                   # credentials, and files that usually hold them, outside the key directories
 seisin review                 # what the log says about the policy, as arithmetic
 seisin walls <role>           # what that role keeps being denied, and what retrying cost
 seisin log --verdict denied   # the raw record
