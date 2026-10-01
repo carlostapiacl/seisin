@@ -137,8 +137,9 @@ refused until it can be built. *Where:* `key_mode`, `[keys.providers.*] mode`. *
 Code's credential **mask** [1] is what `inject` would be.
 
 **protected** — a path no role writes even inside its territory, because something outside the
-sandbox acts on it: git hooks and config, a project's `.claude/`, `.mcp.json`, `.envrc`, and two
-**families** that a policy can hand out. *Next to:* a denial on a protected path leaves no request;
+sandbox acts on it: git hooks and config, a project's `.claude/` and `.codex/`, `.mcp.json`, `.envrc`,
+what Claude Code and Codex run from your home (`~/.codex/config.toml`, `hooks.json`, `rules/`…), and
+two **families** that a policy can hand out. *Next to:* a denial on a protected path leaves no request;
 it is the boundary working. *Not:* locked, reserved, system file. *Where:* `seisin check`
 ("protected — inside a territory, denied anyway"), MCP `standing: "protected"`, the console.
 *Elsewhere:* Claude Code's sandbox has **protected paths** with the same reason [1]; Codex keeps

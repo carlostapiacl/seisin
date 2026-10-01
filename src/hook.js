@@ -38,7 +38,19 @@ const FILE_TOOLS = {
  * matcher as a regular expression and an unanchored `Write` matches
  * `TodoWrite`.
  */
-export const TOOL_MATCHER = `^(${[...Object.keys(FILE_TOOLS), "Bash"].join("|")}|mcp__.*)$`;
+export const TOOL_MATCHER = `^(${[...Object.keys(FILE_TOOLS), "Bash", "apply_patch"].join("|")}|mcp__.*)$`;
+
+/**
+ * The files a Codex `apply_patch` call touches, from the patch's own headers.
+ *
+ * Codex sends its hooks the same event Claude Code does — `tool_name: "Bash"`
+ * with `tool_input.command` for the shell — but its file edits arrive as
+ * `apply_patch`, with the whole patch in `tool_input.command` (measured
+ * 2026-09-30, codex 0.150.1). The headers are a fixed grammar, so unlike a
+ * shell line they can be read exactly: Add, Update and Delete name the file,
+ * and `Move to` names where an update lands.
+ */
+const PATCH_HEADER = /^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+?)\s*$/gm;
 
 /**
  * Paths a shell command is going to write.
@@ -88,6 +100,11 @@ export function targetsOf(tool, input = {}) {
    */
   if (typeof tool === "string" && tool.startsWith("mcp__")) {
     return [{ action: "use", tool, server: mcpServer(tool) }];
+  }
+  if (tool === "apply_patch") {
+    const body = typeof input.command === "string" ? input.command : typeof input.patch === "string" ? input.patch : "";
+    const paths = [...new Set([...body.matchAll(PATCH_HEADER)].map((m) => m[1]))];
+    return paths.map((path) => ({ action: "write", path }));
   }
   if (tool !== "Bash" || typeof input.command !== "string") return [];
 
