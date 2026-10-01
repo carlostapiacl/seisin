@@ -343,8 +343,8 @@ svg.flow path,svg.flow line{stroke:var(--line); fill:none}
 
     <ol class="steps">
       <li><code>npm install -g seisin</code><span class="why">On Linux, three system packages first — the README lists them.</span></li>
-      <li><code>seisin init</code><span class="why">Proposes a policy from what your repo already says: <code>.claude/agents/</code>, then <code>CODEOWNERS</code>, then a blank start. It <b>proposes</b> — a generated policy you did not read is not a policy.</span></li>
-      <li><code>seisin check</code><span class="why">The map, and every way it does not hold. Read it before you trust it.</span></li>
+      <li><code>seisin init</code><span class="why">Proposes a policy from what your repo already says: <code>.claude/agents/</code>, then <code>CODEOWNERS</code>, then one role per top-level folder that holds code. It <b>proposes</b> — a generated policy you did not read is not a policy.</span></li>
+      <li><code>seisin check</code><span class="why">The map first, then one line for each way it does not hold — <code>--verbose</code> says why each matters. Read it before you trust it.</span></li>
       <li><code>seisin wire</code><span class="why">Lets the agent record what it does, so a denial can be explained afterwards.</span></li>
       <li><code>seisin run frontend -- claude -p "…"</code><span class="why">Runs the agent inside its own territory. Anything not listed is denied — there is no permissive default.</span></li>
     </ol>

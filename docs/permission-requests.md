@@ -61,7 +61,7 @@ the tool has to work for someone who never opens the console.
 ### Why the console may grant and the MCP server may not
 
 Both run on the machine of the person deciding, so the distinction has to be more than
-intent. It is: **a confined role cannot reach the console.**
+intent. It is: **a confined role cannot reach the console** — by default.
 
 Measured, not assumed. From inside the sandbox, `curl` against the console's own
 port on loopback gets exactly what it gets from a domain outside its allowlist —
@@ -79,10 +79,18 @@ about who *should* grant, it is a fact about who *can* reach the channel.
 
 One more thing had to be true, and was not for free. Loopback is no boundary
 against the browser — any page the person has open can POST to `127.0.0.1`.
-So `seisin ui` mints a token per run, inlines it into the page it serves, and
-demands it back on the only endpoint that writes. A tab from somewhere else
-cannot read it, and asking for it in a custom header also forces a preflight
+So `seisin ui` mints a token per run and demands it back on every route under
+`/api/`, reads included. Asking for it in a custom header also forces a preflight
 this server never answers.
+
+The token is not in any response. `seisin ui` prints a link that carries it in the URL
+fragment, which a browser never sends to a server; the page takes it from there and
+removes it from the address bar. It used to be inlined into the page, which was fine while
+no role could reach loopback — and a role with `local_binding = true` can, on macOS,
+because the runtime then lets it connect to every localhost port. A review on 2026-09-22
+read the token off `GET /` that way and granted its own request; now anything that
+fetches `/` gets a page with no token in it. `local_binding` stays a decision `seisin check`
+names next to the role.
 
 ## The hook writes the request, not the agent
 
@@ -102,11 +110,31 @@ many times. The reason belongs to the grant.
 
 ## Where the notification lives
 
-A queue nobody opens is not human-in-the-loop.
+A queue nobody opens is not a person in the loop.
 
 There is no daemon and no always-on requirement. Instead the notice rides on
-what you are already looking at: `seisin run` prints pending requests when the
-run ends, in the same terminal that just showed you the denial.
+what you are already looking at: when a run ends, `seisin run` lists the requests
+that run filed, with the numbers `grant` takes, and one line for the rest of the queue,
+in the same terminal that just showed you the denial:
+
+```
+seisin: frontend · writes src/web/** public/** (+7 scratch) · keys netlify-token.txt · env 18 kept, 54 dropped
+sh: migrations/m.sql: Operation not permitted
+sh: docs.md: Operation not permitted
+seisin: 2 kernel denial(s) recorded
+
+    #3  frontend wants write on migrations/** (owned by backend)
+        first asked over migrations/m.sql
+        id frontend:write:migrations
+    #4  frontend wants write on docs.md (unowned)
+        first asked over docs.md
+        id frontend:write:.
+
+  this run: 2 new request(s) · 2 older pending — seisin requests
+```
+
+A run that filed nothing new says nothing about the queue. `seisin requests` shows all of it,
+and `#n` is a position that shifts as requests are settled; the id under each one does not.
 
 The console and the MCP are conveniences on the same file. None of the three is
 required for the tool to work, which is the property that lets someone install
@@ -121,7 +149,7 @@ as a comment, next to the line it added.
 [roles.frontend]
 writes = [
   "src/web/**",
-  "src/api/checkout/**",   # granted 2026-09-12 · asked 3× · "frontend owns checkout now"
+  "src/api/checkout/**",   # granted 2026-09-12 · asked 3× · «frontend owns checkout now»
 ]
 ```
 

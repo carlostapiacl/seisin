@@ -343,18 +343,17 @@ host) or the socket path, once per target per run. `seisin walls` says whether t
 missing from `local_ports`, listed but dialled directly, or a socket. No request is filed: a
 port isn't anyone's territory. macOS only.
 
-`seisin init` will propose this from whatever your repo already says: `.claude/agents/`, then `CODEOWNERS`, then a blank start. It **proposes** — a generated policy you did not read is not a policy.
+`seisin init` will propose this from whatever your repo already says: `.claude/agents/`, then `CODEOWNERS` (one role per owner, with all of that owner's paths), then one role per top-level folder that holds code. It declares `[keys] dir` when `.secrets/`, `secrets/` or `.keys/` is there, and adds `.seisin/` to an existing `.gitignore`. It **proposes** — a generated policy you did not read is not a policy — and a second `init` changes nothing without `--force`, which keeps the old one as `seisin.toml.bak`.
 
 ## What will look like a bug on the first day
 
-Four shapes a correct policy still produces that read as breakage: a granted file whose
-neighbours are not granted, a lock file in somebody else's repository, a tool that reports a
-denied write as a *readonly database*, and an agent that diagnoses file permissions when the
-answer is ownership.
+Shapes a correct policy still produces that read as breakage: a granted file whose
+neighbours are not granted, a lock file in somebody else's repository, a worktree that is two
+paths for one repository, a tool that reports a denied write as a *readonly database*, and Go
+or Dart failing TLS on macOS with the domain allowed. The first four came out of one
+production window where none of them was the boundary misbehaving.
 
-All four came out of one production window where none of them was the boundary misbehaving.
-
-A fifth comes with protected files: **a role's `git checkout`, `pull` or `rebase` cannot update
+One more comes with protected files: **a role's `git checkout`, `pull` or `rebase` cannot update
 a file the role may not write.** Git exits 0, the branch moves, and the old `.vscode/settings.json`
 stays behind as a modification — which a later `commit -a` would turn into a revert. Switch
 branches outside the sandbox, or hand that role the family if keeping those files is its job.
@@ -865,7 +864,7 @@ already done:
 |---|---|
 | **Windows** | the runtime has a backend. seisin has never been pointed at it, and no CI runner covers it |
 | **Deleting inside your own territory** | not covered, and not coverable here — the ask is upstream as [issue #545](https://github.com/anthropics/sandbox-runtime/issues/545), open and unanswered since 2026-09-13, [with the measurement behind it](docs/upstream/denyUnlink.md) and [a demo](docs/demo/) |
-| **`init` heuristics** | it reads `.claude/agents/` then `CODEOWNERS`. Every other convention is a guess nobody has made yet |
+| **`init` heuristics** | it reads `.claude/agents/`, then `CODEOWNERS`, then the top-level folders that hold code. Every other convention is a guess nobody has made yet |
 | **SSH inside a run (macOS)** | on macOS the `ProxyCommand` the runtime sets can't authenticate to its own proxy, so `git` over SSH fails at the handshake (on Linux the runtime routes it through an authenticated proxy). Fix upstream: [PR #516](https://github.com/anthropics/sandbox-runtime/pull/516). Use an HTTPS remote |
 | **A browser inside a role (macOS)** | Chromium only starts with `--single-process`, which is unstable with several browsers. Fix upstream: [PR #598](https://github.com/anthropics/sandbox-runtime/pull/598). [Measurement](docs/upstream/mach-register.md) |
 

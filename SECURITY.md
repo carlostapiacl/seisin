@@ -27,7 +27,7 @@ visible to the maintainer and to you, and nobody else until there is a fix to ta
 ## The one surface worth understanding before you look
 
 `[keys.providers] command` is the only thing in a `seisin.toml` that **executes**. Everything
-else describes a boundary; this runs, in the parent, unsandboxed, with your privileges — it
+else describes a boundary; this runs, in the parent, outside the sandbox, with your privileges — it
 has to, because it holds the vault's credential and the confined side must not reach it.
 
 The consequence is that **a `seisin.toml` arriving with a repository you cloned is code you
