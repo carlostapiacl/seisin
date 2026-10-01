@@ -129,6 +129,111 @@ export const RUNTIME_WRITES = [
 ];
 
 /**
+ * The agents that keep their state — and their sign-in — under a directory of
+ * their own name, and where that sign-in sits when it is a file.
+ *
+ * `~/.claude` and `~/.codex` used to be granted to every run, whatever it ran.
+ * The cost was measured on 2026-09-30: a role running nothing but `cat` read
+ * `~/.codex/auth.json`, the ChatGPT tokens of whoever signed Codex in. The
+ * directory is the agent's scratch, so it goes to a run of that agent; and the
+ * other agents' sign-in files are denied to it, read and write, so a Claude
+ * run cannot read Codex's tokens or swap them for another account's.
+ *
+ * `~/.claude/.credentials.json` is where Claude Code keeps its sign-in when
+ * there is no keychain (Linux, and macOS when the keychain is unavailable).
+ * On macOS it is normally in the login keychain, which no file rule reaches.
+ *
+ * What this does NOT close, said where it is decided: a run of Codex can read
+ * its own `auth.json`, and so can every command Codex runs, because they share
+ * one sandbox. Only Codex storing its sign-in in the keychain closes that
+ * (`cli_auth_credentials_store = "keyring"`), and that is Codex's setting.
+ */
+export const AGENT_HOMES = { claude: "~/.claude", codex: "~/.codex" };
+export const AGENT_CREDENTIALS = {
+  claude: ["~/.claude/.credentials.json"],
+  codex: ["~/.codex/auth.json"],
+};
+export const AGENTS = Object.keys(AGENT_HOMES);
+
+const SHELLS = new Set(["sh", "bash", "zsh", "dash", "fish"]);
+const LAUNCHERS = new Set(["node", "npx", "bunx", "pnpx", "bun", "deno"]);
+
+/** Which agent a token names, by its basename or its package path, or null. */
+function agentNamed(token) {
+  const t = String(token ?? "");
+  const base = t.split("/").pop().replace(/\.(c|m)?js$/, "");
+  if (AGENTS.includes(base)) return base;
+  if (/@openai\/codex(\/|$)/.test(t)) return "codex";
+  if (/@anthropic-ai\/claude-code(\/|$)/.test(t)) return "claude";
+  return null;
+}
+
+/**
+ * The agent a command line runs, or null when it is none seisin knows.
+ *
+ * Reads what a person writes after `--`: the program, through `env` and
+ * `VAR=value`, through a launcher (`node …/@openai/codex/bin/codex.js`,
+ * `npx @anthropic-ai/claude-code`), and through `sh -c "codex exec …"` by the
+ * first word of the script. Nothing cleverer: a prompt that mentions "claude"
+ * must not turn a run into a Claude run. A wrapper script is not followed —
+ * `seisin run <role> --agent codex -- ./wrapper.sh` says it instead.
+ */
+export function agentOf(cmd = []) {
+  const argv = [...cmd];
+  for (let depth = 0; depth < 4 && argv.length; depth++) {
+    while (argv.length && (argv[0] === "env" || /^[A-Za-z_][A-Za-z0-9_]*=/.test(argv[0]) ||
+      (argv[0].startsWith("-") && depth > 0))) argv.shift();
+    if (!argv.length) return null;
+    const head = argv.shift();
+    const named = agentNamed(head);
+    if (named) return named;
+    const base = head.split("/").pop();
+    if (LAUNCHERS.has(base)) {
+      const next = argv.find((a) => !a.startsWith("-"));
+      return next ? agentNamed(next) : null;
+    }
+    if (SHELLS.has(base)) {
+      const i = argv.findIndex((a) => /^-[a-z]*c$/.test(a));
+      if (i === -1 || argv[i + 1] === undefined) return null;
+      argv.splice(0, argv.length, ...argv[i + 1].trim().split(/\s+/));
+      continue;
+    }
+    return null;
+  }
+  return null;
+}
+
+/**
+ * The scratch list for a run of `agent`: every entry, minus the homes of the
+ * agents it is not.
+ *
+ * `agent === undefined` is "no command known" — check, console, explain, and
+ * the union surface.js needs — and answers with every home, which is the most
+ * any run of the role gets. `null` is a command that is no agent seisin knows,
+ * and gets neither home. An explicit `[runtime] writes` goes through the same
+ * filter: listing `~/.codex` there says what a Codex run may write, not that
+ * a `cat` may.
+ */
+export function runtimeWritesFor(config, agent) {
+  const list = (config.runtimeWrites ?? RUNTIME_WRITES).map(expand);
+  if (agent === undefined) return list;
+  const others = AGENTS.filter((a) => a !== agent).map((a) => expand(AGENT_HOMES[a]));
+  return list.filter((p) => !others.some((h) => p === h || p.startsWith(h + "/")));
+}
+
+/**
+ * The sign-in files of every agent this run is not, absolute, under `home`.
+ *
+ * Empty when no command is known: a role's settings without a command are the
+ * most it can get, and the most includes being run as either agent.
+ */
+export function otherAgentsCredentials(agent, home = homedir()) {
+  if (agent === undefined) return [];
+  const at = (p) => (p.startsWith("~/") ? join(home, p.slice(2)) : p);
+  return AGENTS.filter((a) => a !== agent).flatMap((a) => AGENT_CREDENTIALS[a].map(at)).map((p) => realOrSelf(p));
+}
+
+/**
  * `~` and `$TMPDIR` are the only expansions; everything else is a literal path.
  *
  * Symlinks are then resolved, and that is not a nicety. On macOS `/tmp` is a
@@ -234,7 +339,7 @@ function unexpressible(glob, key = "writes") {
  * the real ~/.claude, ~/.cache and /tmp, which every role shares — convenient,
  * and the reason `isolate` exists.
  */
-export function writePathsOf(config, role, { observe = false } = {}) {
+export function writePathsOf(config, role, { observe = false, agent } = {}) {
   const abs = (p) => (p.startsWith("/") ? p : join(config.root, p));
   const level = config.isolate === true ? "home" : config.isolate;
   const home = level === "home" ? roleHome(config, role.name) : null;
@@ -242,6 +347,6 @@ export function writePathsOf(config, role, { observe = false } = {}) {
     ...(observe ? [abs(".")] : role.writes.map((g) => abs(toWritePath(g)))),
     ...(home
       ? [home, join(home, ".config"), join(home, ".local"), join(home, ".cache"), join(home, "tmp")]
-      : (config.runtimeWrites ?? RUNTIME_WRITES).map(expand)),
+      : runtimeWritesFor(config, agent)),
   ];
 }

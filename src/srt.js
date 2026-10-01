@@ -16,6 +16,7 @@
 import { unknownRole } from "./suggest.js";
 import { existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { homedir } from "node:os";
 import { STATE_DIR, CONFIG_NAME } from "./layout.js";
 import { entriesOf } from "./keys.js";
 import { enforcedNeverWrites } from "./owners.js";
@@ -25,13 +26,14 @@ import { runsRootOf } from "./rundir.js";
 import { FIFO_SUFFIX } from "./spool.js";
 import {
   SOCKET_MAX, isLink, realOrSelf, expand, homeFits, roleHome, roleHomeRoot,
-  CREDENTIAL_HOMES, toWritePath, writePathsOf,
+  CREDENTIAL_HOMES, toWritePath, writePathsOf, otherAgentsCredentials,
 } from "./grants.js";
 
 // Re-exported: these were srt.js's exports before grants.js existed, and
 // callers (the CLI, the tests, anyone embedding seisin) import them from here.
 export {
   expand, homeFits, roleHome, roleHomeRoot, CREDENTIAL_HOMES, RUNTIME_WRITES,
+  AGENTS, AGENT_HOMES, AGENT_CREDENTIALS, agentOf,
 } from "./grants.js";
 
 
@@ -91,7 +93,13 @@ export function loopbackVia(role, cmd) {
   return ["env", `NO_PROXY=${NO_PROXY_WITHOUT_LOOPBACK}`, `no_proxy=${NO_PROXY_WITHOUT_LOOPBACK}`, ...cmd];
 }
 
-export function settingsFor(config, roleName, spool = null, observe = false) {
+/**
+ * `agent` is what the run's command runs — `agentOf(cmd)`, or `--agent`. It
+ * decides which agent's home is scratch for this run and whose sign-in files
+ * are closed to it. Left out (check, console, explain: no command), the
+ * settings are the most the role can get, which is every agent's home.
+ */
+export function settingsFor(config, roleName, spool = null, observe = false, { agent } = {}) {
   const role = config.roles[roleName];
   if (!role) throw unknownRole(config, roleName);
 
@@ -126,7 +134,7 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
    *   any directory that exists. It is the directory Claude Code itself logs
    *   to; making it empty changes nothing for anyone.
    */
-  const scratch = writePathsOf(config, config.roles[roleName] ?? { name: roleName, writes: [] });
+  const scratch = writePathsOf(config, config.roles[roleName] ?? { name: roleName, writes: [] }, { agent });
   const runtimeConvenience = ["~/.npm/_logs", "~/.claude/debug"]
     .map(expand)
     .filter((p) => process.platform !== "linux" || existsSync(p) || madeFirst(p, scratch));
@@ -197,6 +205,21 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
    * ideal and it is a boundary that holds up in practice.
    */
   if (shielded) denyRead.push(...CREDENTIAL_HOMES.map(expand));
+
+  /**
+   * The other agents' sign-in, closed to this run both ways. See AGENT_HOMES
+   * in grants.js. Under `isolate = "home"` the agent signs in inside the role's
+   * own home, so that is where the files are looked for too.
+   *
+   * On Linux only the ones that exist: bubblewrap would otherwise put a file
+   * where the agent will later want to write its own. The directory around a
+   * missing one is not this run's to write (it is another agent's home), so
+   * nothing in the run can create it either — except under `isolate = "home"`,
+   * where the whole role home is writable and a missing one stays creatable.
+   */
+  const notMine = otherAgentsCredentials(agent, isolated ? roleHome(config, roleName) : homedir())
+    .filter((p) => process.platform !== "linux" || existsSync(p));
+  denyRead.push(...notMine);
 
   /**
    * `~/.claude` and `~/.codex` are closed only at the `home` level, and the
@@ -309,7 +332,7 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
         // One function answers "what may this role write" for the settings and
         // for surface.js, which needs the union over every role. Two copies of
         // that arithmetic would be two answers the day one of them changes.
-        ...writePathsOf(config, role, { observe }),
+        ...writePathsOf(config, role, { observe, agent }),
         ...(isFifo ? [spool] : []),
       ],
       /**
@@ -329,6 +352,7 @@ export function settingsFor(config, roleName, spool = null, observe = false) {
        */
       denyWrite: [
         ...runtimeConvenience,
+        ...notMine,
         /**
          * The role's own subtractions, `never_writes`.
          *

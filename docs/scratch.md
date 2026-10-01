@@ -18,6 +18,16 @@ writes = ["~/.claude", "~/.codex", "~/.local/share", "~/.local/state",
           "~/.cache", "$TMPDIR", "/tmp"]
 ```
 
+`~/.claude` and `~/.codex` are each one agent's: a run gets the one whose agent its command
+runs — `claude …` or `codex …`, through `env`, `node`/`npx` and `sh -c "…"` — and neither when
+it runs something else. Every run is also denied the other agents' sign-in files, read and write
+(`~/.codex/auth.json`, `~/.claude/.credentials.json`). Before 2026-09-30 every role got both
+directories, and a `cat` run as any role read the ChatGPT tokens Codex keeps in `auth.json`. A
+wrapper script is not followed; name the agent: `seisin run dev --agent codex -- ./run-codex.sh`.
+What stays open is a run's own sign-in: Codex and every command Codex runs share one sandbox, so
+they can read its `auth.json`. Codex keeps it in the macOS keychain instead with
+`cli_auth_credentials_store = "keyring"` in `~/.codex/config.toml`.
+
 **Writing this key replaces that list; it does not add to it.** So a `[runtime] writes` copied
 from somewhere to grant one extra path silently drops the six it did not mention. Start from the
 list above and append.
