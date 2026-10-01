@@ -3,6 +3,8 @@ import { unknownRole } from "../suggest.js";
 import { walls, wasted } from "../walls.js";
 import { STALE_RUNS } from "../requests.js";
 import { logPath } from "../log.js";
+import { standingOf } from "../owners.js";
+import { kindsOf } from "../kinds.js";
 import { C, out, safe } from "../render.js";
 
 export function wallsCommand(config, argv = []) {
@@ -24,9 +26,26 @@ export function wallsCommand(config, argv = []) {
   const old = every.filter((w) => w.stale).length;
   // Nothing to say prints nothing, the way `scan` does when a repo is clean.
   // A command that always speaks is one whose output stops being read.
-  if (list.length) out(renderForPerson(role, list));
+  const shown = withKinds(config, list);
+  if (shown.length) out(renderForPerson(role, shown));
   if (old && !all) out(`  (${old} older wall(s) not hit in the last ${STALE_RUNS}+ runs: seisin walls ${role} --all)\n`);
-  return list;
+  return shown;
+}
+
+/**
+ * An unowned path gets the kind and hint the console gives it (kinds.js).
+ *
+ * The bare reason said "has no owner — no role can write it until one claims
+ * it" about `dist/` and `.env` alike: an invitation to give a build folder or a
+ * credential an owner, while the console said what kind of thing each was and
+ * what to do instead. Same classifier, same sentence, on both screens.
+ */
+function withKinds(config, list) {
+  const stand = standingOf(config);
+  const unowned = list.filter((w) => w.action === "write" && !w.owners?.length &&
+    stand({ kind: "file", target: w.target }).kind === "unowned");
+  const natures = kindsOf(unowned.map((w) => w.target), { keyDirs: config.keyDirs ?? [] });
+  return list.map((w) => (unowned.includes(w) ? { ...w, ...natures.get(w.target) } : w));
 }
 
 /**
@@ -39,7 +58,9 @@ export function wallsCommand(config, argv = []) {
 export function renderForPerson(role, list) {
   const lines = [`\n  ${C.b}${safe(role)}${C.off} keeps hitting:\n\n`];
   for (const w of list) {
-    const why = w.owners?.length ? `belongs to ${w.owners.map(safe).join(", ")}` : safe(w.reason);
+    const why = w.owners?.length ? `belongs to ${w.owners.map(safe).join(", ")}`
+      : w.kind ? `unowned · ${w.kind === "territory" ? "ownable" : w.kind}: ${safe(w.hint)}`
+      : safe(w.reason);
     lines.push(`    ${C.yellow}${String(w.times).padStart(3)}×${C.off}  ${w.action} ${safe(w.target)}  ${C.dim}${why}${C.off}\n`);
   }
   const n = wasted(list);
