@@ -22,7 +22,7 @@ export { CONFIG_NAME, STATE_DIR, LOG_NAME } from "./layout.js";
 export { covers, ownersOf, keyHolders, explain } from "./owners.js";
 
 /** A policy, resolved into sandbox settings and a child environment. */
-export { settingsFor, RUNTIME_WRITES, expand } from "./srt.js";
+export { settingsFor, RUNTIME_WRITES, expand, agentOf, AGENT_HOMES, AGENT_CREDENTIALS } from "./srt.js";
 export { buildEnv, BASE as BASE_ENV, DEFAULTS as DEFAULT_ENV } from "./env.js";
 
 /**

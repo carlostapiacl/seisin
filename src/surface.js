@@ -522,11 +522,40 @@ function homeControls(platform, home = homedir()) {
  * - `skills/`, `plugins/`: what the next session loads. Codex installs OpenAI's
  *   curated plugins into `plugins/cache/` by itself and carries on when refused.
  * - `managed_config.toml`: a layer that overrides `config.toml`.
+ * - `.tmp/plugins`: Codex's copy of OpenAI's curated plugin marketplace, a git
+ *   checkout it syncs at start. `codex plugin add` installs from it as it is on
+ *   disk — measured on 2026-09-30 with codex 0.150.1 in a scratch CODEX_HOME: a
+ *   file and an `.mcp.json` planted in the copy landed in `plugins/cache/` and
+ *   the plugin was enabled. Codex re-fetches the copy only when the upstream
+ *   commit differs from `.tmp/plugins.sha`, so an edit made while they match
+ *   stays until upstream moves. The `.sha` file is left writable: changing it
+ *   makes Codex fetch a clean copy, which repairs rather than plants.
  */
 export const CODEX_HOME_CONTROLS = [
   ".codex/config.toml", ".codex/hooks.json", ".codex/rules", ".codex/skills", ".codex/plugins",
-  ".codex/managed_config.toml",
+  ".codex/managed_config.toml", ".codex/.tmp/plugins",
 ];
+
+/**
+ * `CODEX_HOME`, when it names somewhere other than `~/.codex`, absolute and
+ * resolved — or null. Codex takes it from the environment of whoever runs it,
+ * so the parent's environment is the one that says where your Codex looks.
+ */
+export function codexHomeOf(env = process.env) {
+  const v = env?.CODEX_HOME;
+  if (!v || !isAbsolute(v)) return null;
+  const real = realOrSelf(v);
+  return real === realOrSelf(join(homedir(), ".codex")) ? null : real;
+}
+
+/** The control entries of a Codex home that is not `~/.codex`, by the same list. */
+function codexControlsAt(dir, platform) {
+  let profiles = [];
+  try { profiles = readdirSync(dir).filter((f) => f.endsWith(".config.toml") && f !== "config.toml"); } catch {}
+  return [...CODEX_HOME_CONTROLS.map((c) => c.replace(/^\.codex\//, "")), ...profiles]
+    .map((f) => ({ path: join(dir, f), why: `CODEX_HOME/${f}, run by Codex outside the sandbox`, ifPresent: true }))
+    .filter((e) => platform !== "linux" || existsSync(e.path));
+}
 
 /** `codex -p <name>` layers `~/.codex/<name>.config.toml`: the ones there now. */
 function codexProfiles(home) {
@@ -554,7 +583,7 @@ export function denyFor(config, role, { env = process.env, platform = process.pl
   // Memoised per config: `check` builds every role's settings and then asks
   // for the same list again to show it; on a multi-repo workspace that was 2.6 s twice.
   const memo = DENIES.get(config) ?? DENIES.set(config, new Map()).get(config);
-  const key = `${role.name}\0${observe}\0${platform}\0${env.PATH ?? ""}`;
+  const key = `${role.name}\0${observe}\0${platform}\0${env.PATH ?? ""}\0${env.CODEX_HOME ?? ""}`;
   if (memo.has(key)) return memo.get(key);
   const result = computeDenies(config, role, { env, platform, observe });
   memo.set(key, result);
@@ -615,6 +644,15 @@ function computeDenies(config, role, { env, platform, observe }) {
   // A profile created after the walk: `codex -p x` reads `~/.codex/x.config.toml`.
   if (platform === "darwin" && inMine(codexHome))
     globs.push({ path: `${codexHome}/*.config.toml`, why: "a Codex profile, if it is created" });
+  // `CODEX_HOME` moves all of it. Codex run with it set — by you, outside the
+  // sandbox — reads its config, hooks, rules and plugins from there, so when a
+  // role can write that directory the same entries are taken back there.
+  const elsewhere = codexHomeOf(env);
+  if (elsewhere && inMine(elsewhere)) {
+    controls.push(...codexControlsAt(elsewhere, platform));
+    if (platform === "darwin")
+      globs.push({ path: `${elsewhere}/*.config.toml`, why: "a Codex profile under CODEX_HOME, if it is created" });
+  }
   // Creating one of the families where it is not there yet: one exact pattern
   // per project root, never `**` (see `exactly`).
   if (platform === "darwin")
@@ -640,7 +678,7 @@ function computeDenies(config, role, { env, platform, observe }) {
  * to be filed as "belongs to dev" for a role with `writes = ["**"]`, and
  * granting it would have granted nothing.
  */
-export function protectedBy(config, target, { platform = process.platform, role = null } = {}) {
+export function protectedBy(config, target, { platform = process.platform, role = null, env = process.env } = {}) {
   /**
    * A project's `.claude/`, any file in it, and the other control files — the
    * same rule the kernel is given. On Linux the kernel only holds the ones
@@ -653,6 +691,15 @@ export function protectedBy(config, target, { platform = process.platform, role 
    * protected, so only those are called protected.
    */
   const codexHome = join(homedir(), ".codex");
+  const elsewhere = codexHomeOf(env);
+  if (elsewhere && isAbsolute(target) && under(target, elsewhere)) {
+    const rel = target.slice(elsewhere.length + 1);
+    const hit = CODEX_HOME_CONTROLS.map((c) => c.replace(/^\.codex\//, "")).find((c) => under(rel, c)) ??
+      (dirname(target) === elsewhere && target.endsWith(".config.toml") ? rel : null);
+    return hit && (platform !== "linux" || existsSync(join(elsewhere, hit)))
+      ? { path: target, why: `CODEX_HOME/${hit}, run by Codex outside the sandbox` }
+      : null;
+  }
   if (isAbsolute(target) && under(target, codexHome)) {
     const rel = target.slice(homedir().length + 1);
     const hit = [...CODEX_HOME_CONTROLS].find((c) => under(rel, c)) ??

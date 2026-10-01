@@ -161,11 +161,19 @@ places credentials live are denied; `HOME` untouched), or `"home"` / `true` (the
 V8 and Cloudflare Workers is a JavaScript heap; ours is only ever this setting.
 
 **scratch** — the space every role may write whatever its territory, because an agent that
-cannot write a temp file cannot work: `[runtime] writes`, by default `~/.claude`, `~/.codex`,
-`~/.cache`, `~/.local/{share,state}`, `$TMPDIR`, `/tmp`. **Shared** between roles, which is the
+cannot write a temp file cannot work: `[runtime] writes`, by default `~/.claude` (to a run of
+Claude Code), `~/.codex` (to a run of Codex), `~/.cache`, `~/.local/{share,state}`, `$TMPDIR`,
+`/tmp`. **Shared** between roles, which is the
 hole [docs/scratch.md](scratch.md) is about. *Next to:* not the run directory, which is private.
 *Not:* temp space for a run, scratchpad, tmp. *Elsewhere:* ⚠ Claude Code's *scratchpad* is a
 per-session, private directory; ours is neither — that is the point of naming it.
+
+**sign-in** — the file an agent keeps its login in: `~/.codex/auth.json` for Codex,
+`~/.claude/.credentials.json` for Claude Code where there is no keychain. A run is denied every
+agent's sign-in but its own, read and write; which agent a run is comes from its command, or
+`seisin run --agent`. *Not:* key — a sign-in is never declared or granted. *Where:* `seisin check`
+(standing limits), `explain <role> read ~/.codex/auth.json`. *Elsewhere:* Codex calls where it keeps
+it `cli_auth_credentials_store` (`file`, `keyring`, `auto`).
 
 **map** — the policy as it resolves per role: what each role writes, what it reads, what it is
 denied. What `seisin check` prints and `seisin_state` returns. *Not:* permission map. "Outside the

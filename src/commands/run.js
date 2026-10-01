@@ -13,7 +13,7 @@ import { constants as osConstants } from "node:os";
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
-import { settingsFor, roleHome, loopbackVia } from "../srt.js";
+import { settingsFor, roleHome, loopbackVia, agentOf, AGENTS, AGENT_HOMES } from "../srt.js";
 import { buildEnv } from "../env.js";
 import { resolveKeys } from "../keys.js";
 import { nestedSandboxWarning } from "../nested.js";
@@ -107,6 +107,25 @@ export function dependencySrt(from = HERE) {
   }
 }
 
+/**
+ * Which agent this run is: `--agent <name>` when given, else read off the
+ * command. It decides whose home is scratch and whose sign-in is closed (see
+ * AGENT_HOMES in grants.js). `--agent none` says "no agent", for a run that
+ * must get neither home whatever its command looks like.
+ */
+export function agentFor(mine, cmd) {
+  const at = mine.lastIndexOf("--agent");
+  if (at === -1) return agentOf(cmd);
+  const given = mine[at + 1];
+  if (given === "none") return null;
+  if (!AGENTS.includes(given))
+    throw new Error(
+      `--agent ${given ?? ""}: seisin knows ${AGENTS.join(", ")} and none.\n` +
+      `  It decides whose home a run may write (${AGENTS.map((a) => AGENT_HOMES[a]).join(", ")}) ` +
+      `and whose sign-in it cannot read.`);
+  return given;
+}
+
 export async function run(config, argv) {
   /**
    * Ours before the `--`, theirs after it.
@@ -129,12 +148,13 @@ export async function run(config, argv) {
     // `--observe` as seisin's and put the run in observe mode; now that flag
     // belongs to `echo`, and observe needs `seisin run x --observe -- echo hi`.
     let i = 1;
-    while (i < argv.length && argv[i].startsWith("-")) i++;
+    while (i < argv.length && argv[i].startsWith("-")) i += argv[i] === "--agent" ? 2 : 1;
     mine = argv.slice(1, i);
     cmd = argv.slice(i);
   }
   if (!role || cmd.length === 0) throw new Error("usage: seisin run <role> -- <command...>");
   if (!config.roles[role]) throw unknownRole(config, role);
+  const agent = agentFor(mine, cmd);
 
   /**
    * seisin does not run inside seisin, and says so here rather than later.
@@ -202,7 +222,7 @@ export async function run(config, argv) {
   // What was already waiting, so the end of the run can say what it added.
   const before = new Set(pending(requestsPath(config.root)).map((q) => q.key));
   const sockPath = theRun.sock;
-  const settings = settingsFor(config, role, sockPath, observe);
+  const settings = settingsFor(config, role, sockPath, observe, { agent });
   // Per run, never per role: `.seisin/<role>.json` was one file for every run
   // of that role, and two at once wrote each other's socket path into it.
   const file = theRun.writeSettings(settings);
@@ -321,6 +341,7 @@ export async function run(config, argv) {
   err(
     `${C.dim}seisin: ${role} · writes ${territory}${scratch > 0 ? ` (+${scratch} scratch)` : ""} · ` +
     `keys ${r.keys.length ? r.keys.join(" ") : "none"} · ` +
+    `${agent ? `runs ${agent}` : "runs no agent seisin knows"} · ` +
     `env ${Object.keys(env).length} kept, ${dropped.length} dropped` +
     `${observe ? ` · ${C.yellow}OBSERVING — the repo is writable, the network is NOT${C.off}${C.dim}` : ""}${C.off}\n`
   );
