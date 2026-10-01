@@ -41,7 +41,15 @@
 const SELF_SANDBOXING = {
   codex: {
     on: true,
-    off: ["--dangerously-bypass-approvals-and-sandbox"],
+    // `-s danger-full-access` first: it is the one to suggest. It turns off only
+    // the sandbox, and inside `seisin run` that is the whole change wanted —
+    // `--dangerously-bypass…` also turns off approvals, which says more than
+    // the situation needs. Warning about `-s danger-full-access` was a warning
+    // about a thing that was not happening: measured on 2026-09-30 with codex
+    // 0.150.1, a turn under seisin with that flag ran its commands and finished.
+    off: ["--sandbox=danger-full-access", "--dangerously-bypass-approvals-and-sandbox"],
+    // The same setting spelt as a flag and its value, two words.
+    offPairs: [["-s", "danger-full-access"], ["--sandbox", "danger-full-access"]],
     // The subcommand whose entire job is to confine. No flag turns that off.
     never: ["sandbox"],
   },
@@ -71,7 +79,8 @@ export function nestedSandboxWarning(cmd = []) {
       `  Run the command directly — seisin is already the boundary here.`
     );
 
-  const turnedOff = (spec.off ?? []).some((f) => rest.some((a) => a === f || a.startsWith(f + "=")));
+  const turnedOff = (spec.off ?? []).some((f) => rest.some((a) => a === f || a.startsWith(f + "="))) ||
+    (spec.offPairs ?? []).some(([flag, value]) => rest.some((a, i) => a === flag && rest[i + 1] === value));
   if (turnedOff) return null;
   const confining = spec.on || (spec.onWith ?? []).some((f) => rest.includes(f));
   if (!confining) return null;
@@ -81,6 +90,6 @@ export function nestedSandboxWarning(cmd = []) {
     `second profile to a process that already has one.\n` +
     `  This does not fail here — it fails on the first command ${name} tries to run, which ` +
     `looks like an agent that did nothing.\n` +
-    `  Run it with its own sandbox off: \`${name} … ${(spec.off ?? ["--no-sandbox"])[0]}\`.`
+    `  Run it with its own sandbox off: \`${name} … ${spec.offPairs ? spec.offPairs[0].join(" ") : (spec.off ?? ["--no-sandbox"])[0]}\`.`
   );
 }

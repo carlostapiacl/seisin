@@ -20,6 +20,22 @@ changed rather than failing on the old spelling.
 - **`seisin walls` says what kind of thing an unowned path is.** `dist/` and `.env` read "no role
   can write it until one claims it"; the terminal now gives the console's kind and hint
   (`unowned · build: …`, `unowned · credential: …`).
+**Codex under seisin, measured** (codex 0.150.1, signed in with ChatGPT, five turns in a toy
+repository). What it needs and what changed is in [docs/agents.md](docs/agents.md).
+
+- **`-s danger-full-access` is no longer warned about.** It turns Codex's own sandbox off, and
+  the turn ran; seisin said it would fail on the first command. The warning now suggests that
+  flag rather than `--dangerously-bypass-approvals-and-sandbox`, which also turns off approvals.
+- **Codex's control files are protected.** A project's `.codex/` whole, as `.claude/`: it holds
+  `config.toml`, `hooks.json` and `rules/`, which Codex reads from any project you trust. In your
+  home, file by file, since Codex writes its sessions there every turn: `config.toml`,
+  `hooks.json`, `rules/`, `skills/`, `plugins/`, `managed_config.toml` and `<name>.config.toml`
+  profiles. Until now only `config.toml` was. `explain` says the same: a session file under
+  `~/.codex` is not protected, a rule is.
+- **`seisin hook` works for Codex.** It prints only `hookSpecificOutput`: Codex drops a hook's
+  answer that carries any other field, so a denial was ignored and the command ran into the
+  kernel. And it reads Codex's `apply_patch`, so a file edit is recorded as `allowed` or denied
+  before it runs, like a `Write`.
 
 ## 0.5.0 — 2026-09-30
 

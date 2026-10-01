@@ -129,7 +129,12 @@ const COMMANDS = {
   hook: async () => {
     try {
       const decision = await (await import("./commands/hook.js")).hook();
-      if (decision?.hookSpecificOutput) out(JSON.stringify(decision) + "\n");
+      // Only what the hook protocol defines. `decision` and `logged` are for the
+      // callers inside seisin; Codex validates a hook's output against a schema
+      // that admits no other field (and `decision` only as approve|block), and
+      // drops the whole answer when it does not fit — measured 2026-09-30 with
+      // codex 0.150.1: the deny was ignored and the command ran into the kernel.
+      if (decision?.hookSpecificOutput) out(JSON.stringify({ hookSpecificOutput: decision.hookSpecificOutput }) + "\n");
     } catch (e) {
       err(`seisin hook: ${e?.message ?? e} — no decision, the tool call goes ahead\n`);
     }

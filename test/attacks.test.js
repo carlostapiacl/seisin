@@ -140,6 +140,39 @@ test("ATTACK-005 the home's Claude settings cannot be opened for writing", { ski
   }
 });
 
+const codexControls = ["config.toml", "rules/default.rules"].map((f) => join(homedir(), ".codex", f)).filter((f) => existsSync(f));
+test("ATTACK-005c the home's Codex config and rules cannot be opened for writing", { skip: skip || (codexControls.length ? false : "no ~/.codex/config.toml or rules here") }, () => {
+  // config.toml declares MCP servers, profiles and the trust Codex asks before
+  // it runs a hook; rules/ lists the commands it runs without asking. Before
+  // 2026-09-30 the rules were writable by every role through the runtime's
+  // ~/.codex grant. Opened for append, no byte written.
+  const control = join(repo, "src", "control-005c");
+  for (const file of codexControls) {
+    const before = statSync(file);
+    rmSync(control, { force: true });
+    const r = as("narrow", `echo ok > src/control-005c; (exec 3>>"${file}")`);
+    try {
+      assert.equal(readFileSync(control, "utf8"), "ok\n", `the role could not write its own territory: ${r.stderr}`);
+      assert.notEqual(r.status, 0, file);
+      assert.match(r.stderr, refusalOf(file));
+      const after = statSync(file);
+      assert.equal(after.size, before.size);
+      assert.equal(after.mtimeMs, before.mtimeMs);
+    } finally {
+      rmSync(control, { force: true });
+    }
+  }
+});
+
+test("ATTACK-005d a role cannot give a project Codex hooks", { skip: skip || macOnly }, () => {
+  // `.codex/hooks.json` in a trusted project runs a command on every tool call
+  // of the next Codex session, outside any sandbox.
+  assert.notEqual(as("narrow", "mkdir -p src/nested/.codex && echo '{}' > src/nested/.codex/hooks.json").status, 0);
+  assert.ok(!existsSync(join(repo, "src", "nested", ".codex", "hooks.json")));
+  assert.equal(as("narrow", "echo x > src/nested/codex-control && rm src/nested/codex-control").status, 0,
+    "the project itself must stay writable");
+});
+
 test("ATTACK-012 a role cannot write the git files that run in a submodule or worktree", { skip: skip || macOnly }, () => {
   // .git/config and hooks are denied; so are the files beside them that git also
   // runs or follows — a submodule's own config/hooks, and the files that point a

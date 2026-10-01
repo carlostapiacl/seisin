@@ -300,7 +300,8 @@ function computeParentInputs(config, env) {
  * Git runs `.git/hooks/*` and whatever `.git/config` names (core.hooksPath,
  * core.fsmonitor). Claude Code runs the hooks, plugins and skills its settings
  * declare, and the MCP servers in `.mcp.json`. direnv runs `.envrc` on `cd`.
- * Codex starts what `config.toml` lists. A role that writes one of these does
+ * Codex starts what its `config.toml` and `hooks.json` list and lets its `rules`
+ * run without asking. A role that writes one of these does
  * not escape the sandbox; it leaves a command for you to run the next time you
  * open that project — measured on 2026-09-23: every role could open
  * `~/.claude/settings.json` for writing through the shared runtime scratch.
@@ -315,11 +316,22 @@ export const CONTROL_FILES = [
   ".git/hooks", ".git/config",
   ".claude/settings.json", ".claude/settings.local.json",
   ".claude/hooks", ".claude/plugins", ".claude/skills", ".claude/commands", ".claude/agents",
-  ".mcp.json", ".envrc", ".codex/config.toml",
+  ".mcp.json", ".envrc", ".codex",
 ];
 
 const RUNNER = (f) =>
-  f.startsWith(".git/") ? "git" : f === ".envrc" ? "direnv" : f.startsWith(".codex/") ? "Codex" : "Claude Code";
+  f.startsWith(".git/") ? "git" : f === ".envrc" ? "direnv" : f.startsWith(".codex") ? "Codex" : "Claude Code";
+
+/**
+ * A project's `.codex/` is protected whole, as `.claude/` is, and for the same
+ * reason plus one: it holds `config.toml` (MCP servers, profiles, and the trust
+ * a hook needs before Codex runs it), `hooks.json` and `rules/`, which Codex
+ * reads from any project the user has trusted. Codex itself keeps `.codex`
+ * read-only inside the directories its own sandbox lets it write, so a role
+ * loses nothing there that Codex would have given it.
+ */
+const CODEX_WHY = ".codex, whose config, hooks and rules Codex runs outside the sandbox";
+const controlWhy = (f) => f === ".codex" ? CODEX_WHY : `${f}, run by ${RUNNER(f)} outside the sandbox`;
 
 /** `s` as a literal inside a RegExp — every metacharacter, not only `.`. */
 const literal = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -462,9 +474,9 @@ function controlsOf(dir, platform, families = []) {
     out.push({ path: join(dir, ".claude"), why: ".claude, whose settings, hooks and skills Claude Code runs outside the sandbox" });
   // The single files only where they exist: where they do not, the patterns
   // refuse creating them, and a literal each would be start-up for nothing.
-  for (const f of [".mcp.json", ".envrc", ".codex/config.toml"]) {
+  for (const f of [".mcp.json", ".envrc", ".codex"]) {
     const p = join(dir, f);
-    if (existsSync(p)) out.push({ path: p, why: `${f}, run by ${RUNNER(f)} outside the sandbox`, ifPresent: true });
+    if (existsSync(p)) out.push({ path: p, why: controlWhy(f), ifPresent: true });
   }
   // The families literally only where they exist, on every platform. Where
   // they do not, macOS gets a pattern for creating them (computeDenies) and
@@ -486,14 +498,44 @@ function controlsOf(dir, platform, families = []) {
  * with `claude -p` under the new profile: it answered, and what it was refused
  * were lock and cache files under plugins/, which it tolerates).
  */
-function homeControls(platform) {
-  const home = homedir();
+function homeControls(platform, home = homedir()) {
   return [
     ".claude/settings.json", ".claude/settings.local.json", ".claude/hooks", ".claude/plugins",
-    ".claude/skills", ".claude/commands", ".claude/agents", ".codex/config.toml",
+    ".claude/skills", ".claude/commands", ".claude/agents",
+    ...CODEX_HOME_CONTROLS, ...codexProfiles(home),
   ]
     .map((f) => ({ path: join(home, f), why: `${f}, run by ${RUNNER(f)} outside the sandbox`, ifPresent: true }))
     .filter((e) => platform !== "linux" || existsSync(e.path));
+}
+
+/**
+ * What Codex runs or obeys from its home, file by file — never `~/.codex`
+ * whole, because Codex writes its sessions, logs and state databases there on
+ * every turn (measured 2026-09-30 with codex 0.150.1 under seisin: sessions/,
+ * logs_2.sqlite, state_5.sqlite, models_cache.json, cache/, plugins/cache/).
+ *
+ * - `config.toml`: MCP servers, profiles, and `hooks.state.*.trusted_hash`, the
+ *   trust Codex asks before running a hook. Codex tries to rewrite it at every
+ *   start and carries on when refused.
+ * - `hooks.json`: commands run on every tool call, outside any sandbox.
+ * - `rules/`: the commands Codex runs without asking.
+ * - `skills/`, `plugins/`: what the next session loads. Codex installs OpenAI's
+ *   curated plugins into `plugins/cache/` by itself and carries on when refused.
+ * - `managed_config.toml`: a layer that overrides `config.toml`.
+ */
+export const CODEX_HOME_CONTROLS = [
+  ".codex/config.toml", ".codex/hooks.json", ".codex/rules", ".codex/skills", ".codex/plugins",
+  ".codex/managed_config.toml",
+];
+
+/** `codex -p <name>` layers `~/.codex/<name>.config.toml`: the ones there now. */
+function codexProfiles(home) {
+  try {
+    return readdirSync(join(home, ".codex")).filter((f) => f.endsWith(".config.toml") && f !== "config.toml")
+      .map((f) => `.codex/${f}`);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -540,6 +582,7 @@ function computeDenies(config, role, { env, platform, observe }) {
   const controls = roots.flatMap((d) => controlsOf(d, platform, families));
   // The home is a project too, for Claude Code and Codex: ~/.claude/settings.json
   // is read by every session. Not walked — only its own control files.
+  const codexHome = join(homedir(), ".codex");
   if (["~/.claude", "~/.codex"].some((h) => inMine(join(homedir(), h.slice(2)))))
     controls.push(...homeControls(platform));
 
@@ -566,9 +609,12 @@ function computeDenies(config, role, { env, platform, observe }) {
         `${d}/**/.git/config.worktree`,
         `${d}/**/.git/modules/**/config`, `${d}/**/.git/modules/**/hooks/**`,
         `${d}/**/.git/worktrees/**/config.worktree`, `${d}/**/.git/worktrees/**/commondir`,
-        `${d}/**/.mcp.json`, `${d}/**/.envrc`, `${d}/**/.codex/config.toml`,
+        `${d}/**/.mcp.json`, `${d}/**/.envrc`, `${d}/**/.codex`, `${d}/**/.codex/**`,
       ]).map((path) => ({ path, why: "any project's control files in this territory, by pattern" }))
     : [];
+  // A profile created after the walk: `codex -p x` reads `~/.codex/x.config.toml`.
+  if (platform === "darwin" && inMine(codexHome))
+    globs.push({ path: `${codexHome}/*.config.toml`, why: "a Codex profile, if it is created" });
   // Creating one of the families where it is not there yet: one exact pattern
   // per project root, never `**` (see `exactly`).
   if (platform === "darwin")
@@ -601,6 +647,20 @@ export function protectedBy(config, target, { platform = process.platform, role 
    * that exist, so only those are called protected there: a sentence stricter
    * than the boundary is the direction this project refuses.
    */
+  /**
+   * Codex's home is not a project's `.codex`: Codex writes its sessions there
+   * on every turn and the kernel lets it. Only the entries it runs or obeys are
+   * protected, so only those are called protected.
+   */
+  const codexHome = join(homedir(), ".codex");
+  if (isAbsolute(target) && under(target, codexHome)) {
+    const rel = target.slice(homedir().length + 1);
+    const hit = [...CODEX_HOME_CONTROLS].find((c) => under(rel, c)) ??
+      (dirname(target) === codexHome && target.endsWith(".config.toml") ? rel : null);
+    return hit && (platform !== "linux" || existsSync(join(homedir(), hit)))
+      ? { path: target, why: `${hit}, run by Codex outside the sandbox` }
+      : null;
+  }
   const f = CLAUDE_DIR.test(target)
     ? ".claude"
     : CONTROL_RES.find(([, re]) => re.test(target))?.[0];
@@ -608,7 +668,7 @@ export function protectedBy(config, target, { platform = process.platform, role 
   if (f && (platform !== "linux" || heldOnLinux(config, target, re))) {
     const why = f === ".claude"
       ? ".claude, whose settings, hooks and skills Claude Code runs outside the sandbox"
-      : `${f}, run by ${RUNNER(f)} outside the sandbox`;
+      : controlWhy(f);
     return { path: target, why };
   }
   /**
