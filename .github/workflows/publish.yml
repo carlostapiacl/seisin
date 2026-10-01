@@ -68,3 +68,37 @@ jobs:
           npm --version
           : > "${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
       - run: npm publish --provenance --access public
+
+  # The GitHub release, after npm has the version and never before: a release
+  # page for a version npm refused would announce something nobody can install.
+  # Until 0.5.0 this was done by hand, once, and the page said 0.3.0 for three
+  # versions. The notes are that version's CHANGELOG section, as written.
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write    # this job only: create the release for the pushed tag
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: notes from the CHANGELOG
+        run: |
+          node -e '
+            const fs = require("fs");
+            const v = process.env.GITHUB_REF_NAME.replace(/^v/, "");
+            const s = fs.readFileSync("CHANGELOG.md", "utf8");
+            const at = s.search(new RegExp("^## " + v.replace(/\./g, "\\.") + "\\b", "m"));
+            if (at < 0) { console.error("no CHANGELOG section for " + v); process.exit(1); }
+            const rest = s.slice(at).split("\n").slice(1).join("\n");
+            const end = rest.search(/^## /m);
+            fs.writeFileSync("notes.md", (end < 0 ? rest : rest.slice(0, end)).trim() + "\n");
+          '
+      - name: create the release, unless it is already there
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "release $GITHUB_REF_NAME already exists — left as it is"
+          else
+            gh release create "$GITHUB_REF_NAME" --verify-tag --latest \
+              --title "seisin ${GITHUB_REF_NAME#v}" --notes-file notes.md
+          fi
