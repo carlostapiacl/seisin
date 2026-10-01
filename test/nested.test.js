@@ -25,6 +25,22 @@ test("with its own sandbox off, there is nothing to say", () => {
   assert.equal(warn(["codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "x"]), null);
 });
 
+test("`-s danger-full-access` turns codex's sandbox off too, in every spelling", () => {
+  // Measured 2026-09-30, codex 0.150.1: under seisin with this flag the turn ran
+  // its commands and finished. Warning about it was a warning about nothing.
+  for (const flags of [["-s", "danger-full-access"], ["--sandbox", "danger-full-access"], ["--sandbox=danger-full-access"]])
+    assert.equal(warn(["codex", "exec", "--json", ...flags, "x"]), null, flags.join(" "));
+  // A mode that still confines is still warned about.
+  for (const mode of ["workspace-write", "read-only"])
+    assert.match(warn(["codex", "exec", "-s", mode, "x"]), /confines the commands/, mode);
+  // The value has to follow the flag: a prompt that says it is not the flag.
+  assert.match(warn(["codex", "exec", "danger-full-access"]), /confines the commands/);
+});
+
+test("the fix it suggests is the narrow one", () => {
+  assert.match(warn(["codex", "exec", "x"]), /codex … -s danger-full-access/);
+});
+
 test("`codex sandbox` gets a different sentence, because no flag fixes it", () => {
   const w = warn(["codex", "sandbox", "--", "ls"]);
   assert.match(w, /cannot run inside one/);
