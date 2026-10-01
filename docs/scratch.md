@@ -33,7 +33,7 @@ discover:
   in it. There is a test that fails if that ever changes.
 - **Reading your home is a different question, and by default it is open.** None of the above
   stops a role from *reading* `~/.ssh`, `~/.aws/credentials`, `~/.npmrc` or
-  `~/.config/gh/hosts.yml`. That is the deliberate trade in the table above — an agent that
+  `~/.config/gh/hosts.yml`. That is a deliberate trade — an agent that
   cannot read the machine cannot work — and `seisin check` now says it on every run rather than
   leaving you to find out.
 

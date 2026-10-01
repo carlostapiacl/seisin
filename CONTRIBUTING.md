@@ -67,15 +67,18 @@ the numbers; that is what it is for.
 
 ## Three surfaces, and a change lands in all of them
 
-seisin is read through three things, and they are not layers of one another:
+seisin is read through three things, and they are not layers of one another — plus the
+hook's sentences to the agent, which ship with the CLI and which [the glossary](docs/glossary.md)
+counts as a surface of their own:
 
 | | who reads it | where it lives |
 |---|---|---|
-| **the CLI** | a person at a terminal, and every agent, through `run` and the hook | `src/`, `src/commands/` |
+| **the CLI** | a person at a terminal, and every agent, through `run` | `src/`, `src/commands/` |
+| **the hook** | the agent, mid-session: a denial it can see coming, whose a path was, its walls at session start | `src/hook.js`, `src/diagnose.js` |
 | **the console** | a person deciding something | `ui/index.html`, served by `src/serve.js` |
 | **the MCP server** | an agent asking about its own situation | `src/mcp.js` |
 
-**A change that touches what any of them say has to land in all three**, or the product
+**A change that touches what any of them say has to land in all of them**, or the product
 starts disagreeing with itself. Both halves of that failed on one day and each was found by
 accident rather than by looking:
 

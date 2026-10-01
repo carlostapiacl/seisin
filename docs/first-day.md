@@ -1,14 +1,14 @@
 # What will look like a bug on the first day
 
-Four shapes a correct policy still produces, that read as breakage. Every one of them cost
+Six shapes a correct policy still produces, that read as breakage. Every one of them cost
 somebody an afternoon before it cost a paragraph.
 
 *Part of [seisin](../README.md).*
 
-Four shapes that a correct policy still produces, and that a reader reads as breakage. All
-four come out of one production window — four teams of agents, ~370 confined runs over three
-days, 1,409 kernel denials — where none of them was the boundary misbehaving. They are here
-because every one of them cost someone an afternoon before it cost this paragraph.
+The first four come out of one production window — four teams of agents, ~370 confined runs
+over three days, 1,409 kernel denials — where none of them was the boundary misbehaving. The
+fifth is macOS's certificate check, and the sixth arrived with the protected control files
+in 0.5.0.
 
 **1 · Granting a file does not grant its neighbours.** The kernel grants exactly the path you
 wrote. Anything a tool creates *beside* it — a database journal, a lock file, the temporary
@@ -22,7 +22,9 @@ policy review: the policy looks right because it *is* right about the file you n
 N role(s) grant individual files rather than folders: reviewer (3 of 11)
 ```
 
-Grant the folder where the tool needs neighbours. `seisin check <role>` names the paths.
+Grant the folder where the tool needs neighbours. The map above that line lists each role's
+writes, so the file-shaped ones are in front of you; `seisin check --verbose` says why it
+matters.
 
 **The Claude Code case is worth stating outright**, because it is the agent most people will
 point this at first: `Write` and `Edit` do not write the file you named. They write
@@ -56,7 +58,7 @@ talking about. Worth knowing it is handled, because the symptom when a tool does
 it is a role denied inside its own territory.
 
 **4 · SQLite reports a denied write as `attempt to write a readonly database`** — see
-[below](agents.md); it is the one that sends you to debug the
+[the agents page](agents.md); it is the one that sends you to debug the
 database instead of the policy, and the reason `seisin wire` exists.
 
 Where these stand: the sibling case is a `check` warning instead of a surprise, the worktree
@@ -88,3 +90,24 @@ What seisin does about it:
   `NODE_USE_ENV_PROXY=1`, which Node 24 reads. A value the parent already set, `0` included, wins.
 
 [Every agent sandbox answered this differently — the comparison →](decisions.md#trustd-every-sandbox-chose-a-side)
+
+**6 · A role's `git checkout` leaves a protected file behind, and git exits 0.** Editor
+settings (`.vscode/`, `.cursor/`, `.windsurf/`), `.claude/` and — when the policy turns it on —
+the instruction files are denied to a role that has not been handed them, even inside its
+territory. A checkout, pull or rebase that would change one cannot, and git carries on:
+
+```
+$ seisin run dev -- git checkout other
+seisin: dev · writes ** (+7 scratch) · keys none · env 18 kept, 55 dropped
+error: unable to unlink old '.vscode/settings.json': Operation not permitted
+Switched to branch 'other'
+M	.vscode/settings.json
+seisin: 1 kernel denial(s) recorded
+```
+
+The branch moved; the file did not. It now shows as a modification, and a later `commit -a`
+inside the role would commit the old version back — a revert nobody asked for. Switch
+branches outside the sandbox, or, if keeping those files current is that role's job, hand it
+the family: `control_files = ["ide"]` (or `"instructions"`) under the role, which `seisin
+check` then names on every run. `.claude/`, git hooks, `.mcp.json` and `.envrc` cannot be
+handed to any role.
