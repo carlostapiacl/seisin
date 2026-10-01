@@ -246,9 +246,13 @@ export function describeWalls(cfg, byRole, entries) {
     out[role] = list.map((w) => {
       const about = aboutOf(kindOfLine.get(`${role}\u0000${w.action}\u0000${w.target}`));
       const x = { ...w, about, retried: w.times - 1 };
-      if (about === "file" && !(w.owners ?? []).length) {
+      // Every file wall, owned or not: a protected path can also lie inside
+      // someone's territory, and "owned" must not hide "never granted". The
+      // owners are today's, as Denied's are.
+      if (about === "file") {
         const s = standOf({ kind: "file", target: w.target });
         x.standing = s.kind;
+        x.owners = s.owners ?? [];
         if (s.why) x.why = s.why;
         if (s.kind === "unowned") unowned.push(x);
       }

@@ -235,6 +235,10 @@ boolean, and `[network] allow = "one.domain"` is read as a list of one, not of i
   meets AA in both themes; the role cell is a button; focus rings reach inputs; a toggle's name
   starts with its visible words. On a phone, requests stack with full-width actions and roles
   become cards. The KPI cards are full only on the landing view. Links to the README and glossary.
+- **Walls and Denied say the same sentence of the same path**, from one function. Walls checked
+  "has an owner" before "protected" and had no case for a path outside the repository, so on a
+  real console a read of `~/.npmrc` read "add it to a role's keys" where Denied said there was
+  nothing to grant; 16 of 97 paths differed. Every file wall now carries its standing, owned or not.
 
 ### Words
 
