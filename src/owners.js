@@ -14,7 +14,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { protectedBy } from "./surface.js";
-import { entriesOf } from "./keys.js";
+import { entriesOf, parseKey, BUILTIN } from "./keys.js";
 import { WILD, fromCwd, toRepoRelative } from "./paths.js";
 
 /**
@@ -433,6 +433,10 @@ export function explainFileRead(config, role, rel, credentialHomes = []) {
  * where you stand, and inside a key directory it is a key question again.
  */
 export function readTarget(config, target, cwd = process.cwd()) {
+  // A reference is a key by its spelling, never a path: resolving
+  // `keychain://x` from where you stand printed `keychain:/x` and answered
+  // a question about a file nobody asked about.
+  if (refOf(target)) return { key: true, target };
   if (!target.includes("/") && !isAbsolute(target)) {
     const declared = keyHolders(config, target).length > 0;
     const bare = (s) => s.replace(/\.[^.]+$/, "");
@@ -485,6 +489,64 @@ export function keyHolders(config, key) {
     .filter((r) => fileKeys(r).some((k) =>
       resolve(k) === wanted || (loose && bare(k) === bare(key))))
     .map((r) => r.name);
+}
+
+/** `scheme://…`, optionally `NAME=scheme://…`, read as a key entry — or null. */
+function refOf(target) {
+  try {
+    const e = parseKey(target);
+    return e.kind === "ref" ? e : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A reference key is a question about the policy, not about the disk.
+ *
+ * Two facts answer it: whether the role lists the reference in its `keys`,
+ * and which provider turns it into a value. The role never reads where the
+ * secret lives — the parent resolves it before the sandbox starts and hands
+ * over the value — so there is no path to normalise and no key directory to
+ * be inside of. Matched on scheme and reference; the variable name in front is
+ * how it is delivered, not which secret it is.
+ */
+function explainRef(config, role, ref) {
+  const spelled = `${ref.scheme}://${ref.ref}`;
+  const declaring = (r) => {
+    try {
+      return entriesOf(r).find((e) => e.kind === "ref" && e.scheme === ref.scheme && e.ref === ref.ref);
+    } catch {
+      return undefined;
+    }
+  };
+  const holders = Object.values(config.roles).filter(declaring).map((r) => r.name);
+  const provider = BUILTIN.has(ref.scheme)
+    ? `seisin's built-in ${ref.scheme}:// provider`
+    : Object.hasOwn(config.keyProviders ?? {}, ref.scheme) ? `[keys.providers.${ref.scheme}]` : null;
+  if (!provider)
+    return {
+      allowed: false, owners: holders, key: "ref",
+      reason: `${spelled} uses the "${ref.scheme}" scheme and no [keys.providers.${ref.scheme}] is declared, ` +
+        `so nothing resolves it — declare the provider before a role can hold this key`,
+    };
+  const mine = config.roles[role] && declaring(config.roles[role]);
+  if (mine)
+    return {
+      allowed: true, owners: holders, key: "ref", provider,
+      reason: `${role} declares ${mine.raw}: the parent resolves it through ${provider} and hands ` +
+        `${role} the value as ${mine.name} — the role never reads where it is kept`,
+    };
+  if (!holders.length)
+    return {
+      allowed: false, owners: [], key: "ref", provider,
+      reason: `no role declares ${spelled} (${provider} would resolve it) — ` +
+        `add it to a role's keys: [roles.${role}] keys = ["${ref.raw}"]`,
+    };
+  return {
+    allowed: false, owners: holders, key: "ref", provider,
+    reason: `${spelled} belongs to ${holders.join(", ")}, through ${provider}`,
+  };
 }
 
 /** The keys of `role` that grant a read: the path ones. A malformed entry grants nothing. */
@@ -572,6 +634,8 @@ export function explain(config, role, action, target) {
   if (action === "connect") return explainConnect(config, role, target);
   if (action === "mcp") return explainMcp(config, role, target);
   if (action === "read") {
+    const ref = refOf(target);
+    if (ref) return explainRef(config, role, ref);
     const holders = keyHolders(config, target);
     if (holders.includes(role)) return { allowed: true, owners: holders, reason: `${role} declares ${target}` };
     if (holders.length === 0) {
