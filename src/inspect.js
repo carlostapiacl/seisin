@@ -57,7 +57,7 @@ export function inspect(config, only = null, where = config.path) {
      * quietly. See surface.js for the family and the measurements.
      */
     protected: protections(config, roles),
-    warnings: warningsFor(config, roles, shared),
+    warnings: warningsFor(config, roles, shared, { scoped: !!only }),
     limits: LIMITS,
   };
 }
@@ -386,7 +386,7 @@ function onPath(cmd, config) {
 }
 
 /** Every way this policy does not hold, each with what to do about it. */
-function warningsFor(config, roles, shared = sharedPaths(config, roles)) {
+function warningsFor(config, roles, shared = sharedPaths(config, roles), { scoped = false } = {}) {
   const warnings = [];
 
   // A pattern the kernel cannot be given is not a policy, it is a sentence that
@@ -558,6 +558,9 @@ function warningsFor(config, roles, shared = sharedPaths(config, roles)) {
   for (const r of roles) {
     for (const g of r.writes) {
       if (g === "**" || g.startsWith("/") || g.startsWith("../")) continue;
+      // A database's sidecars come with it (config.js) and exist only while it
+      // is open: absent on disk is their normal state, not a typo to report.
+      if (implicitSidecar(r, g)) continue;
       const fixed = [];
       for (const part of g.split("/")) {
         if (/[*?[\]]/.test(part)) break;
@@ -624,7 +627,8 @@ function warningsFor(config, roles, shared = sharedPaths(config, roles)) {
     // that subtree, so naming it changes nothing and warns about nothing.
     const alone = files.filter((f) => !subtrees.some((s) => under(dirname(f.abs), s)));
     if (alone.length)
-      loose.push({ role: r.name, n: alone.length, of: r.writes.length, globs: alone.map((f) => f.glob) });
+      loose.push({ role: r.name, n: alone.length, of: r.writes.filter((g) => !implicitSidecar(r, g)).length,
+                   globs: alone.map((f) => f.glob) });
 
 
     /**
@@ -690,7 +694,10 @@ function warningsFor(config, roles, shared = sharedPaths(config, roles)) {
         "database's journal, a lock file, the temporary file of an atomic write — is a " +
         "sibling, and a sibling is outside the grant; the failure arrives in the tool's " +
         "own words, not as a permission error. Grant the folder where the tool needs " +
-        "neighbours. `seisin check <role>` names the paths for one role.",
+        "neighbours. " +
+        (scoped
+          ? `The files: ${loose[0].globs.join(" ")}.`
+          : "`seisin check <role>` names the files for one role."),
     });
   }
 
@@ -836,11 +843,23 @@ function territoryOf(config, role) {
       continue;
     }
     if (/[*?[\]]/.test(glob)) continue;      // already refused above as cannot-be-enforced
+    if (implicitSidecar(role, glob)) continue; // part of its database, not a file of its own
     const s = lstatOrNull(abs(glob));
     if (s?.isFile()) files.push({ glob, abs: abs(glob) });
     else if (s?.isDirectory()) subtrees.push(abs(glob));
   }
   return { files, subtrees };
+}
+
+/**
+ * A `-wal`, `-shm` or `-journal` the role has because it writes the database
+ * beside it — the expansion in config.js, which `writes` carries. It is the
+ * same resource as the database, so it is not counted or reported as another
+ * file. One declared WITHOUT its database is the role's own, and counts.
+ */
+function implicitSidecar(role, glob) {
+  const m = /^(.*\.sqlite3?)-(wal|shm|journal)$/.exec(glob);
+  return !!m && role.writes.includes(m[1]);
 }
 
 /** Is `p` the prefix, or somewhere beneath it. The kernel's own test, in one line. */

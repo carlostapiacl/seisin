@@ -6,6 +6,21 @@ history; what changed for someone who installs it is here.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## Unreleased
+
+- **`check` no longer reports a database's implicit sidecars.** A granted `data/app.sqlite`
+  warned "matches nothing in this repo" for each `-wal`, `-shm` and `-journal` not on disk, and
+  counted them as individual files (`dev (3 of 5)` for a role that names two). They come with the
+  database, as docs/keys.md says; a sidecar declared without its database still counts.
+- **`explain <role> read keychain://x` answers about the key.** It printed `keychain:/x` and called
+  it a file outside the key directories. A reference now says whether the role declares it and
+  which provider resolves it.
+- **`check <role>` names the files its warning points at.** The "individual files" warning sent
+  the reader to `seisin check <role>` for the paths, and that command did not list them.
+- **`seisin walls` says what kind of thing an unowned path is.** `dist/` and `.env` read "no role
+  can write it until one claims it"; the terminal now gives the console's kind and hint
+  (`unowned · build: …`, `unowned · credential: …`).
+
 ## 0.5.0 — 2026-09-30
 
 **Breaking for a policy whose roles edit editor settings.** A role that writes a project's

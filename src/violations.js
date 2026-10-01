@@ -38,7 +38,9 @@
  * reads paths out of the traced process's memory — its own comment calls those
  * events attacker-controlled and racy. That is not a stream an outside process
  * can attach to, and it is not one to reimplement. On Linux this returns an
- * unavailable watcher with the reason, and `seisin run` says so once.
+ * unavailable watcher with the reason. `seisin run` does not print it — once
+ * per run is a line nobody can act on — and `seisin check` says it, with the
+ * platform's other standing limits.
  */
 import { spawn, execFileSync } from "node:child_process";
 import { statSync } from "node:fs";
