@@ -1584,14 +1584,13 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
   /** Retries on a list of walls: every call after the first denial of each. */
   function retriesOf(list){ return list.reduce(function(n, w){ return n + (w.retried !== undefined ? w.retried : w.times - 1); }, 0); }
 
-  /** What a wall says under its path — the same sentence Denied gives the same path. */
-  function wallSays(w){
-    if (w.owners && w.owners.length) return "belongs to " + w.owners.join(", ");
-    if (w.about && w.about !== "file") return unownedSays(w.about);
-    if (w.kind) return "no role owns it · " + kindSays(w.kind) + (w.kind !== "territory" && w.hint ? ": " + w.hint : " — " + (w.hint || ""));
-    if (w.standing === "protected") return "protected: " + (w.why || "");
-    return w.reason || "";
-  }
+  /**
+   * What a wall says under its path: the sentence Denied gives the same path, from the same
+   * function. Two of them drifted — Walls put "has an owner" before "protected" and had no
+   * case for a path outside the repository, so it told a person to add ~/.npmrc to a role's
+   * keys where Denied said there was nothing to grant.
+   */
+  function wallSays(w){ return causeSays(w); }
 
   /**
    * Walls — per role, what it keeps hitting and what that cost.

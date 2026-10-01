@@ -6,7 +6,7 @@
 
 ## The suite
 
-**777 tests** (2026-09-30), on macOS and on Linux under bubblewrap, and in CI on
+**780 tests** (2026-09-30), on macOS and on Linux under bubblewrap, and in CI on
 Node 18/20/22/24 at every push ([workflow](../.github/workflows/test.yml)).
 
 Twenty-six of them are not unit tests: they run real commands through the real
@@ -94,7 +94,7 @@ what has not.
 
 | | macOS 15 · Seatbelt | Linux · bubblewrap |
 |---|---|---|
-| the suite | **777 tests, 775 passing and 2 skipped** (Linux-only) — 2026-09-30 | `ubuntu-latest` in CI at every push, and CI fails if the twenty-six sandbox tests skip. Last full count measured here: 326/326 — 2026-09-21, Node 22. Last full Docker run: 225/225 — 2026-09-14, Debian 12.15, bwrap 0.8.0, `--privileged` (bubblewrap mounts `/proc`) |
+| the suite | **780 tests, 778 passing and 2 skipped** (Linux-only) — 2026-09-30 | `ubuntu-latest` in CI at every push, and CI fails if the twenty-six sandbox tests skip. Last full count measured here: 326/326 — 2026-09-21, Node 22. Last full Docker run: 225/225 — 2026-09-14, Debian 12.15, bwrap 0.8.0, `--privileged` (bubblewrap mounts `/proc`) |
 | CI, every push | Node 18/20/22/24 | `ubuntu-latest`, Node 18/20/22/24 |
 | `[runtime] isolate = "home"` (`= true`) | ✅ — and it did not start here at all until the 104-byte socket fix | ✅ — `tmpdir()` is `/tmp`, so the path never came close |
 | `[runtime] isolate = "credentials"` | ✅ — no role home, so the socket limit cannot reach it | ✅ |
