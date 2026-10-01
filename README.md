@@ -49,9 +49,10 @@ flowchart LR
     D --> S["seisin reads the denial<br/>and looks up the policy"]
     S --> W["<b>whose it was</b><br/>belongs to backend"]
     S --> Q["a request, queued"]
-    Q --> H(["a person<br/>grants or declines"])
-    H -->|edits seisin.toml| P[("seisin.toml")]
-    P -.->|settings| K
+    S --> L[(".seisin/log.jsonl<br/>one hash-chained entry")]
+    Q --> H(["a person grants or declines<br/>in a terminal or the console"])
+    H -->|edits, with provenance| P[("seisin.toml")]
+    P -.->|"seisin run turns it into<br/>the sandbox settings"| K
 
     style D fill:#fde,stroke:#c66
     style W fill:#dfd,stroke:#6a6
@@ -66,16 +67,20 @@ denial that also names an owner turns a dead end into a handoff.
 
 ```
 $ seisin run frontend -- sh -c 'echo // fix >> src/api/orders.ts'
-  sh: src/api/orders.ts: Operation not permitted
-  seisin: 1 kernel denial(s) recorded
-
-  1 pending request(s)
+seisin: frontend · writes src/web/** public/** (+7 scratch) · keys netlify-token.txt · env 18 kept, 55 dropped
+sh: src/api/orders.ts: Operation not permitted
+seisin: 1 kernel denial(s) recorded
 
     #1  frontend wants write on src/api/** (owned by backend)
         first asked over src/api/orders.ts
+        id frontend:write:src/api
 
-    seisin grant <n> [--reason "…"]   ·   seisin decline <n> [--reason "…"]
+  this run: 1 new request(s) — seisin requests
 ```
+
+The first line is the run's own header: what this role may write, which keys it holds, and how
+much of your environment it did not inherit. The last lists only what this run filed; the
+rest of the queue is one count, and `seisin requests`.
 
 **Whose it was, at the moment it was denied.** Other permission layers answer *yes* or *no*, and the good ones say which rule it was and how to widen it. Answering **"no, and it belongs to `backend`"** turns a denial into a handoff — and one a person can grant in a command, rather than a line somebody has to remember to go and read.
 
@@ -85,6 +90,8 @@ The agent can ask directly too, from inside the sandbox:
 
 ```
 $ seisin run frontend -- seisin whose src/api/orders.ts
+seisin: frontend · writes src/web/** public/** (+7 scratch) · keys netlify-token.txt · env 18 kept, 55 dropped
+
   src/api/orders.ts belongs to backend
   you are frontend. Hand it over rather than working around it.
 ```
@@ -212,7 +219,7 @@ seisin run frontend -- claude -p "…"     # run an agent as that role
 seisin explain frontend write src/api/x  # ask one question, exit 0 or 1
 seisin review                            # what the log says about the policy
 seisin wire                              # install the PreToolUse hook in this repo
-seisin ui                                # a console for editing the map
+seisin ui                                # a console for deciding what is waiting
 ```
 
 `seisin <command> --help` lists a command's flags, examples and exit codes. The exit codes, so
@@ -451,18 +458,32 @@ becomes seven hundred entries nobody reads.
 So a denial leaves something to act on, and many denials in one directory are **one** request:
 
 ```
+$ seisin requests
+
   1 pending request(s)
 
     #1  frontend wants write on src/api/** (owned by backend) · asked 3×
         first asked over src/api/orders.ts
+        id frontend:write:src/api
 
-    seisin grant 1 --reason "…"   ·   seisin decline 1 --reason "…"
+    seisin grant <n|id> [--reason "…"]   ·   seisin decline <n|id> [--reason "…"]
+    #n is a position and shifts as requests are settled; the id does not.
 ```
 
 The grant writes its own provenance next to the line it adds:
 
+```
+$ seisin grant 1 --reason "frontend owns checkout now"
+
+  granted  frontend → src/api/**
+  written into /path/to/repo/seisin.toml with its provenance. It applies on the next run.
+```
+
 ```toml
-writes = ["src/api/**"]   # granted 2026-09-12 · asked 3× · "frontend owns checkout now"
+[roles.frontend]
+writes = ["src/web/**", "public/**",
+  "src/api/**"   # granted 2026-09-12 · asked 3× · «frontend owns checkout now»
+]
 ```
 
 **Granting is never a tool call.** An agent can read the queue and draft the change; only a
@@ -520,13 +541,37 @@ seisin ui                        # the same thing, for a person deciding
 ```
 
 ```
-04:13:26  allowed  frontend write src/web/app.ts
-04:13:26  denied   frontend write src/api/server.ts  → backend
-04:13:27  denied   frontend read .secrets/database.txt  → backend
+$ seisin log
+
+  04:13:26  allowed  frontend write src/web/app.ts
+  04:13:26  denied   frontend write src/api/orders.ts  → backend
+  04:13:27  denied   frontend read .secrets/database-url.txt  → backend
+  04:13:31  denied   frontend write src/api/orders.ts  → backend  [kernel]
+
+  4 entries · 3 denied
 ```
+
+`[kernel]` marks a line the kernel reported; the others came from the hook.
 
 One append-only JSONL under `.seisin/`, and that is the whole storage design — no daemon, no
 database, and `watch` is a tail.
+
+Each line carries the hash of the one before it, and the first time a chained line is written
+the start of the chain is recorded beside the log (`log.jsonl.genesis`). `seisin log verify`
+checks both, so a line edited, removed or reordered breaks it, and so does stripping the chain
+from every line to make the log read as one written before chaining:
+
+```
+$ seisin log verify
+
+  broken  4 chained line(s), 2 break(s):
+    line 1: expected prev 106c24967e0bdde077d73073b648f218, found 43918a17f2089effc44394a72e4289e9
+    line 2: expected prev 43918a17f2089effc44394a72e4289e9, found 106c24967e0bdde077d73073b648f218
+  a line was edited, removed or reordered just before each of these
+```
+
+Tamper-evident, not tamper-proof: whoever can write `.seisin/` could rewrite both files
+together, which is why no role can write it.
 
 **The agent cannot reach that file.** `.seisin/` is in no role's territory, because a record
 the recorded process can edit is not a record. The hook sends each line to `seisin run` over
@@ -539,18 +584,30 @@ happens — which is how an *allowed* action gets recorded at all — and it is 
 evadable, on purpose. The **kernel** reports what it actually denied, and is not fooled by
 anything. What escapes the hook goes unexplained, never unenforced.
 
+![the console: requests waiting on a person, a grant that needs a reason and a second click for another role's path, the line it wrote, the denials grouped by path with the kind of each unowned one, the walls each role keeps hitting, the roles, and a control-files change shown before it is saved](docs/img/console.gif)
 
+It opens on what needs a decision, not on the policy. Four numbers sit on top — waiting on
+you, denied, the **top cause**, and calls **spent retrying** walls — each a link to the page
+that explains it, and the last two are recomputed against the policy, which a log alone cannot
+do: something granted since stops counting.
 
-![the console: what is waiting on a decision, the day's denials grouped by cause, the walls a role keeps hitting, and the policy behind them](docs/img/console.gif)
+**A decision needs a reason.** Grant without one asks for it; Decline without one fills in
+a default and asks again, so what is recorded is on screen first. The request says what a
+grant covers before the click — *asked for `src/api/routes.ts` → granting
+covers all of `src/api/**`*, and whose it is today. Sharing another role's territory takes a
+second click that names it. After it, the console shows the line it wrote to `seisin.toml`
+and where.
 
-It opens on what needs a decision, not on the policy. Four numbers ride on every screen and
-each is a link to the page that explains it — including two a log cannot answer, because
-they are recomputed against the policy: how much of the day is **one cause**, and how many
-of those causes are on paths **nobody owns**.
+**Denied and Walls say the same thing about one path.** A path no role owns says what kind
+of thing it is — *ownable*, or git's, temporary, build output, a credential — and the move
+that fits each, which for all but the first is not an owner.
 
-Beside each role it also holds the two families a policy can hand out, editor settings and
-instruction files, and the `[protect] instructions` switch. A change there is shown first as
-what it does to each role's sandbox settings, and written to `seisin.toml` only when you confirm.
+**Live, the roles are read-only:** territories and keys change in `seisin.toml`. The two
+writes are decisions and the control files: beside each role, a toggle for each family it can
+be handed (editor settings, instruction files), and one for `[protect] instructions`. A
+toggle saves nothing. It shows the sandbox settings each role gains or loses and the exact
+line it would write, and a second button, with a reason, saves it. If the server stops, the
+page says *offline* and turns every write off until it answers again.
 
 ## How it holds
 
