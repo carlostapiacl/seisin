@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync, readFileSync, statSync, chmodSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, statSync, chmodSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { once } from "node:events";
@@ -193,6 +193,9 @@ test("scan treats an absolute protected directory exactly like its relative spel
   mkdirSync(join(root, ".secrets"));
   writeFileSync(join(root, ".secrets", "token.txt"), "ghp_" + "a".repeat(30));
   assert.deepEqual(scan(root, [join(root, ".secrets")]), scan(root, [".secrets"]));
+  const alias = join(scratch("seisin-audit-alias-"), "repo");
+  symlinkSync(root, alias);
+  assert.deepEqual(scan(root, [join(alias, ".secrets")]), scan(root, [".secrets"]));
   assert.equal(scan(root).hits.filter((h) => h.level === "certain").length, 1);
 });
 

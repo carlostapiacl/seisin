@@ -151,7 +151,12 @@ export function scan(root, protectedDirs = [], ignore = [], limit = 500, { roots
   try { root = realpathSync.native(root); } catch { /* scanned as written */ }
   // `.secrets/` and `.secrets` are one directory. With the slash kept, the
   // prefix test below never matched and the protected directory was scanned.
-  const safe = protectedDirs.map((d) => resolve(root, d));
+  const safe = protectedDirs.map((d) => {
+    const path = resolve(root, d);
+    // The root was canonicalised above. Match the same spelling for absolute
+    // directories, including macOS's /var -> /private/var ancestor.
+    try { return realpathSync.native(path); } catch { return path; }
+  });
   const patterns = [...DEFAULT_IGNORE, ...ignore];
   const hits = [];
   const skipped = { ignored: 0, protectedDirs: 0, reference: 0, placeholder: 0, nested: 0 };
@@ -330,4 +335,3 @@ function repositoryOf(p, root) {
 function isDir(p) {
   try { return statSync(p).isDirectory(); } catch { return false; }
 }
-
