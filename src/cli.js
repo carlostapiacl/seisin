@@ -163,18 +163,17 @@ function version() {
  * (`--reason -h`) is a value.
  */
 const HELP = new Set(["--help", "-h"]);
-const TAKES_VALUE = new Set(["--port", "--role", "--verdict", "--limit", "--min", "--since", "--reason"]);
-
 function asksHelp(name, args) {
+  const takesValue = new Set(flagsOf(name)?.values ?? []);
   const split = args.indexOf("--");
   let ours = split === -1 ? args : args.slice(0, split);
   if (name === "run" && split === -1) {
     let i = 1;
-    while (i < args.length && args[i].startsWith("-")) i++;
+    while (i < args.length && args[i].startsWith("-")) i += takesValue.has(args[i]) ? 2 : 1;
     ours = args.slice(0, i);
   }
   for (let i = 0; i < ours.length; i++) {
-    if (TAKES_VALUE.has(ours[i])) i++;
+    if (takesValue.has(ours[i])) i++;
     else if (HELP.has(ours[i])) return true;
   }
   return false;

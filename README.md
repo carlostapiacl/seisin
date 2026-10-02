@@ -846,7 +846,7 @@ the same kernel or workspace, and which one you want depends on what you are pro
 
 ## Status
 
-The current suite (after 0.5.0) contains 828 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
+The current suite (after 0.5.0) contains 842 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 when there were eighteen of them, they skipped on Linux for a day, behind a runtime check that looked for the global
