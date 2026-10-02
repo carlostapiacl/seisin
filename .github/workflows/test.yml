@@ -93,7 +93,7 @@ jobs:
       - name: the sandbox half actually ran
         run: |
           node --test test/sandbox.test.js 2>&1 | tee /tmp/sandbox.log
-          if grep -qE '^# skipped [1-9]' /tmp/sandbox.log; then
+          if grep -qE '^(#|ℹ) skipped [1-9]' /tmp/sandbox.log; then
             echo "::error::sandbox tests skipped — srt was not usable on this runner"
             exit 1
           fi

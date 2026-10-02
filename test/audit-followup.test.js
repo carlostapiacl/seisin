@@ -204,3 +204,29 @@ setTimeout(() => process.exit(3), 20);
   assert.match(r.stderr, /last stderr\n/);
   assert.doesNotMatch(r.stdout, new RegExp(secret));
 });
+
+test("the CI sandbox gate rejects real skipped results in both Node reporter formats", () => {
+  // Test the workflow's actual shell block using native Node output. These
+  // fixtures exercise the gate, not the confinement boundary itself.
+  const root = scratch("seisin-ci-gate-");
+  const fixture = join(root, "fixture.test.js");
+  const log = join(root, "sandbox.log");
+  const workflow = readFileSync(new URL("../.github/workflows/test.yml", import.meta.url), "utf8");
+  const block = workflow.match(/- name: the sandbox half actually ran\n        run: \|\n([\s\S]*)$/)[1]
+    .replace(/^          /gm, "");
+  const quote = (s) => "'" + s.replaceAll("'", "'\\''") + "'";
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT; // This subprocess is its own test runner.
+  for (const reporter of ["tap", "spec"]) {
+    for (const skip of [false, true]) {
+      writeFileSync(fixture, `const {test} = require('node:test');\ntest('fixture', {skip: ${skip}}, () => {});\n`);
+      const script = block
+        .replace("node --test test/sandbox.test.js 2>&1",
+          `${quote(process.execPath)} --test --test-reporter=${reporter} ${quote(fixture)} 2>&1`)
+        .replaceAll("/tmp/sandbox.log", quote(log));
+      const r = spawnSync("sh", ["-c", script], { env, encoding: "utf8", timeout: 3000 });
+      assert.equal(r.status, skip ? 1 : 0, `${reporter}, skip=${skip}: ${r.stdout}\n${r.stderr}`);
+      if (skip) assert.match(r.stdout, /sandbox tests skipped/);
+    }
+  }
+});

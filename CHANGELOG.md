@@ -37,8 +37,11 @@ changed rather than failing on the old spelling.
 - **Keyed runs drain their output before exiting.** The redactors end at pipe EOF rather
   than the runtime's exit event, preserving late stdout/stderr and the exit status within the
   existing drain deadline. `run --agent codex --help` also recognises the agent option's value.
-  Fourteen additional regressions and the [follow-up evidence](docs/reviews/2026-10-02-followup.md)
+  Fifteen additional regressions and the [follow-up evidence](docs/reviews/2026-10-02-followup.md)
   cover these changes.
+- **CI rejects skipped sandbox tests in both Node reporter formats.** The gate recognises
+  `ℹ skipped` as well as TAP's `# skipped`; a regression runs its actual shell block
+  with passing and skipped fixtures under both reporters.
 
 - **`check` no longer reports a database's implicit sidecars.** A granted `data/app.sqlite`
   warned "matches nothing in this repo" for each `-wal`, `-shm` and `-journal` not on disk, and

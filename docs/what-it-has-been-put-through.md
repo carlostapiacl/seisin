@@ -6,7 +6,7 @@
 
 ## The suite
 
-**842 tests** in the current suite (2026-10-02). The [workflow](../.github/workflows/test.yml)
+**843 tests** in the current suite (2026-10-02). The [workflow](../.github/workflows/test.yml)
 exercises macOS and Linux under bubblewrap on Node 18/20/22/24 for pull requests and
 pushes to `main`. Historical full-suite measurements remain dated below; the
 [2026-10-02 review](reviews/2026-10-02.md) and its
