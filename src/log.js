@@ -306,7 +306,12 @@ export function alive(pid) {
  */
 function reapable(lock, staleMs) {
   let seen, mtime;
-  try { seen = readFileSync(lock, "utf8"); mtime = statSync(lock).mtimeMs; } catch { return true; }
+  try { seen = readFileSync(lock, "utf8"); mtime = statSync(lock).mtimeMs; }
+  catch (e) {
+    // Only a disappeared lock is an immediate retry. An unreadable lock or
+    // a directory at this name otherwise spins forever, bypassing deadline.
+    return e.code === "ENOENT";
+  }
   const pid = Number(seen.split(" ")[0]);
   const named = Number.isInteger(pid) && pid > 0;
   // A named holder that is alive is waited on, however long it takes: its age

@@ -36,6 +36,7 @@ import { pending, requestsPath, refuseIfBarred, shellId } from "./requests.js";
 import { read, logPath } from "./log.js";
 import { causesOf, parseSince, queue as requestQueue, verdicts, wallsByRole } from "./views.js";
 import { walls, wasted } from "./walls.js";
+import { lineReader } from "./lines.js";
 
 /**
  * Versions this server will agree to.
@@ -388,30 +389,14 @@ function handle(message, { write, version }) {
 export function serveMcp(version = "0.0.0", input = process.stdin, output = process.stdout) {
   const ctx = { version, write: (s) => output.write(s) };
   input.setEncoding("utf8");
-  let buffer = "";
-
-  input.on("data", (chunk) => {
-    buffer += chunk;
-    // A megabyte with no newline in it is not a JSON-RPC message, it is a
-    // client — or something wearing one — filling this process's memory.
-    // spool.js already caps its input; this one did not.
-    if (buffer.length > 1_000_000) {
-      buffer = "";
-      return;
+  input.on("data", lineReader((line) => {
+    try {
+      handle(JSON.parse(line), ctx);
+    } catch {
+      // Unparseable input has no id to answer to, so there is nobody to tell.
+      // Staying alive is the only useful response.
     }
-    let nl;
-    while ((nl = buffer.indexOf("\n")) !== -1) {
-      const line = buffer.slice(0, nl).trim();
-      buffer = buffer.slice(nl + 1);
-      if (!line) continue;
-      try {
-        handle(JSON.parse(line), ctx);
-      } catch {
-        // Unparseable input has no id to answer to, so there is nobody to tell.
-        // Staying alive is the only useful response.
-      }
-    }
-  });
+  }));
 
   return new Promise((done) => input.on("end", done));
 }

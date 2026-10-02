@@ -23,8 +23,9 @@
  *     which every role can read.
  */
 import { readFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, resolve, sep } from "node:path";
 import { keyOf, pending, requestsPath, grantFor, shellId } from "./requests.js";
+import { realAncestor } from "./paths.js";
 
 const FORMATS = ["text", "json", "slack"];
 const ENV_URL = "SEISIN_NOTIFY_URL";
@@ -100,18 +101,35 @@ export function notifier(config, { env = process.env, fetchImpl = globalThis.fet
         signal: AbortSignal.timeout(timeoutMs),
       })
         .then((r) => { if (!r.ok) failures.push(`HTTP ${r.status}`); })
-        .catch((e) => failures.push(e.name === "TimeoutError" ? "timed out" : e.message)),
+        // Native fetch errors can embed the whole URL, including a webhook
+        // credential. Only report known categories, never the raw message.
+        .catch((e) => failures.push(notificationFailure(e))),
     );
     return true;
   }
 
   async function settle(capMs = timeoutMs + 500) {
     if (!inflight.length) return failures;
-    await Promise.race([Promise.allSettled(inflight), new Promise((ok) => setTimeout(ok, capMs))]);
+    let timer;
+    try {
+      await Promise.race([Promise.allSettled(inflight), new Promise((ok) => { timer = setTimeout(ok, capMs); })]);
+    } finally {
+      clearTimeout(timer);
+    }
     return failures;
   }
 
   return { enabled: !!url, maybe, settle };
+}
+
+function notificationFailure(error) {
+  if (error?.name === "TimeoutError") return "timed out";
+  if (error?.name === "AbortError") return "aborted";
+  const code = error?.cause?.code ?? error?.code;
+  if (code === "ERR_INVALID_URL") return "invalid URL";
+  if (code === "ENOTFOUND") return "host not found";
+  if (code === "ECONNREFUSED") return "connection unavailable";
+  return "request failed";
 }
 
 /**
@@ -132,16 +150,28 @@ export function readNotify(table, { path, root, keyDirs, roles, own }) {
   if (urlFile === undefined) return { urlFile: null, format };
   if (typeof urlFile !== "string" || !urlFile.trim() || urlFile.startsWith("/") || urlFile.split("/").includes(".."))
     throw new Error(`${path}: [notify] url_file must be a path inside the repo`);
-  const inKeyDir = keyDirs.some((d) => urlFile.startsWith(d.replace(/\/+$/, "") + "/"));
+  const canonical = (p) => realAncestor(resolve(root, p));
+  const file = canonical(urlFile);
+  const inKeyDir = keyDirs.some((d) => file.startsWith(canonical(d) + sep));
   if (!inKeyDir)
     throw new Error(
       `${path}: [notify] url_file "${urlFile}" is not inside a key directory, so every role can read ` +
       `it. Move it under ${keyDirs[0] ?? "a [keys] dir"}.`);
   // A file key is written bare (`netlify.txt`, meaning the first key directory)
   // or with its directory (`shared/api.txt`) — the same resolution settingsFor uses.
-  const resolve = (raw) => (raw.includes("/") ? raw : join(keyDirs[0] ?? "", raw));
+  const fileKey = (raw) => canonical(raw.includes("/") ? raw : join(keyDirs[0] ?? "", raw));
   const holders = Object.entries(roles)
-    .filter(([, r]) => r.keyEntries?.some((k) => k.kind === "file" && resolve(k.raw) === urlFile))
+    .filter(([, r]) => r.keyEntries?.some((k) => {
+      if (k.kind === "file") {
+        const held = fileKey(k.raw);
+        return file === held || file.startsWith(held + sep);
+      }
+      if (k.kind !== "ref" || k.scheme !== "file") return false;
+      // Match the builtin resolver's last-fragment rule. A reference delivers
+      // the contents even though it opens no filesystem read for the role.
+      const hash = k.ref.lastIndexOf("#");
+      return canonical(hash === -1 ? k.ref : k.ref.slice(0, hash)) === file;
+    }))
     .map(([n]) => n);
   if (holders.length)
     throw new Error(

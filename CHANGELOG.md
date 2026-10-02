@@ -8,6 +8,41 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **Observation proposals keep the whole policy.** `init --from-observations` starts from
+  the current file and adds territory and keys without discarding isolation, subtractions,
+  providers, per-role network/MCP settings or comments. Removed roles and paths outside the
+  repo do not become territory, and keys retain their declared directory.
+- **Approvals use the policy held under the lock.** CLI and console decisions re-check the
+  current policy, validate the edited text before writing or settling a request, and retain
+  the file's mode. Grants accept indented lists and commented table headers and preserve CRLF.
+- **Credential handling fails without exposing malformed values.** JSON fragments only
+  resolve own properties; dotenv errors omit trailing credential text. The exported redactor
+  handles unsorted and empty inputs, and reference resolution accepts hand-built roles.
+  Scans recognise absolute protected directories, too.
+- **Input caps apply to each complete message.** MCP and the audit channel count UTF-8 bytes,
+  accept bursts of bounded messages, and discard an oversized frame through its newline.
+  An unreadable lock respects its waiting deadline instead of spinning indefinitely.
+  Seventeen regression tests and the [review evidence](docs/reviews/2026-10-02.md) cover these changes.
+
+- **Redaction retains original input until a match is complete.** A short credential sharing
+  a longer credential's prefix no longer leaves the longer value's suffix visible at a chunk
+  boundary. Replacement markers are never processed as input to another replacement.
+- **Notification credentials stay out of role delivery and failure messages.** Validation
+  compares canonical paths, directory reads and builtin file references against the URL file.
+  Fetch diagnostics report known categories without echoing the secret URL, and completed
+  notifications clear their settlement timer.
+- **Console links are replaced atomically with mode `0600`.** Updating an old record neither
+  retains loose permissions nor writes through a planted symlink. A writer that cannot be
+  signalled is no longer reported as gone.
+- **Keyed runs drain their output before exiting.** The redactors end at pipe EOF rather
+  than the runtime's exit event, preserving late stdout/stderr and the exit status within the
+  existing drain deadline. `run --agent codex --help` also recognises the agent option's value.
+  Fifteen additional regressions and the [follow-up evidence](docs/reviews/2026-10-02-followup.md)
+  cover these changes.
+- **CI rejects skipped sandbox tests in both Node reporter formats.** The gate recognises
+  `ℹ skipped` as well as TAP's `# skipped`; a regression runs its actual shell block
+  with passing and skipped fixtures under both reporters.
+
 - **`check` no longer reports a database's implicit sidecars.** A granted `data/app.sqlite`
   warned "matches nothing in this repo" for each `-wal`, `-shm` and `-journal` not on disk, and
   counted them as individual files (`dev (3 of 5)` for a role that names two). They come with the
