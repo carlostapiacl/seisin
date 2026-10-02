@@ -8,6 +8,22 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **Observation proposals keep the whole policy.** `init --from-observations` starts from
+  the current file and adds territory and keys without discarding isolation, subtractions,
+  providers, per-role network/MCP settings or comments. Removed roles and paths outside the
+  repo do not become territory, and keys retain their declared directory.
+- **Approvals use the policy held under the lock.** CLI and console decisions re-check the
+  current policy, validate the edited text before writing or settling a request, and retain
+  the file's mode. Grants accept indented lists and commented table headers and preserve CRLF.
+- **Credential handling fails without exposing malformed values.** JSON fragments only
+  resolve own properties; dotenv errors omit trailing credential text. The exported redactor
+  handles unsorted and empty inputs, and reference resolution accepts hand-built roles.
+  Scans recognise absolute protected directories, too.
+- **Input caps apply to each complete message.** MCP and the audit channel count UTF-8 bytes,
+  accept bursts of bounded messages, and discard an oversized frame through its newline.
+  An unreadable lock respects its waiting deadline instead of spinning indefinitely.
+  Seventeen regression tests and the [review evidence](docs/reviews/2026-10-02.md) cover these changes.
+
 - **`check` no longer reports a database's implicit sidecars.** A granted `data/app.sqlite`
   warned "matches nothing in this repo" for each `-wal`, `-shm` and `-journal` not on disk, and
   counted them as individual files (`dev (3 of 5)` for a role that names two). They come with the
