@@ -18,9 +18,11 @@
  * The pid is stored so a file left by a crashed run is recognisable: a link
  * whose writer is gone is stale, not a running console.
  */
-import { writeFileSync, readFileSync, unlinkSync } from "node:fs";
+import { chmodSync, renameSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { runsRoot } from "./rundir.js";
+import { alive as processAlive } from "./log.js";
 
 function linkFile(port, base) {
   return join(runsRoot(base), `ui-${port}.url`);
@@ -34,7 +36,17 @@ function linkFile(port, base) {
  * with nothing on it to say so. The policy's path travels with the link now.
  */
 export function writeUiLink(port, url, base, policy = null) {
-  writeFileSync(linkFile(port, base), JSON.stringify({ url, pid: process.pid, policy }) + "\n", { mode: 0o600 });
+  const file = linkFile(port, base);
+  const temp = `${file}.tmp-${randomBytes(12).toString("hex")}`;
+  writeFileSync(temp, JSON.stringify({ url, pid: process.pid, policy }) + "\n", { flag: "wx", mode: 0o600 });
+  try {
+    // Replacing an existing record must neither inherit its mode nor follow
+    // its symlink. Readers see one complete record, including after a crash.
+    chmodSync(temp, 0o600);
+    renameSync(temp, file);
+  } finally {
+    try { unlinkSync(temp); } catch {}
+  }
 }
 
 /**
@@ -48,10 +60,7 @@ export function readUiLink(port, base) {
   try { e = JSON.parse(raw); } catch { return null; }
   if (!e || typeof e.url !== "string") return null;
   let alive = null;
-  if (typeof e.pid === "number") {
-    // Signal 0 tests for the process without touching it: it throws if gone.
-    try { process.kill(e.pid, 0); alive = true; } catch { alive = false; }
-  }
+  if (Number.isInteger(e.pid) && e.pid > 0) alive = processAlive(e.pid);
   return { url: e.url, pid: e.pid ?? null, alive, policy: typeof e.policy === "string" ? e.policy : null };
 }
 

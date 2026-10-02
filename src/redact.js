@@ -70,21 +70,22 @@ export function redactor(secrets, label = "redacted") {
 
   return new Transform({
     transform(chunk, _enc, done) {
-      // Mask the WHOLE accumulated text first, then cut. Doing it the other way
-      // — masking only the part about to be emitted — lets a secret that
-      // straddles the cut through in two innocent halves. Written that way
-      // first; the split-buffer test caught it on the first run.
+      // Retain original input, not replacement text. Replacing a shorter
+      // credential before a longer one finishes destroys their shared prefix;
+      // carrying a marker forward also lets another secret replace its label.
       const text = typeof chunk === "string" ? chunk : decoder.write(chunk);
-      const masked = mask(tail + text, secrets, label);
-      let cut = masked.length - Math.min(longest - 1, masked.length);
-      if (cut > 0 && isHighSurrogate(masked.charCodeAt(cut - 1))) cut--;
-      if (cut > 0) this.push(masked.slice(0, cut));
-      tail = masked.slice(cut);
+      const buffered = tail + text;
+      let cut = Math.max(0, buffered.length - longest + 1);
+      if (cut > 0 && isHighSurrogate(buffered.charCodeAt(cut - 1))) cut--;
+      const result = maskPrefix(buffered, cut, secrets, label);
+      if (result.output) this.push(result.output);
+      tail = result.tail;
       done();
     },
     flush(done) {
-      const rest = mask(tail + decoder.end(), secrets, label);
-      if (rest) this.push(rest);
+      const text = tail + decoder.end();
+      const result = maskPrefix(text, text.length, secrets, label);
+      if (result.output) this.push(result.output);
       tail = "";
       done();
     },
@@ -93,8 +94,22 @@ export function redactor(secrets, label = "redacted") {
 
 const isHighSurrogate = (c) => c >= 0xd800 && c <= 0xdbff;
 
-function mask(text, secrets, label) {
-  let out = text;
-  for (const s of secrets) out = out.split(s).join(`‹${label}›`);
-  return out;
+/** Only match starts with enough input to decide the longest credential. */
+function maskPrefix(text, cut, secrets, label) {
+  const next = secrets.map((s) => text.indexOf(s));
+  let from = 0, output = "";
+  while (from < cut) {
+    let at = Infinity, chosen = -1;
+    for (let i = 0; i < next.length; i++) {
+      if (next[i] >= 0 && next[i] < at) { at = next[i]; chosen = i; }
+    }
+    if (at >= cut) { output += text.slice(from, cut); from = cut; break; }
+    output += text.slice(from, at) + `‹${label}›`;
+    from = at + secrets[chosen].length;
+    // Keep each search moving forward. In particular, a value absent from
+    // this buffer is not searched again for every occurrence of another.
+    for (let i = 0; i < next.length; i++)
+      if (next[i] >= 0 && next[i] < from) next[i] = text.indexOf(secrets[i], from);
+  }
+  return { output, tail: text.slice(from) };
 }
