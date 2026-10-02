@@ -197,7 +197,8 @@ const unterminate = (v) => v.replace(/\r?\n$/, "");
 function fromJson(obj, key, ref) {
   let v = Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined;
   if (v === undefined && key.includes(".")) {
-    v = key.split(".").reduce((o, k) => (o && typeof o === "object" ? o[k] : undefined), obj);
+    v = key.split(".").reduce((o, k) =>
+      (o && typeof o === "object" && Object.hasOwn(o, k) ? o[k] : undefined), obj);
   }
   if (v === undefined) {
     const top = Object.keys(obj).slice(0, 8).join(", ");
@@ -251,7 +252,7 @@ function dotEnvValue(raw, ref, key) {
     const rest = v.slice(end + 1).trim();
     if (rest && !rest.startsWith("#"))
       throw new Error(
-        `key "${ref}": ${key}= has text after its closing quote (${rest.slice(0, 20)}…).\n` +
+        `key "${ref}": ${key}= has text after its closing quote.\n` +
         `  Loaders disagree on what that value is. Quote the whole value.`);
     const inner = v.slice(1, end);
     // Inside double quotes dotenv turns \n and \r into the characters — the
@@ -478,7 +479,7 @@ export function modeOf(config, role, entry) {
       `runtime only masks a credential when the role's TLS is terminated with a CA of ` +
       `seisin's own — MITM over all of that role's traffic, not just the host holding the ` +
       `secret. It is refused rather than half-available.\n` +
-      `  Use "env" or "file" today. See docs/decisions.md.`);
+      `  Use "env" or "scratch" today. See docs/decisions.md.`);
   if (!MODES.includes(mode))
     throw new Error(
       `roles.${role.name}: key_mode = "${mode}" is not a delivery mode. Known: ${MODES.join(", ")}.` +
@@ -578,7 +579,7 @@ export function resolveRef(entry, provider, { run = spawnSync, root = ".", confi
  */
 export function resolveKeys(config, role, opts = {}) {
   opts = { root: config.root ?? ".", config, ...opts };
-  const refs = role.keyEntries.filter((e) => e.kind === "ref");
+  const refs = entriesOf(role).filter((e) => e.kind === "ref");
   const plan = refs.map((entry) => ({ entry, mode: modeOf(config, role, entry) }));
   return plan.map((p) => ({
     ...p,

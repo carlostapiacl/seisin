@@ -1090,11 +1090,11 @@ test("observation adds to the policy instead of replacing it", () => {
   const { toml } = renderObserved(cfg, [
     { role: "frontend", action: "write", target: "NOTAS.md", verdict: "observed" },
     { role: "frontend", action: "write", target: "docs/guia.md", verdict: "observed" },
-  ]);
+  ], '[roles.frontend]\nwrites = ["web/**"]\nkeys = []\n[roles.backend]\nwrites = ["api/**"]\nkeys = []\n');
 
   assert.match(toml, /\[roles\.backend\]/, "it erased the role that did not act");
   assert.match(toml, /writes = \["api\/\*\*"\]/, "it erased its declared territory");
-  assert.match(toml, /"web\/\*\*", "NOTAS\.md", "docs\/\*\*"/, "it did not add what was observed to what was declared");
+  assert.match(toml, /"web\/\*\*",[\s\S]*"NOTAS\.md"[\s\S]*"docs\/\*\*"/, "it did not add what was observed to what was declared");
   assert.match(toml, /this role did nothing while observing/);
 });
 
@@ -1879,9 +1879,9 @@ test("SEC-06 init --from-observations ignores lines the parent disputed", () => 
     { role: "web", action: "write", target: "src/api/steal.ts", verdict: "observed", disputed: "denied" },
     { role: "web", action: "read", kind: "key", target: "db.txt", verdict: "observed", disputed: "denied" },
   ];
-  const cfg = { root: "/x", keyDirs: [], allowedDomains: [], roles: {} };
-  const { toml } = renderObserved(cfg, entries);
-  assert.match(toml, /writes = \["src\/web\/\*\*"\]/);   // the legit observation, generalised
+  const cfg = { root: "/x", path: "/x/seisin.toml", keyDirs: [], allowedDomains: [], roles: {} };
+  const { toml } = renderObserved(cfg, entries, '[roles.web]\nwrites = []\nkeys = []\n');
+  assert.match(toml, /writes = \[\s*"src\/web\/\*\*"/);   // the legit observation, generalised
   assert.ok(!toml.includes("api"), "a disputed write became policy");
   assert.ok(!toml.includes("db.txt"), "a disputed key read became policy");
 });

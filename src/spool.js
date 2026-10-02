@@ -29,6 +29,7 @@
 import { createServer, createConnection, Socket } from "node:net";
 import { unlinkSync, existsSync, openSync, writeSync, closeSync, constants } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { lineReader as readLines } from "./lines.js";
 
 /** The env var a confined hook looks for. Absent means "write the file". */
 export const SOCK_ENV = "SEISIN_SPOOL";
@@ -62,24 +63,14 @@ const PIPE_BUF = 4096;
 
 /** Parses newline-separated JSON messages and hands each to `sink`. */
 function lineReader(sink, onTooLong) {
-  let buffer = "";
-  return (chunk) => {
-    buffer += chunk;
-    // A 1 MB line is not a log entry, it is something trying to fill a disk.
-    if (buffer.length > 1_000_000) { buffer = ""; return onTooLong?.(); }
-    let nl;
-    while ((nl = buffer.indexOf("\n")) !== -1) {
-      const line = buffer.slice(0, nl);
-      buffer = buffer.slice(nl + 1);
-      if (!line.trim()) continue;
-      try {
-        const msg = JSON.parse(line);
-        if (msg && (msg.to === "log" || msg.to === "requests")) sink(msg.to, msg.entry);
-      } catch {
-        // Garbage from inside the sandbox is not the parent's emergency.
-      }
+  return readLines((line) => {
+    try {
+      const msg = JSON.parse(line);
+      if (msg && (msg.to === "log" || msg.to === "requests")) sink(msg.to, msg.entry);
+    } catch {
+      // Garbage from inside the sandbox is not the parent's emergency.
     }
-  };
+  }, { onTooLong });
 }
 
 /**
