@@ -28,12 +28,13 @@
  */
 import { neverWrites, isGitMetadata, covers, keyHolders, inKeyDir } from "./owners.js";
 import { protectedBy } from "./surface.js";
-import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
+import { appendFileSync, chmodSync, mkdirSync, readFileSync, statSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
 import { STATE_DIR, tomlString } from "./layout.js";
 import { send } from "./spool.js";
 import { withLock, readEntries } from "./log.js";
+import { loadConfig } from "./config.js";
 
 const REQUESTS_NAME = "requests.jsonl";
 
@@ -355,7 +356,11 @@ export function editPolicy(config, mutate, { waitMs = 10000, after = null } = {}
   return withLock(policyLockBase(config), () => {
     const before = readFileSync(config.path, "utf8");
     const result = mutate(before);
-    if (result.changed) writePolicy(config, result.toml);
+    if (result.changed) {
+      // A decision cannot settle against text the next run cannot load.
+      loadConfig(config.path, result.toml);
+      writePolicy(config, result.toml);
+    }
     after?.(result);
     return result;
   }, { waitMs });
@@ -391,10 +396,12 @@ export function policyLockBase(config) {
  * exclusive, which is what defeats a planted name.
  */
 function writePolicy(config, text) {
+  const mode = statSync(config.path).mode & 0o777;
   const name = `seisin.toml.tmp-${randomBytes(12).toString("hex")}`;
   const stateTmp = join(config.root, STATE_DIR, name);
-  writeFileSync(stateTmp, text, { flag: "wx" });
+  writeFileSync(stateTmp, text, { flag: "wx", mode });
   try {
+    chmodSync(stateTmp, mode);
     renameSync(stateTmp, config.path);
     return;
   } catch (e) {
@@ -402,8 +409,8 @@ function writePolicy(config, text) {
     if (e.code !== "EXDEV") throw e;
   }
   const near = join(dirname(config.path), `.${name}`);
-  writeFileSync(near, text, { flag: "wx" });
-  try { renameSync(near, config.path); }
+  writeFileSync(near, text, { flag: "wx", mode });
+  try { chmodSync(near, mode); renameSync(near, config.path); }
   catch (e) { try { unlinkSync(near); } catch {} throw e; }
 }
 
@@ -424,17 +431,17 @@ function writePolicy(config, text) {
  */
 export function applyGrant(toml, request, note = "") {
   const field = request.action === "read" ? "keys" : "writes";
-  const header = new RegExp(`^\\[roles\\.${escapeRe(request.role)}\\]\\s*$`, "m");
+  const header = new RegExp(`^[ \\t]*\\[roles\\.${escapeRe(request.role)}\\][ \\t\\r]*(?:#[^\\n]*)?$`, "m");
   const at = header.exec(toml);
   if (!at) throw new Error(`no [roles.${request.role}] section to grant into`);
 
   // The section runs from its header to the next table header, or to the end.
   const from = at.index + at[0].length;
-  const next = /^\[[^\]]+\]\s*$/m.exec(toml.slice(from));
+  const next = /^[ \t]*\[[A-Za-z0-9_.\-]+\][ \t\r]*(?:#[^\n]*)?$/m.exec(toml.slice(from));
   const to = next ? from + next.index : toml.length;
   const section = toml.slice(from, to);
 
-  const open = new RegExp(`^${field}\\s*=\\s*\\[`, "m").exec(section);
+  const open = new RegExp(`^[ \\t]*${field}[ \\t]*=[ \\t]*\\[`, "m").exec(section);
   if (!open)
     throw new Error(
       `[roles.${request.role}] has no ${field} list to grant into. ` +
@@ -470,7 +477,8 @@ export function applyGrant(toml, request, note = "") {
   }
   const stamp = `# granted ${new Date().toISOString().slice(0, 10)} · asked ${request.times}×` +
                 `${note ? ` · «${cleanReason(note)}»` : ""}`;
-  const edited = section.slice(0, start) + `${inner}\n  "${request.grant}"   ${stamp}\n]` + section.slice(list.end + 1);
+  const eol = toml.includes("\r\n") ? "\r\n" : "\n";
+  const edited = section.slice(0, start) + `${inner}${eol}  "${request.grant}"   ${stamp}${eol}]` + section.slice(list.end + 1);
   return { toml: toml.slice(0, from) + edited + toml.slice(to), changed: true };
 }
 

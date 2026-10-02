@@ -80,8 +80,8 @@ function tableOf(lines, name) {
   return { header, end, keys };
 }
 
-function stamp(note) {
-  return `# set in the console ${new Date().toISOString().slice(0, 10)}` +
+function stamp(note, source = "in the console") {
+  return `# set ${source} ${new Date().toISOString().slice(0, 10)}` +
     (note ? ` · «${cleanReason(note)}»` : "");
 }
 
@@ -92,7 +92,7 @@ function stamp(note) {
  * value being replaced, and the stamp now describes the new one. Every other
  * line, comments included, stays byte for byte.
  */
-function setKey(text, table, key, value, note) {
+export function setKey(text, table, key, value, note, source) {
   const eol = text.includes("\r\n") ? "\r\n" : "\n";
   const lines = text.split("\n");
   const cr = eol === "\r\n" ? "\r" : "";
@@ -105,14 +105,14 @@ function setKey(text, table, key, value, note) {
     const was = lines.slice(at.from, at.to + 1).map((l) => stripComment(l).trim()).join(" ");
     if (was.slice(was.indexOf("=") + 1).replace(/\s+/g, "").replace(/,\]$/, "]") === value.replace(/\s+/g, "")) return text;
     const indent = /^\s*/.exec(lines[at.from])[0];
-    const line = `${indent}${key} = ${value}   ${stamp(note)}${cr}`;
+    const line = `${indent}${key} = ${value}   ${stamp(note, source)}${cr}`;
     lines.splice(at.from, at.to - at.from + 1, line);
   } else {
     // After the last key, not the last line: a comment above the next table
     // belongs to that table, and a line inserted under it would read as the
     // next role's.
     const after = t.keys.length ? t.keys[t.keys.length - 1].to : t.header;
-    lines.splice(after + 1, 0, `${key} = ${value}   ${stamp(note)}${cr}`);
+    lines.splice(after + 1, 0, `${key} = ${value}   ${stamp(note, source)}${cr}`);
   }
   return lines.join("\n");
 }

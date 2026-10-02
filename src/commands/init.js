@@ -12,10 +12,15 @@
  * not read: `--from-observations` lands as `.observed`, not as the config.
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync, statSync, copyFileSync, appendFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, resolve, isAbsolute } from "node:path";
 import { CONFIG_NAME, tomlString, tomlName } from "../layout.js";
 import { read, logPath, observed, generalise } from "../log.js";
 import { C, out } from "../render.js";
+import { loadConfig } from "../config.js";
+import { applyGrant } from "../requests.js";
+import { setKey } from "../controls.js";
+import { keyName } from "../owners.js";
+import { toRepoRelative } from "../paths.js";
 
 /**
  * Three places a repo already says who does what, in order of how much it
@@ -162,59 +167,55 @@ export function renderConfig(found) {
   return lines.join("\n");
 }
 
-/** The observed config, as TOML. Pure: takes the log entries. */
-export function renderObserved(config, entries) {
+/** A proposal that adds observed permissions to the current policy text. */
+export function renderObserved(config, entries, text = readFileSync(config.path, "utf8")) {
+  // Start from the policy being proposed for promotion. Rebuilding writes and
+  // keys alone discarded isolate, never_writes, providers, per-role network,
+  // MCP and every other setting, including those of roles that did not act.
+  config = loadConfig(config.path, text);
   const roles = observed(entries);
-  const lines = [
-    `# ${CONFIG_NAME} — written from ${entries.length} observed action(s).`,
-    "#",
-    "# This is what your agents actually did, generalised to directories. Read it",
-    "# before you trust it: an agent that touched a file once by mistake asked for",
-    "# that directory here, and observation cannot tell intent from accident.",
-    "",
-  ];
-  if (config.keyDirs.length)
-    lines.push("[keys]", `dir = [${config.keyDirs.map(tomlString).join(", ")}]`, "");
-  lines.push("[network]", `allow = [${config.allowedDomains.map(tomlString).join(", ")}]`, "");
-
-  /**
-   * Every declared role appears, whether it acted or not.
-   *
-   * This used to emit only the roles the log had seen, and the file says "diff
-   * it, then move it" — so moving it deleted the territory of every role that
-   * happened to be idle during the observation window, silently. A role that
-   * did nothing is not a role that needs nothing; it is a role nobody watched.
-   *
-   * So observation *adds*. What was declared stays, what was seen is appended,
-   * and the comment beside each role says which part came from where — because
-   * the whole reason to read this file is to tell the two apart.
-   */
-  for (const name of new Set([...Object.keys(config.roles), ...roles.keys()])) {
-    const declared = config.roles[name];
+  let toml = text;
+  const notes = [];
+  for (const name of Object.keys(config.roles)) {
     const seen = roles.get(name);
-
-    const from = declared ? declared.writesDeclared ?? declared.writes : [];
-    const found = seen ? generalise([...seen.writes]).filter((w) => !from.includes(w)) : [];
-    const keys = [
-      ...(declared ? declared.keys : []),
-      ...(seen ? [...new Set([...seen.keys].map((k) => k.replace(/^.*\//, "")))] : []),
+    if (!seen) {
+      notes.push(`# ${name}: this role did nothing while observing — kept as written`);
+      continue;
+    }
+    // A host path is not a repo-relative grant. Unknown roles and outside
+    // paths from older logs cannot silently become territory in the proposal.
+    const paths = [...seen.writes].map((p) => toRepoRelative(config, resolve(config.root, p)))
+      .filter((p) => !isAbsolute(p) && p !== ".." && !p.startsWith("../"));
+    const additions = [
+      ...generalise(paths).map((grant) => ({ action: "write", grant })),
+      ...[...seen.keys].map((target) => ({ action: "read", grant: keyName(config, target) })),
     ];
-
-    // Every value below came out of the log, and the log records paths the
-    // agent chose. tomlString refuses what the format cannot hold rather than
-    // emitting a file that parses into something else.
-    lines.push(`[roles.${tomlName(name)}]`);
-    lines.push(`writes = [${[...from, ...found].map(tomlString).join(", ")}]`);
-    lines.push(`keys   = [${[...new Set(keys)].map(tomlString).join(", ")}]`);
-    lines.push(
-      seen
-        ? `# declared ${from.length}; observation added ${found.length} ` +
-          `(${seen.writes.size} path(s) written, ${seen.keys.size} key(s) read)`
-        : `# declared ${from.length}; this role did nothing while observing — kept as written`
-    );
-    lines.push("");
+    let added = 0;
+    for (const request of additions) {
+      const field = request.action === "read" ? "keys" : "writes";
+      // A valid role can omit either list. Insert only a missing list and
+      // retry the same grant; existing values and comments stay untouched.
+      let result;
+      try {
+        result = applyGrant(toml, { ...request, role: name, times: 1 }, "observation proposal");
+      } catch (e) {
+        if (!e.message.includes(`has no ${field} list`)) throw e;
+        toml = setKey(toml, `roles.${name}`, field, "[]", "", "from observation");
+        result = applyGrant(toml, { ...request, role: name, times: 1 }, "observation proposal");
+      }
+      toml = result.toml;
+      if (result.changed) added++;
+    }
+    notes.push(`# ${name}: observation added ${added}; all other settings kept as written`);
   }
-  return { toml: lines.join("\n"), roles: roles.size };
+  loadConfig(config.path, toml);
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const heading = [
+    `# ${CONFIG_NAME} — proposal from ${entries.length} observed action(s).`,
+    "# Observation adds territory and keys; read the diff before promoting this file.",
+    ...notes, "",
+  ].join(eol);
+  return { toml: heading + eol + toml, roles: [...roles.keys()].filter((name) => config.roles[name]).length };
 }
 
 export function init(cwd = process.cwd(), { force = false } = {}) {

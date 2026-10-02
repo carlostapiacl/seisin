@@ -59,6 +59,10 @@ export function secretsOf(settings, readFile) {
  * half of a surrogate pair on either side.
  */
 export function redactor(secrets, label = "redacted") {
+  // Embedders use this export directly; neither order nor empty values may
+  // decide how much of a split credential is retained between chunks.
+  secrets = [...new Set(secrets.filter((s) => typeof s === "string" && s.length > 0))]
+    .sort((a, b) => b.length - a.length);
   if (secrets.length === 0) return null;
   const longest = secrets[0].length;
   const decoder = new StringDecoder("utf8");
