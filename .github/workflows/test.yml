@@ -91,9 +91,16 @@ jobs:
       # A green run that skipped every sandbox test is the failure this whole
       # job exists to prevent, and it looks identical to a real pass.
       - name: the sandbox half actually ran
+        # TAP has the same summary on every Node version in this matrix. The
+        # default reporter can use another format, which made the skip grep
+        # silently miss a suite that did not exercise the sandbox.
+        shell: bash
         run: |
-          node --test test/sandbox.test.js 2>&1 | tee /tmp/sandbox.log
-          if grep -qE '^# skipped [1-9]' /tmp/sandbox.log; then
-            echo "::error::sandbox tests skipped — srt was not usable on this runner"
-            exit 1
-          fi
+          node --test --test-reporter=tap test/sandbox.test.js 2>&1 | tee /tmp/sandbox.log
+          for summary in '^# tests [1-9][0-9]*$' '^# pass [1-9][0-9]*$' \
+                         '^# fail 0$' '^# cancelled 0$' '^# skipped 0$'; do
+            if ! grep -qE "$summary" /tmp/sandbox.log; then
+              echo "::error::sandbox suite did not run completely ($summary)"
+              exit 1
+            fi
+          done
