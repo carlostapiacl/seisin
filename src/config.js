@@ -608,7 +608,7 @@ export function loadConfig(path, text = readFileSync(path, "utf8")) {
       /**
        * The command that proves this role can check its own work, run by
        * `seisin check --verify` inside the role's sandbox. Measured in
-       * wapentake (2026-10-09): an agent asked to verify with nothing to verify
+       * an agent orchestrator (2026-10-09): an agent asked to verify with nothing to verify
        * with cost 80% more per task and verified nothing; the same agent with
        * its toolchain ran the suite every time at the original cost.
        */

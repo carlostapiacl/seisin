@@ -99,12 +99,12 @@ reads its repo, what it writes, its `reads`, its `toolchain`, its run, and the p
 started with. The system (`/usr`, `/bin`, `/opt/homebrew` but its `var`) stays readable: there is
 nobody's data there, and every interpreter is.
 
-| | `~/.claude` | `~/Desktop/proyectos` | a file beside the repo | the repo | the role's toolchain |
+| | `~/.claude` | your other projects | a file beside the repo | the repo | the role's toolchain |
 |---|---|---|---|---|---|
 | `isolate = "credentials"` | open | open | open | open | open |
 | `+ read = "territory"` | **closed** | **closed** | **closed** | open | open if declared |
 
-Measured on macOS with wapentake's V-7 cases (14 of 14, positive controls included). Linux uses
+Measured on macOS against an outside test battery of 14 cases (14 of 14, positive controls included). Linux uses
 the same carving through bubblewrap but has not been measured through seisin yet.
 
 - **`seisin check`** names every PATH entry the mode shuts, a `toolchain` that does not exist, and

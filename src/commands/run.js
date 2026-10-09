@@ -341,7 +341,7 @@ export async function run(config, argv) {
     env.TMPDIR = join(home, "tmp");
     // zsh writes its heredocs to $TMPPREFIX, not $TMPDIR, and defaults it to
     // /tmp/zsh — which the role cannot write. Every heredoc in every zsh script
-    // failed with the role's own tmp a directory away (wapentake, case 19 bis).
+    // failed with the role's own tmp a directory away (measured by an orchestrator running zsh scripts).
     env.TMPPREFIX = join(home, "tmp", "zsh");
   }
   if (observe) env.SEISIN_OBSERVE = "1";

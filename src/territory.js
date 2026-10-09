@@ -5,7 +5,7 @@
  * The default read model is a list of what not to read — key directories, the
  * places credentials live, other agents' sign-in. It holds for agents you run
  * yourself. Against one you would not trust it loses by one every time a new
- * product leaves a folder of its own: measured on 2026-10-06 (wapentake V-7),
+ * product leaves a folder of its own: measured on 2026-10-06 by an orchestrator that evaluates agents,
  * a role confined that way could still list `~/.claude`, list the whole
  * project tree of the person running it, and `cat` an evaluation check kept
  * outside its worktree. None of the three was a credential, so none was on
@@ -29,14 +29,14 @@
  *     the mode was turned on.
  *   - Linux: the runtime mounts `allowRead` read-only AFTER the writable
  *     mounts, so a repo in `allowRead` covers the role's own territory and
- *     every write fails with "Read-only file system" (V-7, srt 0.0.75/0.0.78).
+ *     every write fails with "Read-only file system" (measured, srt 0.0.75/0.0.78).
  *
  * Instead each data root is walked down toward what is kept, and every
  * sibling on the way is denied. Deny-only, so it composes with every allow
  * seisin already emits, on both platforms the same way.
  *
  * **What that costs, said where it is decided.** It is a photograph: an entry
- * created during the run beside a kept path is not covered (V-7 §7.3). And the
+ * created during the run beside a kept path is not covered. And the
  * NAMES along the path stay listable — a role inside `~/work/repo` can `ls
  * ~/work` and see what is there, though it can open none of it. Secrets that
  * must stay shut belong in roots that hold no territory, where they are denied
@@ -82,7 +82,7 @@ export function dataRoots(platform = process.platform, home = homedir(), tmp = t
  * `sandbox-exec` as an argument. Measured: a repo kept inside a Mac's TMPDIR,
  * 9,105 entries, made 9,163 denies, 815 KB of profile, and `spawn E2BIG` —
  * no agent, and before the canary existed, no reason anyone could read. A repo
- * under a home is a few hundred (this portfolio: ~230). Past this the answer is
+ * under a home is a few hundred (measured: ~230 for a repo four levels down). Past this the answer is
  * a refusal that names the directory, not a profile that cannot start.
  */
 export const MAX_CARVE = 1000;
