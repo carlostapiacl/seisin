@@ -243,13 +243,14 @@ test("a runtime killed by a signal exits 128 + n, like a run that was stopped", 
   const dir = boxed("rh-sig-");
   writeFileSync(join(dir, "seisin.toml"), '[roles.plain]\nwrites = ["src/**"]\n');
   const child = spawn(process.execPath, [CLI, "run", "plain", "--", "sleep", "20"], { cwd: dir, stdio: "ignore" });
-  // The runtime is seisin's direct child other than `log stream`.
+  // The runtime is seisin's direct child other than `log stream` — the one
+  // running the agent's command, not the canary's that runs before it.
   let srt = null;
   for (const end = Date.now() + 15_000; !srt && Date.now() < end;) {
     await new Promise((ok) => setTimeout(ok, 100));
     const ps = spawnSync("/bin/ps", ["-Ao", "pid=,ppid=,command="], { encoding: "utf8" }).stdout;
     srt = ps.split("\n").map((l) => l.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/))
-      .find((m) => m && Number(m[2]) === child.pid && /srt/.test(m[3]) && !/log stream/.test(m[3]))?.[1];
+      .find((m) => m && Number(m[2]) === child.pid && /srt/.test(m[3]) && /sleep 20/.test(m[3]))?.[1];
   }
   assert.ok(srt, "the runtime never started");
   process.kill(Number(srt), "SIGKILL");

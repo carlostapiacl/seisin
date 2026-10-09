@@ -683,6 +683,12 @@ confined process. Nothing degrades: a provider that fails stops the run.
 
 **[Key directories, references, providers, delivery modes and nine recipes →](docs/keys.md)**
 
+For agents you would not trust with your machine, `[runtime] read = "territory"` denies the places
+data lives — homes, temp directories, volumes — and leaves each role its repo, its territory and
+a toolchain it declares, which `seisin check --verify` proves it can run. Every run, in every
+mode, starts with a canary that tries the policy from inside and refuses to start the agent if
+it does not hold. **[What it closes, what it costs →](docs/scratch.md#reading-only-what-the-role-needs)**
+
 **Measured, over four teams of agents and three days: every denied read was a read of something
 the policy had declared a key.** 148 of them, no exceptions, from five roles — all running
 searches that swept a repository root. That is how a key gets read without anyone deciding
