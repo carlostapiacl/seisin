@@ -10,8 +10,8 @@
 import { spawn } from "node:child_process";
 import { finished } from "node:stream/promises";
 import { constants as osConstants } from "node:os";
-import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
-import { join, dirname, delimiter } from "node:path";
+import { mkdirSync, writeFileSync, existsSync, readFileSync, statSync } from "node:fs";
+import { join, dirname, delimiter, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { settingsFor, roleHome, loopbackVia, agentOf, AGENTS, AGENT_HOMES } from "../srt.js";
 import { buildEnv } from "../env.js";
@@ -27,6 +27,10 @@ import { renderAdded } from "./requests.js";
 import { unknownRole } from "../suggest.js";
 import { watchDenials } from "../violations.js";
 import { intake } from "../intake.js";
+import { toolchainBins } from "../territory.js";
+import { writePathsOf } from "../grants.js";
+import { runCanary, CANARY_EXIT } from "../canary.js";
+import { append, logPath } from "../log.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -222,7 +226,15 @@ export async function run(config, argv) {
   // What was already waiting, so the end of the run can say what it added.
   const before = new Set(pending(requestsPath(config.root)).map((q) => q.key));
   const sockPath = theRun.sock;
-  const settings = settingsFor(config, role, sockPath, observe, { agent });
+  // The program, as the role's PATH will find it: `read = "territory"` keeps
+  // that one file readable (territory.js). Same order run uses below — the
+  // declared toolchain first, then the parent's PATH.
+  const isDir = (d) => { try { return statSync(d).isDirectory(); } catch { return false; } };
+  const searchPath = config.read === "territory"
+    ? [...toolchainBins(config, config.roles[role], isDir), process.env.PATH ?? ""].join(delimiter)
+    : process.env.PATH;
+  const program = whichOn(cmd[0], searchPath);
+  const settings = settingsFor(config, role, sockPath, observe, { agent, program });
   // Per run, never per role: `.seisin/<role>.json` was one file for every run
   // of that role, and two at once wrote each other's socket path into it.
   const file = theRun.writeSettings(settings);
@@ -241,6 +253,17 @@ export async function run(config, argv) {
   env.SEISIN_ROLE = role;
   env.SEISIN_CONFIG = config.path;
   env[SOCK_ENV] = sockPath;
+  /**
+   * The declared toolchain goes first on PATH, under `read = "territory"`.
+   *
+   * Declaring `~/.venvs/api` and then having `python` resolve to whatever the
+   * parent's PATH found first is not having the toolchain. Only in that mode:
+   * under "all" the PATH is the parent's, as it has always been.
+   */
+  if (config.read === "territory") {
+    const bins = toolchainBins(config, config.roles[role], isDir);
+    if (bins.length) env.PATH = [...bins, ...(env.PATH ? [env.PATH] : [])].join(delimiter);
+  }
 
   /**
    * Reference keys: resolved here, by the parent, before anything is spawned.
@@ -316,6 +339,10 @@ export async function run(config, argv) {
     env.XDG_STATE_HOME = join(home, ".local", "state");
     env.XDG_CACHE_HOME = join(home, ".cache");
     env.TMPDIR = join(home, "tmp");
+    // zsh writes its heredocs to $TMPPREFIX, not $TMPDIR, and defaults it to
+    // /tmp/zsh — which the role cannot write. Every heredoc in every zsh script
+    // failed with the role's own tmp a directory away (wapentake, case 19 bis).
+    env.TMPPREFIX = join(home, "tmp", "zsh");
   }
   if (observe) env.SEISIN_OBSERVE = "1";
   if (mine.includes("--debug-env")) err(`${C.dim}seisin: dropped ${dropped.join(" ")}${C.off}\n`);
@@ -402,6 +429,28 @@ export async function run(config, argv) {
   // one request per role, and a denial logged against the role that owns the
   // path (measured: 3 lines and 3 requests for one write by one of 3 roles).
   // The nonce makes each run's command unique, so the tag names one run.
+  /**
+   * The canary, before anything of the agent's starts — and before the kernel
+   * watcher below, so its own denials are not recorded as the agent's. See
+   * canary.js. A failure stops the run with its own exit code and a line in
+   * the log; there is no flag to skip it.
+   */
+  const probe = await runCanary({
+    srt, settingsFile: file, settings, env, cwd: process.cwd(),
+    runDir: theRun.dir, runsRoot: theRun.root, role: config.roles[role],
+    granted: writePathsOf(config, config.roles[role], { observe, agent }),
+  });
+  if (!probe.ok) {
+    append(logPath(config.root), {
+      event: "canary", role, run: theRun.id.slice(0, 8), confined: false, reasons: probe.failed,
+    });
+    err(`${C.red}seisin: ${role} was NOT started — the sandbox failed its canary:${C.off}\n` +
+      probe.failed.map((f) => `  - ${f}\n`).join("") +
+      `  The policy as generated does not hold on this machine, so no agent runs under it. ` +
+      `This is recorded in the log (confined=false). There is no flag to skip it.\n`);
+    process.exit(CANARY_EXIT);
+  }
+
   const boxed = ["env", `SEISIN_RUN_ID=${theRun.id}`, ...loopbackVia(config.roles[role], cmd)];
   denials = watchDenials(take.fromKernel, { argv: boxed });
 
@@ -556,6 +605,14 @@ export async function run(config, argv) {
 }
 
 /** Is `name` a program the role can start with this PATH? */
+/** Where `name` resolves on `path`, absolute, or null. */
+function whichOn(name, path) {
+  if (!name) return null;
+  if (name.includes("/")) return existsSync(name) ? resolve(name) : null;
+  for (const d of (path ?? "").split(delimiter)) if (d && existsSync(join(d, name))) return join(d, name);
+  return null;
+}
+
 function onPath(name, path) {
   if (!name) return false;
   if (name.includes("/")) return existsSync(name);

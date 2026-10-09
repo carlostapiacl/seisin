@@ -28,6 +28,8 @@ import { channelName } from "./spool.js";
 import { alive } from "./log.js";
 
 export const RUNS_NAME = "snr";
+/** The settings file inside a run's directory. srt.js denies it to the run by this name. */
+export const SETTINGS_NAME = "settings.json";
 
 /**
  * The root every run lives under, created private, and checked.
@@ -93,7 +95,7 @@ export function openRun({ base = tmpdir(), id = randomUUID() } = {}) {
      * exists is not this run's, and the runtime would read whatever it says.
      */
     writeSettings(settings) {
-      const file = join(dir, "settings.json");
+      const file = join(dir, SETTINGS_NAME);
       writeFileSync(file, JSON.stringify(settings, null, 2) + "\n", { flag: "wx", mode: 0o600 });
       return file;
     },

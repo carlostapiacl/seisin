@@ -41,7 +41,7 @@ ${C.b}seisin${C.off} — give each agent its own folders and its own keys
 
   seisin run <role> -- <command...>     run a command as that role
   seisin run <role> --observe -- <cmd>  open the repo and watch — the network stays shut
-  seisin check [role] [--verbose]       print the map, run nothing
+  seisin check [role] [--verbose] [--verify]  print the map; --verify runs each role's verify in its sandbox
   seisin explain <role> read|write|mcp <path, key or server>
   seisin whose <path>                   who owns it — safe to call from inside the sandbox
   seisin scan [--all]                   find secrets outside the declared key dirs
@@ -90,7 +90,10 @@ const COMMANDS = {
   // composes in a pre-commit hook or CI the way `explain` and `scan` already do.
   // Warnings about a config that WILL work still exit 0 — failing on those
   // would make the command unusable within a week.
-  check: async () => ((await import("./commands/check.js")).check(config(), argv).warnings.some((w) => w.kind === "cannot-be-enforced") ? 1 : 0),
+  check: async () => {
+    const report = (await import("./commands/check.js")).check(config(), argv);
+    return report.warnings.some((w) => w.kind === "cannot-be-enforced") || report.verify?.some((v) => !v.ok) ? 1 : 0;
+  },
   explain: async () => ((await import("./commands/explain.js")).explainCommand(config(), argv).allowed ? 0 : 1),
   scan: async () => ((await import("./commands/scan.js")).scanCommand(config(), argv).certain.length ? 1 : 0),
   log: async () => void (await import("./commands/log.js")).log(config(), argv),
