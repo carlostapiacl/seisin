@@ -73,3 +73,50 @@ involved at all.
 
 Which of the two you want is your threat model, so neither is a default. `"credentials"` is the
 one you can turn on today on a machine you are already working on.
+
+### Reading only what the role needs
+
+`isolate` closes the places *credentials* live. That is a list, and a list of what not to read
+loses by one every time a product leaves a folder of its own: measured on a role under
+`isolate = "credentials"`, it could still list `~/.claude`, list the whole project tree of the
+person running it, and read an evaluation check kept beside its worktree. None of the three is
+a credential.
+
+```toml
+[runtime]
+read = "territory"     # default "all"
+
+[roles.backend]
+writes    = ["api/**"]
+toolchain = ["~/.venvs/api"]                       # under a home, so declared; its bin/ goes first on PATH
+reads     = ["../shared-schemas"]                  # data outside the repo, read-only
+verify    = ["python", "-m", "pytest", "--version"]
+keys      = ["CLAUDE_CODE_OAUTH_TOKEN=op://dev/claude/token"]   # see below
+```
+
+The places data lives are denied — homes, temp directories, mounted volumes — and the role
+reads its repo, what it writes, its `reads`, its `toolchain`, its run, and the program it was
+started with. The system (`/usr`, `/bin`, `/opt/homebrew` but its `var`) stays readable: there is
+nobody's data there, and every interpreter is.
+
+| | `~/.claude` | `~/Desktop/proyectos` | a file beside the repo | the repo | the role's toolchain |
+|---|---|---|---|---|---|
+| `isolate = "credentials"` | open | open | open | open | open |
+| `+ read = "territory"` | **closed** | **closed** | **closed** | open | open if declared |
+
+Measured on macOS with wapentake's V-7 cases (14 of 14, positive controls included). Linux uses
+the same carving through bubblewrap but has not been measured through seisin yet.
+
+- **`seisin check`** names every PATH entry the mode shuts, a `toolchain` that does not exist, and
+  a role with no `verify`. **`seisin check --verify`** runs each role's `verify` inside its sandbox
+  — the one thing `check` executes. An agent asked to verify its work with nothing to verify
+  with retries, installs and works around instead: measured at +80% cost per task, and no
+  verification.
+- **Claude Code is signed out on macOS.** Its sign-in is in the login keychain, under the home.
+  Hand it a token as a key (`claude setup-token`, or `ANTHROPIC_API_KEY`). Putting
+  `~/Library/Keychains` in `reads` signs it in and gives the role every password in the keychain.
+- **What it does not close.** The names along the way to the repo stay listable (`ls ~/work`
+  shows what is there; nothing in it opens). It is a photograph: an entry created during the run
+  beside a kept path is not covered, so secrets belong in folders that hold no repo. A directory
+  on the way with more than 1,000 entries is refused rather than carved — keep repos out of
+  `$TMPDIR`.

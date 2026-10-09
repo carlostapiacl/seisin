@@ -154,6 +154,56 @@ read allowlist. A default-deny read set has to enumerate every interpreter,
 library and cache a toolchain touches, gets one wrong, and fails as an
 unexplainable crash inside the agent. Narrower than the ideal, and it holds up.
 
+**Revised 2026-10-09, for one threat model: `[runtime] read = "territory"`.**
+The objection above still stands against a *total* allowlist, and that is not
+what was built. A list of what not to read loses by one every time a product
+leaves a folder of its own: measured by wapentake (V-7), a role under
+`isolate = "credentials"` could still list `~/.claude`, list the whole project
+tree of its operator, and read an evaluation check kept outside its worktree —
+none of them a credential. So the new mode denies the places *data* lives
+(homes, temp directories, volumes) and leaves the system readable, where there
+is nobody's data and every interpreter is. What breaks is only a toolchain kept
+under a home (`~/.venvs`, `~/.nvm`), and that is no longer an unexplainable
+crash: `check` names every PATH entry the mode shuts, a role declares
+`toolchain`, and `check --verify` runs the role's own check command inside its
+sandbox before an agent does. Opt-in; `"all"` stays the default, because it is
+the right trade for agents you run yourself.
+
+Carved, not allowed back: each data root is walked toward what is kept and
+every sibling on the way denied. `allowRead` would have been shorter and is
+wrong on both platforms — on macOS a deny nested in an allow is re-emitted
+after it, which shut the key files `[keys]` re-allows; on Linux the runtime
+mounts `allowRead` read-only after the writable mounts, which made the role's
+own territory read-only. The carving is a photograph (an entry created during
+the run beside a kept path is not covered) and leaves the names along the path
+listable; both are said in docs/scratch.md.
+
+Rejected: opening `~/Library/Keychains` so Claude Code stays signed in under
+this mode. It signs in, and the role can read every item in the keychain —
+the same hole as the keychain link above. A token handed over as a key keeps
+the keychain shut; `check` says so.
+
+## Every run starts with a canary, and nothing skips it
+
+Before the agent starts, `seisin run` starts a short process under the same
+runtime, settings and environment, and the agent starts only if: a write
+outside the territory is not there afterwards, a secret planted in the runs
+directory never comes out, the run's own settings cannot be read, a decoy port
+on loopback never answers, a directory the policy grants takes a write, and the
+sandbox ran at all. Judged by effect, never by exit code, and each denial has
+its positive control. A failure exits 86, leaves `confined=false` in the log
+with the reasons, and is said on screen.
+
+Failing closed includes a missing tool: wapentake's network probe passed
+whenever `nc` was absent. Here no `curl` inside the sandbox is a failed canary.
+There is no flag to skip it — a flag becomes an alias. It costs one start of
+the runtime: measured +0.7 s per run on an Intel Mac (2.2 s → 2.9 s for
+`/usr/bin/true`), against runs that last minutes.
+
+The run's settings are denied to the run in every mode. They are a map of
+every door; the policy has to be right either way, but there is no reason to
+hand an agent the list of doors to try.
+
 ## Granting is not a tool call
 
 The MCP server can read state, read the queue and draft the exact change. It

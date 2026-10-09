@@ -22,8 +22,9 @@ import { entriesOf } from "./keys.js";
 import { enforcedNeverWrites } from "./owners.js";
 import { realAncestor } from "./paths.js";
 import { denyFor } from "./surface.js";
-import { runsRootOf } from "./rundir.js";
+import { runsRootOf, SETTINGS_NAME } from "./rundir.js";
 import { FIFO_SUFFIX } from "./spool.js";
+import { carveDenies, dataRoots, keptFor } from "./territory.js";
 import {
   SOCKET_MAX, isLink, realOrSelf, expand, homeFits, roleHome, roleHomeRoot,
   CREDENTIAL_HOMES, toWritePath, writePathsOf, otherAgentsCredentials,
@@ -99,7 +100,7 @@ export function loopbackVia(role, cmd) {
  * are closed to it. Left out (check, console, explain: no command), the
  * settings are the most the role can get, which is every agent's home.
  */
-export function settingsFor(config, roleName, spool = null, observe = false, { agent } = {}) {
+export function settingsFor(config, roleName, spool = null, observe = false, { agent, program } = {}) {
   const role = config.roles[roleName];
   if (!role) throw unknownRole(config, roleName);
 
@@ -203,6 +204,11 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
    * touches, gets one wrong, and fails as an unexplainable crash inside the
    * agent. Naming the places credentials actually live is narrower than the
    * ideal and it is a boundary that holds up in practice.
+   *
+   * For agents you would not trust there is `[runtime] read = "territory"`,
+   * below: not that allowlist, but its useful half — the places data lives are
+   * denied, the system stays readable, and what a toolchain needs from a home
+   * is declared and checked before the run. decisions.md has both halves.
    */
   if (shielded) denyRead.push(...CREDENTIAL_HOMES.map(expand));
 
@@ -295,6 +301,40 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
   if (runs) {
     denyRead.push(runs);
     allowRead.push(dirname(spool));
+    /**
+     * This run's settings are not this run's to read.
+     *
+     * They sit in the run's own directory, which the run reads for its scratch
+     * keys, so they were readable from inside: a map of every path left open
+     * and every one shut, handed to the process it confines. Not a defence on
+     * its own — the policy has to be right either way — but there is no reason
+     * to give an agent the list of doors to try. Named here, by the path
+     * rundir.js writes them to, because they do not exist yet.
+     */
+    denyRead.push(join(dirname(spool), SETTINGS_NAME));
+  }
+
+  /**
+   * `[runtime] read = "territory"`: the data roots are denied, carved around
+   * what this role needs. See territory.js for why carved and not allowed.
+   *
+   * Carved toward: the repo (key directories inside it stay denied by name,
+   * above), what the role writes, and what it declares in `reads` and
+   * `toolchain`.
+   *
+   * NOT carved toward: what is already re-allowed above — this run's directory,
+   * the role's own home, the key files. Each of those is an allow inside a deny
+   * that has no allow around it, which is the one shape the runtime honours on
+   * both platforms; it is how they work in the ordinary mode too. And carving
+   * toward them is what does not scale: they live in TMPDIR, which on a Mac
+   * that has been on for a while holds thousands of entries. Measured: 9,163
+   * denies, 815 KB of profile, and `spawn E2BIG` before the agent started.
+   */
+  if (config.read === "territory") {
+    const reopened = allowRead.map(realOrSelf);
+    const inReopened = (p) => { const r = realAncestor(p); return reopened.some((a) => r === a || r.startsWith(a + "/")); };
+    const keep = keptFor(config, role, { observe, agent, program }).filter((p) => !inReopened(p));
+    denyRead.push(...carveDenies(dataRoots(), keep));
   }
 
   return {

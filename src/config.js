@@ -302,6 +302,36 @@ function readValue(value, lineNo) {
  * application and `security` is the application. That trades one hole for a
  * larger one: the login keychain is every password you have.
  */
+/** `[runtime] read`: "all" (default) or "territory". An unknown value is refused, never read as "all". */
+export function readReadMode(v, path = "seisin.toml") {
+  if (v === undefined || v === "all") return "all";
+  if (v === "territory") return "territory";
+  throw new Error(
+    `${path}: runtime.read must be "all" or "territory", not ${JSON.stringify(v)}. ` +
+    `An unknown value cannot silently leave every file readable.`);
+}
+
+/**
+ * `reads` and `toolchain`: paths, absolute, `~/…`, or relative to the repo.
+ *
+ * Same rule as `writes`, for the same reason: the sandbox opens a path and
+ * everything under it, so a literal path or a `dir/**` subtree is all that can
+ * be said. `docs/*.md` would have to be widened to `docs` or frozen to today's
+ * files; either way the policy would say something the kernel does not.
+ */
+function readReadList(v, at) {
+  const list = v === undefined ? [] : asArray(v, at);
+  for (const p of list) {
+    const above = p.endsWith("/**") ? p.slice(0, -3) : p;
+    if (/[*?[\]{}]/.test(above) || p === "**")
+      throw new Error(
+        `${at} = "${p}" cannot be enforced as written.\n` +
+        `  A read grant is a path and everything under it. Write "${above.replace(/\/?[^/]*[*?[\]{}].*$/, "") || "."}/**" ` +
+        `for the subtree, or name the paths.`);
+  }
+  return list;
+}
+
 export function readIsolate(v) {
   if (v === true || v === "home") return "home";
   if (v === "credentials") return "credentials";
@@ -407,6 +437,10 @@ export function loadConfig(path, text = readFileSync(path, "utf8")) {
     // srt.js for what each level emits, and readIsolate() below for why there
     // are two of them.
     isolate: readIsolate(own(runtime, "isolate")),
+    // `[runtime] read` — what a role may read. "all" is every file but the ones
+    // denied by name; "territory" denies the places data lives and re-opens
+    // only what the role needs. See territory.js.
+    read: readReadMode(own(runtime, "read"), path),
     redact: readBoolean(own(runtime, "redact"), `${path}: runtime.redact`),
     scanIgnore: asArray(own(own(parsed, "scan"), "ignore"), "scan.ignore"),
     protect: readProtect(own(parsed, "protect"), path),
@@ -472,6 +506,12 @@ export function loadConfig(path, text = readFileSync(path, "utf8")) {
     const localPorts = readLocalPorts(own(r, "local_ports"), `${path}: roles.${name}.local_ports`);
     const mcp = readMcp(own(r, "mcp"), `${path}: roles.${name}.mcp`);
     const controlFiles = readControlFiles(own(r, "control_files"), `${path}: roles.${name}.control_files`);
+    const reads = readReadList(own(r, "reads"), `${path}: roles.${name}.reads`);
+    const toolchain = readReadList(own(r, "toolchain"), `${path}: roles.${name}.toolchain`);
+    const verify = own(r, "verify") === undefined ? null : asArray(own(r, "verify"), `roles.${name}.verify`);
+    if (verify && verify.length === 0)
+      throw new Error(`${path}: roles.${name}.verify is empty. It is the command that proves the role can check ` +
+        `its own work — ["python", "-m", "pytest", "--version"] — or leave it out.`);
     out.roles[name] = {
       name,
       /**
@@ -552,6 +592,27 @@ export function loadConfig(path, text = readFileSync(path, "utf8")) {
        * is and why only these two can be handed out. Absent is none.
        */
       controlFiles,
+      /**
+       * What this role reads beyond its repo, under `read = "territory"`.
+       *
+       * `reads` is data — a sibling checkout, a shared docs folder. `toolchain`
+       * is what runs — a venv, `~/.nvm`, `~/.cargo` — kept apart because `check`
+       * treats the two differently: a toolchain that does not exist is the
+       * reason a role cannot verify itself, and that is worth a finding. Both
+       * are read grants and nothing else; neither is ever writable. Ignored
+       * (and said so by `check`) under `read = "all"`, where everything is
+       * readable already.
+       */
+      reads,
+      toolchain,
+      /**
+       * The command that proves this role can check its own work, run by
+       * `seisin check --verify` inside the role's sandbox. Measured in
+       * wapentake (2026-10-09): an agent asked to verify with nothing to verify
+       * with cost 80% more per task and verified nothing; the same agent with
+       * its toolchain ran the suite every time at the original cost.
+       */
+      verify,
       // Kept so `check` can name a misspelt key instead of ignoring it. An
       // unknown key in a role table used to be dropped silently, and for a
       // subtraction that is failing open: `never_write` would read as a rule
@@ -665,7 +726,7 @@ const SHAPE = {
   roles: null,                            // validated where roles are read
   keys: { dir: true, providers: { "*": { command: true, mode: true } } },
   network: { allow: true },
-  runtime: { writes: true, isolate: true, redact: true },
+  runtime: { writes: true, isolate: true, redact: true, read: true },
   scan: { ignore: true },
   protect: { instructions: true },
   notify: { url: true, url_file: true, format: true },
@@ -727,7 +788,7 @@ function readBoolean(value, where) {
 }
 
 /** The keys a `[roles.<name>]` table can hold. Anything else is reported by `check`. */
-export const ROLE_KEYS = ["writes", "keys", "key_mode", "env", "network", "never_writes", "local_binding", "local_ports", "mcp", "trustd", "control_files"];
+export const ROLE_KEYS = ["writes", "keys", "key_mode", "env", "network", "never_writes", "local_binding", "local_ports", "mcp", "trustd", "control_files", "reads", "toolchain", "verify"];
 
 /**
  * `control_files`: which families of control files a role may edit. Refused at

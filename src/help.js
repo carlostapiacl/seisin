@@ -23,10 +23,11 @@ export const COMMAND_HELP = {
       ["128+n", "killed by signal n (130 for ctrl-c)"], ["2", "seisin could not start it (usage, policy, runtime)"]],
   },
   check: {
-    usage: ["seisin check [role] [--verbose]"],
-    flags: [["--verbose", "also print the protected paths, each warning's explanation and the standing limits"]],
-    examples: ["seisin check", "seisin check frontend --verbose"],
-    exits: [["0", "the policy can be enforced as written (warnings included)"], ["1", "a role cannot be enforced as written"], ["2", "usage or policy error"]],
+    usage: ["seisin check [role] [--verbose] [--verify]"],
+    flags: [["--verbose", "also print the protected paths, each warning's explanation and the standing limits"],
+      ["--verify", "run each role's verify command inside its sandbox (the one thing check executes)"]],
+    examples: ["seisin check", "seisin check frontend --verbose", "seisin check backend --verify"],
+    exits: [["0", "the policy can be enforced as written (warnings included)"], ["1", "a role cannot be enforced as written, or its verify failed"], ["2", "usage or policy error"]],
   },
   explain: {
     usage: ["seisin explain <role> read|write <path>", "seisin explain <role> read <key>", "seisin explain <role> mcp <server>"],
