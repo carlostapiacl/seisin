@@ -2,12 +2,12 @@
  * `[runtime] read = "territory"`, the canary, and the run's settings kept from
  * the run.
  *
- * Asked for by wapentake, which confines agents it evaluates and could not use
- * seisin for it: measured on 2026-10-06 (V-7), a role under `isolate =
+ * Asked for by an orchestrator that confines the agents it evaluates and could
+ * not use seisin for it: measured on 2026-10-06, a role under `isolate =
  * "credentials"` could still list `~/.claude`, list the whole project tree of
  * the person running it, and read an evaluation check kept outside its
  * worktree. With this mode the same 14 cases pass on macOS, positive controls
- * included (`comparar_seisin.sh`, 2026-10-09).
+ * included (2026-10-09).
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -176,7 +176,7 @@ test("check: a PATH entry under a data root and not kept is shut", () => {
 
 /* ── against the kernel ───────────────────────────────────────────────── */
 
-const skip = srtSkip() || (process.platform !== "darwin" && "measured on macOS; Linux carving is V-7's, not yet measured through seisin");
+const skip = srtSkip() || (process.platform !== "darwin" && "measured on macOS; the Linux carving is not yet measured through seisin");
 
 const run = (cwd, role, script) => new Promise((ok) => {
   let out = "";

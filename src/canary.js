@@ -16,7 +16,7 @@
  * role may write took the write — because a sandbox that runs nothing denies
  * everything too.
  *
- * **Fails closed, including on a missing tool.** In wapentake (F17) the network
+ * **Fails closed, including on a missing tool.** In an orchestrator we compared against, the network
  * probe passed whenever `nc` was absent: no tool, no connection, "refused".
  * Here a probe that cannot be made is a failed canary.
  *

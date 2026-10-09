@@ -157,7 +157,7 @@ unexplainable crash inside the agent. Narrower than the ideal, and it holds up.
 **Revised 2026-10-09, for one threat model: `[runtime] read = "territory"`.**
 The objection above still stands against a *total* allowlist, and that is not
 what was built. A list of what not to read loses by one every time a product
-leaves a folder of its own: measured by wapentake (V-7), a role under
+leaves a folder of its own: measured by an orchestrator that evaluates agents, a role under
 `isolate = "credentials"` could still list `~/.claude`, list the whole project
 tree of its operator, and read an evaluation check kept outside its worktree —
 none of them a credential. So the new mode denies the places *data* lives
@@ -194,7 +194,7 @@ sandbox ran at all. Judged by effect, never by exit code, and each denial has
 its positive control. A failure exits 86, leaves `confined=false` in the log
 with the reasons, and is said on screen.
 
-Failing closed includes a missing tool: wapentake's network probe passed
+Failing closed includes a missing tool: an orchestrator's network probe we compared against passed
 whenever `nc` was absent. Here no `curl` inside the sandbox is a failed canary.
 There is no flag to skip it — a flag becomes an alias. It costs one start of
 the runtime: measured +0.7 s per run on an Intel Mac (2.2 s → 2.9 s for
