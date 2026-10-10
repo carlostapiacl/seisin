@@ -369,7 +369,7 @@ export async function run(config, argv) {
     `${C.dim}seisin: ${role} · writes ${territory}${scratch > 0 ? ` (+${scratch} scratch)` : ""} · ` +
     `keys ${r.keys.length ? r.keys.join(" ") : "none"} · ` +
     `${agent ? `runs ${agent}` : "runs no agent seisin knows"} · ` +
-    `env ${Object.keys(env).length} kept, ${dropped.length} dropped` +
+    `env ${Object.keys(env).length} kept, ${dropped.length} dropped · read ${config.read}` +
     `${observe ? ` · ${C.yellow}OBSERVING — the repo is writable, the network is NOT${C.off}${C.dim}` : ""}${C.off}\n`
   );
 
@@ -585,14 +585,13 @@ export async function run(config, argv) {
     // filtered out has nothing to contextualise, and `0 recorded, 1 outside the
     // policy's paths` is a line that answers a question nobody asked — the
     // counts exist to explain a filter, not to announce that one ran.
-    const { attributed, foreign } = denials.stats;
+    const { attributed } = denials.stats;
     const { offPolicy, walks } = take.stats;
     const recorded = attributed - offPolicy - walks;
     if (recorded > 0)
       err(`${C.dim}seisin: ${recorded} kernel denial(s) recorded` +
           `${walks ? `, ${walks} directory scan(s)` : ""}` +
-          `${offPolicy ? `, ${offPolicy} outside the policy's paths` : ""}` +
-          `${foreign ? `, ${foreign} from other sandboxes` : ""}${C.off}\n`);
+          `${offPolicy ? `, ${offPolicy} outside the policy's paths` : ""}${C.off}\n`);
 
     // Only what this run added, with the numbers `grant` takes, and one line
     // for the rest. The whole queue after every run buried the new request

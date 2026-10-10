@@ -21,8 +21,7 @@
 #     denial and the request together, as a real user now sees them.
 #   - since 0.5.0 `run` prints only the requests THIS run filed, and one line
 #     for the rest. Delete `.seisin/` before recording, or the scene shows
-#     nothing new. On a machine where other sandboxes are running, the count
-#     line can add "N from other sandboxes": record again when it is quiet.
+#     nothing new. The count describes this run's requests only.
 
 # vhs 0.12 captures frames but fails to encode, silently, with exit 0. So it
 # emits frames and ffmpeg does the last step — see the command at the bottom.

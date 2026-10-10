@@ -21,9 +21,8 @@ export { CONFIG_NAME, STATE_DIR, LOG_NAME } from "./layout.js";
 /** Who owns a path, and the sentence to hand a denied agent. */
 export { covers, ownersOf, keyHolders, explain, explainFileRead, readTarget } from "./owners.js";
 
-/** A policy, resolved into sandbox settings and a child environment. */
-export { settingsFor, RUNTIME_WRITES, expand, agentOf, AGENT_HOMES, AGENT_CREDENTIALS } from "./srt.js";
-export { buildEnv, BASE as BASE_ENV, DEFAULTS as DEFAULT_ENV } from "./env.js";
+/** A policy, resolved into sandbox settings. */
+export { settingsFor } from "./srt.js";
 
 /**
  * Keys that are references, and how a resolved value reaches a role.
@@ -32,16 +31,16 @@ export { buildEnv, BASE as BASE_ENV, DEFAULTS as DEFAULT_ENV } from "./env.js";
  * knowing whether an entry is a path or a reference; `resolveRef` is not,
  * because resolving is something seisin does and not something you ask it.
  */
-export { parseKey, defaultName, entriesOf, MODES, RESERVED_ENV } from "./keys.js";
+export { parseKey, defaultName, entriesOf, MODES } from "./keys.js";
 
 /** What a role keeps being denied, recomputed against the policy as it stands. */
-export { walls, wasted, MIN_HITS } from "./walls.js";
+export { walls, wasted } from "./walls.js";
 
 /** The report `check` prints, without the printing. */
 export { inspect, sharedPaths } from "./inspect.js";
 
 /** Credential-shaped content outside the declared key directories. */
-export { scan, SHAPES, DEFAULT_IGNORE } from "./scan.js";
+export { scan } from "./scan.js";
 
 /** The append-only record, and what can be learned from it. */
 export { read as readLog, logPath, observed, generalise } from "./log.js";
@@ -59,6 +58,3 @@ export { pending as pendingRequests, requestsPath, grantFor } from "./requests.j
 
 /** One PreToolUse decision. */
 export { decide, targetsOf } from "./hook.js";
-
-/** Masking a role's own secrets on the way out. */
-export { secretsOf, redactor } from "./redact.js";

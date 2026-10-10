@@ -98,7 +98,7 @@ territory. A checkout, pull or rebase that would change one cannot, and git carr
 
 ```
 $ seisin run dev -- git checkout other
-seisin: dev · writes ** (+7 scratch) · keys none · env 18 kept, 55 dropped
+seisin: dev · writes ** (+7 scratch) · keys none · env 18 kept, 55 dropped · read all
 error: unable to unlink old '.vscode/settings.json': Operation not permitted
 Switched to branch 'other'
 M	.vscode/settings.json

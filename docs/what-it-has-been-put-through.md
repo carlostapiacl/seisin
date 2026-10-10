@@ -6,8 +6,8 @@
 
 ## The suite
 
-**874 tests** in the macOS suite; 872 passed and 2 platform tests skipped. Linux defines one
-fewer platform-specific test: 873 total, 852 passed and 21 skipped (2026-10-10).
+**875 tests** in the macOS suite; 873 passed and 2 platform tests skipped. Linux defines one
+fewer platform-specific test: 874 total, 853 passed and 21 skipped (2026-10-10).
 The [workflow](../.github/workflows/test.yml)
 exercises macOS and Linux under bubblewrap on Node 18/20/22/24 for pull requests and
 pushes to `main` when Actions is available. Actions is temporarily unavailable because of
