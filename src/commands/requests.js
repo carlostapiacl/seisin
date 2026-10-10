@@ -8,6 +8,7 @@
  */
 import { pending, settle, applyGrant, refuseIfBarred, requestsPath, markStale, editPolicy, withDeclarers, shellId } from "../requests.js";
 import { keyHolders } from "../owners.js";
+import { loadConfig } from "../config.js";
 import { read, logPath } from "../log.js";
 import { C, out, safe } from "../render.js";
 
@@ -158,8 +159,9 @@ export function grant(config, argv = []) {
   // find the same request open and act on it twice.
   let req;
   const { changed } = underLock(() => editPolicy(config, (before) => {
-    req = pick(config, argv[0], "grant");
-    refuseIfBarred(config, req);
+    const current = loadConfig(config.path, before);
+    req = pick(current, argv[0], "grant");
+    refuseIfBarred(current, req);
     return applyGrant(before, req, reason);
   }, { after: () => settle(requestsPath(config.root), req.key, "granted", reason) }));
   // Already in the policy: the request is answered all the same, as the
