@@ -62,7 +62,7 @@ changed rather than failing on the old spelling.
   cover these changes.
 - **CI passes the sandbox half only when all of it ran.** The gate pins the TAP reporter and
   requires tests and passes above zero and no failure, cancellation or skip; the spec reporter's
-  `ℹ skipped` used to slip past it. A regression runs the workflow's actual shell block against
+  `ℹ skipped` used to slip past it. A regression runs the workflow's actual shell step against
   passing, skipped and failing fixtures.
 
 - **`check` no longer reports a database's implicit sidecars.** A granted `data/app.sqlite`
