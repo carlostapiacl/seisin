@@ -195,7 +195,9 @@ its positive control. A failure exits 86, leaves `confined=false` in the log
 with the reasons, and is said on screen.
 
 Failing closed includes a missing tool: an orchestrator's network probe we compared against passed
-whenever `nc` was absent. Here no `curl` inside the sandbox is a failed canary.
+whenever `nc` was absent. Here the probe is `curl`, or the `node` seisin runs on when
+there is no `curl` (a slim image would otherwise start nothing), and it has to report
+that it ran: neither, or a probe the sandbox will not execute, is a failed canary.
 There is no flag to skip it — a flag becomes an alias. It costs one start of
 the runtime: measured +0.7 s per run on an Intel Mac (2.2 s → 2.9 s for
 `/usr/bin/true`), against runs that last minutes.
