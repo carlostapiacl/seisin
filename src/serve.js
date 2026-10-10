@@ -259,10 +259,11 @@ function decide(configPath, { key, decision, reason }) {
   let result = null;
   try {
     result = editPolicy(cfg, (before) => {
-      req = pending(file, { keyDirs: cfg.keyDirs }).find((r) => r.key === key);
+      const current = loadConfig(configPath, before);
+      req = pending(file, { keyDirs: current.keyDirs }).find((r) => r.key === key);
       if (!req) throw bad(`request ${key} is no longer pending — reload to see the queue as it is now`);
       if (decision !== "granted") return { toml: before, changed: false };
-      refuseIfBarred(cfg, req);
+      refuseIfBarred(current, req);
       return applyGrant(before, req, reason);
     }, { after: () => settle(file, req.key, decision === "granted" ? "granted" : "denied", reason) });
   } catch (e) {

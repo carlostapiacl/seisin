@@ -852,7 +852,7 @@ the same kernel or workspace, and which one you want depends on what you are pro
 
 ## Status
 
-`main` (after 0.5.0), 811 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
+`main` (after 0.5.0), 868 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 when there were eighteen of them, they skipped on Linux for a day, behind a runtime check that looked for the global
@@ -862,6 +862,8 @@ entirely. **811 tests on macOS 15, 809 passing and 2 skipped** (they are Linux-o
 with bubblewrap 0.8.0, the last time the suite was run in Docker.
 [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),
 and [what running agents behind it cost the people using it](docs/field-notes.md).
+The [2026-10-02 review](docs/reviews/2026-10-02.md) and its [follow-up](docs/reviews/2026-10-02-followup.md)
+added 32 regressions and record their portable checks apart from the kernel measurements above.
 The config format may still move before `1.0` — if it does, `seisin check` will
 tell you what changed.
 

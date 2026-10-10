@@ -610,8 +610,9 @@ export async function run(config, argv) {
     // Every run with a key paid it — measured 3.0 s against 1.2 s without keys.
     // `finished()` settles at once for a stream that is already done.
     const guard = setTimeout(() => process.exit(status), 2000);
-    outStream.end();
-    errStream.end();
+    // A child's exit is not its pipes' EOF. Let pipe() end the redactors
+    // after the remaining stdout/stderr arrives; ending them here lost that
+    // output. The guard still bounds a descendant that keeps a pipe open.
     await Promise.all([finished(outStream), finished(errStream)]).catch(() => {});
     clearTimeout(guard);
     process.exit(status);
