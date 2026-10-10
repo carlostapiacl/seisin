@@ -430,6 +430,27 @@ export async function run(config, argv) {
   // path (measured: 3 lines and 3 requests for one write by one of 3 roles).
   // The nonce makes each run's command unique, so the tag names one run.
   /**
+   * Linux, `read = "territory"`: the runtime's own temp directory moves into
+   * this run's, and the agent gets its TMPDIR back.
+   *
+   * sandbox-runtime makes the sockets its in-sandbox bridge reaches the proxy
+   * through in `os.tmpdir()` — of the runtime's process. With /tmp a data root
+   * and denied, the bridge found nothing and the whole network died in
+   * silence: every allowed host and `local_ports` refused like the rest
+   * (measured in Docker, Debian 12, bwrap 0.8.0). The run's directory is
+   * already readable from inside, so the sockets go there; the `env` the
+   * command runs through puts the agent's TMPDIR back as it was.
+   */
+  const agentTmp = env.TMPDIR;
+  const restoreTmp = [];
+  if (process.platform === "linux" && config.read === "territory") {
+    const srtTmp = join(theRun.dir, "srt");
+    mkdirSync(srtTmp, { recursive: true, mode: 0o700 });
+    env.TMPDIR = srtTmp;
+    restoreTmp.push(...(agentTmp ? [`TMPDIR=${agentTmp}`] : ["-u", "TMPDIR"]));
+  }
+
+  /**
    * The canary, before anything of the agent's starts — and before the kernel
    * watcher below, so its own denials are not recorded as the agent's. See
    * canary.js. A failure stops the run with its own exit code and a line in
@@ -451,7 +472,7 @@ export async function run(config, argv) {
     process.exit(CANARY_EXIT);
   }
 
-  const boxed = ["env", `SEISIN_RUN_ID=${theRun.id}`, ...loopbackVia(config.roles[role], cmd)];
+  const boxed = ["env", ...restoreTmp, `SEISIN_RUN_ID=${theRun.id}`, ...loopbackVia(config.roles[role], cmd)];
   denials = watchDenials(take.fromKernel, { argv: boxed });
 
   // Deliberately NOT announced here. On Linux this branch is taken every time,
