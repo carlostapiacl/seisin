@@ -29,7 +29,7 @@ they can read its `auth.json`. Codex keeps it in the macOS keychain instead with
 `cli_auth_credentials_store = "keyring"` in `~/.codex/config.toml`.
 
 **Writing this key replaces that list; it does not add to it.** So a `[runtime] writes` copied
-from somewhere to grant one extra path silently drops the six it did not mention. Start from the
+from somewhere to grant one extra path silently drops the seven defaults it did not mention. Start from the
 list above and append.
 
 Two things follow, and both are the kind of thing you want to hear from the tool rather than
