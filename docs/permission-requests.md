@@ -118,7 +118,7 @@ that run filed, with the numbers `grant` takes, and one line for the rest of the
 in the same terminal that just showed you the denial:
 
 ```
-seisin: frontend · writes src/web/** public/** (+7 scratch) · keys netlify-token.txt · env 18 kept, 54 dropped
+seisin: frontend · writes src/web/** public/** (+7 scratch) · keys netlify-token.txt · env 18 kept, 54 dropped · read all
 sh: migrations/m.sql: Operation not permitted
 sh: docs.md: Operation not permitted
 seisin: 2 kernel denial(s) recorded

@@ -67,7 +67,7 @@ denial that also names an owner turns a dead end into a handoff.
 
 ```
 $ seisin run frontend -- sh -c 'echo // fix >> src/api/orders.ts'
-seisin: frontend · writes src/web/** public/** (+7 scratch) · keys netlify-token.txt · env 18 kept, 55 dropped
+seisin: frontend · writes src/web/** public/** (+7 scratch) · keys netlify-token.txt · env 18 kept, 55 dropped · read all
 sh: src/api/orders.ts: Operation not permitted
 seisin: 1 kernel denial(s) recorded
 
@@ -90,7 +90,7 @@ The agent can ask directly too, from inside the sandbox:
 
 ```
 $ seisin run frontend -- seisin whose src/api/orders.ts
-seisin: frontend · writes src/web/** public/** (+7 scratch) · keys netlify-token.txt · env 18 kept, 55 dropped
+seisin: frontend · writes src/web/** public/** (+7 scratch) · keys netlify-token.txt · env 18 kept, 55 dropped · read all
 
   src/api/orders.ts belongs to backend
   you are frontend. Hand it over rather than working around it.
@@ -208,6 +208,30 @@ no amount of editing `seisin.toml` will move it.
 default Docker container forbids. `--cap-add SYS_ADMIN --security-opt seccomp=unconfined`
 gets namespaces; mounting `/proc` needs `--privileged`. If you cannot grant that, run
 seisin on the host and let the container be what it sandboxes.
+
+## JavaScript API
+
+The package is ESM. Import policy decisions from `seisin`; the same functions
+back the CLI. TypeScript declarations ship with the package.
+
+```js
+import { loadConfig, explain, ownersOf } from "seisin";
+
+const config = loadConfig("seisin.toml");
+console.log(ownersOf(config, "src/api/server.js"));
+console.log(explain(config, "frontend", "write", "src/api/server.js"));
+```
+
+The stable surface covers policy loading (`findConfig`, `loadConfig`,
+`parseToml`), ownership and explanations (`covers`, `ownersOf`, `keyHolders`,
+`explain`, `explainFileRead`, `readTarget`), resolved sandbox settings
+(`settingsFor`), key references (`parseKey`, `defaultName`, `entriesOf`,
+`MODES`), inspection and scanning (`inspect`, `sharedPaths`, `scan`),
+activity and requests (`readLog`, `logPath`, `observed`, `pendingRequests`,
+`requestsPath`, `grantFor`, `generalise`), walls (`walls`, `wasted`), and hook
+decisions (`targetsOf`, `decide`).
+Sandbox tuning constants, environment construction and output masking remain
+internal; they may change without an API compatibility promise.
 
 ## Use
 
@@ -874,7 +898,7 @@ the same kernel or workspace, and which one you want depends on what you are pro
 
 ## Status
 
-`main` (before 0.6.0), 874 tests on macOS, **872 passing and 2 platform skips**, of which
+`main` (before 0.6.0), 875 tests on macOS, **873 passing and 2 platform skips**, of which
 **28 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and the CI gate fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
@@ -883,7 +907,7 @@ install and missed the bundled one, and hid a defect that broke `seisin run` on 
 entirely. **811 tests on macOS 15, 809 passing and 2 skipped** (they are Linux-only) — 2026-09-30;
 `ubuntu-latest` is configured to run the same suite under bubblewrap with Node 18/20/22/24. Actions
 are temporarily unavailable because of account billing; the release is validated locally meanwhile.
-The 2026-10-10 Docker measurement was 873 tests (852 passing, 21 platform skips) on Debian 12
+The 2026-10-10 Docker measurement was 874 tests (853 passing, 21 platform skips) on Debian 12
 with bubblewrap 0.8.0, the last time the suite was run in Docker.
 [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),
 and [what running agents behind it cost the people using it](docs/field-notes.md).

@@ -11,6 +11,8 @@ changed rather than failing on the old spelling.
 **Breaking:** every run now starts with a mandatory canary. A machine or policy where 0.5.0
 started despite a boundary that did not hold now stops with exit 86. Wrapper commands that hide
 Claude Code must name it with `--agent claude`, so its home and sign-in are handled as Claude's.
+The JavaScript package surface now exports policy decisions; sandbox tuning constants and
+execution helpers are no longer public exports.
 
 **Security: a territory can no longer reopen a project's `.claude`.** Settings, hooks, skills
 and commands there are read or executed by Claude Code outside the sandbox, so their protection
@@ -32,6 +34,8 @@ the protected directory subtracted.
   there is no `curl`. A role with `local_binding = true` omits the loopback probe because its
   policy deliberately opens that path; every other probe still runs.
 - **The run's settings are denied to the run.** They are the map of what is open.
+- **The run header names the read mode.** The denial summary leaves out counts attributed to
+  unrelated sandboxes.
 - **`check --verify`** runs each role's `verify` inside its sandbox. `check` names PATH entries
   the mode shuts, a missing `toolchain`, a role with no `verify`, and on macOS that Claude Code
   will be signed out (its sign-in is in the login keychain; hand it a token as a key).

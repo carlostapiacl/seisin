@@ -203,6 +203,7 @@ test("against the kernel: the repo and the key read, the sibling and the setting
     `cat "$(dirname "$SEISIN_SPOOL")/settings.json" >/dev/null 2>&1 && echo POLICY-READ; ` +
     `echo w > src/new.txt && cat src/new.txt; ` +
     `if echo OUTSIDE-WRITE > ../reserved/escaped.txt 2>/dev/null; then echo OUTSIDE-WRITE; fi; echo DONE`);
+  assert.match(out, /· read territory/);
   assert.equal(code, 0, out);
   assert.match(out, /inside/, "positive control: the repo reads");
   assert.match(out, /KEY-READ/, "the granted key still reads with the repo kept");

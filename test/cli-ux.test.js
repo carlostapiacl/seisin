@@ -143,6 +143,7 @@ test("run: the header names the territory and keys; the end lists only what this
   ask(dir, { role: "qa", action: "write", target: "frontend/old.js" });
   const r = sh(dir, "run", "frontend", "--", "sh", "-c", "echo x > backend/new.py");
   assert.match(r.err, /seisin: frontend · writes frontend\/\*\* \(\+\d+ scratch\) · keys netlify\.txt/);
+  assert.match(r.err, /· read all/);
   assert.doesNotMatch(r.err, /qa wants write/, "an older request is counted, not reprinted");
   // A plain shell's denial becomes a request only where the OS reports it to
   // seisin (macOS's log); on Linux it reaches seisin through the agent's hook.
@@ -211,7 +212,7 @@ test("each command's --help lists its flags, an example and its exit codes", () 
   const dir = boxed("ux-help-");
   const want = {
     walls: ["--since", "--min", "--all"], explain: ["mcp"], scan: ["--all"], log: ["--limit", "--verdict"],
-    run: ["--debug-env", "--observe", "--settings"], review: ["--min"], check: ["--verbose"], init: ["--force"],
+    run: ["--debug-env", "--observe", "--settings"], review: ["--min"], check: ["--verbose", "--verify"], init: ["--force"],
   };
   for (const [cmd, words] of Object.entries(want)) {
     const r = sh(dir, cmd, "--help");
