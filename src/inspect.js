@@ -19,7 +19,8 @@ import { SHAPES } from "./scan.js";
 import { wired, broadlyWired } from "./commands/wire.js";
 import { RUNTIME_WRITES, CREDENTIAL_HOMES, expand, settingsFor } from "./srt.js";
 import { realOrSelf } from "./grants.js";
-import { keptFor, shutByTerritory, readPath } from "./territory.js";
+import { keptFor, shutByTerritory, readPath, dataRoots } from "./territory.js";
+import { realAncestor } from "./paths.js";
 import { protections, resolveExecutable } from "./surface.js";
 
 /**
@@ -995,6 +996,21 @@ function territoryWarnings(config, r) {
         headline: `${r.name}: toolchain ${p} does not exist`,
         detail: `Looked for ${abs}. A role told to verify its work with a toolchain it does not have retries, ` +
           "installs and works around instead — measured at +80% cost per task, and no verification.",
+      });
+  }
+  // A read grant that covers a whole home or data root turns the mode off for
+  // this role without anything saying so: `reads = ["~"]` reads like a
+  // detail and is every file the mode exists to shut.
+  const roots = dataRoots();
+  for (const p of declared) {
+    const abs = realAncestor(readPath(config.root, p));
+    const covered = roots.filter((root) => abs === "/" || root === abs || root.startsWith(abs + "/"));
+    if (covered.length)
+      out.push({
+        kind: "territory-reopened",
+        headline: `${r.name}: ${p} re-opens ${covered[0].replace(homedir(), "~") || "/"} whole — read = "territory" protects nothing there for this role`,
+        detail: `${covered.join(", ")} ${covered.length === 1 ? "is a place" : "are places"} the mode denies because people keep their data there. ` +
+          "Name the directory the role needs inside it instead.",
       });
   }
   const keep = keptFor(config, r);

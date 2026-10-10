@@ -104,8 +104,12 @@ nobody's data there, and every interpreter is.
 | `isolate = "credentials"` | open | open | open | open | open |
 | `+ read = "territory"` | **closed** | **closed** | **closed** | open | open if declared |
 
-Measured on macOS against an outside test battery of 14 cases (14 of 14, positive controls included). Linux uses
-the same carving through bubblewrap but has not been measured through seisin yet.
+Measured against an outside test battery of 14 cases, positive controls included: 14 of 14 on
+macOS; on Linux (Debian 12, bubblewrap 0.8.0, in Docker) every case holds — two of them read as
+failures to that battery only because bubblewrap shows a denied directory as an empty one, and
+the files in it do not open. On Linux Claude Code keeps its sign-in in `~/.claude/.credentials.json`,
+and a Claude run keeps that file readable while a Codex run or a plain command does not
+(measured with a planted file; a real sign-in under the mode has not been measured).
 
 - **`seisin check`** names every PATH entry the mode shuts, a `toolchain` that does not exist, and
   a role with no `verify`. **`seisin check --verify`** runs each role's `verify` inside its sandbox

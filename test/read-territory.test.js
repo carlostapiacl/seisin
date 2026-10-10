@@ -167,6 +167,14 @@ test("check: a toolchain that does not exist, and a role with no verify, are nam
   assert.ok(w.includes("no-verify"));
 });
 
+test("check: a read grant that re-opens a whole home is named", () => {
+  const { root } = repo(POLICY.replace('keys = ["k.txt"]', 'keys = ["k.txt"]\nreads = ["~"]'));
+  const w = inspect(loadConfig(join(root, "seisin.toml"))).warnings;
+  assert.ok(w.some((x) => x.kind === "territory-reopened"), w.map((x) => x.kind).join(" "));
+  const { root: ok } = repo(POLICY.replace('keys = ["k.txt"]', 'keys = ["k.txt"]\nreads = ["~/some/dir"]'));
+  assert.ok(!inspect(loadConfig(join(ok, "seisin.toml"))).warnings.some((x) => x.kind === "territory-reopened"));
+});
+
 test("check: a PATH entry under a data root and not kept is shut", () => {
   const id = (p) => p;
   assert.equal(shutByTerritory("/home/ana/.nvm/bin", ["/home/ana/work/repo"], ["/home"], id), true);
@@ -176,7 +184,7 @@ test("check: a PATH entry under a data root and not kept is shut", () => {
 
 /* ── against the kernel ───────────────────────────────────────────────── */
 
-const skip = srtSkip() || (process.platform !== "darwin" && "measured on macOS; the Linux carving is not yet measured through seisin");
+const skip = srtSkip();
 
 const run = (cwd, role, script) => new Promise((ok) => {
   let out = "";
@@ -240,7 +248,13 @@ const BREAKS = {
   none: [(s) => s, null],
   "the run's settings left readable": [(s) => { s.filesystem.denyRead = s.filesystem.denyRead.filter((p) => !p.endsWith("settings.json") && !p.endsWith("/snr")); return s; }, /settings were readable/],
   "a write outside the territory": [(s, run) => { s.filesystem.denyWrite = s.filesystem.denyWrite.filter((p) => !p.includes("/snr")); s.filesystem.allowWrite.push(run.dir); return s; }, /write outside the territory went through/],
-  "loopback open": [(s) => { s.network.allowLocalBinding = true; return s; }, /loopback port outside the policy was reachable/],
+  // macOS only: on Linux the runtime gives each role a network namespace of its
+  // own, so local_binding reaches nothing on the host and the decoy stays
+  // unreachable — measured in Docker (Debian 12, bwrap 0.8.0), and the canary
+  // rightly passes it.
+  ...(process.platform === "darwin"
+    ? { "loopback open": [(s) => { s.network.allowLocalBinding = true; return s; }, /loopback port outside the policy was reachable/] }
+    : {}),
   "the territory's grant lost": [(s) => { s.filesystem.allowWrite = []; return s; }, /positive control/],
 };
 
