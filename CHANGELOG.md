@@ -8,6 +8,24 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+**`[runtime] read = "territory"`, a canary before every run, measured on macOS and Linux**
+(Debian 12, bubblewrap 0.8.0). What it closes and what it costs is in
+[docs/scratch.md](docs/scratch.md#reading-only-what-the-role-needs).
+
+- **`read = "territory"` denies the places data lives** — homes, temp directories, volumes —
+  and leaves each role its repo, its territory, its run and the program it started. Opt-in;
+  `"all"` stays the default and changes nothing. Roles get `reads`, `toolchain` and `verify`.
+- **Every run starts with a canary**, in every mode: a write outside the territory, a planted
+  secret, the run's own settings and a decoy loopback port are tried from inside, beside a
+  positive control. Any wrong answer and the agent is not started: exit 86, `confined=false` in
+  the log. No flag skips it; it costs ~0.7 s per run. It probes with `curl`, or with `node` when
+  there is no `curl`.
+- **The run's settings are denied to the run.** They are the map of what is open.
+- **`check --verify`** runs each role's `verify` inside its sandbox. `check` names PATH entries
+  the mode shuts, a missing `toolchain`, a role with no `verify`, and on macOS that Claude Code
+  will be signed out (its sign-in is in the login keychain; hand it a token as a key).
+- **`TMPPREFIX`** is set with `isolate = "home"`, so zsh heredocs land in the role's own tmp.
+
 - **`check` no longer reports a database's implicit sidecars.** A granted `data/app.sqlite`
   warned "matches nothing in this repo" for each `-wal`, `-shm` and `-journal` not on disk, and
   counted them as individual files (`dev (3 of 5)` for a role that names two). They come with the

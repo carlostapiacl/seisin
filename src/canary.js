@@ -78,7 +78,12 @@ export async function runCanary({ srt, settingsFile, settings, env, cwd, runDir,
     `cat ${q(secret)} 2>/dev/null`,
     `cat ${q(policy)} >/dev/null 2>&1 && echo POLICY-READ-${nonce}`,
     inside ? `(echo IN-${nonce} > ${q(inside)}) 2>/dev/null` : ":",
-    port ? `if command -v curl >/dev/null 2>&1; then curl -s -m 3 http://127.0.0.1:${port}/ 2>/dev/null; else echo NO-CURL-${nonce}; fi` : ":",
+    // curl when there is one; otherwise the node seisin itself runs on, which
+    // every machine with seisin has — a slim image without curl would
+    // otherwise never start anything. Neither: a failed canary, not a pass.
+    port ? `if command -v curl >/dev/null 2>&1; then curl -s -m 3 -w PROBED-${nonce} http://127.0.0.1:${port}/ 2>/dev/null; ` +
+      `elif [ -x ${q(process.execPath)} ]; then ${q(process.execPath)} -e ${q(`process.stdout.write("PROBED-${nonce}");const s=require("net").connect(${port},"127.0.0.1");s.on("data",d=>process.stdout.write(d));s.on("error",()=>{});setTimeout(()=>process.exit(0),3000)`)} 2>/dev/null; ` +
+      `else echo NO-PROBE-${nonce}; fi` : ":",
   ].join("; ");
 
   let output = "";
@@ -110,7 +115,11 @@ export async function runCanary({ srt, settingsFile, settings, env, cwd, runDir,
     if (!wrote) failed.push(`a write the role is granted did not go through (${dirname(inside)}) — the positive control`);
   }
   if (port) {
-    if (output.includes(`NO-CURL-${nonce}`)) failed.push("no curl inside the sandbox to probe the network with — a probe that cannot be made is not a pass");
+    // The probe has to say it ran. Silence is not "unreachable": a node the
+    // sandbox will not execute prints nothing, and nothing would read as a pass.
+    if (!output.includes(`PROBED-${nonce}`) && !output.includes(`NO-PROBE-${nonce}`))
+      failed.push("the network probe did not run — a probe that cannot be made is not a pass");
+    if (output.includes(`NO-PROBE-${nonce}`)) failed.push("neither curl nor node can run inside the sandbox to probe the network with — a probe that cannot be made is not a pass");
     if (output.includes(`NET-${nonce}`)) failed.push(`a loopback port outside the policy was reachable (127.0.0.1:${port})`);
   }
 
