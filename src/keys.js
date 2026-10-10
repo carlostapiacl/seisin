@@ -479,7 +479,7 @@ export function modeOf(config, role, entry) {
       `runtime only masks a credential when the role's TLS is terminated with a CA of ` +
       `seisin's own — MITM over all of that role's traffic, not just the host holding the ` +
       `secret. It is refused rather than half-available.\n` +
-      `  Use "env" or "scratch" today. See docs/decisions.md.`);
+      `  Use "env" or "scratch" today. See https://github.com/carlostapiacl/seisin/blob/main/docs/decisions.md.`);
   if (!MODES.includes(mode))
     throw new Error(
       `roles.${role.name}: key_mode = "${mode}" is not a delivery mode. Known: ${MODES.join(", ")}.` +

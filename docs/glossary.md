@@ -86,6 +86,22 @@ the one-line pitch, "its own folders and its own keys"), writable roots, scope, 
 plus `sandbox.filesystem.allowWrite`, MCP **roots** [1, 2, 7, 22]. None of them is per identity;
 that is why the word is ours.
 
+**read mode** — the `[runtime] read` setting: `"all"` keeps ordinary machine reads open;
+`"territory"` keeps data roots shut except for the repo and each role's declared needs. The
+value `"territory"` is historical: it also keeps `reads` and `toolchain`, not only writable
+territory. *Where:* `[runtime] read`, `seisin check`, `seisin_state`.
+
+**reads** — paths outside the repo a role needs as data under the territory read mode. They
+take a path or subtree, with no interior globs. *Next to:* `toolchain` is for programs and their
+runtime; neither changes the write territory.
+
+**toolchain** — a program stack under a data root that a role must read, such as a venv or a
+Node installation. Its `bin` directory is put first on the role's PATH. *Where:*
+`[roles.<name>] toolchain`, `seisin check --verify`.
+
+**verify** — the command that proves a role can check its own work inside the generated sandbox.
+An empty command is invalid. *Where:* `[roles.<name>] verify`, `seisin check --verify`.
+
 **owner** — a role whose territory a path is in. *Owning* is about territory. A path can have
 several owners. *Next to:* **whose** is the question, **belongs to** is the answer, **claim** is
 what a role does when a line is added to its `writes`. *Not:* holder (that is keys), maintainer.
@@ -189,6 +205,11 @@ still what decides who the owner is. *Elsewhere:* ⚠ MCP **resources** [22] and
 ## Enforcement
 
 What holds the policy, and the process that sets it up.
+
+**canary** — the short confined command run before the requested command. It checks a denied
+write, secret, settings and loopback path beside positive controls; failure stops the run with
+exit 86 and is recorded. With `local_binding = true`, the loopback probe is omitted because the
+policy deliberately opens listening. *Where:* `seisin run`, log, console and MCP activity.
 
 **boundary** — the enforced limit: what the kernel (files) and the runtime's proxy (network) will
 let a confined process do. Never seisin's: seisin writes the settings and explains the result.

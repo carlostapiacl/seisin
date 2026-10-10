@@ -39,7 +39,10 @@ export function inspect(config, only = null, where = config.path) {
 
   return {
     where,
-    roles: roles.map((r) => ({ name: r.name, writes: r.writes, keys: r.keys, neverWrites: r.neverWrites ?? [], localBinding: r.localBinding === true, localPorts: r.localPorts ?? [], mcp: r.mcp ?? null, trustd: r.trustd === true })),
+    roles: roles.map((r) => ({ name: r.name, writes: r.writes, keys: r.keys,
+      reads: r.reads ?? [], toolchain: r.toolchain ?? [], verify: r.verify,
+      neverWrites: r.neverWrites ?? [], localBinding: r.localBinding === true,
+      localPorts: r.localPorts ?? [], mcp: r.mcp ?? null, trustd: r.trustd === true })),
     /**
      * The provider commands this config would run, listed because they are the
      * one thing in a `seisin.toml` that **executes**, and it executes in the
@@ -317,6 +320,7 @@ export function sharedPaths(config, roles = Object.values(config.roles)) {
  * is why there is no default beyond off.
  */
 function homeReachWarning(config) {
+  if (config.read === "territory") return null;
   const level = config.isolate === true ? "home" : config.isolate;
   if (level === "home") return null;             // nothing left to say
 
@@ -996,6 +1000,15 @@ function territoryWarnings(config, r) {
         headline: `${r.name}: toolchain ${p} does not exist`,
         detail: `Looked for ${abs}. A role told to verify its work with a toolchain it does not have retries, ` +
           "installs and works around instead — measured at +80% cost per task, and no verification.",
+      });
+  }
+  for (const p of r.reads ?? []) {
+    const abs = readPath(config.root, p);
+    if (!existsSync(abs))
+      out.push({
+        kind: "reads-missing",
+        headline: `${r.name}: reads ${p} does not exist`,
+        detail: `Looked for ${abs}. Remove a stale entry or create the path before relying on it.`,
       });
   }
   // A read grant that covers a whole home or data root turns the mode off for

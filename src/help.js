@@ -20,6 +20,7 @@ export const COMMAND_HELP = {
     notes: ["Everything after -- is the command's own, flags included: `-- claude --settings x.json` goes to claude."],
     examples: ['seisin run frontend -- claude', 'seisin run backend --observe -- claude -p "…"'],
     exits: [["n", "the command's own exit status"], ["127", "the command is not on the role's PATH"],
+      ["86", "the canary proved the generated boundary does not hold; the command was not started"],
       ["128+n", "killed by signal n (130 for ctrl-c)"], ["2", "seisin could not start it (usage, policy, runtime)"]],
   },
   check: {

@@ -393,7 +393,7 @@ export function watchDenials(onDeny, { pid = null, argv = null, platform = proce
     return {
       available: false,
       reason: platform === "linux"
-        ? "kernel denials are not readable from outside the runtime on Linux — see docs/upstream/cli-violations.md"
+        ? "kernel denials are not readable from outside the runtime on Linux — see https://github.com/carlostapiacl/seisin/blob/main/docs/upstream/cli-violations.md"
         : `no kernel denial stream on ${platform}`,
       stats,
       attributeTo() {},

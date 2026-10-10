@@ -7,8 +7,7 @@
  */
 import { toRepoRelative, fromCwd } from "../paths.js";
 import { isAbsolute } from "node:path";
-import { explain, explainFileRead, readTarget } from "../owners.js";
-import { CREDENTIAL_HOMES, expand } from "../grants.js";
+import { explain, readTarget } from "../owners.js";
 import { unknownRole } from "../suggest.js";
 import { twinsOf, whereIs } from "../worktree.js";
 import { renderVerdict, C, out } from "../render.js";
@@ -33,9 +32,7 @@ export function explainCommand(config, argv = []) {
 
   if (verb === "read") {
     const asked = readTarget(config, target);
-    const verdict = asked.key
-      ? explain(config, role, "read", asked.target)
-      : explainFileRead(config, role, asked.target, CREDENTIAL_HOMES.map(expand));
+    const verdict = explain(config, role, "read", target, process.cwd());
     out(renderVerdict(role, verb, asked.target, verdict));
     return { ...verdict, worktree: [] };
   }

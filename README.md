@@ -15,7 +15,7 @@
 
 A **permission layer**, not a sandbox — it sits on top of one. The isolation comes from the OS; what seisin adds is the part an OS cannot know: which role a path belongs to, and therefore who to ask next.
 
-*Two outside reviews went looking for ways past the boundary. [What they found, what broke, and what is still open →](docs/what-it-has-been-put-through.md)*
+*Outside reviews went looking for ways past the boundary. [What they found, what broke, and what is still open →](docs/what-it-has-been-put-through.md)*
 
 *And what running four teams of agents behind it actually cost — including the numbers that did not survive a re-check. [Field notes →](docs/field-notes.md)*
 
@@ -141,9 +141,8 @@ A rule is a string comparison against a command someone might not spell that way
 > **It turns an agent's mistake into a contained mistake. It does not turn a hostile
 > agent into a harmless one.**
 >
-> Two outside reviews have gone through it looking for ways past the boundary and
-> found eleven things between them. [What it has been put
-> through](docs/what-it-has-been-put-through.md) lists all of them — what was
+> Five outside reviews have gone through it looking for ways past the boundary.
+> [What they found and what remains open](docs/what-it-has-been-put-through.md) lists all of them — what was
 > fixed, what was measured, and what is still open.
 
 That distinction is the whole threat model, and it is worth reading before you install
@@ -160,7 +159,7 @@ fixtures:
 
 | | |
 |---|---|
-| it can read everything except the declared keys | by design — an agent that cannot read the repo cannot work. `seisin scan` exists because secrets live elsewhere too |
+| with the default read mode it can read everything except declared keys and protected credential homes | by design — an agent that cannot read the repo cannot work. `read = "territory"` is the opt-in stricter mode; `seisin scan` finds secrets stored elsewhere |
 | it can write anything inside its own territory | including staging an exfiltration, or destroying its own uncommitted work with `rm` |
 | `base64` defeats the redaction | only the literal value is masked, and only on stdout and stderr |
 | an allowed domain is an allowed channel | if the agent's own API is reachable, so is everything that goes through it |
@@ -227,8 +226,8 @@ the commands compose in a script, a pre-commit hook or CI:
 
 | command | 0 | 1 | other |
 |---|---|---|---|
-| `run` | — | — | the command's own status; 127 if it is not on the role's PATH; 128+n when killed by signal n (130 for ctrl-c) |
-| `check` | the policy can be enforced (warnings included) | a role cannot be enforced as written | |
+| `run` | — | — | the command's own status; 86 if the canary proves the boundary does not hold; 127 if it is not on the role's PATH; 128+n when killed by signal n (130 for ctrl-c) |
+| `check` | the policy can be enforced (warnings included) | a role cannot be enforced as written, or `--verify` failed | |
 | `explain` | allowed | denied | |
 | `scan` | no certain credential | a certain credential outside the key dirs | |
 | `review` | no role denied repeatedly | a role denied repeatedly | |
@@ -261,6 +260,27 @@ writes   = ["src/api/**", "migrations/**"]
 keys     = ["database-url.txt", "sentry-dsn.txt"]
 network  = ["api.stripe.com"]   # this role only — it replaces [network] rather than adding
 ```
+
+`[runtime] read = "all"` is the default. The opt-in `"territory"` mode keeps homes,
+temporary directories and mounted data roots shut, while retaining the repository and the
+paths each role names:
+
+```toml
+[runtime]
+read = "territory"
+
+[roles.backend]
+writes    = ["src/api/**"]
+reads     = ["../shared-schemas/**"]  # data needed read-only
+toolchain = ["~/.venvs/api"]          # program stack under a data root; bin/ goes first on PATH
+verify    = ["python", "-m", "pytest"] # run by seisin check --verify inside this role
+```
+
+`reads` and `toolchain` take literal paths or a subtree ending in `/**`; interior globs,
+`*` and `?` are refused. `verify` is an argv array and may not be empty. Carving a data
+root stops when any directory on the way contains more than 1,000 entries: each neighbour
+would become a sandbox rule, so `check` names whether the repo or a `reads` path must move
+or narrow. Details and platform costs are in [Scratch and read territory](docs/scratch.md).
 
 `[network] allow` is the fallback for roles that do not name their own. A role that needs one
 extra host should say so on its own line: a domain in the global list is reachable by every
@@ -297,6 +317,8 @@ It is wider than the name: the role can also listen on every interface and **con
 port on localhost**, so anything listening there without authentication is within its reach.
 `seisin check` says this next to the role. That is macOS: on Linux each role already has a
 private loopback, serves without the key, and reaches nothing on the host either way.
+The canary therefore omits its loopback probe for a role with `local_binding = true`: reaching
+the decoy is allowed by that policy, not evidence that confinement failed.
 
 If a role only needs to *reach* a local service, name the ports instead:
 `local_ports = [8001, 8081]`. The role reaches those and nothing else on localhost, on macOS
@@ -490,7 +512,7 @@ person applies it, in a terminal or in the console. That asymmetry is deliberate
 the reason the MCP server exists at all.
 
 **A person hears about it.** With `[notify]`, the parent process sends one message per new
-request — the role, the path, whose it is, and `seisin grant <n>` — to ntfy, Slack or any
+request — the role, the path, whose it is, and `seisin grant '<id>'` — to ntfy, Slack or any
 webhook. The URL lives in a key directory no role declares (`url_file`) or in the parent's
 `SEISIN_NOTIFY_URL`; written plainly into `seisin.toml`, which every role can read, it refuses to
 load, because whoever reads it can send you a fake "grant this".
@@ -852,13 +874,16 @@ the same kernel or workspace, and which one you want depends on what you are pro
 
 ## Status
 
-`main` (after 0.5.0), 868 tests, of which **26 need `@anthropic-ai/sandbox-runtime` installed**
-and run real commands through the real kernel — and CI fails if the sandbox half *skips*, because
+`main` (before 0.6.0), 874 tests on macOS, **872 passing and 2 platform skips**, of which
+**28 need `@anthropic-ai/sandbox-runtime` installed**
+and run real commands through the real kernel — and the CI gate fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 when there were eighteen of them, they skipped on Linux for a day, behind a runtime check that looked for the global
 install and missed the bundled one, and hid a defect that broke `seisin run` on that platform
 entirely. **811 tests on macOS 15, 809 passing and 2 skipped** (they are Linux-only) — 2026-09-30;
-`ubuntu-latest` under bubblewrap runs the same suite, Node 18/20/22/24 in CI at every push — and 225/225 the same way on Debian 12.15
+`ubuntu-latest` is configured to run the same suite under bubblewrap with Node 18/20/22/24. Actions
+are temporarily unavailable because of account billing; the release is validated locally meanwhile.
+The 2026-10-10 Docker measurement was 873 tests (852 passing, 21 platform skips) on Debian 12
 with bubblewrap 0.8.0, the last time the suite was run in Docker.
 [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),
 and [what running agents behind it cost the people using it](docs/field-notes.md).

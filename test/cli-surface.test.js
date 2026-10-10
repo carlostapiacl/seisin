@@ -33,10 +33,10 @@ const denial = (role, target) => ({ role, action: "write", target, verdict: "den
 
 /* ── walls ───────────────────────────────────────────────────────────── */
 
-test("walls exits 0 and prints nothing when the role has hit no wall", () => {
+test("walls exits 0 and explains when the role has hit no wall", () => {
   const r = seisin(repoWithLog([denial("dev", "deploy/a.yml")]), "walls", "dev");
   assert.equal(r.status, 0, r.stderr);
-  assert.equal(r.stdout.trim(), "", "one denial is information, not a wall");
+  assert.match(r.stdout, /no repeated denials.*after 2 denials/s);
 });
 
 test("walls exits 1 and names the wall when the role keeps hitting one", () => {

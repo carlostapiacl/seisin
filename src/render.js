@@ -96,6 +96,12 @@ export function renderReport(report, { verbose = true } = {}) {
       lines.push(`  ${" ".repeat(width)}  ${C.yellow}mcp${C.off}    ${r.mcp.length ? r.mcp.join(" ") : "none"} ${C.dim}(declared; the launcher enforces it)${C.off}\n`);
     if (r.localPorts?.length)
       lines.push(`  ${" ".repeat(width)}  ${C.yellow}reach${C.off}  localhost ${r.localPorts.join(" ")} ${C.dim}(local_ports, through the proxy)${C.off}\n`);
+    if (r.reads?.length)
+      lines.push(`  ${" ".repeat(width)}  ${C.blue}reads${C.off}  ${r.reads.join(" ")}\n`);
+    if (r.toolchain?.length)
+      lines.push(`  ${" ".repeat(width)}  ${C.blue}tools${C.off}  ${r.toolchain.join(" ")}\n`);
+    if (r.verify)
+      lines.push(`  ${" ".repeat(width)}  ${C.blue}verify${C.off} ${r.verify.join(" ")}\n`);
     lines.push(`  ${" ".repeat(width)}  ${C.green}keys${C.off}   ${keys}\n\n`);
   }
 
@@ -169,6 +175,11 @@ export function renderVerdict(role, action, target, verdict) {
  * people to stop reading the colour.
  */
 export function renderEntry(e) {
+  if (e.event === "canary") {
+    const mark = e.confined ? `${C.green}canary passed${C.off}` : `${C.red}canary failed${C.off}`;
+    const why = e.reasons?.length ? `  ${C.dim}${e.reasons.join("; ")}${C.off}` : "";
+    return `  ${C.dim}${(e.at ?? "").slice(11, 19)}${C.off}  ${mark}  ${C.b}${e.role}${C.off}${why}\n`;
+  }
   const mark =
     e.verdict === "denied" ? `${C.yellow}denied ${C.off}`
     : e.verdict === "observed" ? `${C.dim}seen   ${C.off}`

@@ -103,6 +103,13 @@ export function loopbackVia(role, cmd) {
 export function settingsFor(config, roleName, spool = null, observe = false, { agent, program } = {}) {
   const role = config.roles[roleName];
   if (!role) throw unknownRole(config, roleName);
+  const claudeGrant = role.writes.find((g) => /^(?:\.\/)?\.claude(?:\/|$)/.test(g));
+  if (claudeGrant)
+    throw new Error(
+      `roles.${roleName}.writes includes "${claudeGrant}", but a project's .claude cannot be granted.\n` +
+      "  Claude Code reads its settings and hooks outside the sandbox. Remove this territory; " +
+      "a broad territory such as ** keeps working with .claude protected.",
+    );
 
   const abs = (p) => (p.startsWith("/") ? p : join(config.root, p));
   // "credentials" closes the places credentials live; "home" does that and

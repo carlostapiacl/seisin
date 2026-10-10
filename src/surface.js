@@ -607,8 +607,14 @@ function computeDenies(config, role, { env, platform, observe }) {
   const dirs = mine.filter((p) => { try { return statSync(p).isDirectory(); } catch { return false; } });
   const repoDirs = dirs.filter((p) => under(p, config.root));
   const families = familiesFor(config, role);
-  const roots = [...new Set(repoDirs.flatMap((d) => rootsUnder(config, d)))];
-  const controls = roots.flatMap((d) => controlsOf(d, platform, families));
+  // Discover projects from the policy root, not from the territory. A territory
+  // may itself be .claude; starting the walk there called <repo>/.claude/.claude
+  // protected and left the real settings and hooks writable. A project's
+  // control files win over every grant that covers or sits inside the project.
+  const roots = [...new Set(rootsUnder(config, config.root)
+    .filter((d) => minePaths.some((p) => under(p, d) || under(d, p))))];
+  const controls = roots.flatMap((d) => controlsOf(d, platform, families))
+    .filter((e) => inMine(e.path) || minePaths.some((p) => under(p, e.path)));
   // The home is a project too, for Claude Code and Codex: ~/.claude/settings.json
   // is read by every session. Not walked — only its own control files.
   const codexHome = join(homedir(), ".codex");
@@ -626,7 +632,7 @@ function computeDenies(config, role, { env, platform, observe }) {
    * files stay literal (homeControls).
    */
   const globs = platform === "darwin"
-    ? repoDirs.flatMap((d) => [
+    ? roots.flatMap((d) => [
         `${d}/**/.claude`, `${d}/**/.claude/**`,
         `${d}/**/.git/hooks/**`, `${d}/**/.git/config`,
         // What git runs that lives beside, not in, `.git/config`: a submodule's
@@ -659,7 +665,7 @@ function computeDenies(config, role, { env, platform, observe }) {
     for (const root of roots)
       for (const family of families)
         for (const f of FAMILIES[family])
-          if (!existsSync(join(root, f)))
+          if (inMine(join(root, f)) && !existsSync(join(root, f)))
             globs.push({ path: exactly(root, f), why: `${familyWhy(family, f)}, if it is created`, family });
 
   // The policy, `.seisin/` and the key directories are denied whatever the

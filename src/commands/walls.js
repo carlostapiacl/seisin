@@ -24,10 +24,12 @@ export function wallsCommand(config, argv = []) {
   const all = argv.includes("--all");
   const list = (all ? every : every.filter((w) => !w.stale)).slice(0, 6);
   const old = every.filter((w) => w.stale).length;
-  // Nothing to say prints nothing, the way `scan` does when a repo is clean.
-  // A command that always speaks is one whose output stops being read.
   const shown = withKinds(config, list);
   if (shown.length) out(renderForPerson(role, shown));
+  else if (!every.length)
+    out(`\n  ${C.dim}${safe(role)} has no repeated denials in the recorded runs. A path becomes a wall after ${at("--min", 2)} denials.${C.off}\n\n`);
+  else if (!all)
+    out(`\n  ${C.dim}${safe(role)} has no recent walls; older ones are hidden. Use seisin walls ${safe(role)} --all.${C.off}\n\n`);
   if (old && !all) out(`  (${old} older wall(s) not hit in the last ${STALE_RUNS}+ runs: seisin walls ${role} --all)\n`);
   return shown;
 }

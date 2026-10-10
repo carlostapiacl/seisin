@@ -125,7 +125,7 @@ export function carveDenies(roots, keep, fs = realFs) {
         `read = "territory" cannot carve ${dir}: it holds ${names.length} entries, and each would be one ` +
         `deny in the sandbox profile (the most it takes is ${MAX_CARVE} per directory).\n` +
         `  Something the role keeps is inside it: ${kept.filter((k) => under(k, dir)).join(", ")}.\n` +
-        `  Move the repo (or that path) somewhere with fewer neighbours — a temp directory is the usual one.`);
+        `  Move the repo to a directory with fewer neighbours, or narrow the reads entry that keeps this path.`);
     for (const name of names.sort()) {
       const child = dir === "/" ? `/${name}` : `${dir}/${name}`;
       const kind = fs.kind(child);

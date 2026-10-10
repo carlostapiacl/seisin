@@ -468,9 +468,13 @@ export async function run(config, argv) {
     err(`${C.red}seisin: ${role} was NOT started — the sandbox failed its canary:${C.off}\n` +
       probe.failed.map((f) => `  - ${f}\n`).join("") +
       `  The policy as generated does not hold on this machine, so no agent runs under it. ` +
-      `This is recorded in the log (confined=false). There is no flag to skip it.\n`);
+      `This is recorded in the log (confined=false). Exit 86 means the boundary did not hold; ` +
+      `run seisin check, fix the reported policy or machine setup, and try again. There is no flag to skip it.\n`);
     process.exit(CANARY_EXIT);
   }
+  append(logPath(config.root), {
+    event: "canary", role, run: theRun.id.slice(0, 8), confined: true, reasons: [],
+  });
 
   const boxed = ["env", ...restoreTmp, `SEISIN_RUN_ID=${theRun.id}`, ...loopbackVia(config.roles[role], cmd)];
   denials = watchDenials(take.fromKernel, { argv: boxed });
