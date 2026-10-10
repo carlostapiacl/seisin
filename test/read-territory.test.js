@@ -12,8 +12,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdirSync, writeFileSync, symlinkSync, realpathSync } from "node:fs";
+import { mkdirSync, writeFileSync, symlinkSync, realpathSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { carveDenies, readPath, dataRoots, shutByTerritory } from "../src/territory.js";
 import { loadConfig, readReadMode } from "../src/config.js";
@@ -22,11 +23,11 @@ import { inspect } from "../src/inspect.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { srtSkip } from "./_tmp.js";
 
-// Under /tmp, not TMPDIR: a Mac's TMPDIR holds thousands of entries, and
-// carving through it is refused by design (see MAX_CARVE).
+// Under the home, not /tmp: /tmp is writable scratch and would make an
+// out-of-territory write appear allowed. Keep this fixture outside scratch.
 const made = [];
 process.on("exit", () => { for (const d of made) try { rmSync(d, { recursive: true, force: true }); } catch {} });
-const scratch = (prefix) => { const d = mkdtempSync(join(realpathSync("/tmp"), prefix)); made.push(d); return d; };
+const scratch = (prefix) => { const d = mkdtempSync(join(homedir(), prefix)); made.push(d); return d; };
 
 const CLI = fileURLToPath(new URL("../src/cli.js", import.meta.url));
 
@@ -200,15 +201,18 @@ test("against the kernel: the repo and the key read, the sibling and the setting
     `cat src/a.txt; cat .secrets/k.txt >/dev/null && echo KEY-READ; ` +
     `cat .secrets/other.txt 2>/dev/null; cat '${join(base, "reserved", "check.sh")}' 2>/dev/null; ` +
     `cat "$(dirname "$SEISIN_SPOOL")/settings.json" >/dev/null 2>&1 && echo POLICY-READ; ` +
-    `ls ~ >/dev/null 2>&1 && echo HOME-LISTED; echo w > src/new.txt && cat src/new.txt`);
+    `echo w > src/new.txt && cat src/new.txt; ` +
+    `if echo OUTSIDE-WRITE > ../reserved/escaped.txt 2>/dev/null; then echo OUTSIDE-WRITE; fi; echo DONE`);
   assert.equal(code, 0, out);
   assert.match(out, /inside/, "positive control: the repo reads");
   assert.match(out, /KEY-READ/, "the granted key still reads with the repo kept");
   assert.match(out, /^w$/m, "positive control: the territory writes and reads back");
+  assert.match(out, /DONE/, "the command continues after the denied write");
   assert.doesNotMatch(out, /NOT-GRANTED/, "a key not granted");
   assert.doesNotMatch(out, /RESERVED-CHECK/, "a file beside the repo");
   assert.doesNotMatch(out, /POLICY-READ/, "the run's own settings");
-  assert.doesNotMatch(out, /HOME-LISTED/, "the home");
+  assert.equal(existsSync(join(base, "reserved", "escaped.txt")), false,
+    "positive control: a sibling outside the role's territory is not writable");
 });
 
 test("against the kernel: a symlink out of the repo does not carry the read with it", { skip }, async () => {
