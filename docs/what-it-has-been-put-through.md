@@ -6,9 +6,12 @@
 
 ## The suite
 
-**868 tests** in the current suite (2026-10-10). The [workflow](../.github/workflows/test.yml)
+**874 tests** in the macOS suite; 872 passed and 2 platform tests skipped. Linux defines one
+fewer platform-specific test: 873 total, 852 passed and 21 skipped (2026-10-10).
+The [workflow](../.github/workflows/test.yml)
 exercises macOS and Linux under bubblewrap on Node 18/20/22/24 for pull requests and
-pushes to `main`. Historical full-suite measurements remain dated below; the
+pushes to `main` when Actions is available. Actions is temporarily unavailable because of
+account billing, so 0.6.0 is being validated locally on both platforms. Historical full-suite measurements remain dated below; the
 [2026-10-02 review](reviews/2026-10-02.md) and its
 [follow-up](reviews/2026-10-02-followup.md) record portable validation and its limits.
 
@@ -41,6 +44,11 @@ a green run that quietly tested nothing looks exactly like a real one.
 ```
 
 ## Public agent attacks, turned into boundary tests
+
+The 0.6.0 review added two boundary families to this evidence: a territory aimed directly at
+`.claude` cannot reopen its settings or hooks, and the territory read mode's explanations are
+checked against real kernel reads. Every run also executes the canary described in the README;
+its positive and negative controls run against the kernel on macOS and Linux.
 
 GitHub Security Lab showed an indirect prompt injection changing
 `.vscode/settings.json` to turn on tool auto-approval and reconfigure an MCP

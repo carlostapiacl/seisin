@@ -29,8 +29,7 @@
 import { toRepoRelative } from "./paths.js";
 import { loadConfig, findConfig } from "./config.js";
 import { inspect } from "./inspect.js";
-import { explain, explainFileRead, ownersOf, readTarget } from "./owners.js";
-import { CREDENTIAL_HOMES, expand } from "./grants.js";
+import { explain, ownersOf } from "./owners.js";
 import { settingsFor } from "./srt.js";
 import { pending, requestsPath, refuseIfBarred, shellId } from "./requests.js";
 import { read, logPath } from "./log.js";
@@ -166,6 +165,8 @@ const HANDLERS = {
     return {
       config: cfg.path,
       keyDirectories: cfg.keyDirs,
+      read: cfg.read,
+      isolate: cfg.isolate,
       roles: report.roles.map((r) => ({
         ...r,
         sandbox: settingsFor(cfg, r.name).filesystem,
@@ -195,10 +196,7 @@ const HANDLERS = {
     // A read of a file outside every key dir is open, as it is for the CLI.
     // The server has no working directory of its own, so the root stands in.
     if (action === "read") {
-      const asked = readTarget(cfg, target, cfg.root);
-      return asked.key
-        ? explain(cfg, role, "read", asked.target)
-        : explainFileRead(cfg, role, asked.target, CREDENTIAL_HOMES.map(expand));
+      return explain(cfg, role, "read", target, cfg.root);
     }
     const rel = toRepoRelative(cfg, target);
     const verdict = explain(cfg, role, action, rel);

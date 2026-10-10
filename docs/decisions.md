@@ -194,6 +194,9 @@ sandbox ran at all. Judged by effect, never by exit code, and each denial has
 its positive control. A failure exits 86, leaves `confined=false` in the log
 with the reasons, and is said on screen.
 
+A role with `local_binding = true` deliberately opens loopback, so its canary omits the
+decoy-port probe. The filesystem, secret, settings and positive-control probes still run.
+
 Failing closed includes a missing tool: an orchestrator's network probe we compared against passed
 whenever `nc` was absent. Here the probe is `curl`, or the `node` seisin runs on when
 there is no `curl` (a slim image would otherwise start nothing), and it has to report

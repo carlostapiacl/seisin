@@ -504,7 +504,7 @@ export function read(file, { role, verdict, since, limit = 0 } = {}) {
     }
     const got = [];
     for (const e of readEntries(seg)) {
-      if (e.event === "rotated" || e.event === "canary") continue; // a marker, not a decision
+      if (e.event === "rotated") continue; // an internal marker, not activity
       if (role && e.role !== role) continue;
       if (verdict && e.verdict !== verdict) continue;
       if (since && e.at < since) continue;

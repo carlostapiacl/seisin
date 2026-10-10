@@ -19,7 +19,7 @@ export { findConfig, loadConfig, parseToml } from "./config.js";
 export { CONFIG_NAME, STATE_DIR, LOG_NAME } from "./layout.js";
 
 /** Who owns a path, and the sentence to hand a denied agent. */
-export { covers, ownersOf, keyHolders, explain } from "./owners.js";
+export { covers, ownersOf, keyHolders, explain, explainFileRead, readTarget } from "./owners.js";
 
 /** A policy, resolved into sandbox settings and a child environment. */
 export { settingsFor, RUNTIME_WRITES, expand, agentOf, AGENT_HOMES, AGENT_CREDENTIALS } from "./srt.js";

@@ -6,7 +6,17 @@ history; what changed for someone who installs it is here.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
-## Unreleased
+## 0.6.0 — 2026-10-10
+
+**Breaking:** every run now starts with a mandatory canary. A machine or policy where 0.5.0
+started despite a boundary that did not hold now stops with exit 86. Wrapper commands that hide
+Claude Code must name it with `--agent claude`, so its home and sign-in are handled as Claude's.
+
+**Security: a territory can no longer reopen a project's `.claude`.** Settings, hooks, skills
+and commands there are read or executed by Claude Code outside the sandbox, so their protection
+wins over `writes = [".claude"]`, `[".claude/**"]`, nested hook grants and `["**"]`.
+`seisin check` rejects a territory aimed at `.claude`; broad territories keep working with
+the protected directory subtracted.
 
 **`[runtime] read = "territory"`, a canary before every run, measured on macOS and Linux**
 (Debian 12, bubblewrap 0.8.0). What it closes and what it costs is in
@@ -19,7 +29,8 @@ changed rather than failing on the old spelling.
   secret, the run's own settings and a decoy loopback port are tried from inside, beside a
   positive control. Any wrong answer and the agent is not started: exit 86, `confined=false` in
   the log. No flag skips it; it costs ~0.7 s per run. It probes with `curl`, or with `node` when
-  there is no `curl`.
+  there is no `curl`. A role with `local_binding = true` omits the loopback probe because its
+  policy deliberately opens that path; every other probe still runs.
 - **The run's settings are denied to the run.** They are the map of what is open.
 - **`check --verify`** runs each role's `verify` inside its sandbox. `check` names PATH entries
   the mode shuts, a missing `toolchain`, a role with no `verify`, and on macOS that Claude Code
@@ -77,6 +88,7 @@ changed rather than failing on the old spelling.
 - **`seisin walls` says what kind of thing an unowned path is.** `dist/` and `.env` read "no role
   can write it until one claims it"; the terminal now gives the console's kind and hint
   (`unowned · build: …`, `unowned · credential: …`).
+
 **Codex under seisin, measured** (codex 0.150.1, signed in with ChatGPT, five turns in a toy
 repository). What it needs and what changed is in [docs/agents.md](docs/agents.md).
 

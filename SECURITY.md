@@ -77,3 +77,14 @@ for**, or in **what it told you it asked for**, belongs here. If you are not sur
 you have, report it here and it gets routed.
 
 [srt]: https://github.com/anthropics/sandbox-runtime
+
+## Dependency advisory: GHSA-86w9-cpqp-85rv
+
+`npm audit` reports this high-severity `node-forge` advisory through the pinned sandbox
+runtime. The vulnerable operation is RSA PKCS#1 v1.5 signature verification accepting a malformed
+certificate structure. In runtime 0.0.78 the forge paths seisin reaches generate and sign the
+temporary MITM CA and leaf certificates, or parse a configured CA and compare its RSA modulus to
+the supplied private key; they do not call forge's certificate-signature verification. The
+advisory therefore does not appear reachable through seisin's current use, but remains an
+upstream dependency finding. Downgrading to the audit tool's suggested runtime 0.0.50 would remove
+security fixes and APIs seisin relies on, so it is not an acceptable remediation.

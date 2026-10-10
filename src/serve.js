@@ -21,6 +21,7 @@ import { settingsFor } from "./srt.js";
 import { pending, requestsPath, settle, applyGrant, refuseIfBarred, editPolicy, cleanReason } from "./requests.js";
 import { causesOf, describeWalls, parseSince, queue, verdicts, wallsByRole } from "./views.js";
 import { planEdit, hashOf } from "./controls.js";
+import { inspect } from "./inspect.js";
 
 // Moved to views.js, which the MCP server shares; kept importable from here.
 export { causesOf } from "./views.js";
@@ -140,6 +141,10 @@ export function state(configPath, { since = null, snap = snapshot(configPath) } 
     mcp: r.mcp ?? null,
     trustd: r.trustd === true,
     controlFiles: r.controlFiles ?? [],
+    reads: r.reads ?? [],
+    toolchain: r.toolchain ?? [],
+    verify: r.verify,
+    canary: [...all].reverse().find((e) => e.event === "canary" && e.role === r.name) ?? null,
     // Counted over the same window as the causes, so the KPI and the screen it
     // links to agree.
     blocks: derived.blocks.get(r.name) ?? 0,
@@ -165,6 +170,9 @@ export function state(configPath, { since = null, snap = snapshot(configPath) } 
     // so a policy edited in between is not overwritten by a stale decision.
     base: hashOf(text),
     allowedDomains: cfg.allowedDomains,
+    read: cfg.read,
+    isolate: cfg.isolate,
+    warnings: inspect(cfg).warnings,
     roles,
     causes: derived.causes,
     walls: derived.walls,

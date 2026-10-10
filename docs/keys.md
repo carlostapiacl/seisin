@@ -99,7 +99,7 @@ is stable:
 
 #### Recipes
 
-Three of these were run against the real thing on macOS 15; the rest follow each tool's
+Two of these were run against the real thing on macOS 15; the rest follow each tool's
 documented CLI and are **not measured here** — the contract above is what they have to meet.
 
 ```toml

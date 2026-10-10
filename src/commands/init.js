@@ -138,6 +138,9 @@ export function renderConfig(found) {
     "# A Claude Code subagent runs inside its parent's process, so it has its",
     "# parent's role — give it its own by running it as its own `seisin run`.",
     "",
+    "# [runtime]",
+    '# read = "territory"   # opt-in: keep data roots shut; roles declare reads/toolchain/verify',
+    "",
     ...(found.keyDir
       ? ["[keys]", `dir = ${tomlString(found.keyDir)}      # every key lives here; roles name the files they may read`]
       : ["# [keys]", '# dir = ".secrets"      # every key lives here; roles name the files they may read']),
@@ -162,6 +165,9 @@ export function renderConfig(found) {
     lines.push(`[roles.${tomlName(r.name)}]`);
     lines.push(`writes = [${r.writes.map(tomlString).join(", ")}]`);
     lines.push(`keys   = [${r.keys.map(tomlString).join(", ")}]`);
+    lines.push('# reads = ["path/**"]       # data outside the repo this role must read');
+    lines.push('# toolchain = ["~/.venvs/app"] # stack under a home or another data root');
+    lines.push('# verify = ["npm", "test"]  # seisin check --verify runs this inside the role');
     lines.push("");
   }
   return lines.join("\n");

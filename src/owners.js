@@ -16,7 +16,8 @@ import { isAbsolute, join } from "node:path";
 import { protectedBy } from "./surface.js";
 import { entriesOf, parseKey, BUILTIN } from "./keys.js";
 import { WILD, fromCwd, toRepoRelative } from "./paths.js";
-import { AGENTS, AGENT_CREDENTIALS, expand } from "./grants.js";
+import { AGENTS, AGENT_CREDENTIALS, CREDENTIAL_HOMES, expand } from "./grants.js";
+import { keptFor, shutByTerritory } from "./territory.js";
 
 /**
  * Does this glob cover this path? Supports `**`, `*`, `?` and a trailing `/`.
@@ -425,7 +426,7 @@ function signInAnswer(role, target) {
 export function explainFileRead(config, role, rel, credentialHomes = []) {
   // Only a key directory makes a key: settingsFor refuses a key declared
   // anywhere else, so nothing outside one is denied by being a key.
-  if (inKeyDir(config, rel)) return explain(config, role, "read", rel);
+  if (inKeyDir(config, rel)) return explainPolicy(config, role, "read", rel);
   const level = config.isolate === true ? "home" : config.isolate;
   if ((level === "credentials" || level === "home") && rel.startsWith("/")) {
     const hit = credentialHomes.find((h) => rel === h || rel.startsWith(h + "/"));
@@ -437,6 +438,13 @@ export function explainFileRead(config, role, rel, credentialHomes = []) {
   }
   const signIn = signInAnswer(role, rel);
   if (signIn) return signIn;
+  if (config.read === "territory" && rel.startsWith("/") &&
+      shutByTerritory(rel, keptFor(config, config.roles[role])))
+    return {
+      allowed: false, owners: [], readTerritory: true,
+      reason: `${rel} is outside what ${role} keeps readable under read = "territory". ` +
+        `Declare it in reads, or declare the tool that needs it in toolchain`,
+    };
   const dirs = (config.keyDirs ?? []).map(dirSpelling);
   return {
     allowed: true, owners: [], open: true,
@@ -653,7 +661,7 @@ function explainMcp(config, role, name) {
  * not a permission problem, it is a hole in the map. Saying so is more useful
  * than denying quietly, and it is the only way the hole ever gets fixed.
  */
-export function explain(config, role, action, target) {
+function explainPolicy(config, role, action, target) {
   if (action === "connect") return explainConnect(config, role, target);
   if (action === "mcp") return explainMcp(config, role, target);
   if (action === "read") {
@@ -736,4 +744,19 @@ export function explain(config, role, action, target) {
   if (owners.length === 0)
     return { allowed: false, owners: [], reason: `${target} has no owner — no role can write it until one claims it` };
   return { allowed: false, owners, reason: `${target} belongs to ${owners.join(", ")}` };
+}
+
+/**
+ * One public answer for CLI, MCP and library callers.
+ *
+ * Reads first decide whether the target is a declared key or a file, then ask
+ * the same territory/isolation question. Callers may supply their cwd; servers
+ * use the policy root, while the CLI uses the directory it is standing in.
+ */
+export function explain(config, role, action, target, cwd = config.root) {
+  if (action !== "read") return explainPolicy(config, role, action, target);
+  const asked = readTarget(config, target, cwd);
+  return asked.key
+    ? explainPolicy(config, role, "read", asked.target)
+    : explainFileRead(config, role, asked.target, CREDENTIAL_HOMES.map(expand));
 }

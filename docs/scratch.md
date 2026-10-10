@@ -91,7 +91,7 @@ writes    = ["api/**"]
 toolchain = ["~/.venvs/api"]                       # under a home, so declared; its bin/ goes first on PATH
 reads     = ["../shared-schemas"]                  # data outside the repo, read-only
 verify    = ["python", "-m", "pytest", "--version"]
-keys      = ["CLAUDE_CODE_OAUTH_TOKEN=op://dev/claude/token"]   # see below
+keys      = ["CLAUDE_CODE_OAUTH_TOKEN=file://.secrets/claude.env#TOKEN"]
 ```
 
 The places data lives are denied — homes, temp directories, mounted volumes — and the role

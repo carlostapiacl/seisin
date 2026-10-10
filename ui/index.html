@@ -994,8 +994,13 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
 
       var c4=document.createElement("td"); c4.className="st"; c4.setAttribute("data-label","confined");
       if (LIVE) {
-        // `seisin run` always sandboxes; there is nothing to switch here.
-        c4.innerHTML='<span class="state"><i></i>confined</span>';
+        // The last canary is evidence from a run, not a promise inferred from the policy.
+        if (r.canary) {
+          var passed=r.canary.confined===true;
+          c4.innerHTML='<span class="state" title="'+(passed?'Last canary passed':'Last canary failed')+'"><i></i>'+
+            (passed?'canary passed':'canary failed')+'</span>';
+          if(!passed)c4.querySelector(".state").classList.add("warn");
+        } else c4.innerHTML='<span class="state" title="No run has recorded a canary yet"><i></i>not run</span>';
       } else {
         var sw=document.createElement("button"); sw.type="button"; sw.className="sw";
         var txt=r.sandbox?"confined":"unconfined";
