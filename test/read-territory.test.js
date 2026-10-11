@@ -188,11 +188,11 @@ test("check: a PATH entry under a data root and not kept is shut", () => {
 const skip = srtSkip();
 
 const run = (cwd, role, script) => new Promise((ok) => {
-  let out = "";
+  let out = "", err = "";
   const p = spawn(process.execPath, [CLI, "run", role, "--agent", "none", "--", "/bin/sh", "-c", script], { cwd });
   p.stdout.on("data", (d) => (out += d));
-  p.stderr.on("data", (d) => (out += d));
-  p.on("close", (code) => ok({ out, code }));
+  p.stderr.on("data", (d) => (err += d));
+  p.on("close", (code) => ok({ out: `${out}\n${err}`, code }));
 });
 
 test("against the kernel: the repo and the key read, the sibling and the settings do not", { skip }, async () => {
@@ -238,6 +238,38 @@ test("against the kernel: check --verify runs the role's command in its sandbox"
   });
   assert.equal(res.code, 1, res.out);
   assert.match(res.out, /✗ verify dev/);
+
+  const parallel = await new Promise((ok) => {
+    let out = "";
+    const p = spawn(process.execPath, [CLI, "check", "--verify", "--parallel"], { cwd: root });
+    p.stdout.on("data", (d) => (out += d));
+    p.stderr.on("data", (d) => (out += d));
+    p.on("close", (code) => ok({ out, code }));
+  });
+  assert.equal(parallel.code, 1, parallel.out);
+  assert.match(parallel.out, /experimental: verify commands are running concurrently/);
+  assert.match(parallel.out, /✗ verify dev/);
+});
+
+test("against the kernel: experimental parallel verify overlaps role checks", { skip }, async () => {
+  const policy = `[runtime]\nread = "territory"\nwrites = []\n\n` +
+    `[roles.alpha]\nwrites = ["alpha/**"]\n` +
+    `verify = ["/bin/sh", "-c", "printf ready > alpha/ready; i=0; while [ ! -f beta/ready ] && [ $i -lt 100 ]; do sleep 0.05; i=$((i+1)); done; test -f beta/ready"]\n\n` +
+    `[roles.beta]\nwrites = ["beta/**"]\n` +
+    `verify = ["/bin/sh", "-c", "printf ready > beta/ready; i=0; while [ ! -f alpha/ready ] && [ $i -lt 100 ]; do sleep 0.05; i=$((i+1)); done; test -f alpha/ready"]\n`;
+  const { root } = repo(policy);
+  mkdirSync(join(root, "alpha"));
+  mkdirSync(join(root, "beta"));
+  const res = await new Promise((ok) => {
+    let out = "";
+    const p = spawn(process.execPath, [CLI, "check", "--verify", "--parallel"], { cwd: root });
+    p.stdout.on("data", (d) => (out += d));
+    p.stderr.on("data", (d) => (out += d));
+    p.on("close", (code) => ok({ out, code }));
+  });
+  assert.equal(res.code, 0, res.out);
+  assert.match(res.out, /✓ verify alpha/);
+  assert.match(res.out, /✓ verify beta/);
 });
 
 /* ── the canary ───────────────────────────────────────────────────────── */

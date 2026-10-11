@@ -185,6 +185,10 @@ test("an unknown command, flag, role or action is one line and exit 2", () => {
   assert.equal(flag.code, 2);
   assert.match(flag.err, /unknown flag "--bogus" for check/);
 
+  const parallel = sh(dir, "check", "--parallel");
+  assert.equal(parallel.code, 2);
+  assert.match(parallel.err, /--parallel is experimental and requires --verify/);
+
   const role = sh(dir, "walls", "fronted");
   assert.equal(role.code, 2);
   assert.match(role.err, /unknown role "fronted" — did you mean "frontend"\?\n\s+known roles: frontend, backend, qa/);
@@ -212,7 +216,7 @@ test("each command's --help lists its flags, an example and its exit codes", () 
   const dir = boxed("ux-help-");
   const want = {
     walls: ["--since", "--min", "--all"], explain: ["mcp"], scan: ["--all"], log: ["--limit", "--verdict"],
-    run: ["--debug-env", "--observe", "--settings"], review: ["--min"], check: ["--verbose", "--verify"], init: ["--force"],
+    run: ["--debug-env", "--observe", "--settings"], review: ["--min"], check: ["--verbose", "--verify", "--parallel"], init: ["--force"],
   };
   for (const [cmd, words] of Object.entries(want)) {
     const r = sh(dir, cmd, "--help");

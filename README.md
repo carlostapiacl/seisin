@@ -300,6 +300,11 @@ toolchain = ["~/.venvs/api"]          # program stack under a data root; bin/ go
 verify    = ["python", "-m", "pytest"] # run by seisin check --verify inside this role
 ```
 
+`seisin check --verify --parallel` is an experimental speed option: role checks run at the same
+time. Use it only when those commands do not share mutable build outputs, caches, ports, or other
+resources; concurrent checks can race and produce misleading failures. Plain `--verify` remains
+serial and is the recommended default. `--parallel` requires `--verify`.
+
 `reads` and `toolchain` take literal paths or a subtree ending in `/**`; interior globs,
 `*` and `?` are refused. `verify` is an argv array and may not be empty. Carving a data
 root stops when any directory on the way contains more than 1,000 entries: each neighbour
@@ -898,8 +903,8 @@ the same kernel or workspace, and which one you want depends on what you are pro
 
 ## Status
 
-`main` (before 0.6.0), 875 tests on macOS, **873 passing and 2 platform skips**, of which
-**28 need `@anthropic-ai/sandbox-runtime` installed**
+`main` (before 0.6.0), 876 tests on macOS, **874 passing and 2 platform skips**, of which
+**29 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and the CI gate fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
 when there were eighteen of them, they skipped on Linux for a day, behind a runtime check that looked for the global
@@ -907,8 +912,8 @@ install and missed the bundled one, and hid a defect that broke `seisin run` on 
 entirely. **811 tests on macOS 15, 809 passing and 2 skipped** (they are Linux-only) — 2026-09-30;
 `ubuntu-latest` is configured to run the same suite under bubblewrap with Node 18/20/22/24. Actions
 are temporarily unavailable because of account billing; the release is validated locally meanwhile.
-The 2026-10-10 Docker measurement was 874 tests (853 passing, 21 platform skips) on Debian 12
-with bubblewrap 0.8.0, the last time the suite was run in Docker.
+The 2026-10-11 Docker measurement was 875 tests (854 passing, 21 platform skips) on Debian 12
+with bubblewrap 0.8.0.
 [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),
 and [what running agents behind it cost the people using it](docs/field-notes.md).
 The [2026-10-02 review](docs/reviews/2026-10-02.md) and its [follow-up](docs/reviews/2026-10-02-followup.md)

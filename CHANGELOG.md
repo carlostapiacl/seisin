@@ -39,6 +39,8 @@ the protected directory subtracted.
 - **`check --verify`** runs each role's `verify` inside its sandbox. `check` names PATH entries
   the mode shuts, a missing `toolchain`, a role with no `verify`, and on macOS that Claude Code
   will be signed out (its sign-in is in the login keychain; hand it a token as a key).
+  `check --verify --parallel` is an experimental opt-in for speed; shared build outputs, caches,
+  ports or generated files may race. Plain `--verify` stays serial.
 - **`TMPPREFIX`** is set with `isolate = "home"`, so zsh heredocs land in the role's own tmp.
 
 **Policy edits, credential output, notifications and the console, hardened** — two reviews,
