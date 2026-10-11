@@ -6,8 +6,8 @@
 
 ## The suite
 
-**875 tests** in the macOS suite; 873 passed and 2 platform tests skipped. Linux defines one
-fewer platform-specific test: 874 total, 853 passed and 21 skipped (2026-10-10).
+**876 tests** in the macOS suite; 874 passed and 2 platform tests skipped. Linux defines one
+fewer platform-specific test: 875 total, 854 passed and 21 skipped (2026-10-11).
 The [workflow](../.github/workflows/test.yml)
 exercises macOS and Linux under bubblewrap on Node 18/20/22/24 for pull requests and
 pushes to `main` when Actions is available. Actions is temporarily unavailable because of
@@ -15,11 +15,11 @@ account billing, so 0.6.0 is being validated locally on both platforms. Historic
 [2026-10-02 review](reviews/2026-10-02.md) and its
 [follow-up](reviews/2026-10-02-followup.md) record portable validation and its limits.
 
-Twenty-six of them are not unit tests: they run real commands through the real
+Twenty-seven of them are not unit tests: they run real commands through the real
 sandbox and check what the kernel did — and they skip themselves when `srt` is
 not installed, so on a machine without it the suite reports them skipped rather than
 failing. That distinction matters enough that CI **fails if
-those twenty-six skip** — `srt` missing makes them skip themselves, and
+those twenty-seven skip** — `srt` missing makes them skip themselves, and
 a green run that quietly tested nothing looks exactly like a real one.
 
 ```
