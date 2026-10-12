@@ -233,13 +233,8 @@ function decide(configPath, { key, decision, reason, scope = "folder" }) {
    * The CLI stopped doing this long ago; the console had not.
    */
   if (typeof key !== "string" || !key) throw bad("key is required — the id of the request on screen");
-  /**
-   * A person declines; the boundary denies. The console sends "declined".
-   * "denied" is still accepted from anything that scripted against the old
-   * value, and is what the queue stores either way — renaming a stored value
-   * is a breaking change, listed in docs/glossary.md, not made here.
-   */
-  if (decision === "denied") decision = "declined";
+  // A person declines; the boundary denies (docs/glossary.md). One word each,
+  // here and in the queue.
   if (decision !== "granted" && decision !== "declined")
     throw bad(`decision must be granted or declined`);
   /**
@@ -281,7 +276,7 @@ function decide(configPath, { key, decision, reason, scope = "folder" }) {
       if (scope === "file") req = asFileGrant(req);
       refuseIfBarred(current, req);
       return applyGrant(before, req, reason);
-    }, { after: () => settle(file, req.key, decision === "granted" ? "granted" : "denied", reason, { only: req.only }) });
+    }, { after: () => settle(file, req.key, decision, reason, { only: req.only }) });
   } catch (e) {
     if (e.code === "ELOCKED") throw Object.assign(new Error("another grant is in progress — try again in a moment"), { status: 503 });
     throw e;
@@ -445,7 +440,7 @@ function declineAll(configPath, { keys, reason }) {
       after: () => {
         for (const req of pending(file)) {
           if (!wanted.has(req.key)) continue;
-          settle(file, req.key, "denied", reason);
+          settle(file, req.key, "declined", reason);
           declined++;
         }
       },

@@ -75,7 +75,7 @@ export function verdicts(cfg, { now = Date.now() } = {}) {
  * hundred identical rows instead of one sentence. Grouped, the shape of the
  * day is visible at a glance and it is almost never a territory dispute.
  *
- * `stillRefused` is recomputed against the policy as it stands, not read out
+ * `stillDenied` is recomputed against the policy as it stands, not read out
  * of the log — a cause that has been granted since is history, not friction,
  * and leaving it on the page sends somebody to fix what is already fixed.
  */
@@ -235,7 +235,7 @@ export function causesOf(cfg, entries, { ask = explain, limit = 12 } = {}) {
         // not `every`: two roles out of three still blocked is still friction,
         // and requiring all of them would quietly retire a live cause the day
         // one role got a grant.
-        stillRefused: [...g.roles].filter((r) => cfg.roles[r] && !ask(cfg, r, g.action, g.target).allowed).length,
+        stillDenied: [...g.roles].filter((r) => cfg.roles[r] && !ask(cfg, r, g.action, g.target).allowed).length,
       })),
   };
 }
@@ -306,6 +306,6 @@ export function wallsByRole(cfg, entries, { ask } = {}) {
  * the role has stopped asking for marked. `history` is the whole log, every
  * verdict — a run that was only allowed things is still a run.
  */
-export function queue(root, history, keyDirs = null) {
-  return markStale(pending(requestsPath(root), { keyDirs }), history);
+export function queue(root, history, keyDirs = null, { readOnly = false } = {}) {
+  return markStale(pending(requestsPath(root), { keyDirs, readOnly }), history);
 }

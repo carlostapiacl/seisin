@@ -333,7 +333,7 @@ export function readFileRef(entry, root = ".", { exact = false } = {}) {
   }
   let value;
   if (key === null) {
-    // `exact` (scratch) hands the file over byte for byte: the file is the
+    // `exact` (run-file) hands the file over byte for byte: the file is the
     // value, and an ssh key without its last newline is an invalid ssh key.
     if (unterminate(text) === "")
       throw new Error(`key "${entry.raw}": ${full} is empty. An empty credential is not a credential.`);
@@ -379,7 +379,7 @@ export const RESERVED_ENV = new Set([
 
 /**
  * Every delivered name a role's keys would claim — the variable, and for
- * `scratch` the `_FILE` that carries the path.
+ * `run-file` the `_FILE` that carries the path.
  *
  * Checked as a set because two keys resolving to one name is the other half of
  * the same failure: `keys = ["T=a://x", "T=b://y"]` used to deliver the second
@@ -423,7 +423,7 @@ export function entriesOf(role) {
 /**
  * The three ways a resolved value can reach a role.
  *
- * The middle one is called `scratch` and not `file`, which looks like a
+ * The middle one is called `run-file` and not `file`, which looks like a
  * cosmetic choice and is not. The runtime has a field named
  * `credentials.files`, it is the one that looks like seisin's `keys` (both take
  * paths), and on macOS it does **not** mask — it makes the file unreadable, so
@@ -433,12 +433,40 @@ export function entriesOf(role) {
  * runtime. A mode called `file` sitting ten centimetres from a runtime field
  * called `files` that fails that way is a trap with a date on it.
  *
- * `scratch` said what happened when it was named: the value landed in scratch
- * space and was removed after the run, which `file` does not say at all. Since
- * the 2026-09-23 fix it lands in the run's private directory instead (rundir.js),
- * and the name is a breaking rename listed in docs/glossary.md, not made here.
+ * `run-file` says what happens: the value lands in a file in the run directory
+ * (rundir.js) and goes when the run does, which `file` does not say at all. It
+ * was `scratch` until 0.6.0, from when the file sat in shared scratch space;
+ * since the 2026-09-23 fix it has not, and a name that says the place it left
+ * is the leak that fix closed, said again. RETIRED_MODES refuses the old name.
  */
-export const MODES = ["env", "scratch", "inject"];
+export const MODES = ["env", "run-file", "inject"];
+
+/**
+ * Mode names that were renamed, and the name now. Refused with that sentence
+ * wherever a mode is read (config.js for the policy, modeOf for a role built by
+ * hand), never read as the new one: a policy says one thing in one word.
+ */
+export const RETIRED_MODES = { scratch: "run-file" };
+
+/** The error for a mode that is not one, with the rename when there was one. */
+export function unknownMode(where, setting, mode) {
+  const now = Object.hasOwn(RETIRED_MODES, mode) ? RETIRED_MODES[mode] : null;
+  if (now)
+    return new Error(
+      `${where} ${setting} = "${mode}" was renamed "${now}" in seisin 0.6.0 — the file is ` +
+      `written to the run directory, not to scratch.\n` +
+      `  Change it to ${setting} = "${now}". Nothing else changes: same file, same _FILE variable.`);
+  return new Error(
+    `${where} ${setting} = "${mode}" is not a delivery mode. Known: ${MODES.join(", ")}.` +
+    // The one wrong answer named, because it is the word everybody
+    // reaches for and it is one letter from a runtime field that fails
+    // silently. Guessing costs a debugging session; saying so costs a line.
+    (mode === "file"
+      ? `\n  "file" is not one of them on purpose — the runtime has a "credentials.files" that ` +
+        `takes paths and, on macOS, makes them unreadable instead of masking. The mode that ` +
+        `hands a role a file is "run-file".`
+      : ""));
+}
 
 /**
  * How a role receives its reference keys, and where that is written.
@@ -474,7 +502,7 @@ export function modeOf(config, role, entry) {
     throw new Error(
       `roles.${role.name}: key "${entry.raw}" has no delivery mode.\n` +
       `  Declare one beside the key: [roles.${role.name}] key_mode = "env".${second}\n` +
-      `  "env" passes the value as ${entry.name}; "scratch" writes it to a file in the ` +
+      `  "env" passes the value as ${entry.name}; "run-file" writes it to a file in the ` +
       `run's private directory, grants that one path, and removes it when the run ends.`);
   }
   if (mode === "inject")
@@ -484,18 +512,8 @@ export function modeOf(config, role, entry) {
       `runtime only masks a credential when the role's TLS is terminated with a CA of ` +
       `seisin's own — MITM over all of that role's traffic, not just the host holding the ` +
       `secret. It is refused rather than half-available.\n` +
-      `  Use "env" or "scratch" today. See https://github.com/carlostapiacl/seisin/blob/main/docs/decisions.md.`);
-  if (!MODES.includes(mode))
-    throw new Error(
-      `roles.${role.name}: key_mode = "${mode}" is not a delivery mode. Known: ${MODES.join(", ")}.` +
-      // The one wrong answer named, because it is the word everybody
-      // reaches for and it is one letter from a runtime field that fails
-      // silently. Guessing costs a debugging session; saying so costs a line.
-      (mode === "file"
-        ? `\n  "file" is not one of them on purpose — the runtime has a "credentials.files" that ` +
-          `takes paths and, on macOS, makes them unreadable instead of masking. The mode that ` +
-          `hands a role a file is "scratch".`
-        : ""));
+      `  Use "env" or "run-file" today. See https://github.com/carlostapiacl/seisin/blob/main/docs/decisions.md.`);
+  if (!MODES.includes(mode)) throw unknownMode(`roles.${role.name}:`, "key_mode", mode);
   return mode;
 }
 
@@ -654,11 +672,11 @@ export function resolveKeys(config, role, { record = () => {}, ...opts } = {}) {
   const refs = entriesOf(role).filter((e) => e.kind === "ref");
   const plan = refs.map((entry) => ({ entry, mode: modeOf(config, role, entry) }));
   return plan.map((p) => {
-    // `scratch` writes a file, and a file is handed over as the provider gave
+    // `run-file` writes a file, and a file is handed over as the provider gave
     // it; `env` drops the one trailing newline a shell adds. See resolveRef.
     let value;
     try {
-      value = resolveRef(p.entry, config.keyProviders[p.entry.scheme], { ...opts, exact: p.mode === "scratch" });
+      value = resolveRef(p.entry, config.keyProviders[p.entry.scheme], { ...opts, exact: p.mode === "run-file" });
     } catch (e) {
       record({ entry: p.entry, mode: p.mode, ok: false });
       throw e;

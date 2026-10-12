@@ -263,7 +263,7 @@ export function decide(config, role, event, { observe = false, now = append, ask
     // A denial already carries everything a request needs, so leave one behind:
     // the refusal stops being a dead end and becomes something a person can act
     // on in one command. Observing records nothing to grant — there was no
-    // denial to answer. See docs/permission-requests.md.
+    // denial to answer. See docs/requests.md.
     //
     // Except a `never_writes` refusal. That one is the policy saying no on
     // purpose; a request for it asks a person to undo a subtraction somebody

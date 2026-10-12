@@ -146,9 +146,9 @@ test("a reference with no mode anywhere is an error, because the two answers dif
 test("the provider can carry the default, and the role overrides it", () => {
   const a = cfgWith('keys = ["keychain://t"]', 'command = ["security", "{ref}"]\nmode = "env"');
   assert.equal(modeOf(a.cfg, a.cfg.roles.frontend, a.cfg.roles.frontend.keyEntries[0]), "env");
-  const b = cfgWith('keys = ["keychain://t"]\nkey_mode = "scratch"',
+  const b = cfgWith('keys = ["keychain://t"]\nkey_mode = "run-file"',
     'command = ["security", "{ref}"]\nmode = "env"');
-  assert.equal(modeOf(b.cfg, b.cfg.roles.frontend, b.cfg.roles.frontend.keyEntries[0]), "scratch");
+  assert.equal(modeOf(b.cfg, b.cfg.roles.frontend, b.cfg.roles.frontend.keyEntries[0]), "run-file");
   rmSync(a.dir, { recursive: true, force: true });
   rmSync(b.dir, { recursive: true, force: true });
 });
@@ -325,7 +325,7 @@ test("a key may not be called SEISIN_ROLE, which is how the hook knows who it is
 
 test("the scratch companion name is reserved too, not just the variable", () => {
   const dir = repo(
-    `[keys.providers.k]\ncommand = ["printf", "%s", "{ref}"]\nmode = "scratch"\n\n` +
+    `[keys.providers.k]\ncommand = ["printf", "%s", "{ref}"]\nmode = "run-file"\n\n` +
     `[roles.dev]\nwrites = ["src/**"]\nkeys = ["HOME=k://x"]\n`);
   assert.throws(() => loadConfig(join(dir, "seisin.toml")), /would arrive as HOME/);
   rmSync(dir, { recursive: true, force: true });
@@ -728,13 +728,13 @@ test("scratch hands the value over exactly as given; env drops the shell's one n
   const toml = (mode) =>
     `[keys.providers.fake]\ncommand = ["fake", "{ref}"]\n\n` +
     `[roles.r]\nkey_mode = "${mode}"\nkeys = ["A=file://id.key", "B=fake://b"]\n`;
-  for (const mode of ["scratch", "env"]) {
+  for (const mode of ["run-file", "env"]) {
     const dir = scratch("seisin-exact-");
     writeFileSync(join(dir, "id.key"), pem);
     writeFileSync(join(dir, "seisin.toml"), toml(mode));
     const cfg = loadConfig(join(dir, "seisin.toml"));
     const got = resolveKeys(cfg, cfg.roles.r, { run: () => ({ status: 0, stdout: pem }) });
-    const want = mode === "scratch" ? pem : pem.replace(/\n$/, "");
+    const want = mode === "run-file" ? pem : pem.replace(/\n$/, "");
     assert.deepEqual(got.map((g) => g.value), [want, want], mode);
   }
 });

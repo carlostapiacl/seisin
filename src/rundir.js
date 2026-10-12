@@ -1,15 +1,15 @@
 /**
  * One private directory per run, for everything that belongs to that run only:
- * the audit socket, the sandbox settings, and `scratch` keys.
+ * the audit socket, the sandbox settings, and `run-file` keys.
  *
  * ── Why ──
  * These lived in two places and both leaked. The settings were written to
  * `.seisin/<role>.json`, one file per ROLE, so two runs of the same role — an
  * orchestrator does that all day — wrote the same file with different socket
- * paths, and one could start with the other's. The socket and the scratch keys
+ * paths, and one could start with the other's. The socket and the run-file keys
  * lived in `$TMPDIR/seisin-XXXX/`, private by mode, but every role runs as the
  * same user and every role can read the temp dir: measured on 2026-09-23, one
- * role read another's `scratch` key while it ran (`cat …/keys/S` → the value).
+ * role read another's `run-file` key while it ran (`cat …/keys/S` → the value).
  *
  * ── How ──
  * All runs live under one root, `$TMPDIR/snr/`, and each role's profile denies
@@ -61,7 +61,7 @@ export function runsRoot(base = tmpdir(), name = RUNS_NAME) {
  * Removes the directories of runs whose process is gone.
  *
  * A run cleans up after itself on exit. A run that is killed does not, and
- * its directory keeps its `scratch` keys on disk indefinitely — measured by
+ * its directory keeps its `run-file` keys on disk indefinitely — measured by
  * SIGKILL on a keyed run. Swept at the start of the next one; a directory
  * without a pid file is younger than the write that creates it, and is left.
  */

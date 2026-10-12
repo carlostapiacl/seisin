@@ -4,7 +4,7 @@
  * These live in the CLI and in the console, and deliberately NOT in the MCP
  * server. An agent may ask and may draft; turning a request into policy takes a
  * person acting in a channel the agent does not have. That is the invariant the
- * whole feature rests on — see docs/permission-requests.md.
+ * whole feature rests on — see docs/requests.md.
  */
 import { pending, settle, applyGrant, refuseIfBarred, requestsPath, markStale, editPolicy, withDeclarers, shellId, asFileGrant, lastAgentOf, fileOnlyNote } from "../requests.js";
 import { keyHolders } from "../owners.js";
@@ -18,7 +18,7 @@ import { C, out, safe } from "../render.js";
  * "Stable while you read it" was the old claim and it is false exactly where it
  * matters. The queue is filled by agents that are still running: on a live
  * repository it grew and shrank between a listing and the next command, and
- * `seisin deny 1` (now `decline`) settled a different request than the one printed as #1 seconds
+ * `seisin decline 1` settled a different request than the one printed as #1 seconds
  * earlier. That is time-of-check-to-time-of-use in the one command whose whole
  * job is deciding a request, and it happened twice in one session.
  *
@@ -211,7 +211,7 @@ function underLock(fn) {
   }
 }
 
-export function deny(config, argv = []) {
+export function decline(config, argv = []) {
   const i = argv.indexOf("--reason");
   const reason = i === -1 ? "" : argv[i + 1] ?? "";
 
@@ -221,7 +221,7 @@ export function deny(config, argv = []) {
   underLock(() => editPolicy(config, (before) => {
     req = pick(config, argv[0], "decline");
     return { toml: before, changed: false };
-  }, { after: () => settle(requestsPath(config.root), req.key, "denied", reason) }));
+  }, { after: () => settle(requestsPath(config.root), req.key, "declined", reason) }));
   out(
     `\n  ${C.yellow}declined${C.off}  ${req.role} ✕ ${req.grant}\n` +
     `  ${C.dim}${reason || "no reason recorded"}${C.off}\n\n`

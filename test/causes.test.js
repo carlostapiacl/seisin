@@ -53,13 +53,13 @@ test("a cause two of three roles still hit is still friction", () => {
   // here, a count — keeps it on the page for the roles it still blocks.
   const log = [denial("a", "deploy/x.yml"), denial("b", "deploy/x.yml")];
   const f = causesOf(cfg, log);
-  assert.equal(f.causes[0].stillRefused, 1, "a is refused, b owns deploy/**");
+  assert.equal(f.causes[0].stillDenied, 1, "a is denied, b owns deploy/**");
   assert.deepEqual(f.causes[0].roles, ["a", "b"]);
 });
 
 test("a cause nobody is refused any more reports zero, and the page greys it", () => {
   const f = causesOf(cfg, [denial("b", "deploy/x.yml"), denial("b", "deploy/x.yml")]);
-  assert.equal(f.causes[0].stillRefused, 0);
+  assert.equal(f.causes[0].stillDenied, 0);
 });
 
 test("only refusals count — an allowed line is not friction", () => {

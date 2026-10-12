@@ -140,7 +140,6 @@ export const COMMAND_HELP = {
     exits: [["0", "always — the hook explains, the kernel enforces"]],
   },
 };
-COMMAND_HELP.deny = COMMAND_HELP.decline;
 
 /** `seisin help limits`, as text: LIMITS lives in inspect/limits.js, which `inspect()` also returns. */
 export function renderLimits(C) {

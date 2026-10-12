@@ -31,7 +31,7 @@
  * its wall disappear on the next turn instead of two days later.
  *
  * A window is still accepted, and still useful for a different reason: a
- * refusal from three weeks ago is noise even if it is still refused today.
+ * denial from three weeks ago is noise even if it is still denied today.
  */
 import { read, readEntries } from "./log.js";
 import { explain } from "./owners.js";

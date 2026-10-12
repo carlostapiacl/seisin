@@ -242,7 +242,7 @@ test("seisin_causes carries kind and hint, and keeps every field it had", async 
     const m = HANDLERS.seisin_causes({});
     for (const k of ["total", "distinct", "unowned", "standing", "families", "causes"]) assert.ok(k in m, k);
     const lock = m.causes.find((c) => c.target === "other/.git/index.lock");
-    for (const k of ["action", "target", "times", "share", "roles", "standing", "owners", "ownersThen", "stillRefused"])
+    for (const k of ["action", "target", "times", "share", "roles", "standing", "owners", "ownersThen", "stillDenied"])
       assert.ok(k in lock, `lost ${k}`);
     assert.equal(lock.kind, "git");
     assert.equal(m.causes.find((c) => c.target === "legacy/x.ts").kind, "territory");

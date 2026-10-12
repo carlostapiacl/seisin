@@ -4,9 +4,10 @@
  * ── Two words, kept apart on purpose ──
  * **Denied** is what the boundary does. **Declined** is what a person does to
  * a request. They used to be one word in one command: an entry read `first
- * refused on src/api/x.ts` and `seisin deny` answered `refused frontend ✕
- * src/api/**`. One means the kernel said no, the other means you did, and a
- * reader had nothing to tell them apart by.
+ * refused on src/api/x.ts` and the command that declined it answered `refused
+ * frontend ✕ src/api/**`. One means the kernel said no, the other means you
+ * did, and a reader had nothing to tell them apart by. The file kept the
+ * boundary's word for a decline until 0.6.0; see migrateQueue.
  *
  * The entry says **asked** now, because refused was not always true. Asking for
  * a path before reaching for it is reasonable, and nothing required a
@@ -19,7 +20,7 @@
  * A denial already contains everything a request needs — the hook knows the
  * role, the path and the owner — so the denial leaves something behind that a
  * person can act on in one command instead of in an editor. See
- * `docs/permission-requests.md` for why granting is deliberately not something
+ * `docs/requests.md` for why granting is deliberately not something
  * an agent can do.
  *
  * Append-only, beside the log, for the same reason: a decision that can be
@@ -28,7 +29,7 @@
  */
 import { neverWrites, isGitMetadata, covers, keyHolders, inKeyDir, privateOwner } from "./owners.js";
 import { protectedBy } from "./surface.js";
-import { appendFileSync, chmodSync, mkdirSync, readFileSync, statSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
+import { appendFileSync, chmodSync, closeSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
 import { STATE_DIR, tomlString } from "./layout.js";
@@ -98,7 +99,9 @@ function write(file, entry) {
     mkdirSync(dirname(file), { recursive: true });
     // The time is this process's, named after the spread so no entry sets it.
     const now = new Date().toISOString();
-    appendFileSync(file, JSON.stringify({ at: now, ...entry, at: now }) + "\n");
+    // Under the queue's lock, as the log's lines are under the log's: the one
+    // rewrite the queue ever gets (migrateQueue) cannot then miss this line.
+    withLock(file, () => appendFileSync(file, JSON.stringify({ at: now, ...entry, at: now }) + "\n"));
     return true;
   } catch {
     // Same rule as the log: never take the agent down over bookkeeping.
@@ -230,14 +233,28 @@ export function recordHandoff(file, key, decision = {}) {
  */
 let reduced = null;   // { file, ino, size, mtimeMs, all }
 
-export function pending(file, { includeSettled = false, keyDirs = null } = {}) {
+/**
+ * `readOnly` is for the MCP server, which opens nothing for writing: a queue
+ * that still needs migrating is an error there, never a rewrite (migrateQueue).
+ */
+export function pending(file, { includeSettled = false, keyDirs = null, readOnly = false } = {}) {
   let st;
   try { st = statSync(file); } catch { return []; }
   let all;
   if (reduced && reduced.file === file && reduced.ino === st.ino && reduced.size === st.size && reduced.mtimeMs === st.mtimeMs) {
     all = reduced.all;
   } else {
-    all = reduce(file);
+    let entries = readEntries(file);
+    // Twice at most: a line an older seisin appended while the first pass ran
+    // is caught by the second; one still there after that is an error, not a guess.
+    for (let pass = 0; pass < 2 && entries.some(isOldDecline); pass++) {
+      if (readOnly) throw unmigrated(file, entries.filter(isOldDecline).length);
+      migrateQueue(file);
+      st = statSync(file);
+      entries = readEntries(file);
+    }
+    if (entries.some(isOldDecline)) throw unmigrated(file, entries.filter(isOldDecline).length);
+    all = reduce(entries);
     reduced = { file, ino: st.ino, size: st.size, mtimeMs: st.mtimeMs, all };
   }
   // The grant is re-derived with the policy's first key directory when the
@@ -247,10 +264,10 @@ export function pending(file, { includeSettled = false, keyDirs = null } = {}) {
   return includeSettled ? copies : copies.filter((r) => r.state === "pending");
 }
 
-function reduce(file) {
+function reduce(entries) {
   const byKey = new Map();
 
-  for (const e of readEntries(file)) {
+  for (const e of entries) {
     if (!e.key) continue;
 
     if (e.kind === "asked") {
@@ -306,6 +323,119 @@ function reduce(file) {
   }
 
   return [...byKey.values()];
+}
+
+/**
+ * A decline as seisin wrote it before 0.6.0: `kind: "denied"`.
+ *
+ * A person declines; the boundary denies (docs/glossary.md). The queue stored
+ * the boundary's word for the person's answer, and 0.6.0 stores "declined".
+ * Nothing reads the old value as a decline: a queue that holds one is
+ * rewritten once by migrateQueue, or refused where it cannot be.
+ */
+const OLD_DECLINE = "denied";
+
+function isOldDecline(e) {
+  return e.kind === OLD_DECLINE && typeof e.key === "string" && e.verdict === undefined;
+}
+
+function unmigrated(file, n) {
+  return Object.assign(new Error(
+    `${file} holds ${n} decline${n === 1 ? "" : "s"} written by seisin before 0.6.0 ` +
+    `as "kind":"denied", which this version does not read.\n` +
+    `  Run \`seisin requests\` once from a terminal: it rewrites them as "declined" and ` +
+    `keeps the original beside the queue as requests.jsonl.pre-0.6.0.`), { code: "EQUEUEFORMAT" });
+}
+
+/** One chunk of the queue with every old decline renamed; anything else, byte for byte. */
+function renameDeclines(text) {
+  let n = 0;
+  const lines = text.split("\n");
+  // The last piece has no newline after it: a line still being written, or
+  // nothing. It is copied as it is, and a later open migrates it if it must.
+  for (let i = 0; i < lines.length - 1; i++) {
+    let e;
+    try { e = JSON.parse(lines[i]); } catch { continue; }
+    if (!e || typeof e !== "object" || !isOldDecline(e)) continue;
+    lines[i] = JSON.stringify({ ...e, kind: "declined" });
+    n++;
+  }
+  return { text: lines.join("\n"), n };
+}
+
+/** Bytes of `fd` from `from` to its end, as it is now. */
+function readFrom(fd, from) {
+  const size = fstatSync(fd).size;
+  const buf = Buffer.alloc(Math.max(0, size - from));
+  let got = 0;
+  while (got < buf.length) {
+    const n = readSync(fd, buf, got, buf.length - got, from + got);
+    if (n === 0) break;
+    got += n;
+  }
+  return buf.subarray(0, got);
+}
+
+/**
+ * Rewrite the old declines of a queue as "declined", once. Returns how many.
+ *
+ * The one place the queue is not appended to, and why that is allowed is in
+ * docs/decisions.md: it renames one stored value, keeps every line, its order
+ * and its time, and copies the file as it was to `requests.jsonl.pre-0.6.0`
+ * before touching it, so the evidence is still there, word for word.
+ *
+ * Every line seisin 0.6.0 appends takes the queue's lock (write), and so does
+ * this, so none of those can land between the read and the rename. A run
+ * started by an older seisin and still going appends without it; for that one
+ * the rewrite follows the old file instead of trusting the lock: it works from
+ * one open descriptor, copies what was appended while it worked, renames, and
+ * keeps copying what still lands in the old file until it has been quiet for
+ * FOLLOW_QUIET_MS. Such an append opened the file before the rename and writes
+ * microseconds later; the wait is a hundred times that.
+ */
+const FOLLOW_QUIET_MS = 50;
+
+export function migrateQueue(file) {
+  return withLock(file, () => {
+    let fd;
+    try { fd = openSync(file, "r"); } catch (e) { if (e.code === "ENOENT") return 0; throw e; }
+    try {
+      const before = readFrom(fd, 0);
+      let read = before.length;
+      const first = renameDeclines(before.toString("utf8"));
+      if (!first.n) return 0;
+      let n = first.n;
+      const mode = fstatSync(fd).mode & 0o777;
+      let backup = `${file}.pre-0.6.0`;
+      try { writeFileSync(backup, before, { flag: "wx", mode }); }
+      catch (e) {
+        if (e.code !== "EEXIST") throw e;
+        backup = `${file}.pre-0.6.0.${Date.now()}`;
+        writeFileSync(backup, before, { flag: "wx", mode });
+      }
+      const tmp = join(dirname(file), `.requests.migrate-${randomBytes(8).toString("hex")}`);
+      writeFileSync(tmp, first.text, { flag: "wx", mode });
+      try {
+        const more = readFrom(fd, read);
+        read += more.length;
+        const tail = renameDeclines(more.toString("utf8"));
+        n += tail.n;
+        appendFileSync(tmp, tail.text);
+        renameSync(tmp, file);
+      } catch (e) { try { unlinkSync(tmp); } catch {} throw e; }
+      const until = Date.now() + 2000;
+      for (let quiet = Date.now(); Date.now() - quiet < FOLLOW_QUIET_MS && Date.now() < until;) {
+        const late = readFrom(fd, read);
+        if (!late.length) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5); continue; }
+        read += late.length;
+        quiet = Date.now();
+        const tail = renameDeclines(late.toString("utf8"));
+        n += tail.n;
+        appendFileSync(file, tail.text);
+      }
+      return n;
+    } finally { closeSync(fd); }
+  });
 }
 
 /**

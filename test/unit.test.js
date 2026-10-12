@@ -31,7 +31,7 @@ import * as publica from "../src/index.js";
 import { record, settle, pending, applyGrant, grantFor, cleanReason, recordHandoff, keyOf } from "../src/requests.js";
 import { Readable } from "node:stream";
 import { decideHandoff, MAX_DEPTH } from "../src/handoff.js";
-import { renderQueue, handoffNote, deny as declineCmd } from "../src/commands/requests.js";
+import { renderQueue, handoffNote, decline as declineCmd } from "../src/commands/requests.js";
 import { serveMcp, TOOLS, HANDLERS, PROTOCOLS } from "../src/mcp.js";
 import { serve } from "../src/serve.js";
 import { review } from "../src/review.js";
@@ -493,13 +493,13 @@ test("a settled request leaves the queue but not the file", () => {
   const f = join(box, "requests.jsonl");
   record(f, { role: "qa", action: "write", target: "docs/x.md", owners: [] });
   const [req] = pending(f);
-  settle(f, req.key, "denied", "not theirs");
+  settle(f, req.key, "declined", "not theirs");
   const open = pending(f);
   const all = pending(f, { includeSettled: true });
   const lines = readFileSync(f, "utf8").trim().split("\n").length;
   rmSync(box, { recursive: true, force: true });
   assert.equal(open.length, 0);
-  assert.equal(all[0].state, "denied");
+  assert.equal(all[0].state, "declined");
   assert.equal(all[0].reason, "not theirs");
   assert.equal(lines, 2);
 });
@@ -1299,17 +1299,17 @@ test("declining in the console settles the request and grants nothing", async (t
   assert.equal(pending(join(box, ".seisin", "requests.jsonl")).length, 0);
 });
 
-test("the console still takes the old \"denied\" as a decline, and the queue still stores it", async (t) => {
-  // The console used to post "denied" for a person's decline. Anything scripted
-  // against that keeps working, and the stored value stays what 1,452+ lines in
-  // the field already say: renaming it is a breaking change for another release.
+test("the console stores a decline as \"declined\", and refuses the old \"denied\"", async (t) => {
+  // A person declines; the boundary denies. The console used to post "denied"
+  // for a decline and the queue stored it; since 0.6.0 neither does.
   const { post, box, key } = await startConsole(t);
-  const res = await post({ key, decision: "denied", reason: "not theirs" });
-  assert.equal(res.status, 200);
-  assert.equal((await res.json()).decision, "declined");
+  const old = await post({ key, decision: "denied", reason: "not theirs" });
+  assert.equal(old.status, 400);
+  assert.match((await old.json()).error, /granted or declined/);
+  assert.equal((await post({ key, decision: "declined", reason: "not theirs" })).status, 200);
   assert.ok(!readFileSync(join(box, "seisin.toml"), "utf8").includes("checkout"));
   const lines = readFileSync(join(box, ".seisin", "requests.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
-  assert.equal(lines.at(-1).kind, "denied");
+  assert.equal(lines.at(-1).kind, "declined");
 });
 
 test("the console refuses a decision it does not understand", async (t) => {

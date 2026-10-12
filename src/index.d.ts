@@ -1,4 +1,4 @@
-export type KeyMode = "env" | "scratch" | "inject";
+export type KeyMode = "env" | "run-file" | "inject";
 export type ReadMode = "all" | "territory";
 export type Isolation = false | "credentials" | "home";
 export type Action = "read" | "write" | "mcp";
@@ -157,7 +157,7 @@ export function logPath(root: string): string;
 export function observed(entries: LogEntry[]): Map<string, { writes: Set<string>; keys: Set<string> }>;
 export function generalise(paths: string[]): string[];
 
-export function pendingRequests(file: string, options?: { includeSettled?: boolean; keyDirs?: string[] | null }): unknown[];
+export function pendingRequests(file: string, options?: { includeSettled?: boolean; keyDirs?: string[] | null; readOnly?: boolean }): unknown[];
 export function requestsPath(root: string): string;
 export function grantFor(request: { action: string; target: string }, keyDir?: string | null): string;
 

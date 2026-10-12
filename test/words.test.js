@@ -206,9 +206,9 @@ const MUST = [
   },
   {
     id: "person-denies",
-    re: /\bseisin deny\b(?! still works)|\b(approve|grant) or (refuse|deny)\b/i,
+    re: /\bseisin deny\b|\b(approve|grant) or (refuse|deny)\b/i,
     in: EVERYWHERE,
-    why: "a person **declines**; `seisin deny` is an undocumented alias",
+    why: "a person **declines**; `seisin deny` was removed in 0.6.0",
   },
   // Promoted from `should` once their cleanup landed (0.5.0 language pass).
   { id: "approve", re: /\bapprov(e|ed|es|al|ing)\b/i, in: new Set(["src", "mcp", "ui", "npm"]), why: "a person **grants**; *approve* is other tools' one-action-now" },

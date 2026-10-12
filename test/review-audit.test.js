@@ -183,9 +183,9 @@ test("pending() is cached per file state, and one caller's marks do not leak int
   assert.equal(pending(file)[0].stale, undefined);
   record(file, { role: "web", action: "write", target: "api/y.ts", owners: ["api"] });
   assert.equal(pending(file)[0].times, 2, "a new line is seen");
-  settle(file, pending(file)[0].key, "denied");
+  settle(file, pending(file)[0].key, "declined");
   assert.equal(pending(file).length, 0);
-  assert.equal(pending(file, { includeSettled: true })[0].state, "denied");
+  assert.equal(pending(file, { includeSettled: true })[0].state, "declined");
 });
 
 /* ── the console's server ──────────────────────────────────────────────── */
