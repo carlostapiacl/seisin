@@ -152,6 +152,11 @@ repository). What it needs and what changed is in [docs/agents.md](docs/agents.m
   signed in with ChatGPT and a role's list names something under `openai.com` but not
   `chatgpt.com` (or `auth.openai.com`), it says so: without `chatgpt.com` a Codex run hangs
   without printing anything. A role whose `env` passes `OPENAI_API_KEY` is left out.
+- **`check` says what `local_ports` reaches.** For every role with `local_ports` it warns that
+  the port list is enforced by the sandbox's proxy, so only clients that use `HTTP_PROXY` get
+  there; database drivers, `psql` and `redis-cli` dial directly and are denied, on a listed port
+  too. The runtime has no kernel rule for one localhost port; the evidence is in
+  docs/decisions.md and a test pins it.
 
 ## 0.5.0 — 2026-09-30
 
