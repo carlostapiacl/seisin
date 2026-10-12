@@ -6,8 +6,8 @@
 
 ## The suite
 
-**891 tests** in the macOS suite; 889 passed and 2 platform tests skipped. Linux defines one
-fewer platform-specific test: 890 total, 869 passed and 21 skipped (2026-10-11, Debian 12,
+**947 tests** in the macOS suite; 945 passed and 2 platform tests skipped. Linux defines one
+fewer platform-specific test: 946 total, 925 passed and 21 skipped (2026-10-12, Debian 12,
 bubblewrap 0.8.0). CI is paused; this release is validated locally on macOS and Debian 12
 (bubblewrap 0.8.0). The [workflow](../.github/workflows/test.yml) runs macOS and Linux under
 bubblewrap on Node 18/20/22/24 for pull requests and pushes to `main`; its last green run was
@@ -15,10 +15,10 @@ on 2026-10-04. Historical full-suite measurements remain dated below; the
 [2026-10-02 review](reviews/2026-10-02.md) and its
 [follow-up](reviews/2026-10-02-followup.md) record portable validation and its limits.
 
-On 2026-10-12, 84 of the suite's tests were not unit tests: they run real commands through the
+On 2026-10-12, 87 of the suite's tests were not unit tests: they run real commands through the
 real sandbox and check what the kernel did — and they skip themselves when `srt` is not
 installed, so on a machine without it the suite reports them skipped rather than failing (that
-is how they were counted: the suite run with the runtime hidden, 84 skipped). 26 of them are the
+is how they were counted: the suite run with the runtime hidden, 87 skipped). 26 of them are the
 core boundary file, `test/sandbox.test.js`, and the CI gate **fails if those skip** — a green
 run that quietly tested nothing looks exactly like a real one. A few of them:
 
@@ -105,7 +105,7 @@ what has not.
 
 | | macOS 15 · Seatbelt | Linux · bubblewrap |
 |---|---|---|
-| the suite | **891 tests, 889 passing and 2 skipped** (Linux-only) — local, `main` before 0.6.0 | **890 tests, 869 passing and 21 skipped** — 2026-10-11, local, in Docker: Debian 12, bwrap 0.8.0, `--privileged` (bubblewrap mounts `/proc`) |
+| the suite | **947 tests, 945 passing and 2 skipped** (Linux-only) — local, `main` before 0.6.0 | **946 tests, 925 passing and 21 skipped** — 2026-10-12, local, in Docker: Debian 12, bwrap 0.8.0, `--privileged` (bubblewrap mounts `/proc`) |
 | CI (paused) | last green run 2026-10-04, Node 18/20/22/24; CI failed then if the 26 sandbox tests skipped | `ubuntu-latest`, Node 18/20/22/24, same run |
 | `[runtime] isolate = "home"` (`= true`) | ✅ — and it did not start here at all until the 104-byte socket fix | ✅ — `tmpdir()` is `/tmp`, so the path never came close |
 | `[runtime] isolate = "credentials"` | ✅ — no role home, so the socket limit cannot reach it | ✅ |

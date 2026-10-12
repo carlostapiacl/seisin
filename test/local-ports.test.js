@@ -60,10 +60,13 @@ test("loopback goes through the proxy only for a role that names ports", () => {
     ["env", `NO_PROXY=${NO_PROXY_WITHOUT_LOOPBACK}`, `no_proxy=${NO_PROXY_WITHOUT_LOOPBACK}`, "claude", "-p"]);
 });
 
-test("NO_PROXY stays in step with the pinned runtime, minus loopback", () => {
+// Read from the installed package; without it there is nothing to keep in step with.
+const pinned = (() => { try { return require_.resolve("@anthropic-ai/sandbox-runtime/package.json"); } catch { return null; } })();
+
+test("NO_PROXY stays in step with the pinned runtime, minus loopback", { skip: pinned ? false : "sandbox runtime not installed" }, () => {
   // If the runtime adds a range, seisin taking loopback out must not also take
   // that range back into the proxy by accident — or leave it out.
-  const src = readFileSync(join(dirname(require_.resolve("@anthropic-ai/sandbox-runtime/package.json")),
+  const src = readFileSync(join(dirname(pinned),
     "dist", "sandbox", "sandbox-utils.js"), "utf8");
   const block = /const noProxyAddresses = \[([\s\S]*?)\]\.join/.exec(src);
   assert.ok(block, "the runtime no longer builds NO_PROXY the way this test reads it");
