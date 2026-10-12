@@ -75,6 +75,14 @@ in every mode and gives each run a temp directory of its own — the role's when
   hops, stops in front of a person. seisin still starts no agent on its own: whatever starts
   roles reads the decision and runs this. `requests.jsonl` gains an optional `chain` on `asked`
   lines; queues written before read as before.
+- **A denied agent is told where the work goes.** The PreToolUse hook's reason, the note after
+  a failed tool call and `seisin whose` now word the same handoff decision the queue shows:
+  *handed to* the owner; with two owners, *a person decides* and the agent is told not to pick
+  one (it used to read "belongs to a, b — hand it over"); with no owner, *a person decides*; in a
+  run started with `--handoff`, a way back is said to be a cycle and a long chain to stop. The
+  sentence informs only: the roles in it are the policy's, and nothing the agent answers changes
+  who takes the work. `SEISIN_HANDOFF_CHAIN` is set for a `--handoff` run and reserved: a key
+  cannot be delivered under that name.
 - **The package exports `requestQueue`, `decideHandoff`, `MAX_DEPTH` and `recordHandoff`**, for
   a caller that starts roles and has its own admission limits.
 
