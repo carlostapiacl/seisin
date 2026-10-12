@@ -79,6 +79,7 @@ seisin: 1 kernel denial(s) recorded
     #1  frontend wants write on src/api/** (owned by backend)
         first asked over src/api/orders.ts
         id frontend:write:src/api
+        handed to backend
 
   this run: 1 new request(s) — seisin requests
 ```
@@ -86,6 +87,13 @@ seisin: 1 kernel denial(s) recorded
 The first line is the run's own header: what this role may write, which keys it holds, and how
 much of your environment it did not inherit. The last lists only what this run filed; the
 rest of the queue is one count, and `seisin requests`.
+
+The line under the request is where it goes, decided from the policy as it stands: *handed to
+backend*, or *a person decides* when nobody or several roles own it. seisin does not start
+backend. Whatever does reads that decision (`seisin requests --json`, `seisin_requests`) and runs
+`seisin run backend --handoff frontend:write:src/api`, which starts only if the policy hands that
+request to backend — and anything backend is then denied joins the same handoff chain, so work
+cannot bounce back to frontend ([where a request goes](https://github.com/carlostapiacl/seisin/blob/main/docs/requests.md#where-a-request-goes)).
 
 **Whose it was, at the moment it was denied.** Other permission layers answer *yes* or *no*, and the good ones say which rule it was and how to widen it. Answering **"no, and it belongs to `backend`"** turns a denial into a handoff — and one a person can grant in a command, rather than a line somebody has to remember to go and read.
 

@@ -126,9 +126,11 @@ seisin: 2 kernel denial(s) recorded
     #3  frontend wants write on migrations/** (owned by backend)
         first asked over migrations/m.sql
         id frontend:write:migrations
+        handed to backend
     #4  frontend wants write on docs.md (unowned)
         first asked over docs.md
         id frontend:write:.
+        a person decides: no role owns this
 
   this run: 2 new request(s) · 2 older pending — seisin requests
 ```
@@ -139,6 +141,42 @@ and `#n` is a position that shifts as requests are settled; the id under each on
 The console and the MCP are conveniences on the same file. None of the three is
 required for the tool to work, which is the property that lets someone install
 this without adopting a process.
+
+## Where a request goes
+
+The last line under each request is its **handoff**: where the work goes, decided from the
+policy as it stands every time the queue is read (`src/handoff.js`). A write owned by one role
+is *handed to* that role. Nobody owns it, more than one role does, or it is a key or a read:
+*a person decides*. The asker owns it by now: *no handoff needed*. The same decision is in
+`seisin requests --json`, `seisin_requests`, the notification and the console, as a field
+`handoff`:
+
+```json
+{ "type": "route", "role": "backend", "owners": ["backend"], "depth": 1,
+  "visited": ["frontend", "backend"], "chainId": "frontend:write:migrations", "revision": "68e9ab91c01b" }
+```
+
+`type` is `route`, `human` (with a `reason`: `unowned`, `ambiguous`, `key`, `read`), `resolved`,
+`cycle`, `depth` or `throttled`. `revision` is the policy it was decided against.
+
+seisin does not act on it. Something that starts roles does, and the only way it can is
+`seisin run <handoff.role> --handoff <id>`, which starts the run only if the policy routes that
+request to that role:
+
+```
+$ seisin run backend --handoff frontend:write:src/api -- claude -p "…"
+seisin: backend took frontend:write:src/api — handoff chain frontend → backend, 1 of 4
+…
+    #2  backend wants write on src/web/** (owned by frontend)
+        id backend:write:src/web
+        handoff stopped: frontend is already in this handoff chain — needs a person to split the work
+```
+
+Every request that run files belongs to the same **handoff chain**, so work that would go back
+to a role it came from, or more than four hops deep, stops in front of a person instead of
+bouncing. The request it took shows *a run of backend took it*. How many receivers may run at
+once is the caller's to decide: the package exports `decideHandoff` with `limits` and `load`,
+and `recordHandoff` to say a handoff was held, which the queue then shows as *handoff held*.
 
 ## Provenance
 
@@ -159,7 +197,16 @@ mechanism by which permission files only ever grow.
 
 ## The file
 
-`.seisin/requests.jsonl`, append-only, beside the log.
+`.seisin/requests.jsonl`, append-only, beside the log. One JSON object per line:
+
+| `kind` | written by | carries |
+|---|---|---|
+| `asked` | the parent of a run, on a denial | `role`, `action`, `target`, `owners` then; `chain` (`id`, `depth`, `visited`) only in a run started with `--handoff` |
+| `granted`, `declined` | a person (`grant`, `decline`, the console) | `reason`, and `only` for a one-file grant |
+| `handoff` | whatever starts roles (`--handoff`, `recordHandoff`) | `outcome` and the decision's `role`, `limit`, `max`, `depth`, `chainId`, `revision` |
+
+A line without `chain` starts a chain of its own, named by its id, so a queue written before
+chains existed reads the same. The decision itself is never stored: it is recomputed on read.
 
 Append-only matters for the same reason it does for the log: a decision that can
 be rewritten is not evidence. A granted or declined request is not deleted, it is

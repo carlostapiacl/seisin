@@ -63,6 +63,21 @@ in every mode and gives each run a temp directory of its own — the role's when
 - **A handoff chain always counts the role that asked.** A caller that started a chain with an
   empty or partial history let the work be handed straight back to the role that began it; the
   requester is now part of the history whatever the caller supplied.
+- **Every request says where it goes.** `seisin requests`, the end of `seisin run`, the
+  notification, the console and `seisin_requests` show one decision per request, made from the
+  policy as it stands when the queue is read: *handed to* the owning role, *a person decides*
+  (nobody or several roles own it, or it is a key), or *no handoff needed*. "Owned by" is now
+  today's owner everywhere, not the one recorded at the denial; the console and the MCP used to
+  say "(unowned)" about a key another role declares. `seisin requests --json` prints the queue
+  as data, in the shape `seisin_requests` returns, with the decision as `handoff`.
+- **`seisin run <role> --handoff <id>`** runs the role a pending request is handed to, and
+  starts nothing unless the policy routes that request to that role. The requests that run
+  files join its handoff chain, so work that would go back to a role it came from, or past four
+  hops, stops in front of a person. seisin still starts no agent on its own: whatever starts
+  roles reads the decision and runs this. `requests.jsonl` gains an optional `chain` on `asked`
+  lines; queues written before read as before.
+- **The package exports `requestQueue`, `decideHandoff`, `MAX_DEPTH` and `recordHandoff`**, for
+  a caller that starts roles and has its own admission limits.
 
 **`[runtime] read = "territory"`, a canary before every run, measured on macOS and Linux**
 (Debian 12, bubblewrap 0.8.0). What it closes and what it costs is in

@@ -375,7 +375,9 @@ what to do instead. *Not:* for the boundary, ever. *Elsewhere:* Claude Code's do
 verb for the same thing — "Claude Code refuses per-command lists" [1].
 
 **handoff** — routing a denied write to the role that owns it, decided from the policy as it
-stands, never from a role name a model chose. `handed to backend`, `handoff held`, `handoff stopped`.
+stands, never from a role name a model chose. `handed to backend`, `handoff held`, `handoff stopped`,
+`a person decides`. Decided by seisin, executed by whatever starts roles, through
+`seisin run <role> --handoff <id>`. *Where:* `seisin requests`, `seisin_requests`, the `handoff` field.
 *Elsewhere:* the OpenAI Agents SDK's **handoff** is one agent delegating to another [25]. Aligned —
 ours is decided by ownership, not by the model.
 
