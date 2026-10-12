@@ -163,7 +163,9 @@ export function atSessionStart(config, role, event, { file } = {}) {
   if ((r.neverWritesDeclared ?? r.neverWrites ?? []).length)
     lines.push(`Never, even inside that: ${(r.neverWritesDeclared ?? r.neverWrites).join(", ")}.`);
   if (r.keys.length) lines.push(`Keys you hold: ${r.keys.join(", ")}.`);
-  const w = file ? walls(config, role, { file, limit: 5, fresh: true }) : [];
+  // An expected refusal (Claude Code's plugin updater) is not the agent's to
+  // stop trying, so it does not take one of the five lines.
+  const w = file ? walls(config, role, { file, limit: 0, fresh: true }).filter((x) => !x.expected).slice(0, 5) : [];
   if (w.length) {
     lines.push("Already denied more than once, and still denied — do not try again, hand it over:");
     for (const x of w)

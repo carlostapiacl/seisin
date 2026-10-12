@@ -36,6 +36,7 @@
 import { read, readEntries } from "./log.js";
 import { explain } from "./owners.js";
 import { STALE_RUNS, RUN_GAP_MS, runsAfter } from "./requests.js";
+import { expectedOf } from "./kinds.js";
 
 /** A wall is something you hit more than once. Once is information; twice is a pattern. */
 export const MIN_HITS = 2;
@@ -73,7 +74,10 @@ export function walls(config, role, { file, entries = null, min = MIN_HITS, sinc
     // about every role at once.
     const verdict = ask(config, role, w.action, w.target);
     if (verdict.allowed) continue;
-    out.push({ ...w, reason: verdict.reason, owners: verdict.owners });
+    // Refused correctly and nothing to do about it (kinds.js expectedOf): kept,
+    // and marked, so a screen says it apart instead of as a role stuck.
+    const expected = expectedOf(w.target);
+    out.push({ ...w, reason: verdict.reason, owners: verdict.owners, ...(expected && { expected }) });
   }
   // A wall the role stopped hitting — it ran STALE_RUNS times since, refused
   // elsewhere but not here — is still true and no longer worth saying. Same
@@ -132,7 +136,9 @@ export function timesHit(file, role, action, target) {
  * one after that is the cost of not having been able to remember.
  */
 export function wasted(list) {
-  return list.reduce((n, w) => n + w.times - 1, 0);
+  // An expected refusal is the agent program's own housekeeping, not a call
+  // the agent spent retrying.
+  return list.reduce((n, w) => n + (w.expected ? 0 : w.times - 1), 0);
 }
 
 /**
@@ -143,6 +149,9 @@ export function wasted(list) {
  * whole section — and then the one turn it matters, it is skipped too.
  */
 export function render(list) {
+  // Not the agent's to stop retrying: Claude Code's plugin updater is not a
+  // tool call, so telling the agent about it is a line it can do nothing with.
+  list = list.filter((w) => !w.expected);
   if (!list.length) return "";
   const lines = [
     "WALLS — you have already been denied these, and the policy still denies them.",

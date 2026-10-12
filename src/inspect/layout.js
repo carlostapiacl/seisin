@@ -174,6 +174,48 @@ export function layoutWarnings(config, roles, scoped) {
     });
   }
 
+  /**
+   * The one sibling that is not a guess: Claude Code's own.
+   *
+   * Claude Code's Edit and Write do not write the file. They write
+   * `<file>.tmp.<pid>.<12 hex>` beside it and rename it over, so a role that
+   * holds a file by name and not its folder is refused at the temporary file
+   * on every edit — EPERM, and the agent goes around it with a shell (measured:
+   * 4 EPERM in one real run). No grant can name that file: its name changes on
+   * every edit, and a write grant takes no glob (the runtime drops them; seisin
+   * refuses one above). So the choice is the folder, or the shell — said per
+   * role, which is where the decision is made.
+   *
+   * Said whatever agent the role runs: check cannot know, and a role that runs
+   * something else reads one line it can skip. Three roles by name and the rest
+   * as a count, for the reason the warning above gives.
+   */
+  for (const l of loose.slice(0, 3)) {
+    // A file at the root has the whole repo for a folder, which is not a
+    // suggestion: then the move is to put it in a folder of its own.
+    const dirs = [...new Set(l.globs.map((g) => dirname(g)).filter((d) => d !== "."))].map((d) => `${d}/**`);
+    const fix = dirs.length
+      ? `Either grant the folder (${dirs.join(", ")})`
+      : "Its folder is the repo root, so either move it into a folder the role can own whole and grant that";
+    warnings.push({
+      kind: "claude-atomic-write",
+      headline: `${l.role}: writes ${l.globs.slice(0, 3).join(" ")}${l.globs.length > 3 ? ` +${l.globs.length - 3}` : ""} by name — ` +
+        "Claude Code's Edit and Write on it fail (EPERM)",
+      detail:
+        "Claude Code edits a file by writing <file>.tmp.<pid>.<random> beside it and renaming it over; " +
+        "the temporary file is outside a grant on the file, and no grant can name it — its name changes " +
+        `on every edit and a write grant takes no glob. ${fix}, ` +
+        "or accept that the agent writes it with its shell (a redirect writes the file itself) instead of Edit. " +
+        "A role that does not run Claude Code can ignore this.",
+    });
+  }
+  if (loose.length > 3)
+    warnings.push({
+      kind: "claude-atomic-write",
+      headline: `${loose.length - 3} more role(s) write files by name, where Claude Code's Edit and Write fail: seisin check <role>`,
+      detail: "",
+    });
+
   if (listed.length) {
     const shown = listed.slice(0, 3)
       .map((l) => `${l.role} names ${l.named} of ${l.total} in ${l.where}`).join("; ");

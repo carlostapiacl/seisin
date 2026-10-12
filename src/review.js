@@ -29,7 +29,7 @@
  */
 import { read, logPath } from "./log.js";
 import { covers, standingOf } from "./owners.js";
-import { kindsOf } from "./kinds.js";
+import { kindsOf, expectedOf } from "./kinds.js";
 
 /**
  * One reading of the log against the policy.
@@ -38,16 +38,18 @@ import { kindsOf } from "./kinds.js";
  * is low on purpose: the cost of mentioning it is a line, and the cost of
  * missing it is a role that quietly cannot do its job.
  */
-export function review(config, { minDenials = 3 } = {}) {
-  const entries = read(logPath(config.root), { limit: 0 });
+export function review(config, { minDenials = 3, since = null } = {}) {
+  // `since`: an ISO time (views.js parseSince). Without it the whole log, and
+  // on a log months long "denied repeatedly" is led by paths fixed long ago.
+  const entries = read(logPath(config.root), { limit: 0, ...(since && { since }) });
 
   if (entries.length === 0)
-    return { window: null, entries: 0, friction: [], guarded: [], unused: [], unusedKnowable: false, unowned: [] };
+    return { window: null, ...(since && { since }), entries: 0, friction: [], expected: [], guarded: [], unused: [], unusedKnowable: false, unowned: [] };
 
   const at = entries.map((e) => e.at).filter(Boolean).sort();
   const window = { from: at[0], to: at[at.length - 1], entries: entries.length };
 
-  return { window, entries: entries.length, ...findings(config, entries, minDenials) };
+  return { window, ...(since && { since }), entries: entries.length, ...findings(config, entries, minDenials) };
 }
 
 function findings(config, entries, minDenials) {
@@ -75,10 +77,12 @@ function findings(config, entries, minDenials) {
   for (const e of entries) {
     if (e.verdict !== "denied" || !e.target) continue;
     const dir = e.action === "read" || e.action === "connect" ? e.target : dirOf(e.target);
-    const key = `${e.role} ${e.action} ${dir}`;
+    const expected = expectedOf(e.target);
+    const key = `${e.role} ${e.action} ${dir}${expected ? " expected" : ""}`;
     const seen = stopped.get(key) ?? {
       role: e.role, action: e.action, where: dir, times: 0,
       owners: e.owners ?? [],
+      ...(expected && { expected }),
       // Carried by the log from both writers — the hook sets it from the config
       // and so does the parent for a kernel denial. Recomputing it from the path
       // here would be a second opinion on a settled question.
@@ -92,7 +96,11 @@ function findings(config, entries, minDenials) {
     .filter((f) => f.times >= minDenials)
     .sort((a, b) => b.times - a.times);
 
-  const friction = repeated.filter((f) => f.kind !== "key" && f.kind !== "network");
+  // Expected (kinds.js expectedOf): Claude Code's plugin updater, refused
+  // correctly. Repeated on every start, and not a policy that is wrong — so it
+  // is said apart and never counts as friction, which is what exits 1.
+  const expected = repeated.filter((f) => f.expected);
+  const friction = repeated.filter((f) => !f.expected && f.kind !== "key" && f.kind !== "network");
   const guarded = repeated.filter((f) => f.kind === "key");
   // Ports and sockets: repeated, and not a thing `grant` can answer.
   const connects = repeated.filter((f) => f.kind === "network");
@@ -179,6 +187,7 @@ function findings(config, entries, minDenials) {
 
   return {
     friction,
+    expected,
     guarded,
     connects,
     unused,
