@@ -16,6 +16,7 @@ import { record, requestsPath, queueOf, queueData, recordHandoff, keyOf } from "
 import { intake } from "../src/intake.js";
 import { message } from "../src/notify.js";
 import { state } from "../src/serve.js";
+import { HANDLERS } from "../src/mcp.js";
 import * as api from "../src/index.js";
 
 const POLICY =
@@ -250,4 +251,19 @@ test("recordHandoff is what whatever starts roles writes when it holds one back"
   recordHandoff(file, r.key, decideHandoff({ request: r, config, limits: { receiverConcurrent: 1 }, load: { receiverRunning: 1 } }));
   const t = cli(join(file, "..", ".."), "requests").stdout.replace(/\x1b\[[0-9;]*m/g, "");
   assert.match(t, /handoff held: backend already running 1\/1 — still to do/);
+});
+
+test("the MCP reads the queue with its decisions and never migrates it, in both tools", () => {
+  const { dir, config, file } = repo();
+  record(file, { role: "frontend", action: "write", target: "src/api/x.ts", owners: ["backend"] });
+  appendFileSync(file, JSON.stringify({ at: "2026-09-01T00:00:00.000Z", kind: "denied", key: "frontend:write:docs", reason: "" }) + "\n");
+  const text = readFileSync(file, "utf8");
+  assert.throws(() => queueOf(config, null, { readOnly: true }), (e) => e.code === "EQUEUEFORMAT");
+  const cwd = process.cwd();
+  process.chdir(dir);
+  try {
+    assert.throws(() => HANDLERS.seisin_requests(), /seisin requests/);
+    assert.throws(() => HANDLERS.seisin_draft_grant({ number: 1 }), /seisin requests/);
+  } finally { process.chdir(cwd); }
+  assert.equal(readFileSync(file, "utf8"), text, "the MCP rewrote the queue");
 });
