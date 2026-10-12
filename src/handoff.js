@@ -171,6 +171,75 @@ export function chainFrom(decision) {
 }
 
 /**
+ * The variable `seisin run --handoff` sets in the receiver's environment, so
+ * the hook inside can word a denial with the chain the run belongs to.
+ *
+ * Words only. The chain a request is recorded in is the parent's, written by
+ * intake from the run it started (requests.js, record), and nothing read from
+ * here reaches the queue. A process inside that rewrote it would change the
+ * sentence it is told about its own denial, and nothing else. Reserved, so a
+ * policy cannot deliver a key under this name (keys.js, RESERVED_ENV).
+ */
+export const CHAIN_ENV = "SEISIN_HANDOFF_CHAIN";
+
+/** The run's chain from its environment, or null: absent and malformed are the same. */
+export function chainFromEnv(env = process.env) {
+  const raw = env?.[CHAIN_ENV];
+  if (!raw) return null;
+  let c;
+  try { c = JSON.parse(raw); } catch { return null; }
+  const ok = c && typeof c === "object" && typeof c.id === "string" && Number.isInteger(c.depth) && c.depth >= 0 &&
+    Array.isArray(c.visited) && c.visited.every((r) => typeof r === "string");
+  return ok ? { id: c.id, depth: c.depth, visited: [...c.visited] } : null;
+}
+
+/**
+ * The decision as the denied agent is told it: whose the path is, where the
+ * work goes, and what to do instead of retrying. One sentence, the same from
+ * the PreToolUse hook, after a failed tool call and from `seisin whose`.
+ *
+ * It informs and offers nothing to act with. Every role it names is one the
+ * policy named; it never asks the agent to pick one, and there is no answer
+ * the agent can give back that would change who takes the work — the queue
+ * decides that again, from the policy, whenever it is read.
+ */
+export function toAgent(decision, { target, role }) {
+  const d = decision ?? {};
+  const owners = d.owners ?? [];
+  const whose = d.reason === "key"
+    ? (owners.length ? `${target} is declared for ${owners.join(", ")}, not ${role}.` : `No role declares ${target}.`)
+    : owners.length
+      ? `${target} belongs to ${owners.join(", ")}. It is not ${role}'s to change.`
+      : `${target} has no owner.`;
+  return `${whose} ${nextStep(d, role)}`;
+}
+
+/** What to do about it, from the decision alone: the second half of toAgent, and `seisin whose`. */
+export function nextStep(decision, role) {
+  const d = decision ?? {};
+  switch (d.type) {
+    case "route":
+      return `It is handed to ${d.role}: hand it over rather than working around it.`;
+    case "human":
+      if (d.reason === "key") return "Ask for what you need from it rather than reading the key.";
+      return d.reason === "ambiguous"
+        ? "With more than one owner, a person decides who takes it. Do not pick one, and do not work around it."
+        : "A person decides who takes it. Do not work around it.";
+    case "cycle":
+      return `It is not handed back: this work already came through ${d.role} ` +
+        `(handoff chain ${(d.visited ?? []).join(" → ")}). A person decides how to split it. Do not work around it.`;
+    case "depth":
+      return `The handoff chain stops here, ${d.depth} of ${d.max} deep. A person decides. Do not work around it.`;
+    case "resolved":
+      return `The policy now gives it to ${role}: the next run has it.`;
+    default: {
+      const said = describeHandoff(d) || "a person decides";
+      return `${said[0].toUpperCase()}${said.slice(1)}. Do not work around it.`;
+    }
+  }
+}
+
+/**
  * The decision in words a person reads, one line, no colour.
  *
  * `attempt` is what the execution plane last recorded about the request

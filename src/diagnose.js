@@ -32,6 +32,7 @@ import { readEntries } from "./log.js";
 import { explain } from "./owners.js";
 import { timesHit, walls } from "./walls.js";
 import { collapseSidecars } from "./render.js";
+import { decideHandoff, toAgent } from "./handoff.js";
 
 /** What a refused write or read looks like in a tool's output. A trigger to look, not a verdict. */
 export const DENIAL_SIGNS = /Operation not permitted|EPERM|EACCES|Permission denied|Read-only file system/i;
@@ -83,16 +84,19 @@ export function recentKernelDenials(file, role, sinceMs) {
 }
 
 /** The sentence for one refusal, in the words the PreToolUse hook uses. */
-function sentence(config, role, file, e) {
+function sentence(config, role, file, e, chain = null) {
   const action = e.kind === "key" ? "read" : e.action === "read" || e.action === "connect" ? e.action : "write";
   const v = explain(config, role, action, e.target);
   if (v.allowed) return null;             // the policy moved since: nothing to say
   const times = timesHit(file, role, action, e.target);
   const again = times > 1 ? ` Refused ${times} times now; the next try ends the same way.` : "";
   if (v.neverWrites) return `${v.reason}. Do not ask for it.${again}`;
-  if (v.owners?.length)
-    return `${e.target} belongs to ${v.owners.join(", ")}. It is not ${role}'s to change — ` +
-      `hand it over rather than working around it.${again}`;
+  // A write, or a key: the denials that become requests, worded from the same
+  // handoff decision the hook and the queue use. Everything else — a protected
+  // file, a connection, a read the mode shuts — keeps the policy's own reason.
+  const handed = (action === "write" || e.kind === "key") && !v.gitMetadata && !v.protected && !v.privateTo;
+  if (handed)
+    return toAgent(decideHandoff({ request: { role, action, target: e.target }, config, chain }), { target: e.target, role }) + again;
   return `${e.target}: ${v.reason}.${again}`;
 }
 
@@ -129,7 +133,7 @@ function evidenceOf(event) {
  * refusal, and a loaded machine can be slower than the hook. Only when the tool
  * reported a failure — see {@link evidenceOf}.
  */
-export async function afterTool(config, role, event, { file, now = Date.now, wait = [0, 100, 300] } = {}) {
+export async function afterTool(config, role, event, { file, now = Date.now, wait = [0, 100, 300], chain = null } = {}) {
   const { text: evidence, failed } = evidenceOf(event);
   if (!DENIAL_SIGNS.test(evidence)) return null;
   // JSON escapes what the program printed; the signatures are written against the text.
@@ -140,7 +144,7 @@ export async function afterTool(config, role, event, { file, now = Date.now, wai
     found = recentKernelDenials(file, role, now() - WINDOW_MS);
     if (found.length) break;
   }
-  const lines = [...known, ...found.map((e) => sentence(config, role, file, e)).filter(Boolean)].slice(0, MAX_NAMED);
+  const lines = [...known, ...found.map((e) => sentence(config, role, file, e, chain)).filter(Boolean)].slice(0, MAX_NAMED);
   if (!lines.length) return null;
   const total = known.length + found.length;
   const more = total > MAX_NAMED ? ` (and ${total - MAX_NAMED} more — \`seisin walls ${role}\`)` : "";

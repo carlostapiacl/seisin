@@ -360,8 +360,8 @@ export function readFileRef(entry, root = ".", { exact = false } = {}) {
  *   - **What seisin itself injects.** `SEISIN_ROLE` is how the hook inside the
  *     sandbox learns which role it is. A key called that would let a policy tell
  *     the hook it is somebody else — privilege confusion written in the one
- *     file that is supposed to prevent it. Same for the config path and the
- *     audit socket.
+ *     file that is supposed to prevent it. Same for the config path, the
+ *     audit socket and the handoff chain.
  *   - **What the child needs to be a child.** `keys = ["keychain://path"]`
  *     derives `PATH`, and the measured result is the sandbox failing with
  *     `env: node: No such file or directory` — a config mistake that reads
@@ -373,7 +373,9 @@ export function readFileRef(entry, root = ".", { exact = false } = {}) {
  * catches it and nobody debugs it from inside a sandbox.
  */
 export const RESERVED_ENV = new Set([
-  "SEISIN_ROLE", "SEISIN_CONFIG", SOCK_ENV,
+  // The last is handoff.js's CHAIN_ENV, spelled out: handoff.js reaches this
+  // module through owners.js, and importing it back would be a cycle.
+  "SEISIN_ROLE", "SEISIN_CONFIG", SOCK_ENV, "SEISIN_HANDOFF_CHAIN",
   ...BASE, ...Object.keys(DEFAULTS),
 ]);
 

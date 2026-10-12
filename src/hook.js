@@ -21,6 +21,7 @@ import { explain, normalize, privateOwner } from "./owners.js";
 import { append, logPath } from "./log.js";
 import { timesHit } from "./walls.js";
 import { record, requestsPath } from "./requests.js";
+import { decideHandoff, toAgent } from "./handoff.js";
 
 /** Tools whose input names a file directly. */
 const FILE_TOOLS = {
@@ -195,7 +196,7 @@ function ordinal(n) {
  * the same decisions and returns none of them, so a policy can be written from
  * what a real run did instead of from what someone imagined it would do.
  */
-export function decide(config, role, event, { observe = false, now = append, ask = record } = {}) {
+export function decide(config, role, event, { observe = false, now = append, ask = record, chain = null } = {}) {
   const targets = targetsOf(event.tool_name, event.tool_input);
   const file = logPath(config.root);
   const queue = requestsPath(config.root);
@@ -286,7 +287,6 @@ export function decide(config, role, event, { observe = false, now = append, ask
 
   const denied = verdicts.find((v) => !v.allowed);
   if (!denied) return { decision: null, logged: verdicts.length };
-  const wasRead = denied.kind === "key";
 
   /**
    * How many times this exact denial has already been handed to this role.
@@ -304,6 +304,17 @@ export function decide(config, role, event, { observe = false, now = append, ask
    * the turn where the sentence is already doing its job.
    */
   const times = (before ?? 0) + 1;
+
+  /**
+   * Whose it is and where the work goes, as the queue will say it: decided by
+   * handoff.js for the one path this sentence is about, in the run's handoff
+   * chain when it has one. Only for a denial that files a request — the
+   * branches above say why nothing was queued, which is not a handoff.
+   */
+  const queued = !denied.neverWrites && !denied.gitMetadata && !denied.protected && !denied.privateTo && !denied.mcp;
+  const handoff = queued
+    ? decideHandoff({ request: { role, action: denied.action, target: denied.target }, config, chain })
+    : null;
   const again = times > 1
     ? ` You have been denied this ${times} times now; it is not going to work on the ${ordinal(times + 1)} try.`
     : "";
@@ -326,11 +337,7 @@ export function decide(config, role, event, { observe = false, now = append, ask
           ? `${denied.reason}. Nothing was queued.` + again
           : denied.mcp
           ? `${denied.reason}. Nothing was queued: which MCP servers a role may load is set in its mcp list, a policy change a person makes, not something they grant from the queue.` + again
-          : (denied.owners?.length
-          ? wasRead
-            ? `${denied.target} is declared for ${denied.owners.join(", ")}, not ${role}. Ask for what you need from it rather than reading the key.`
-            : `${denied.target} belongs to ${denied.owners.join(", ")}. It is not ${role}'s to change — hand it over rather than working around it.`
-          : `${denied.reason} (seisin)`) + again + " " + QUEUED,
+          : toAgent(handoff, { target: denied.target, role }) + again + " " + QUEUED,
     },
   };
 }
