@@ -35,6 +35,9 @@ in every mode and gives each run a temp directory of its own — the role's when
 - **A canary the runtime refused to start says why.** "The sandbox did not run the canary at all"
   now carries the runtime's own last lines.
 - **A TMPDIR too long for the run's socket is named as such**, instead of `listen EINVAL` and a path.
+- **A handoff chain always counts the role that asked.** A caller that started a chain with an
+  empty or partial history let the work be handed straight back to the role that began it; the
+  requester is now part of the history whatever the caller supplied.
 
 **`[runtime] read = "territory"`, a canary before every run, measured on macOS and Linux**
 (Debian 12, bubblewrap 0.8.0). What it closes and what it costs is in
