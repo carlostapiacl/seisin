@@ -52,11 +52,11 @@ The suite is `node --test`, no framework, and it runs with `npm test`.
 1. **A test must be able to fail.** `assert.equal(SOME_CONSTANT, 2)` restates the
    implementation and will be removed. Two were, after they had been written by the same
    person who wrote this paragraph.
-2. **A test of the boundary must exercise the boundary.** Twenty-six of the tests run real
-   commands through the real kernel, and **CI fails if they skip** — because a green run that
-   quietly tested nothing looks exactly like a real one, and once did for eighteen of them
-   across a whole platform. Those live in `test/sandbox.test.js` and need
-   `@anthropic-ai/sandbox-runtime` installed.
+2. **A test of the boundary must exercise the boundary.** 84 of the tests (counted
+   2026-10-12) run real commands through the real kernel and need
+   `@anthropic-ai/sandbox-runtime` installed. The core 26 live in `test/sandbox.test.js`, and
+   **CI fails if they skip** — because a green run that quietly tested nothing looks exactly
+   like a real one, and once did for eighteen of them across a whole platform.
 
 Unit tests with fakes are right for asking what the code *decides*. They cannot tell you what
 *happens*. A change to what is allowed needs one of the second kind.
@@ -121,6 +121,14 @@ missing feature to be completed. From `src/config.js`:
 Proposals that need the parser to grow will be asked what the configuration is trying to
 express and whether it belongs in a policy file at all. Sometimes the answer is yes — the
 case has to be made.
+
+## The README's GIF
+
+`docs/img/demo.gif` is recorded from [`docs/demo.tape`](docs/demo.tape) with
+[vhs](https://github.com/charmbracelet/vhs), so it can be regenerated rather than re-shot by
+hand. The tape's header says how to set up the two-role demo repository, the order of the
+steps, and the encoding step vhs skips. When what `seisin run` prints changes, regenerate the
+GIF along with the README's text sample, so the two keep saying the same thing.
 
 ## Commits
 
