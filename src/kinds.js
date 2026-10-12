@@ -19,6 +19,7 @@
  * clock, so it is the same answer on every screen that asks. It never changes
  * what is allowed; it changes what is said about a refusal.
  */
+import { homedir } from "node:os";
 import { CREDENTIAL_HOMES } from "./grants.js";
 
 /** Every kind, in the order a reader should deal with them, and the one line each says. */
@@ -204,4 +205,45 @@ export function kindsOf(targets, opts = {}) {
       }
   }
   return out;
+}
+
+/**
+ * A refusal that is expected, and why — apart from the kinds above.
+ *
+ * The kinds name a path no role owns and the move that fits it. This is the
+ * other case: a path the agent program itself reaches for from inside the
+ * sandbox, that the boundary is right to refuse, and that no move fixes because
+ * nothing is wrong. Claude Code checks for plugin updates on start and writes
+ * the new version into `~/.claude/plugins/cache`; under seisin that write comes
+ * from inside the run and the kernel says no. Plugins run outside the sandbox,
+ * and they update there, from the Claude Code you start without seisin.
+ *
+ * Shown as a wall or as "denied repeatedly", it read as a role stuck on
+ * something to grant — and the only grant that would quiet it is a write into
+ * what Claude Code runs outside the sandbox. So every screen says it apart, as
+ * expected, and none counts it as friction. It changes no verdict.
+ *
+ * Only the cache: the rest of `~/.claude/plugins` (which plugins are installed,
+ * which marketplaces are trusted) is not housekeeping, and a write there stays
+ * an ordinary protected refusal, said in full.
+ */
+export const EXPECTED = {
+  plugins:
+    "Claude Code updating its plugins from inside the sandbox: plugins run outside it and update there, so the denial is expected — nothing to grant",
+};
+
+/**
+ * `{ kind, hint }` when the refusal of `target` is expected, else null.
+ *
+ * `target` as the log keeps it: absolute outside the repository. The home and
+ * `CLAUDE_CONFIG_DIR` are parameters so a test does not depend on the machine.
+ */
+export function expectedOf(target, { home = homedir(), env = process.env } = {}) {
+  const t = String(target ?? "").replace(/\\/g, "/");
+  const roots = [
+    env.CLAUDE_CONFIG_DIR,
+    home && `${home.replace(/\/+$/, "")}/.claude`,
+    "~/.claude",
+  ].filter(Boolean).map((r) => `${String(r).replace(/\/+$/, "")}/plugins/cache`);
+  return roots.some((r) => t === r || t.startsWith(r + "/")) ? { kind: "plugins", hint: EXPECTED.plugins } : null;
 }

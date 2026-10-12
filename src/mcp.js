@@ -119,7 +119,7 @@ const TOOLS = [
       type: "object",
       properties: {
         limit: { type: "number" },
-        since: { type: "string", description: "ISO date; only denials at or after it" },
+        since: { type: "string", description: "ISO date, or a duration back from now (7d, 12h); only denials at or after it" },
       },
     },
   },

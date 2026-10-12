@@ -137,26 +137,31 @@ export function renderReport(report, { verbose = true } = {}) {
     const more = [
       report.protected?.length ? `${report.protected.length} protected path(s)` : "",
       report.warnings.some((w) => w.detail) ? "why each warning matters" : "",
-      report.limits?.length ? `${report.limits.length} standing limit(s)` : "",
     ].filter(Boolean);
-    if (more.length) lines.push(`  ${C.dim}seisin check --verbose: ${more.join(", ")}${C.off}\n\n`);
+    if (more.length) lines.push(`  ${C.dim}seisin check --verbose: ${more.join(", ")}${C.off}\n`);
+    lines.push(limitsLine(report), "\n");
     return lines.join("");
   }
 
   for (const w of report.warnings) {
     lines.push(`  ${C.yellow}${w.headline}${C.off}\n`);
     if (w.detail) lines.push(`  ${C.dim}${w.detail}${C.off}\n`);
+    // A list is a list: one entry per line, not a sentence of twenty paths.
+    for (const item of w.items ?? []) lines.push(`    ${C.dim}${item}${C.off}\n`);
     lines.push("\n");
   }
 
-  // Dim, and last: a standing limit is not an alarm, but it is not a footnote
-  // either — it is the part of the map that is blank.
-  for (const l of report.limits ?? []) {
-    lines.push(`  ${C.dim}${l.headline}${C.off}\n`);
-    if (l.detail) lines.push(`  ${C.dim}${l.detail}${C.off}\n`);
-    lines.push("\n");
-  }
+  // The standing limits are the same in every repo, so they are one line here
+  // and the paragraphs are `seisin help limits` — six of them closed every
+  // verbose report, under the part that was about this repo.
+  lines.push(limitsLine(report), "\n");
   return lines.join("");
+}
+
+/** Where the standing limits are, or nothing when the report carries none. */
+function limitsLine(report) {
+  const n = report.limits?.length ?? 0;
+  return n ? `  ${C.dim}${n} standing limit(s) apply to every repo: seisin help limits${C.off}\n` : "";
 }
 
 /* ── one verdict ──────────────────────────────────────────────────────── */

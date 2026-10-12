@@ -8,6 +8,8 @@
  *
  * `values` are flags that take the next word as their value.
  */
+import { LIMITS } from "./inspect/limits.js";
+
 export const COMMAND_HELP = {
   run: {
     usage: ["seisin run <role> [--observe] [--debug-env] [--agent <name>] -- <command...>"],
@@ -25,7 +27,7 @@ export const COMMAND_HELP = {
   },
   check: {
     usage: ["seisin check [role] [--verbose] [--verify] [--parallel]"],
-    flags: [["--verbose", "also print the protected paths, each warning's explanation and the standing limits"],
+    flags: [["--verbose", "also print the protected paths and each warning's explanation (the limits of every repo: seisin help limits)"],
       ["--verify", "run each role's verify command inside its sandbox (the one thing check executes)"],
       ["--parallel", "experimental: with --verify, run role checks concurrently; shared resources may race"]],
     examples: ["seisin check", "seisin check frontend --verbose", "seisin check backend --verify", "seisin check --verify --parallel"],
@@ -52,16 +54,17 @@ export const COMMAND_HELP = {
     exits: [["0", "no certain credential outside the key dirs"], ["1", "at least one certain credential"], ["2", "usage error"]],
   },
   review: {
-    usage: ["seisin review [--all] [--min <n>]"],
-    values: ["--min"],
-    flags: [["--all", "every row, not the first ten per section"], ["--min <n>", "denials before a place counts as repeated (default 3)"]],
-    examples: ["seisin review", "seisin review --min 5 --all"],
+    usage: ["seisin review [--all] [--min <n>] [--since <date|duration>]"],
+    values: ["--min", "--since"],
+    flags: [["--all", "every row, not the first ten per section"], ["--min <n>", "denials before a place counts as repeated (default 3)"],
+      ["--since <when>", "only what was recorded since a date (2026-10-01) or a duration back from now (7d, 12h, 2w)"]],
+    examples: ["seisin review", "seisin review --since 7d", "seisin review --min 5 --all"],
     exits: [["0", "no role denied repeatedly"], ["1", "a role was denied repeatedly"], ["2", "usage error"]],
   },
   walls: {
-    usage: ["seisin walls <role> [--all] [--since <iso>] [--min <n>]"],
+    usage: ["seisin walls <role> [--all] [--since <when>] [--min <n>]"],
     values: ["--since", "--min"],
-    flags: [["--all", "include walls not hit in the last few runs"], ["--since <iso>", "only denials after this time"],
+    flags: [["--all", "include walls not hit in the last few runs"], ["--since <when>", "only denials since a date (2026-09-01) or a duration back from now (7d)"],
       ["--min <n>", "times denied before it is a wall (default 2)"]],
     examples: ["seisin walls frontend", "seisin walls frontend --since 2026-09-01 --min 3"],
     exits: [["0", "no walls"], ["1", "walls listed"], ["2", "usage error"]],
@@ -138,6 +141,14 @@ export const COMMAND_HELP = {
   },
 };
 COMMAND_HELP.deny = COMMAND_HELP.decline;
+
+/** `seisin help limits`, as text: LIMITS lives in inspect/limits.js, which `inspect()` also returns. */
+export function renderLimits(C) {
+  const lines = ["", `${C.b}what seisin cannot do, in any repo${C.off}`, ""];
+  for (const l of LIMITS) lines.push(`  ${C.b}${l.headline}${C.off}`, `  ${l.detail}`, "");
+  lines.push(`  ${C.dim}seisin check lists what is wrong with this repo's policy${C.off}`, "", "");
+  return lines.join("\n");
+}
 
 /** The flag words a command accepts, for the unknown-flag check. */
 export function flagsOf(name) {

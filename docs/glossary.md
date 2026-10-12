@@ -195,7 +195,7 @@ per-session, private directory; ours is neither — that is the point of naming 
 **sign-in** — the file an agent keeps its login in: `~/.codex/auth.json` for Codex,
 `~/.claude/.credentials.json` for Claude Code where there is no keychain. A run is denied every
 agent's sign-in but its own, read and write; which agent a run is comes from its command, or
-`seisin run --agent`. *Not:* key — a sign-in is never declared or granted. *Where:* `seisin check`
+`seisin run --agent`. *Not:* key — a sign-in is never declared or granted. *Where:* `seisin help limits`
 (standing limits), `explain <role> read ~/.codex/auth.json`. *Elsewhere:* Codex calls where it keeps
 it `cli_auth_credentials_store` (`file`, `keyring`, `auto`).
 
@@ -426,6 +426,13 @@ or `outside` (a port, a key directory, a path outside the repository — not a p
 question of ownership). In text a person reads, the last one is said **ownable**, because "kind:
 territory" reads as its opposite. *Where:* `seisin review` "by kind", MCP `standing.unowned.kinds`.
 
+**expected denial** — a denial that is correct and needs nothing from anybody: the agent program's
+own housekeeping reaching outside the sandbox. Today one case, Claude Code updating its plugins
+into `~/.claude/plugins/cache` — plugins run and update outside the sandbox. Said apart as
+"expected" by `seisin run`, `seisin walls`, `seisin review` ("Denied as expected") and the console,
+never counted as repeated denials or retries, and never told to the agent. *Where:* the `expected`
+field on walls and causes.
+
 **cause** — in the console and MCP, one path denials are grouped under, and the name several of
 those paths share. A day where three quarters of the denials share one cause is a tooling problem;
 the same volume spread across unrelated causes is a territory question.
@@ -437,7 +444,7 @@ message. *Not:* block, blocker, stuck path. *Elsewhere:* no established meaning;
 and nothing to reconcile.
 
 **repeated denials** — *(replaces "friction" and "Stopped, repeatedly")* in `seisin review`, the
-same role denied on the same place over and over, keys and connections excepted. A policy that is
+same role denied on the same place over and over, keys, connections and expected denials excepted. A policy that is
 wrong, not an agent misbehaving. *Why:* "friction" was defined here and printed nowhere; the
 section said "Stopped", a sixth word for denied. (`friction` survives as an internal field name in
 `src/review.js`; it reaches no reader.)

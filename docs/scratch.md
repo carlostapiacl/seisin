@@ -58,6 +58,25 @@ discover:
 
 Set `writes = []` to opt out and find out why it is there.
 
+### A file granted by name, and Claude Code's temporary file
+
+Scratch is the space beside the territory; the space beside a *file* in the territory is nobody's.
+Claude Code's Edit and Write do not write the file they edit: they write
+`<file>.tmp.<pid>.<12 hex>` beside it and rename it over the original. A role whose `writes` names
+the file (`BACKLOG.md`) and not its folder is denied the temporary file, and every Edit or Write
+of it fails with `EPERM` — measured: 4 in one real run, each followed by the agent writing the
+file through its shell instead.
+
+No grant can name only the temporary file. Its name changes on every edit, and a write grant
+takes no glob: the sandbox runtime drops globs from its write list, and `seisin check` refuses
+one as a policy that cannot be enforced. So there are two answers, and `seisin check` names the
+role that has to choose:
+
+- **Grant the folder** — `notes/**` instead of `notes/BACKLOG.md`. For a file at the root of the
+  repo the folder is the whole repo, so the move is to put the file in a folder of its own.
+- **Accept the shell.** A redirect (`>`, `>>`) writes the file itself and goes through; the
+  agent's Edit does not. The file stays the only thing the role can write there.
+
 ### Closing your credentials, without signing the agent out
 
 ```toml

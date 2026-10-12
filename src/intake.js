@@ -31,6 +31,7 @@ import { append, logPath } from "./log.js";
 import { record, requestsPath } from "./requests.js";
 import { inScope, scopeOf, reachedForContent } from "./violations.js";
 import { mcpServer } from "./hook.js";
+import { expectedOf, kindOf } from "./kinds.js";
 
 /** A hash of the policy file as it is now, short: it names a version, it proves nothing. */
 export function policyId(config) {
@@ -60,7 +61,7 @@ export function intake({ config, role, runId, observe = false, settings, notify 
   const scope = scopeOf(settings, config.root);
   const keyDirs = (config.keyDirs ?? []).map((d) => (d.startsWith("/") ? d : join(config.root, d)));
   const connects = new Set();         // one line per refused target per run
-  const stats = { offPolicy: 0, walks: 0 };
+  const stats = { offPolicy: 0, walks: 0, expected: 0 };
 
   /**
    * Nothing from inside the sandbox is taken at its word.
@@ -161,6 +162,7 @@ export function intake({ config, role, runId, observe = false, settings, notify 
      */
     const v = explain(config, role, entry.action, entry.target);
     if (v.allowed || v.neverWrites || v.gitMetadata || v.protected || v.privateTo) return;
+    if (temporary(entry.action, entry.target)) return;
     // The owners explain found: for a key that is who declares it, not who
     // writes the directory it sits in — the queue said "owned by dev" about
     // backend's key because dev writes `**`.
@@ -197,6 +199,9 @@ export function intake({ config, role, runId, observe = false, settings, notify 
     // ~/.ssh under `isolate`, and "../../../.ssh/id_rsa" would be a worse
     // answer to "what was refused" than the path itself.
     const rel = toRepoRelative(config, d.path);
+    // Recorded like any other, and counted apart, so the end of the run can
+    // say it was expected instead of leaving it to read as a failure.
+    if (expectedOf(rel)) stats.expected++;
 
     /**
      * A refusal the hook never saw still leaves a request behind.
@@ -229,7 +234,8 @@ export function intake({ config, role, runId, observe = false, settings, notify 
     // A key is declared, not owned: who a write lookup finds for `.secrets/x`
     // is always nobody, and the queue said "(unowned)" over another role's key.
     const whose = d.action === "read" && inKeyDir(config, rel) ? keyHolders(config, rel) : ownersOf(config, rel);
-    if (rel !== d.path && !barred && !unaskable && !granted)
+    const scratch = rel !== d.path && temporary(d.action, rel);
+    if (rel !== d.path && !barred && !unaskable && !granted && !scratch)
       ask({ role, action: d.action, target: rel, owners: whose });
 
     log({
@@ -247,8 +253,24 @@ export function intake({ config, role, runId, observe = false, settings, notify 
       ...(barred ? { neverWrites: barred } : {}),
       ...(verdict?.protected ? { protected: verdict.protected } : {}),
       ...(verdict?.privateTo ? { privateTo: verdict.privateTo } : {}),
+      // Why no request was queued for it: a temporary file is not territory.
+      ...(scratch ? { nature: "temporary" } : {}),
     });
   }
 
   return { fromHook, fromKernel, stats };
+}
+
+/**
+ * A write to a temporary file (kinds.js) is recorded and never queued.
+ *
+ * Its name changes on every run — `BACKLOG.md.tmp.32029.03c4…`, the atomic
+ * write of an editor or of Claude Code — so a grant of it opens nothing the
+ * next run will use, and the request's id is its directory: at the root of the
+ * repo, `dev:write:.`, which reads as asking for the whole repository. The
+ * answer is the folder of the file it replaces, or $TMPDIR, and `check` and
+ * `review` say so; a request in front of a person says the wrong thing.
+ */
+function temporary(action, target) {
+  return action === "write" && kindOf(target).kind === "temporary";
 }

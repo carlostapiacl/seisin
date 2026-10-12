@@ -413,6 +413,20 @@ export function refuseIfBarred(config, request) {
     throw new Error(
       `${request.target} is git's own bookkeeping, not a territory: granting it lets ${request.role} ` +
       `rewrite another owner's history. Decline it; a role that needs to commit gets a worktree of its own.`);
+  /**
+   * The whole repository is never granted from a request. A request is one
+   * denied path; the grant it derives is that path's folder, and at the root
+   * that folder is everything — every other role's territory included. A role
+   * that should write the whole repo gets `writes = ["**"]` from a person
+   * editing the policy, not from approving one denial.
+   */
+  const grant = request.grant ?? grantFor(request);
+  const g = String(grant).replace(/^\.\/+/, "").replace(/\/+$/, "");
+  if (["", ".", "*", "**", "./**"].includes(g) || /^(\*\*\/)*\*\*$/.test(g))
+    throw new Error(
+      `this request would grant ${request.role} the whole repository ("${grant}"), every other ` +
+      `role's territory included. A request cannot do that: decline it, and if ${request.role} really ` +
+      `should write everything, edit [roles.${request.role}] writes by hand.`);
 }
 
 /**
