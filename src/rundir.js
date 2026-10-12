@@ -28,6 +28,12 @@ import { channelName } from "./spool.js";
 import { alive } from "./log.js";
 
 export const RUNS_NAME = "snr";
+/**
+ * Where a run's temp directory lives when the role may write no other: beside
+ * the runs root, not inside it. The runs root is denied to writes as a whole
+ * (srt.js), and a deny wins over any grant beneath it.
+ */
+export const TMP_NAME = "snt";
 /** The settings file inside a run's directory. srt.js denies it to the run by this name. */
 export const SETTINGS_NAME = "settings.json";
 
@@ -38,8 +44,8 @@ export const SETTINGS_NAME = "settings.json";
  * dir sits behind /var → /private/var. Refused rather than used when it is not
  * a directory of this user's with nobody else's bits on it: it holds keys.
  */
-export function runsRoot(base = tmpdir()) {
-  const root = join(realOrSelf(base), RUNS_NAME);
+export function runsRoot(base = tmpdir(), name = RUNS_NAME) {
+  const root = join(realOrSelf(base), name);
   try { mkdirSync(root, { mode: 0o700 }); } catch (e) { if (e.code !== "EEXIST") throw e; }
   const st = lstatSync(root);
   const mine = typeof process.getuid !== "function" || st.uid === process.getuid();
@@ -66,7 +72,10 @@ function sweep(root) {
     try { pid = Number(readFileSync(join(dir, "pid"), "utf8")); } catch { continue; }
     // Only a process the kernel says is gone: a directory kept one sweep too
     // long costs disk, one removed early takes a live run's socket and keys.
-    if (pid && !alive(pid)) rmSync(dir, { recursive: true, force: true });
+    if (pid && !alive(pid)) {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(join(dirname(root), TMP_NAME, name), { recursive: true, force: true });
+    }
   }
 }
 
@@ -91,6 +100,15 @@ export function openRun({ base = tmpdir(), id = randomUUID() } = {}) {
     sock: join(dir, channelName()),
     keys: join(dir, "keys"),
     /**
+     * This run's own temp directory, made on first call: only a run whose role
+     * may write no temp directory of its own needs one (commands/run.js).
+     */
+    tmp() {
+      const at = join(runsRoot(base, TMP_NAME), basename(dir));
+      mkdirSync(at, { recursive: true, mode: 0o700 });
+      return at;
+    },
+    /**
      * `wx`: created by this call or not at all. A settings file that already
      * exists is not this run's, and the runtime would read whatever it says.
      */
@@ -101,6 +119,7 @@ export function openRun({ base = tmpdir(), id = randomUUID() } = {}) {
     },
     close() {
       try { rmSync(dir, { recursive: true, force: true }); } catch {}
+      try { rmSync(join(dirname(root), TMP_NAME, basename(dir)), { recursive: true, force: true }); } catch {}
     },
   };
 }

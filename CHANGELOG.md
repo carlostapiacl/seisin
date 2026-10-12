@@ -20,6 +20,22 @@ wins over `writes = [".claude"]`, `[".claude/**"]`, nested hook grants and `["**
 `seisin check` rejects a territory aimed at `.claude`; broad territories keep working with
 the protected directory subtracted.
 
+**Security: the runtime's shared temp directory is no longer writable.** sandbox-runtime grants
+`/tmp/claude` to every sandbox it starts and hands it over as TMPDIR; every Claude Code session on
+the machine keeps its temp files there, so any role could write beside them. seisin now denies it
+in every mode and gives each run a temp directory of its own — the role's when it has one
+(`isolate = "home"`, or `$TMPDIR` among its writes), else one made for that run alone — as both
+`TMPDIR` and `CLAUDE_CODE_TMPDIR`. The canary probes it.
+
+- **A file name the runtime would read as a glob no longer stops every run.** With
+  `read = "territory"`, a name holding `[`, `]`, `*` or `?` beside the way to the repo (one with
+  two unclosed `[` was enough) turned into an invalid pattern inside the runtime, and no run on
+  that machine started. Such names are now denied by a pattern that cannot break; one that would
+  also shut something the role keeps is refused by name.
+- **A canary the runtime refused to start says why.** "The sandbox did not run the canary at all"
+  now carries the runtime's own last lines.
+- **A TMPDIR too long for the run's socket is named as such**, instead of `listen EINVAL` and a path.
+
 **`[runtime] read = "territory"`, a canary before every run, measured on macOS and Linux**
 (Debian 12, bubblewrap 0.8.0). What it closes and what it costs is in
 [docs/scratch.md](docs/scratch.md#reading-only-what-the-role-needs).

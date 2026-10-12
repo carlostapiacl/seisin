@@ -28,6 +28,15 @@ What stays open is a run's own sign-in: Codex and every command Codex runs share
 they can read its `auth.json`. Codex keeps it in the macOS keychain instead with
 `cli_auth_credentials_store = "keyring"` in `~/.codex/config.toml`.
 
+None of these is `/tmp/claude`, the temp directory sandbox-runtime grants every sandbox it
+starts and hands over as TMPDIR. Every Claude Code session on the machine keeps its own temp
+files there, so seisin denies it to every role, in every mode, and gives the run a temp directory
+of its own as `TMPDIR` and `CLAUDE_CODE_TMPDIR`: the role's isolated home's `tmp`, else `$TMPDIR`
+when the role may write it, else one made for that run beside the runs directory, readable and
+writable by that run alone. With `writes = []` the last is the one used. macOS `mktemp` without
+arguments does not read TMPDIR (it asks the system for the user's temp directory), so under
+`writes = []` it fails; `mktemp -p "$TMPDIR"` works.
+
 **Writing this key replaces that list; it does not add to it.** So a `[runtime] writes` copied
 from somewhere to grant one extra path silently drops the seven defaults it did not mention. Start from the
 list above and append.
