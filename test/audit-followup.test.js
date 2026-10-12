@@ -188,7 +188,7 @@ test("the launcher drains redacted pipes after the runtime exits", () => {
   const runtime = join(root, "node_modules", "@anthropic-ai", "sandbox-runtime");
   mkdirSync(runtime, { recursive: true });
   writeFileSync(join(runtime, "package.json"), '{"bin":{"srt":"cli.cjs"}}\n');
-  const late = "setTimeout(() => { process.stdout.write('tail=' + process.env.TOKEN + '\\n'); process.stderr.write('last stderr\\n'); }, 120)";
+  const late = "require('node:fs').writeSync(3, 'up'); setTimeout(() => { process.stdout.write('tail=' + process.env.TOKEN + '\\n'); process.stderr.write('last stderr\\n'); }, 120)";
   // Every run starts with a canary, and a runtime that confines nothing fails
   // it (exit 86) — as it should. This one answers the canary the way a working
   // sandbox would, so the run reaches the stdio ordering under test.
@@ -205,13 +205,20 @@ if (sh !== -1 && /ALIVE-/.test(argv[sh + 2] || '')) {
   process.exit(0);
 }
 const late = ${JSON.stringify(late)};
-spawn(process.execPath, ['-e', late], { stdio: ['ignore', 1, 2] }).unref();
-process.stdout.write('begin\\n');
-setTimeout(() => process.exit(3), 20);
+// The late writer says it has started before the runtime exits, so the
+// launcher's 2-second guard measures only its 120 ms and not how long a
+// loaded machine takes to start node.
+const w = spawn(process.execPath, ['-e', late], { stdio: ['ignore', 1, 2, 'pipe'] });
+w.stdio[3].once('data', () => {
+  process.stdout.write('begin\\n');
+  setTimeout(() => process.exit(3), 20);
+});
 `;
   writeFileSync(join(runtime, "cli.cjs"), script, { mode: 0o755 });
   const r = spawnSync(process.execPath, [join(root, "src", "cli.js"), "run", "dev", "--", process.execPath, "-e", ""],
-    { cwd: root, encoding: "utf8", timeout: 4000 });
+    // Only a bound on a hang. At 4 s a loaded machine hit it before seisin
+    // finished, and seisin passes the SIGTERM on and exits 143.
+    { cwd: root, encoding: "utf8", timeout: 30000 });
   assert.equal(r.status, 3, r.stderr);
   assert.match(r.stdout, /tail=‹redacted›\n/);
   assert.match(r.stderr, /last stderr\n/);
@@ -223,7 +230,10 @@ test("the CI sandbox gate passes only a sandbox suite that ran completely", () =
   // fixtures exercise the gate, not the confinement boundary itself. The
   // block pins the TAP reporter, so only TAP summaries reach it.
   const root = scratch("seisin-ci-gate-");
-  const fixture = join(root, "fixture.test.js");
+  // .cjs, not .js: the fixture uses require(), and a .js file takes its module
+  // type from the nearest package.json — a TMPDIR under a package with
+  // "type": "module" turned it into ESM and every case failed.
+  const fixture = join(root, "fixture.test.cjs");
   const log = join(root, "sandbox.log");
   const workflow = readFileSync(new URL("../.github/workflows/test.yml", import.meta.url), "utf8");
   const block = workflow.match(/- name: the sandbox half actually ran\n(?:        [^\n]*\n)*?        run: \|\n((?:          [^\n]*\n|\n)*)/)[1]
