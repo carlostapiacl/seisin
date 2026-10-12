@@ -7,20 +7,20 @@
 ## The suite
 
 **891 tests** in the macOS suite; 889 passed and 2 platform tests skipped. Linux defines one
-fewer platform-specific test: 890 total, 869 passed and 21 skipped (2026-10-11).
-The [workflow](../.github/workflows/test.yml)
-exercises macOS and Linux under bubblewrap on Node 18/20/22/24 for pull requests and
-pushes to `main` when Actions is available. Actions is temporarily unavailable because of
-account billing, so 0.6.0 is being validated locally on both platforms. Historical full-suite measurements remain dated below; the
+fewer platform-specific test: 890 total, 869 passed and 21 skipped (2026-10-11, Debian 12,
+bubblewrap 0.8.0). CI is paused; this release is validated locally on macOS and Debian 12
+(bubblewrap 0.8.0). The [workflow](../.github/workflows/test.yml) runs macOS and Linux under
+bubblewrap on Node 18/20/22/24 for pull requests and pushes to `main`; its last green run was
+on 2026-10-04. Historical full-suite measurements remain dated below; the
 [2026-10-02 review](reviews/2026-10-02.md) and its
 [follow-up](reviews/2026-10-02-followup.md) record portable validation and its limits.
 
-Twenty-seven of them are not unit tests: they run real commands through the real
-sandbox and check what the kernel did — and they skip themselves when `srt` is
-not installed, so on a machine without it the suite reports them skipped rather than
-failing. That distinction matters enough that CI **fails if
-those twenty-seven skip** — `srt` missing makes them skip themselves, and
-a green run that quietly tested nothing looks exactly like a real one.
+On 2026-10-12, 84 of the suite's tests were not unit tests: they run real commands through the
+real sandbox and check what the kernel did — and they skip themselves when `srt` is not
+installed, so on a machine without it the suite reports them skipped rather than failing (that
+is how they were counted: the suite run with the runtime hidden, 84 skipped). 26 of them are the
+core boundary file, `test/sandbox.test.js`, and the CI gate **fails if those skip** — a green
+run that quietly tested nothing looks exactly like a real one. A few of them:
 
 ```
 ✔ a role reads the key it declares
@@ -105,14 +105,15 @@ what has not.
 
 | | macOS 15 · Seatbelt | Linux · bubblewrap |
 |---|---|---|
-| the suite | **811 tests, 809 passing and 2 skipped** (Linux-only) — 2026-09-30 | `ubuntu-latest` in CI at every push, and CI fails if the twenty-six sandbox tests skip. Last full count measured here: 326/326 — 2026-09-21, Node 22. Last full Docker run: 225/225 — 2026-09-14, Debian 12.15, bwrap 0.8.0, `--privileged` (bubblewrap mounts `/proc`) |
-| CI, every push | Node 18/20/22/24 | `ubuntu-latest`, Node 18/20/22/24 |
+| the suite | **891 tests, 889 passing and 2 skipped** (Linux-only) — local, `main` before 0.6.0 | **890 tests, 869 passing and 21 skipped** — 2026-10-11, local, in Docker: Debian 12, bwrap 0.8.0, `--privileged` (bubblewrap mounts `/proc`) |
+| CI (paused) | last green run 2026-10-04, Node 18/20/22/24; CI failed then if the 26 sandbox tests skipped | `ubuntu-latest`, Node 18/20/22/24, same run |
 | `[runtime] isolate = "home"` (`= true`) | ✅ — and it did not start here at all until the 104-byte socket fix | ✅ — `tmpdir()` is `/tmp`, so the path never came close |
 | `[runtime] isolate = "credentials"` | ✅ — no role home, so the socket limit cannot reach it | ✅ |
 | Claude Code 2.1.270 | ✅ | not run |
 | opencode 1.18.30 | ✅ | not run |
 | codex 0.150.1 | ✅, with its own sandbox off | not run |
 | LangGraph 1.2.11 | ✅ | not run |
+| gemini 0.57.0 | started only — not run against a policy | not run |
 | Windows | — | — |
 
 The four agents have only been run under macOS. The suite covers both, and the
@@ -123,9 +124,12 @@ The asymmetry in the `isolate` row is the reason this table exists. A defect can
 be specific to the platform its author develops on, stay invisible on the other,
 and be invisible in CI too when no test turns the feature on.
 
-## Two outside reviews
+## Two outside reviews, plus three follow-ups
 
-Neither was commissioned and neither was friendly, which is the useful kind.
+Reviews 1 and 2 are the outside ones. Neither was commissioned and neither was friendly, which
+is the useful kind. Reviews 3 to 5 are follow-ups and are counted as such: 3 is the second
+reviewer again, on the fixed version; 4 went through the config parser; 5 is the team that
+runs seisin, exercising the package before it was published.
 
 ### Review 1 — architecture
 
@@ -136,7 +140,7 @@ Four findings, all four real, all four reproduced before being fixed.
 | **Policy ≠ enforcement** | `ownersOf` read `src/*` as one level; the kernel got `src`, the whole subtree. `seisin explain` said *denied* and the write landed | patterns the kernel cannot express exactly are **refused**, not widened. There is no exact translation to find later: a sandbox grants prefixes and "one level down" is not a prefix |
 | **The audit trail was writable by what it audits** | `.seisin/` was in every role's allowWrite, so the log and queue could be truncated, rewritten or forged | the directory left the territory. The hook sends lines to the parent over a unix socket granted by path; the parent holds the file |
 | **Paths were not canonical** | `src/web/../api/orders.ts` is backend's file and matched frontend's `src/web/**`. The kernel still denied — but `whose` named the wrong owner and the log said `allowed` for a write that was about to fail | resolved before anyone decides anything. Above the root owns nothing |
-| **The README contradicted itself on Linux** | one section said the suite passed on Debian 12, another said it had never run there | CI now runs it on both platforms every push |
+| **The README contradicted itself on Linux** | one section said the suite passed on Debian 12, another said it had never run there | CI ran it on both platforms at every push from then on — last green run 2026-10-04. CI is paused now, and the suite runs locally on both |
 
 ### Review 2 — security, file by file
 
