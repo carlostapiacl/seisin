@@ -545,8 +545,8 @@ export function loadConfig(path, text = readFileSync(path, "utf8")) {
        * territory (added to `writes` above, so `explain`, `whose` and the
        * settings agree it is this role's), and every OTHER role is given a
        * denyRead and a denyWrite on it — in either read mode, isolated or not.
-       * Deny-only, for the reason territory.js gives for carving: an allow
-       * nested in a deny is the shape that breaks on one platform or the other.
+       * Deny-only: an allow nested in a deny breaks on one platform or the
+       * other unless it is handled the way territory.js handles its own.
        */
       private: priv,
       keys,

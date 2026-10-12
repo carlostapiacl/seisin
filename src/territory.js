@@ -20,27 +20,34 @@
  * finite and known before it starts: its repo, its territory, its run, its
  * toolchain. That list is the short one, and it is the one written.
  *
- * **Carved, not allowed back.** The runtime offers `allowRead` inside a
- * `denyRead`, and this does not use it, for two measured reasons:
+ * **Denied whole, allowed back.** Each data root is one deny, and what the
+ * role keeps is an `allowRead` inside it. A deny covers what is created after
+ * it, so another run's directory made beside the repo an hour into this one
+ * is shut the moment it exists. That is the point of it.
  *
- *   - macOS: a deny nested inside an allow is re-emitted after it (last match
- *     wins), so allowing the repo would shut the key files `[keys]` re-allows
- *     inside their own directory. The key grant would stop working the moment
- *     the mode was turned on.
- *   - Linux: the runtime mounts `allowRead` read-only AFTER the writable
- *     mounts, so a repo in `allowRead` covers the role's own territory and
- *     every write fails with "Read-only file system" (measured, srt 0.0.75/0.0.78).
+ * It was carved before — every sibling on the way to a kept path denied by
+ * name, which is a photograph: an entry created during the run beside a kept
+ * path was not covered, and read (measured, 2026-10-12). Two measured runtime
+ * behaviours kept the allow out then, and each is now handled where it bites:
  *
- * Instead each data root is walked down toward what is kept, and every
- * sibling on the way is denied. Deny-only, so it composes with every allow
- * seisin already emits, on both platforms the same way.
+ *   - macOS: an allow is emitted after the denies, and a deny that sits inside
+ *     an allow is re-emitted after it whole (last match wins). For the key
+ *     directory inside the repo that re-emitted deny also shuts the key files
+ *     `[keys]` re-allows inside it. A deny spelt as a pattern is re-emitted
+ *     MINUS the allows inside it, so those denies are spelt as one
+ *     (outlastAllows, below).
+ *   - Linux: the runtime restores the write mounts a deny wiped and then the
+ *     read allows, read-only, on top of them — so a repo allowed back covers
+ *     the territory inside it and every write fails with "Read-only file
+ *     system" (srt 0.0.75/0.0.78). A kept path that holds a write path is
+ *     allowed back piece by piece around it (territoryReads, below).
  *
- * **What that costs, said where it is decided.** It is a photograph: an entry
- * created during the run beside a kept path is not covered. And the
- * NAMES along the path stay listable — a role inside `~/work/repo` can `ls
- * ~/work` and see what is there, though it can open none of it. Secrets that
- * must stay shut belong in roots that hold no territory, where they are denied
- * whole.
+ * **What that costs, said where it is decided.** On Linux, inside a kept
+ * directory that is on the way to a write path, an entry created during the
+ * run is not there for the role until the next run: it fails closed, it does
+ * not leak. On both, the names of what the role keeps are visible where the
+ * runtime has to show them (a Linux `ls ~` lists the mount points), and
+ * nothing else in a data root is.
  */
 import { readdirSync, lstatSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -76,40 +83,43 @@ export function dataRoots(platform = process.platform, home = homedir(), tmp = t
 }
 
 /**
- * The most entries one directory on the way may have.
+ * The most entries one directory may have where a kept path is allowed back
+ * piece by piece (Linux, around a write path).
  *
- * Every sibling is one deny, and the runtime hands the whole profile to
- * `sandbox-exec` as an argument. Measured: a repo kept inside a Mac's TMPDIR,
- * 9,105 entries, made 9,163 denies, 815 KB of profile, and `spawn E2BIG` —
- * no agent, and before the canary existed, no reason anyone could read. A repo
- * under a home is a few hundred (measured: ~230 for a repo four levels down). Past this the answer is
- * a refusal that names the directory, not a profile that cannot start.
+ * Every piece is one allow, and one mount. The carving this replaced hit the
+ * same wall from the other side: a repo kept inside a Mac's TMPDIR, 9,105
+ * entries, made 9,163 denies, 815 KB of profile, and `spawn E2BIG` — no
+ * agent, and no reason anyone could read. Past this the answer is a refusal
+ * that names the directory, not a sandbox that cannot start.
  */
 export const MAX_CARVE = 1000;
 
 /** What the runtime treats as glob syntax in a path (sandbox-utils containsGlobChars). */
 const GLOB = /[[\]*?]/;
-const GLOB_G = /[[\]*?]/g;
 
 const under = (p, dir) => p === dir || p.startsWith(dir === "/" ? "/" : dir + "/");
+const inside = (p, dir) => p !== dir && under(p, dir);
 
 /**
- * The read denies that leave exactly `keep` readable inside `roots`.
+ * The read rules that leave exactly `keep` readable inside `roots`:
+ * `{ deny, allow }`, for denyRead and allowRead.
  *
- * A root with nothing kept under it is denied whole. A root with something
- * kept is listed, and each child that is not on the way to a kept path is
- * denied; the children that are, are walked the same way. A kept path is
- * readable whole, so nothing below it is visited.
+ * Each root is denied whole, unless something kept covers it. Each kept path
+ * under a root is allowed back, in both spellings. On Linux a kept path that
+ * holds one of `writes` is not allowed back itself — its read mount would
+ * land on the write mount inside it — but walked toward the writes, and every
+ * child not on the way is allowed instead; the writes come back writable
+ * through the runtime's own restore. Nothing is denied by name, so nothing
+ * created later escapes the deny.
  *
- * Symlinks among the children are left alone rather than denied: the sandbox
- * enforces on the destination, so denying `~/link -> ~/work/repo` would deny
- * the repo itself. A link into a denied place is denied there; a link into a
- * kept one is meant to be read.
+ * Nothing at or under `denied` — the key directories, other roles' private
+ * folders, the credential homes — is allowed back: an allow there would win
+ * over the deny on macOS, and on Linux the deny's own mount restores it.
  *
  * `fs` is injectable for tests; it needs `readdir(dir) -> names`,
  * `kind(path) -> "dir" | "link" | "other" | null` and `real(path) -> path`.
  */
-export function carveDenies(roots, keep, fs = realFs) {
+export function territoryReads(roots, keep, { writes = [], denied = [], platform = process.platform, fs = realFs } = {}) {
   // realAncestor, not realOrSelf: a territory not created yet still has to
   // be spelt the way the kernel will meet it (`/tmp/x` is `/private/tmp/x`).
   // Both spellings of each: where it resolves, and where its NAME lives (the
@@ -117,50 +127,71 @@ export function carveDenies(roots, keep, fs = realFs) {
   // symlink — `~/.local/bin/claude` — has to be reachable by name for a PATH
   // lookup to find it, and by target for the read to land.
   const nameOf = (k) => { const d = k.slice(0, k.lastIndexOf("/")) || "/"; const r = fs.real(d); return `${r === "/" ? "" : r}/${k.slice(k.lastIndexOf("/") + 1)}`; };
-  const kept = [...new Set(keep.flatMap((k) => [fs.real(k), nameOf(k)]))];
-  const out = [];
+  const no = [...new Set(denied.map(fs.real))];
+  const open = (p) => !no.some((d) => under(p, d));
+  const kept = [...new Set(keep.flatMap((k) => [fs.real(k), nameOf(k)]))].filter(open);
+  // Nested roots (`/private/var/folders/…/T` inside `/private/var/folders`)
+  // are covered by the outer deny; one kept whole needs no deny at all.
+  const real = [...new Set(roots.map(fs.real))].filter((r) => fs.kind(r) === "dir");
+  const deny = real.filter((r) => !real.some((o) => inside(r, o)) && !kept.some((k) => under(r, k)));
+  const shut = kept.filter((k) => deny.some((r) => inside(k, r)));
+  if (platform !== "linux") return { deny, allow: shut };
+
+  const w = [...new Set(writes.map(fs.real))];
+  const allow = [];
   const walk = (dir) => {
-    if (kept.some((k) => under(dir, k))) return;          // kept whole
-    if (!kept.some((k) => under(k, dir))) { out.push(dir); return; }
     let names;
-    try { names = fs.readdir(dir); } catch { out.push(dir); return; }   // unreadable: shut it
+    try { names = fs.readdir(dir); } catch { return; }      // unreadable: nothing comes back
     if (names.length > MAX_CARVE)
       throw new Error(
-        `read = "territory" cannot carve ${dir}: it holds ${names.length} entries, and each would be one ` +
-        `deny in the sandbox profile (the most it takes is ${MAX_CARVE} per directory).\n` +
-        `  Something the role keeps is inside it: ${kept.filter((k) => under(k, dir)).join(", ")}.\n` +
+        `read = "territory" cannot keep ${dir} readable around what the role writes inside it: it holds ` +
+        `${names.length} entries, and on Linux each is one mount (the most it takes is ${MAX_CARVE} per directory).\n` +
+        `  Written inside it: ${w.filter((x) => inside(x, dir)).join(", ")}.\n` +
         `  Move the repo to a directory with fewer neighbours, or narrow the reads entry that keeps this path.`);
-    const deny = (child, name) => {
-      if (!GLOB.test(name)) return out.push(child);
-      // The runtime reads `[ ] * ?` in a path as a glob and has no escape for
-      // them: a name like `notes [draft].md` became a regex with an unterminated
-      // class and every run died before starting (measured, srt 0.0.78). So
-      // each of them is turned into `?` — one character, any — which still
-      // matches this name. It may match a sibling of the same length too; that
-      // is fine for a sibling being denied anyway, and refused for one kept.
-      const pattern = name.replace(GLOB_G, "?");
-      const re = new RegExp(`^${pattern.replace(/[.^$+{}()|\\]/g, "\\$&").replace(/\?/g, "[^/]")}$`);
-      const clash = names.find((n) => n !== name && re.test(n) && kept.some((k) => under(k, `${dir === "/" ? "" : dir}/${n}`)));
-      if (clash)
-        throw new Error(
-          `read = "territory" cannot deny ${child}: its name holds characters the sandbox reads as a ` +
-          `pattern, and the pattern would also shut ${dir === "/" ? "" : dir}/${clash}, which the role keeps.\n` +
-          `  Rename one of the two.`);
-      out.push(`${dir === "/" ? "" : dir}/${pattern}`);
-    };
     for (const name of names.sort()) {
       const child = dir === "/" ? `/${name}` : `${dir}/${name}`;
-      const kind = fs.kind(child);
-      if (kind === "link" || kind === null) continue;
-      if (kind === "dir" && kept.some((k) => under(k, child))) walk(child);
-      else if (!kept.some((k) => under(child, k))) deny(child, name);
+      if (w.some((x) => under(child, x)) || !open(child)) continue;   // a write, or denied
+      if (fs.kind(child) === "dir" && w.some((x) => inside(x, child))) walk(child);
+      else allow.push(child);
     }
   };
-  // Nested roots (`/private/var/folders/…/T` inside `/private/var/folders`)
-  // would be walked twice; the outer walk already covers the inner one.
-  const real = [...new Set(roots.map(fs.real))].filter((r) => fs.kind(r) === "dir");
-  for (const r of real.filter((r) => !real.some((o) => o !== r && under(r, o)))) walk(r);
-  return out;
+  for (const k of shut) {
+    if (w.some((x) => under(k, x))) continue;                // comes back as a write
+    if (w.some((x) => inside(x, k)) && fs.kind(k) === "dir") walk(k);
+    else allow.push(k);
+  }
+  return { deny, allow };
+}
+
+/**
+ * The denies, respelt so that each keeps its own allows open on macOS.
+ *
+ * A deny strictly inside an allow is re-emitted after the allows, because the
+ * last rule that matches wins and the allow would otherwise re-open it. A
+ * deny written as a path comes back whole, and that shuts every allow inside
+ * IT — the key files inside the key directory inside the repo. A deny written
+ * as a pattern comes back minus each allow its pattern covers (srt 0.0.78,
+ * macos-sandbox-utils lateReadDenyFilters). So those denies, and only those,
+ * are spelt as a pattern that matches exactly their own path: one character
+ * of the last name in brackets, `.secrets` as `.secret[s]`.
+ *
+ * A path that already holds glob syntax cannot be spelt that way without
+ * matching something else, and is refused.
+ */
+export function outlastAllows(denies, allows, real = (p) => p) {
+  const open = allows.map(real);
+  return denies.map((written) => {
+    const d = real(written);
+    if (!open.some((a) => inside(a, d)) || !open.some((a) => inside(d, a))) return written;
+    const slash = d.lastIndexOf("/");
+    let at = d.length - 1;
+    while (at > slash && !/[A-Za-z0-9_-]/.test(d[at])) at--;
+    if (GLOB.test(d) || at <= slash)
+      throw new Error(
+        `read = "territory" cannot keep ${d} shut around what is allowed inside it: its name holds ` +
+        `characters the sandbox reads as a pattern, or none it can bracket.\n  Rename it.`);
+    return `${d.slice(0, at)}[${d[at]}]${d.slice(at + 1)}`;
+  });
 }
 
 const realFs = {
@@ -175,7 +206,7 @@ const realFs = {
 };
 
 /**
- * What a role is carved toward: its repo, what it writes, its `reads` and its
+ * What a role keeps readable: its repo, what it writes, its `reads` and its
  * `toolchain`. One answer for the settings and for `check`, so the warning
  * about an unreadable PATH entry and the kernel agree.
  */
@@ -200,12 +231,12 @@ export function keptFor(config, role, { observe = false, agent, program } = {}) 
   ];
 }
 
-/** Whether `p` is shut by the carving: under a data root, and on the way to nothing kept. */
+/** Whether `p` is shut by the mode: under a data root, and under nothing kept. */
 export function shutByTerritory(p, keep, roots = dataRoots(), real = realAncestor) {
   const r = real(p);
   const kept = keep.map(real);
   if (!roots.some((root) => under(r, root))) return false;
-  return !kept.some((k) => under(r, k) || under(k, r));
+  return !kept.some((k) => under(r, k));
 }
 
 /**
