@@ -11,7 +11,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { CONFIG_NAME } from "./layout.js";
-import { parseKey, MODES, checkNames, BUILTIN } from "./keys.js";
+import { parseKey, MODES, checkNames, BUILTIN, unknownMode } from "./keys.js";
 import { readNotify } from "./notify.js";
 
 export { CONFIG_NAME } from "./layout.js";
@@ -493,9 +493,7 @@ export function loadConfig(path, text = readFileSync(path, "utf8")) {
     checkNames({ name, keyEntries });
     const keyMode = own(r, "key_mode");
     if (keyMode !== undefined && !MODES.includes(keyMode))
-      throw new Error(
-        `${path}: roles.${name}: key_mode = "${keyMode}" is not a delivery mode. ` +
-        `Known: ${MODES.join(", ")}.`);
+      throw unknownMode(`${path}: roles.${name}:`, "key_mode", keyMode);
     const neverWrites = readNeverWrites(own(r, "never_writes"), `${path}: roles.${name}.never_writes`);
     const localBinding = own(r, "local_binding");
     const trustd = own(r, "trustd");
@@ -672,9 +670,7 @@ function readProviders(table, path) {
         `  Put {ref} where the reference goes: command = [${command.map((c) => `"${c}"`).join(", ")}, "{ref}"]`);
     const mode = own(p, "mode");
     if (mode !== undefined && !MODES.includes(mode))
-      throw new Error(
-        `${path}: [keys.providers.${name}] mode = "${mode}" is not a delivery mode. ` +
-        `Known: ${MODES.join(", ")}.`);
+      throw unknownMode(`${path}: [keys.providers.${name}]`, "mode", mode);
     out[name] = { name, command, mode: mode ?? null };
   }
   return out;

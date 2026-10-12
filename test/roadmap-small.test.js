@@ -73,7 +73,7 @@ const seisin = (cwd, ...args) =>
   spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: "utf8", timeout: 10_000, input: "" });
 
 const EVERY = ["run", "check", "explain", "whose", "scan", "review", "walls", "wire", "requests",
-  "grant", "decline", "deny", "log", "watch", "init", "ui", "mcp", "hook"];
+  "grant", "decline", "log", "watch", "init", "ui", "mcp", "hook"];
 
 test("every command answers --help and -h with its usage, exit 0, and does nothing else", () => {
   // No policy here on purpose: help must not need one.
@@ -83,7 +83,7 @@ test("every command answers --help and -h with its usage, exit 0, and does nothi
     // a server or a stdin reader would still be running when the timeout hit
     assert.equal(r.status, 0, `${c} ${h}: status ${r.status} signal ${r.signal} ${r.stderr}`);
     assert.match(r.stdout, /usage:/, `${c} ${h}`);
-    assert.match(r.stdout, new RegExp(`seisin ${c === "deny" ? "decline" : c}\\b`), `${c} ${h}`);
+    assert.match(r.stdout, new RegExp(`seisin ${c}\\b`), `${c} ${h}`);
   }
   // wire and init write files when they run; asked for help, they wrote nothing
   assert.deepEqual(readdirSync(dir), []);

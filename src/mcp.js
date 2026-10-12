@@ -16,7 +16,7 @@
  *
  * If granting were a tool here, an agent holding it could widen its own
  * territory and the record would say a human did it. See
- * `docs/permission-requests.md`.
+ * `docs/requests.md`.
  *
  * ── Why there is no SDK ──
  * The official SDK pulls 91 packages and 26 MB — express, hono, cors, jose —
@@ -105,7 +105,7 @@ const TOOLS = [
       "what was denied. What is measured against the policy as it stands is where each " +
       "path is now — `standing`: unowned (a decision nobody has made), owned, protected " +
       "(closed to every role on purpose, nothing to grant) or outside (a port, a key, or " +
-      "outside the repository) — and, per cause, `stillRefused`, how many of the roles " +
+      "outside the repository) — and, per cause, `stillDenied`, how many of the roles " +
       "that hit it would hit it today. An unowned cause also carries `kind` and `hint`: " +
       "git (lock or metadata), credential, temporary, build or territory, and the move " +
       "that fits it (`standing.unowned.kinds` counts them). Only `territory` is a question " +
@@ -205,7 +205,7 @@ const HANDLERS = {
 
   seisin_requests() {
     const cfg = config();
-    const queue = requestQueue(cfg.root, read(logPath(cfg.root)), cfg.keyDirs);
+    const queue = requestQueue(cfg.root, read(logPath(cfg.root)), cfg.keyDirs, { readOnly: true });
     return {
       pending: queue.map((r, i) => ({
         number: i + 1, id: r.key, role: r.role, action: r.action,
@@ -273,7 +273,7 @@ const HANDLERS = {
 
   seisin_draft_grant({ id, number } = {}) {
     const cfg = config();
-    const queue = pending(requestsPath(cfg.root), { keyDirs: cfg.keyDirs });
+    const queue = pending(requestsPath(cfg.root), { keyDirs: cfg.keyDirs, readOnly: true });
     let req;
     if (typeof id === "string" && id) {
       req = queue.find((r) => r.key === id);

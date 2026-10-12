@@ -52,7 +52,7 @@ export { read as readLog, logPath, observed, generalise } from "./log.js";
  * proposal are things a caller — including an MCP server — legitimately does.
  * `settle` and `applyGrant` are NOT exported: granting is not a tool call, and
  * the surface should make that hard to get wrong rather than merely document
- * it. See docs/permission-requests.md.
+ * it. See docs/requests.md.
  */
 export { pending as pendingRequests, requestsPath, grantFor } from "./requests.js";
 

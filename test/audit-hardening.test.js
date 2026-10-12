@@ -36,13 +36,13 @@ ignore = ["archive/**"]
 dir = [".secrets", "shared"]
 [keys.providers.vault]
 command = ["vault", "read", "{ref}"]
-mode = "scratch"
+mode = "run-file"
 [network]
 allow = ["api.example.test"]
   [roles.dev] # developer
   writes = ["src/**"] # approved territory
 keys = ["TOKEN=vault://token"]
-key_mode = "scratch"
+key_mode = "run-file"
 env = ["BUILD_FLAG"]
 network = []
 never_writes = ["src/private/**"]

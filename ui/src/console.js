@@ -151,7 +151,7 @@
     groups.forEach(function(g){
       about[g.about].paths++; about[g.about].denials += g.times;
       g.share = g.times / total;
-      g.stillRefused = g.roles.filter(function(r){ return still(r, g); }).length;
+      g.stillDenied = g.roles.filter(function(r){ return still(r, g); }).length;
       if (g.about !== "file") { g.standing = "outside"; return; }
       if (g.owners.length) { g.standing = "owned"; return; }
       g.standing = "unowned"; unowned++;
@@ -814,7 +814,7 @@
   function bar(c, max){
     var w = Math.max(2, Math.round((c.times / max) * 100));
     // A cause the policy no longer denies is history, not live: shown greyed, not dropped.
-    var cold = c.stillRefused === 0;
+    var cold = c.stillDenied === 0;
     var who = c.roles.length === 1 ? c.roles[0] : c.roles.length + " roles";
     return '<div class="bar' + (cold ? ' cold' : '') + '">' +
       '<div class="lbl"><div class="p">' + esc(c.action) + ' ' + esc(c.target) + '</div>' +

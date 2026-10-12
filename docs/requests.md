@@ -163,7 +163,12 @@ mechanism by which permission files only ever grow.
 
 Append-only matters for the same reason it does for the log: a decision that can
 be rewritten is not evidence. A granted or declined request is not deleted, it is
-followed by a line saying what happened to it.
+followed by a line saying what happened to it: `"kind":"granted"` or `"kind":"declined"`.
+
+Queues written before 0.6.0 stored a decline as `"denied"`, the boundary's word. The first
+seisin that opens such a queue as a person rewrites those lines once and keeps the original as
+`requests.jsonl.pre-0.6.0`; why that is the one exception to append-only is in
+[decisions](decisions.md#the-060-renames-one-name-and-the-old-one-stopped).
 
 And "append-only" is now enforced rather than asserted. It was not, for a while:
 `.seisin/` sat in every role's allowWrite because the hook runs inside the sandbox

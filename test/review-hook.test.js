@@ -231,7 +231,7 @@ function leftBy(pid) {
 test("a run whose key cannot be resolved exits 2 and removes its run directory", { skip: noSrt }, () => {
   const dir = boxed("rh-key-");
   writeFileSync(join(dir, "seisin.toml"),
-    '[roles.keyed]\nwrites = ["src/**"]\nkeys = ["TOK=file://not-there.txt"]\nkey_mode = "scratch"\n');
+    '[roles.keyed]\nwrites = ["src/**"]\nkeys = ["TOK=file://not-there.txt"]\nkey_mode = "run-file"\n');
   // Fails after the run directory, the settings and the spool exist.
   const r = spawnSync(process.execPath, [CLI, "run", "keyed", "--", "true"], { cwd: dir, encoding: "utf8" });
   assert.equal(r.status, 2, r.stderr);

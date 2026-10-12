@@ -37,7 +37,7 @@ With one agent, its own sandbox covers most of this ([what is left over](#what-i
 
 **The honest parts** · [How it holds](#how-it-holds) · [What it is not](#what-it-is-not) · [Why not a container](#why-not-a-container) · [Prior art](#prior-art) · [Status](#status)
 
-**Deeper** · [Keys](https://github.com/carlostapiacl/seisin/blob/main/docs/keys.md) · [Agents](https://github.com/carlostapiacl/seisin/blob/main/docs/agents.md) · [Day one](https://github.com/carlostapiacl/seisin/blob/main/docs/first-day.md) · [Scratch](https://github.com/carlostapiacl/seisin/blob/main/docs/scratch.md) · [Glossary](https://github.com/carlostapiacl/seisin/blob/main/docs/glossary.md) · [What it has been put through](https://github.com/carlostapiacl/seisin/blob/main/docs/what-it-has-been-put-through.md) · [Field notes](https://github.com/carlostapiacl/seisin/blob/main/docs/field-notes.md) · [OpenShell compatibility](https://github.com/carlostapiacl/seisin/blob/main/docs/openshell.md) · [Decisions](https://github.com/carlostapiacl/seisin/blob/main/docs/decisions.md) · [nono backend contract](https://github.com/carlostapiacl/seisin/blob/main/docs/nono-backend.md) · [Requests](https://github.com/carlostapiacl/seisin/blob/main/docs/permission-requests.md) · [Contributing](https://github.com/carlostapiacl/seisin/blob/main/CONTRIBUTING.md)
+**Deeper** · [Keys](https://github.com/carlostapiacl/seisin/blob/main/docs/keys.md) · [Agents](https://github.com/carlostapiacl/seisin/blob/main/docs/agents.md) · [Day one](https://github.com/carlostapiacl/seisin/blob/main/docs/first-day.md) · [Scratch](https://github.com/carlostapiacl/seisin/blob/main/docs/scratch.md) · [Glossary](https://github.com/carlostapiacl/seisin/blob/main/docs/glossary.md) · [What it has been put through](https://github.com/carlostapiacl/seisin/blob/main/docs/what-it-has-been-put-through.md) · [Field notes](https://github.com/carlostapiacl/seisin/blob/main/docs/field-notes.md) · [OpenShell compatibility](https://github.com/carlostapiacl/seisin/blob/main/docs/openshell.md) · [Decisions](https://github.com/carlostapiacl/seisin/blob/main/docs/decisions.md) · [nono backend contract](https://github.com/carlostapiacl/seisin/blob/main/docs/nono-backend.md) · [Requests](https://github.com/carlostapiacl/seisin/blob/main/docs/requests.md) · [Contributing](https://github.com/carlostapiacl/seisin/blob/main/CONTRIBUTING.md)
 
 </details>
 
@@ -605,7 +605,7 @@ from the log and tells the agent whose the path was and how many times it has be
 the half PreToolUse never sees; and when a session starts, resumes or is compacted it hands the
 agent its territory and its walls, before the first one.
 
-**[How a denial becomes a request, why it deduplicates, and what a grant records →](https://github.com/carlostapiacl/seisin/blob/main/docs/permission-requests.md)**
+**[How a denial becomes a request, why it deduplicates, and what a grant records →](https://github.com/carlostapiacl/seisin/blob/main/docs/requests.md)**
 
 ## Ask your own assistant
 

@@ -114,15 +114,11 @@ const COMMANDS = {
   grant: async () => void (await import("./commands/requests.js")).grant(config(), argv),
   /**
    * A person DECLINES a request; the boundary DENIES a write. One word each,
-   * because they are opposite events and `deny` used to name both — a queue
+   * because they are opposite events and one word used to name both — a queue
    * entry said `first refused on …` (the kernel) and the answer said
-   * `refused frontend ✕ …` (you).
-   *
-   * `deny` stays and is not documented. Renaming a published command over a
-   * word is not worth breaking somebody's script; teaching the new one is.
+   * `refused frontend ✕ …` (you). The old command is gone (see RETIRED).
    */
-  decline: async () => void (await import("./commands/requests.js")).deny(config(), argv),
-  deny: async () => void (await import("./commands/requests.js")).deny(config(), argv),
+  decline: async () => void (await import("./commands/requests.js")).decline(config(), argv),
   mcp: async () => {
     await (await import("./mcp.js")).serveMcp(version());
     return 0;
@@ -186,8 +182,7 @@ function asksHelp(name, args) {
 /** One command's help: its flags, examples and exit codes, or the whole usage. */
 function helpFor(name) {
   if (COMMAND_HELP[name]) return renderHelp(name, C);
-  const alias = name === "deny" ? "decline" : name;
-  const lines = USAGE.split("\n").filter((l) => l.startsWith(`  seisin ${alias} `) || l === `  seisin ${alias}`);
+  const lines = USAGE.split("\n").filter((l) => l.startsWith(`  seisin ${name} `) || l === `  seisin ${name}`);
   if (!lines.length) return USAGE;
   return `\nusage:\n${lines.join("\n")}\n\n  ${C.dim}seisin --help for every command${C.off}\n\n`;
 }
@@ -203,12 +198,26 @@ if (command === undefined || command === "help" || HELP.has(command)) {
   process.exit(0);
 }
 
+/**
+ * Commands that were renamed, and what to type now. Not aliases: the old name
+ * runs nothing, so a script that calls it stops and says what changed rather
+ * than doing the right thing under the wrong word for ever.
+ */
+const RETIRED = {
+  deny: `"seisin deny" was removed in 0.6.0: a person declines, the boundary denies.\n` +
+    `  Use seisin decline <n|id> [--reason "…"] — same arguments, same effect.`,
+};
+
 const chosen = Object.hasOwn(COMMANDS, command) ? COMMANDS[command] : null;
+if (!chosen && Object.hasOwn(RETIRED, command)) {
+  err(`${C.red}seisin:${C.off} ${RETIRED[command]}\n`);
+  process.exit(2);
+}
 if (!chosen) {
   // One line, and the nearest command. The whole usage, printed for a typo,
   // pushed the one line that mattered off the screen.
   const near = command.startsWith("-") ? nearest(command, ["--help", "--version"])
-    : nearest(command, Object.keys(COMMANDS).filter((c) => !c.startsWith("-") && c !== "deny"));
+    : nearest(command, Object.keys(COMMANDS).filter((c) => !c.startsWith("-")));
   err(`${C.red}seisin:${C.off} unknown ${command.startsWith("-") ? "option" : "command"} "${command}"` +
     `${near ? ` — did you mean "${near}"?` : ""}\n  seisin --help lists every command\n`);
   process.exit(2);
@@ -247,5 +256,5 @@ function refuseUnknownFlags(name, args) {
       ours = args.slice(1, i);
     }
   }
-  checkFlags(name === "deny" ? "decline" : name, ours, f.known, f.values);
+  checkFlags(name, ours, f.known, f.values);
 }

@@ -22,7 +22,7 @@ before(() => {
   mkdirSync(join(repo, "b"), { recursive: true });
   writeFileSync(join(repo, "token.txt"), "scratch-secret-value\n");
   writeFileSync(join(repo, "seisin.toml"),
-    '[roles.a]\nwrites = ["a/**"]\nkeys = ["S=file://token.txt"]\nkey_mode = "scratch"\n\n' +
+    '[roles.a]\nwrites = ["a/**"]\nkeys = ["S=file://token.txt"]\nkey_mode = "run-file"\n\n' +
     '[roles.b]\nwrites = ["b/**"]\n');
 });
 

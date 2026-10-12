@@ -281,7 +281,7 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
    *
    * A reference has no path, so there is nothing here to allow: it is resolved
    * by the parent before the sandbox starts and handed over as an environment
-   * variable or as a scratch file. See keys.js. Filtering here rather than
+   * variable or as a file in the run directory. See keys.js. Filtering here rather than
    * upstream keeps the two kinds from having to know about each other — the
    * settings this function emits are still, entirely, about the filesystem.
    */
@@ -317,9 +317,9 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
   /**
    * Other runs' directories are unreadable; this run's is readable.
    *
-   * Every run keeps its socket and `scratch` keys under one root (rundir.js),
+   * Every run keeps its socket and `run-file` keys under one root (rundir.js),
    * and every role runs as the same user, so the directory mode protects
-   * nothing between roles. Measured: one role read another's scratch key while
+   * nothing between roles. Measured: one role read another's run-file key while
    * both ran. Same shape as the key directories: deny the parent, allow your own.
    */
   const runs = runsRootOf(spool);
@@ -339,7 +339,7 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
     /**
      * This run's settings are not this run's to read.
      *
-     * They sit in the run's own directory, which the run reads for its scratch
+     * They sit in the run's own directory, which the run reads for its run-file
      * keys, so they were readable from inside: a map of every path left open
      * and every one shut, handed to the process it confines. Not a defence on
      * its own — the policy has to be right either way — but there is no reason

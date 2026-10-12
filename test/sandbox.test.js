@@ -293,7 +293,7 @@ test("the provider runs OUTSIDE the sandbox — it writes where the role cannot"
 
 test("scratch hands the role a readable file, and the turn takes it away", { skip }, () => {
   const dir = refRepo(
-    `[network]\nallow = []\n\n[keys.providers.p]\ncommand = ["printf", "%s", "{ref}"]\nmode = "scratch"\n\n` +
+    `[network]\nallow = []\n\n[keys.providers.p]\ncommand = ["printf", "%s", "{ref}"]\nmode = "run-file"\n\n` +
     `[roles.dev]\nwrites = ["src/**"]\nkeys = ["T=p://${SECRET}"]\n`);
   // Inside: the file is there, the role may read it, and the bytes are right.
   const r = runIn(dir, "dev", 'printf "len=%s path=%s" "$(wc -c < "$T_FILE" | tr -d " ")" "$T_FILE"');
@@ -312,7 +312,7 @@ test("scratch announces the path under BOTH conventions, because the world has t
   // Found by running kubectl against it: the file was right and the variable
   // it was announced under was one kubectl has never heard of.
   const dir = refRepo(
-    `[network]\nallow = []\n\n[keys.providers.p]\ncommand = ["printf", "%s", "{ref}"]\nmode = "scratch"\n\n` +
+    `[network]\nallow = []\n\n[keys.providers.p]\ncommand = ["printf", "%s", "{ref}"]\nmode = "run-file"\n\n` +
     `[roles.dev]\nwrites = ["src/**"]\nkeys = ["T=p://${SECRET}"]\n`);
   const r = runIn(dir, "dev", 'printf "plain=%s file=%s" "$T" "$T_FILE"');
   const m = /plain=(\S+) file=(\S+)/.exec(r.stdout);

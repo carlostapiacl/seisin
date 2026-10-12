@@ -198,7 +198,7 @@ export async function run(config, argv) {
   // Built before the first request can arrive; the POST leaves from here, the
   // parent, never from inside the sandbox (notify.js).
   const notify = notifier(config);
-  // Everything that belongs to this run alone — socket, settings, scratch keys
+  // Everything that belongs to this run alone — socket, settings, run-file keys
   // — in one private directory, with one id. See rundir.js.
   const theRun = openRun();
   /**
@@ -207,7 +207,7 @@ export async function run(config, argv) {
    * The happy path closed the spool, the kernel watcher and the directory; the
    * failures did not. A key provider that failed, a spool that would not bind,
    * a runtime that would not start — each left the directory behind with its
-   * socket and, past the key step, its `scratch` keys on disk until some later
+   * socket and, past the key step, its `run-file` keys on disk until some later
    * run swept it, and the `log stream` process running. An `exit` handler,
    * because every one of those ends in `process.exit`, from cli.js or from here,
    * and everything it has to do is synchronous. Idempotent: the normal exit
@@ -320,17 +320,17 @@ export async function run(config, argv) {
       event: "key", role, run: theRun.id.slice(0, 8), key: entry.name, provider: entry.scheme, mode, ok,
     }),
   });
-  const scratchKeys = theRun.keys;
-  if (resolved.some((r) => r.mode === "scratch")) mkdirSync(scratchKeys, { recursive: true, mode: 0o700 });
+  const runFileKeys = theRun.keys;
+  if (resolved.some((r) => r.mode === "run-file")) mkdirSync(runFileKeys, { recursive: true, mode: 0o700 });
   for (const { entry, mode, value } of resolved) {
     if (mode === "env") { env[entry.name] = value; continue; }
-    // `scratch`: the value lands in the per-run directory this process already
+    // `run-file`: the value lands in the per-run directory this process already
     // makes for the spool and already removes on exit, so its lifetime is the
     // run's by construction rather than by a cleanup somebody has to remember.
     // The variable carries the PATH, which is the convention every tool that
     // wants a secret from a file already reads (`_FILE`), and it means the
     // value itself is not in the environment of a process that may print it.
-    const file = join(scratchKeys, entry.name);
+    const file = join(runFileKeys, entry.name);
     writeFileSync(file, value, { mode: 0o600 });
     /**
      * Both names, because the world has two conventions and neither is ours.
@@ -345,7 +345,7 @@ export async function run(config, argv) {
      * the file was there and correct, and the variable it was announced under
      * was one kubectl has never heard of.
      *
-     * Setting both costs nothing and leaks nothing: in `scratch` mode the
+     * Setting both costs nothing and leaks nothing: in `run-file` mode the
      * value is deliberately not in the environment, so both variables hold a
      * path and neither holds a secret.
      */
