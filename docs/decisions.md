@@ -698,6 +698,27 @@ non-HTTP server on a listed port answered through it; an unlisted one got 403. S
 driver that takes a custom stream, like Node's `mysql2`, can be given a tunnel. We don't ship a
 relay for the rest.
 
+**Re-checked against runtime 0.0.78 (2026-10-12): still no kernel path.** What was read:
+
+- macOS, `macos-sandbox-utils.js` (`generateSandboxProfile`): the only `network-outbound (remote ip
+  "localhost:N")` rules are for `httpProxyPort` and `socksProxyPort`; `allowLocalBinding` adds
+  `localhost:*`. Nothing in `NetworkConfigSchema` takes a loopback port. `allowUnixSockets` covers
+  Unix socket paths, not TCP. Pointing `socksProxyPort` at 3306 would emit the rule, but it tells
+  the runtime not to start its own SOCKS proxy and to trust that port to filter domains: a hole,
+  not a feature.
+- Linux, `linux-sandbox-utils.js`: `--unshare-net` gives the sandbox its own loopback; the host is
+  reachable only through two fixed socat bridges (3128 → HTTP proxy, 1080 → SOCKS). There is no
+  hook to add a third, and `allowLocalBinding` is not read there at all. A relay of our own inside
+  the sandbox would need `allowAllUnixSockets`, which lifts the seccomp filter on every Unix socket.
+
+What was measured, a raw TCP client (`net.connect`) with `local_ports = [N]`: macOS denies N and
+N+1 with `EPERM`; Linux fails both with `ECONNREFUSED`. curl from the same role reaches N through
+the proxy and gets 403 on N+1. Under `local_binding` (macOS) the same client reaches both. A test
+in `local-ports.test.js` pins this; if a runtime upgrade lets the direct dial through, it fails and
+`local_ports` can move to the kernel. Until then `check` says, for every role with `local_ports`,
+which clients it serves. The upstream ask is outbound to one loopback port in the profile and a
+per-port bridge on Linux.
+
 **Chromium** (macOS). By default it doesn't start: the profile denies the Mach service it
 registers at launch, and it aborts with `bootstrap_check_in … Permission denied (1100)`.
 `--single-process` gets it running. That isn't a path, so it's not in the log; the
