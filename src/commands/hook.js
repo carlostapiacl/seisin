@@ -12,6 +12,7 @@ import { decide } from "../hook.js";
 import { afterTool, atSessionStart } from "../diagnose.js";
 import { logPath } from "../log.js";
 import { flush } from "../spool.js";
+import { chainFromEnv } from "../handoff.js";
 
 export async function hook(stdin = process.stdin, env = process.env) {
   const role = env.SEISIN_ROLE;
@@ -34,12 +35,15 @@ export async function hook(stdin = process.stdin, env = process.env) {
     return null;
   }
   if (!config.roles[role]) return null;
+  // Set by `seisin run --handoff`; it words the denial and decides nothing
+  // (handoff.js, CHAIN_ENV).
+  const chain = chainFromEnv(env);
 
   // One command for every event it is wired to, so `seisin wire` adds one name.
   // The after-the-fact and session-start halves only explain; neither decides.
   const event_ = event.hook_event_name;
   if (event_ === "PostToolUse" || event_ === "PostToolUseFailure") {
-    try { return await afterTool(config, role, event, { file: logPath(config.root) }); } catch { return null; }
+    try { return await afterTool(config, role, event, { file: logPath(config.root), chain }); } catch { return null; }
   }
   if (event_ === "SessionStart") {
     try { return atSessionStart(config, role, event, { file: logPath(config.root) }); } catch { return null; }
@@ -51,7 +55,7 @@ export async function hook(stdin = process.stdin, env = process.env) {
   // never to do. Said on stderr so the bug is still findable.
   let decision = null;
   try {
-    decision = decide(config, role, event, { observe: env.SEISIN_OBSERVE === "1" });
+    decision = decide(config, role, event, { observe: env.SEISIN_OBSERVE === "1", chain });
   } catch (e) {
     process.stderr.write(`seisin hook: ${e?.message ?? e} — no decision, the tool call goes ahead\n`);
   }

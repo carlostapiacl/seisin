@@ -18,6 +18,7 @@
  */
 import { toRepoRelative, fromCwd } from "../paths.js";
 import { ownersOf, keyHolders } from "../owners.js";
+import { decideHandoff, nextStep, chainFromEnv } from "../handoff.js";
 import { twinsOf, whereIs } from "../worktree.js";
 import { C, out } from "../render.js";
 
@@ -54,7 +55,7 @@ export function whose(config, argv = []) {
     (mine
       ? `  ${C.green}that is you${C.off}${C.dim} — if it was denied, the reason is not ownership.${C.off}\n\n`
       : asking
-        ? `  ${C.dim}you are ${asking}. Hand it over rather than working around it.${C.off}\n\n`
+        ? `  ${C.dim}you are ${asking}. ${nextStep(decideHandoff({ request: { role: asking, action: isKey ? "read" : "write", target: rel }, config, chain: chainFromEnv() }), asking)}${C.off}\n\n`
         : "\n")
   );
   for (const w of worktree) out(renderElsewhere(w, asking));

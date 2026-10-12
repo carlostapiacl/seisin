@@ -22,7 +22,7 @@ import { openRun } from "../rundir.js";
 import { secretsOf, redactor } from "../redact.js";
 import { C, err } from "../render.js";
 import { pending, requestsPath, queueOf, recordHandoff } from "../requests.js";
-import { chainFrom, describeHandoff, MAX_DEPTH } from "../handoff.js";
+import { chainFrom, describeHandoff, MAX_DEPTH, CHAIN_ENV } from "../handoff.js";
 import { notifier } from "../notify.js";
 import { renderAdded } from "./requests.js";
 import { unknownRole } from "../suggest.js";
@@ -282,6 +282,11 @@ export async function run(config, argv) {
   env.SEISIN_ROLE = role;
   env.SEISIN_CONFIG = config.path;
   env[SOCK_ENV] = sockPath;
+  // The handoff chain, for the hook's words only (handoff.js, CHAIN_ENV): set
+  // from the decision checked above, and removed otherwise, so a value the
+  // parent happened to have never reaches a run that was not handed work.
+  delete env[CHAIN_ENV];
+  if (handed) env[CHAIN_ENV] = JSON.stringify(handed.chain);
   /**
    * The declared toolchain goes first on PATH, under `read = "territory"`.
    *
