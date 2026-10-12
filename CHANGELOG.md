@@ -160,6 +160,10 @@ repository). What it needs and what changed is in [docs/agents.md](docs/agents.m
   through a temporary beside the file, choosing the file for a role whose last run was Claude
   Code says, in one line, that it will not be able to edit it. The canary line now records the
   agent a run ran.
+- **The console is edited in `ui/src/`** (`page.html`, `style.css`, `console.js`) and built
+  into the one file that ships, `ui/index.html`, by `npm run build:ui` — plain node, no new
+  dependency, byte for byte. A test fails when the shipped file is not what the source builds.
+  The package ships `ui/index.html` only.
 
 ## 0.5.0 — 2026-09-30
 
