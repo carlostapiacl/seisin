@@ -925,6 +925,50 @@ Three things keep it from losing a line or reading one wrong:
 - **The rename is atomic**: a fresh temporary in `.seisin/`, created exclusively, renamed over
   the queue. A crash before the rename leaves the old queue, which the next open migrates.
 
+## A handoff is decided where the queue is read, and never executed
+
+`src/handoff.js` decided who a denied write goes to — the role that owns it, a person when
+nobody or more than one role does, nobody when the policy has since given the asker the path,
+and a stop when the work would go back to a role it came from or past four hops — and nothing
+called it. Every reader of the queue worked the answer out on its own instead, from the owners
+stored on the line at the moment of the denial: `seisin requests`, the end of `seisin run`, the
+notification, the console and the MCP each printed "owned by" from evidence, and the CLI alone
+corrected it for keys.
+
+**Where it lives.** In the reading, not the writing. `queueOf` (requests.js) is the one function
+every reader goes through, and it asks `decideHandoff` for each request against the policy in
+front of it. Deciding at denial time and storing the result was the alternative, and it is wrong
+twice: the decision would be stale after the first grant, which is the whole point of the queue,
+and one denial is recorded every time it happens, so a stored decision is many decisions about
+one request. The decision is cheap and pure, so it is recomputed — the same move as `owners` and
+`walls`: recompute rather than believe.
+
+What *is* written down is history, and only two things are. The chain a request was asked in,
+on its `asked` line, written by the parent of a run started with `seisin run <role> --handoff
+<id>`; and what the execution plane did about a request (`kind: "handoff"`, read back as
+`attempt`). Neither decides anything: the chain is an input the decision reads, and an attempt is
+shown only where the decision still routes to the same role.
+
+**The property it keeps.** A model may cause demand — by reaching for a path — and nothing else.
+`--handoff` names a request, never a role: the run starts only if the decision routes that
+request to the role being started, so an orchestrator acts on `handoff.role` and cannot
+substitute its own choice. The chain is the parent's: what a role's hook sends is rebuilt from
+its parts and the run's chain is written over it, so a confined process cannot file a request
+with an empty history and have the work routed back to where it came from. A request asked in
+two chains keeps the deeper one for the same reason.
+
+**What seisin still does not do.** Start the receiver. The README says it is not an
+orchestrator, and nothing here changes that: the decision is a field (`handoff` in
+`seisin requests --json`, `seisin_requests`, the notification's JSON and `requestQueue()`), and
+something else reads it and runs `seisin run <handoff.role> --handoff <id>`. Admission limits —
+how many chains a role has open, how many receivers are running — are that caller's, because only
+it knows its load: it can pass them to the exported `decideHandoff`, and record a held handoff
+with `recordHandoff` so the queue says "handoff held" instead of looking idle.
+
+**Reads go to a person.** A key is shared by a grant, never handed over, and another role's
+private folder is the policy working. Who declares or owns it is still decided in the same place,
+which is what removed the CLI's separate correction for keys.
+
 ## Still open
 
 - ~~**An MCP tool call has no owner.**~~ **Read at the server level, 2026-09-24.** The hook used
