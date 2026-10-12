@@ -131,9 +131,60 @@ export function record(file, { role, action, target, owners }) {
   return write(file, { kind: "asked", key: keyOf({ role, action, target }), role, action, target, owners: owners ?? [] });
 }
 
-/** Records a decision. `by` is always a person; there is no other caller. */
-export function settle(file, key, decision, reason = "") {
-  return write(file, { kind: decision, key, reason });
+/**
+ * Records a decision. `by` is always a person; there is no other caller.
+ *
+ * `only` is the one file a grant covered when the person chose it over the
+ * folder the request is keyed by. The key stays the folder's, so the queue
+ * needs to know: a later ask for a sibling is a new question, not this one
+ * asked again (see reduce).
+ */
+export function settle(file, key, decision, reason = "", { only = null } = {}) {
+  return write(file, { kind: decision, key, reason, ...(only ? { only } : {}) });
+}
+
+/**
+ * The same request, granting the one file it was asked over instead of the
+ * folder it is keyed by.
+ *
+ * Writes only: a key is already one file. The grant is the target exactly as
+ * the request carries it, so it reaches the policy as a literal path and goes
+ * through the same refuseIfBarred and applyGrant as the folder does.
+ */
+export function asFileGrant(request) {
+  if (request.action === "read")
+    throw new Error(`${request.key} is a key, and a key is already one file — grant it without --file`);
+  if (request.action !== "write")
+    throw new Error(`only a write can be granted as one file, and ${request.key} is a ${request.action}`);
+  const t = typeof request.target === "string" ? request.target : "";
+  if (!t || t.endsWith("/") || t.includes("*"))
+    throw new Error(`${JSON.stringify(t)} is not one file — grant the folder instead`);
+  return { ...request, grant: t, only: t };
+}
+
+/**
+ * The agent a role ran last, as its last canary line recorded it, or null.
+ *
+ * Asked for one reason: a literal file in `writes` is useless to Claude Code,
+ * whose Write and Edit save to a temporary beside the file and rename over it
+ * (docs/first-day.md). Null when the role never ran or ran before the canary
+ * line carried the agent — the caller then says it conditionally.
+ */
+export function lastAgentOf(entries, role) {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const e = entries[i];
+    if (e?.event === "canary" && e.role === role) return typeof e.agent === "string" ? e.agent : null;
+  }
+  return null;
+}
+
+/** One line on what a file-only grant does to a role that runs Claude Code, or "". */
+export function fileOnlyNote(role, agent) {
+  const why = "Claude Code's Write and Edit save to a temporary beside the file and rename it over, " +
+    "and the temporary is outside a one-file grant (EPERM)";
+  if (agent === "claude") return `${role} runs Claude Code: ${why} — grant the folder if it edits this file.`;
+  if (agent) return "";
+  return `If ${role} runs Claude Code, a one-file grant will not let it edit: ${why}.`;
 }
 
 /**
@@ -204,6 +255,21 @@ function reduce(file) {
 
     if (e.kind === "asked") {
       const seen = byKey.get(e.key);
+      /**
+       * A grant of one file answered that file, not the folder the key names.
+       * A sibling asked after it is a new question: reopened with that target,
+       * so it reaches the queue instead of folding into a settled request that
+       * nobody reads again. The same file asked again folds as before.
+       */
+      if (seen && seen.state === "granted" && seen.only?.length && typeof e.target === "string" &&
+          !seen.only.includes(e.target)) {
+        Object.assign(seen, {
+          target: e.target, owners: e.owners ?? [], grant: grantFor(e),
+          times: 1, first: e.at, last: e.at, state: "pending", reason: "",
+        });
+        delete seen.decided;
+        continue;
+      }
       if (seen) { seen.times++; seen.last = e.at; continue; }
       byKey.set(e.key, {
         key: e.key, role: e.role, action: e.action, target: e.target,
@@ -232,6 +298,11 @@ function reduce(file) {
     }
 
     seen.state = e.kind; seen.reason = e.reason ?? ""; seen.decided = e.at;
+    // Kept across reopenings: every file granted one at a time stays answered.
+    if (e.kind === "granted") {
+      if (typeof e.only === "string") seen.only = [...(seen.only ?? []), e.only];
+      else delete seen.only;
+    }
   }
 
   return [...byKey.values()];

@@ -6,7 +6,7 @@
  * person acting in a channel the agent does not have. That is the invariant the
  * whole feature rests on — see docs/permission-requests.md.
  */
-import { pending, settle, applyGrant, refuseIfBarred, requestsPath, markStale, editPolicy, withDeclarers, shellId } from "../requests.js";
+import { pending, settle, applyGrant, refuseIfBarred, requestsPath, markStale, editPolicy, withDeclarers, shellId, asFileGrant, lastAgentOf, fileOnlyNote } from "../requests.js";
 import { keyHolders } from "../owners.js";
 import { loadConfig } from "../config.js";
 import { read, logPath } from "../log.js";
@@ -74,7 +74,7 @@ export function renderQueue(queue) {
 
   const lines = [`\n  ${C.yellow}${queue.length} pending request(s)${C.off}\n\n`];
   queue.forEach((r, i) => lines.push(...entryLines(r, i + 1)));
-  lines.push(`\n    ${C.dim}seisin grant <n|id> [--reason "…"]   ·   seisin decline <n|id> [--reason "…"]${C.off}\n`);
+  lines.push(`\n    ${C.dim}seisin grant <n|id> [--file] [--reason "…"]   ·   seisin decline <n|id> [--reason "…"]${C.off}\n`);
   // Said, because it bites: grant #1 and the old #2 is #1 now.
   lines.push(`    ${C.dim}#n is a position and shifts as requests are settled; the id does not.${C.off}\n\n`);
   return lines.join("");
@@ -153,6 +153,10 @@ function limitWords(limit, role) {
 export function grant(config, argv = []) {
   const i = argv.indexOf("--reason");
   const reason = i === -1 ? "" : argv[i + 1] ?? "";
+  // `--file` grants the file the request was asked over, not the folder it is
+  // keyed by. The id stays first, as usage says; the flag may come after it.
+  const only = argv.includes("--file");
+  const which = argv[0] === "--file" ? argv[1] : argv[0];
 
   // Looked up, applied and settled under one lock — the one the console's
   // decide takes too. Picking before the lock let this and the console both
@@ -160,17 +164,22 @@ export function grant(config, argv = []) {
   let req;
   const { changed } = underLock(() => editPolicy(config, (before) => {
     const current = loadConfig(config.path, before);
-    req = pick(current, argv[0], "grant");
+    req = pick(current, which, "grant");
+    if (only) req = asFileGrant(req);
     refuseIfBarred(current, req);
     return applyGrant(before, req, reason);
-  }, { after: () => settle(requestsPath(config.root), req.key, "granted", reason) }));
+  }, { after: () => settle(requestsPath(config.root), req.key, "granted", reason, { only: req.only }) }));
+  // Said once, beside the grant it is about: a literal file is useless to an
+  // agent that saves through a temporary beside it.
+  const caveat = only ? fileOnlyNote(req.role, lastAgentOf(read(logPath(config.root)), req.role)) : "";
+  const warn = caveat ? `  ${C.yellow}${caveat}${C.off}\n` : "";
   // Already in the policy: the request is answered all the same, as the
   // console answers it. Throwing here left it pending forever — the person had
   // said yes, the role had the path, and the queue kept asking.
   if (!changed) {
     out(
       `\n  ${C.green}already granted${C.off}  ${req.role} → ${C.b}${req.grant}${C.off}\n` +
-      `  ${C.dim}${config.path} already gives it; nothing written, the request is closed.${C.off}\n\n`
+      `  ${C.dim}${config.path} already gives it; nothing written, the request is closed.${C.off}\n` + warn + "\n"
     );
     out(remaining(config));
     return { request: req, grant: req.grant, changed: false };
@@ -184,7 +193,7 @@ export function grant(config, argv = []) {
     `\n  ${C.green}granted${C.off}  ${req.role} → ${C.b}${req.grant}${C.off}\n` +
     (others.length
       ? `  ${C.yellow}shared: ${req.grant} is also declared by ${others.join(", ")} — both roles read it now${C.off}\n`
-      : "") +
+      : "") + warn +
     `  ${C.dim}written into ${config.path} with its provenance. It applies on the next run.${C.off}\n\n`
   );
   out(remaining(config));
