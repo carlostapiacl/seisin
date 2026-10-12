@@ -22,6 +22,8 @@ export interface RolePolicy {
   network: string[] | null;
   neverWrites: string[];
   neverWritesDeclared: string[];
+  /** Folders only this role reads and writes; also part of `writes`. */
+  private: string[];
   reads: string[];
   toolchain: string[];
   verify: string[] | null;
