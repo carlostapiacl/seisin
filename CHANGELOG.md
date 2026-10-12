@@ -166,6 +166,8 @@ repository). What it needs and what changed is in [docs/agents.md](docs/agents.m
   neither the hook nor a run queues a request for it; `grant` refuses one. `check` shows it on
   the map and warns when it sits inside another role's territory. On Linux another role's write
   into the folder lands in a discarded tmpfs instead of being denied; the folder is untouched.
+  A missing private folder is created empty on Linux by `seisin run` only; `check` and `explain`
+  write nothing.
 
 ## 0.5.0 — 2026-09-30
 

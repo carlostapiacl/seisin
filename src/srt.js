@@ -104,7 +104,7 @@ export const SHARED_TMP = { darwin: ["/tmp/claude", "/private/tmp/claude"], linu
  * are closed to it. Left out (check, console, explain: no command), the
  * settings are the most the role can get, which is every agent's home.
  */
-export function settingsFor(config, roleName, spool = null, observe = false, { agent, program, tmp } = {}) {
+export function settingsFor(config, roleName, spool = null, observe = false, { agent, program, tmp, forRun = false } = {}) {
   const role = config.roles[roleName];
   if (!role) throw unknownRole(config, roleName);
   const claudeGrant = role.writes.find((g) => /^(?:\.\/)?\.claude(?:\/|$)/.test(g));
@@ -378,9 +378,12 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
    * On Linux the folder is made first when it is missing: bubblewrap denies a
    * missing path by putting something on the host in its place, and the owner
    * would find a file where its folder should be. It is the owner's territory,
-   * so an empty folder there is what the policy already says.
+   * so an empty folder there is what the policy already says. Only for a run
+   * (`forRun`, passed by `seisin run`): check, explain and the console ask for
+   * these settings too, and they write nothing to disk. For them a missing
+   * folder on Linux is left out — there is no run for it to be denied in.
    */
-  const shut = othersPrivate(config, roleName, abs);
+  const shut = othersPrivate(config, roleName, abs, { make: forRun });
   denyRead.push(...shut);
 
   if (config.read === "territory") {
@@ -502,13 +505,14 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
  * The private folders of every role but `roleName`, absolute, in both
  * spellings (as written and as the kernel meets it through a symlink).
  */
-export function othersPrivate(config, roleName, abs = (p) => (p.startsWith("/") ? p : join(config.root, p))) {
+export function othersPrivate(config, roleName, abs = (p) => (p.startsWith("/") ? p : join(config.root, p)), { make = false } = {}) {
   const out = [];
   for (const r of Object.values(config.roles))
     if (r.name !== roleName)
       for (const entry of r.private ?? []) {
         const p = abs(privateDir(entry));
         if (process.platform === "linux" && !existsSync(p)) {
+          if (!make) continue;
           try { mkdirSync(p, { recursive: true }); } catch { continue; }
         }
         const real = realAncestor(p);

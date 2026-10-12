@@ -29,6 +29,7 @@ const POLICY = (runtime = "writes = []") =>
 
 const repo = (runtime) => repoWith("private-", POLICY(runtime), ["src/", "vault/"]);
 const load = (root) => loadConfig(join(root, "seisin.toml"));
+const LINUX = process.platform === "linux";
 
 /* ── the policy ─────────────────────────────────────────────────────── */
 
@@ -81,6 +82,22 @@ for (const runtime of ["writes = []", 'read = "territory"\nwrites = []', 'isolat
     assert.ok(owner.allowWrite.includes(dir), "owner: writes it");
   });
 }
+
+test("check, explain and the settings they read write nothing to disk; only a run makes a missing folder", () => {
+  const root = repoWith("private-nowrite-", POLICY(), ["src/"]);
+  const config = load(root);
+  const dir = join(root, "vault");
+  inspect(config);
+  explain(config, "other", "read", "vault/x");
+  explain(config, "other", "write", "vault/x");
+  const asked = settingsFor(config, "other").filesystem;
+  assert.ok(!existsSync(dir), "check and explain created nothing");
+  // macOS names the missing path as a pattern; Linux leaves it out until a run.
+  assert.equal(asked.denyRead.includes(dir), !LINUX);
+  const forRun = settingsFor(config, "other", null, false, { forRun: true }).filesystem;
+  assert.ok(forRun.denyRead.includes(dir) && forRun.denyWrite.includes(dir), "a run is always given the deny");
+  assert.equal(existsSync(dir), LINUX, "made by a run on Linux only, where bubblewrap needs it to exist");
+});
 
 /* ── the sentence ───────────────────────────────────────────────────── */
 
@@ -139,7 +156,6 @@ test("the session-start map tells each role what is private, to it and to others
 /* ── the kernel ─────────────────────────────────────────────────────── */
 
 const skip = srtSkip();
-const LINUX = process.platform === "linux";
 const run = (cwd, role, script) => new Promise((ok) => {
   let out = "";
   const p = spawn(process.execPath, [CLI, "run", role, "--agent", "none", "--", "/bin/sh", "-c", script], { cwd });
