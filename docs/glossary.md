@@ -119,6 +119,14 @@ granting would undo what somebody wrote on purpose. *Not:* deny list, exclusion.
 `[roles.<name>]`, `seisin check`, the hook's message. *Elsewhere:* the sandbox runtime's
 `denyWrite` inside an `allowWrite` [6] — this is what it compiles to.
 
+**`private`** — a folder only one role reads and writes. It is part of that role's territory, and
+every other role is denied it both ways, however wide its `writes`. *Next to:* a key is read and
+never written; a territory is written by its owners and read by everyone; `private` is the
+folder that is both, for one role. A denial it causes leaves no request. *Not:* confidential,
+secret folder, personal. *Where:* `[roles.<name>] private`, `seisin check`, `seisin explain`, the
+hook's message. *Elsewhere:* the sandbox runtime's `denyRead` plus `denyWrite` [6], given to every
+role but the owner.
+
 **key** — a credential a role may read, declared in the policy: either a file inside a declared
 `[keys] dir`, or a **reference** resolved by a **provider**. Only a credential the policy names is a
 key. *Next to:* a *secret* is the value; a *credential* is anything secret-shaped wherever it lives
