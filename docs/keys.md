@@ -91,7 +91,7 @@ is stable:
 | | |
 |---|---|
 | **input** | your `command`, with every `{ref}` replaced by the text after `://`. No shell: the array is the `argv`, so a reference cannot inject one |
-| **success** | exit `0`, the value on **stdout**. The answer is what it printed by the time it exited — a background process it left holding stdout is not waited for. With `mode = "env"` exactly one trailing newline is stripped; with `mode = "scratch"` the file holds the value exactly as printed |
+| **success** | exit `0`, the value on **stdout**. The answer is what it printed by the time it exited — a background process it left holding stdout is not waited for. With `mode = "env"` exactly one trailing newline is stripped; with `mode = "run-file"` the file holds the value exactly as printed |
 | **failure** | any non-zero exit, or empty output. The run stops; nothing is substituted |
 | **limits** | 60 s, then the provider is killed with `SIGKILL`; 1 MiB of stdout, then it is stopped. A value with a NUL byte is refused. Each says so, without the value |
 | **diagnostics** | neither stream of a failed provider is shown — a provider can print the secret on either. The error gives the exit status, how many bytes went to stderr, and the command to run by hand to read them |
@@ -163,7 +163,7 @@ parent executes them, so a role that could rewrite one would decide what runs ou
 | | |
 |---|---|
 | **`mode = "env"`** | resolved and passed as a variable |
-| **`mode = "scratch"`** | written to a file in the **run directory** (private to the run), removed when the run ends. The file holds the value exactly as the provider printed it, or for `file://` exactly the file's bytes — trailing newline included, which an ssh key needs. The path arrives **both** as `NETLIFY_TOKEN` and as `NETLIFY_TOKEN_FILE` — `_FILE` is the Docker-secrets convention, while `KUBECONFIG` and `GOOGLE_APPLICATION_CREDENTIALS` already expect a path in the plain name. Neither holds the value |
+| **`mode = "run-file"`** | written to a file in the **run directory** (private to the run), removed when the run ends. The file holds the value exactly as the provider printed it, or for `file://` exactly the file's bytes — trailing newline included, which an ssh key needs. The path arrives **both** as `NETLIFY_TOKEN` and as `NETLIFY_TOKEN_FILE` — `_FILE` is the Docker-secrets convention, while `KUBECONFIG` and `GOOGLE_APPLICATION_CREDENTIALS` already expect a path in the plain name. Neither holds the value Called `scratch` before 0.6.0, when the file still sat in shared scratch; a policy that says `scratch` is refused with the line to change |
 | **`mode = "inject"`** | the agent never sees the value — **not implemented**, and refused by name rather than left looking available. It needs the runtime's credential masking, which does not load without terminating that role's TLS with a CA of seisin's own. That is MITM over all of the role's traffic, and it is a decision to take deliberately |
 
 There is **no default mode**. A reference with none declared anywhere is an error, because
