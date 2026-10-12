@@ -174,8 +174,8 @@ how much a leak costs you.
 
 - **The value never enters the `.toml`, the log or the console.** What is written, recorded
   and granted is the reference. That is what makes a key policy reviewable in a diff. Each
-  resolution is a line in the log (`event: "key"`: the key as written, its provider, the mode,
-  whether it resolved) and `seisin log` shows it.
+  resolution is a line in the log (`event: "key"`: the variable's name, its provider, the mode,
+  whether it resolved — not the reference, which can carry what it points at) and `seisin log` shows it.
 - **An unknown scheme is refused, not ignored.** `keys = ["vault://x"]` with no
   `[keys.providers.vault]` is a configuration error, never a key that quietly never arrives.
 - **The parent runs the provider, never the confined process.** The provider command holds
