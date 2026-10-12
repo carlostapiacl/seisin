@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { findConfig, loadConfig } from "./config.js";
 import { CONFIG_NAME } from "./layout.js";
 import { C, out, err } from "./render.js";
-import { COMMAND_HELP, flagsOf, renderHelp } from "./help.js";
+import { COMMAND_HELP, flagsOf, renderHelp, renderLimits } from "./help.js";
 import { nearest, checkFlags } from "./suggest.js";
 
 /**
@@ -45,7 +45,7 @@ ${C.b}seisin${C.off} — give each agent its own folders and its own keys
   seisin explain <role> read|write|mcp <path, key or server>
   seisin whose <path>                   who owns it — safe to call from inside the sandbox
   seisin scan [--all]                   find secrets outside the declared key dirs
-  seisin review [--all]                 what the log says about the policy
+  seisin review [--all] [--since 7d]    what the log says about the policy
   seisin walls <role> [--all]           what that role keeps being denied, and what it cost
   seisin wire                           let the agent record what it does
   seisin requests                       what the agents asked for and cannot have
@@ -60,6 +60,7 @@ ${C.b}seisin${C.off} — give each agent its own folders and its own keys
   seisin mcp                            an MCP server on stdio — read-only
 
 seisin <command> --help lists a command's flags, examples and exit codes.
+seisin help limits says what seisin cannot do, in any repo.
 
 Enforcement comes from @anthropic-ai/sandbox-runtime, which asks the OS.
 seisin decides what to ask for, and says whose file it was when the answer is no.
@@ -108,7 +109,7 @@ const COMMANDS = {
   whose: async () => void (await import("./commands/whose.js")).whose(config(), argv),
   wire: async () => void (await import("./commands/wire.js")).wire(config()),
   review: async () => ((await import("./commands/review.js")).reviewCommand(config(), argv).friction.length ? 1 : 0),
-  walls: async () => ((await import("./commands/walls.js")).wallsCommand(config(), argv).length ? 1 : 0),
+  walls: async () => ((await import("./commands/walls.js")).wallsCommand(config(), argv).some((w) => !w.expected) ? 1 : 0),
   requests: async () => ((await import("./commands/requests.js")).requests(config()).length ? 1 : 0),
   grant: async () => void (await import("./commands/requests.js")).grant(config(), argv),
   /**
@@ -191,6 +192,11 @@ function helpFor(name) {
   return `\nusage:\n${lines.join("\n")}\n\n  ${C.dim}seisin --help for every command${C.off}\n\n`;
 }
 
+// The standing limits: the same for every repo, so they are help, not `check`.
+if (command === "help" && argv[0] === "limits") {
+  out(renderLimits(C));
+  process.exit(0);
+}
 if (command === undefined || command === "help" || HELP.has(command)) {
   const about = command === "help" && COMMANDS[argv[0]] && !argv[0].startsWith("-") ? argv[0] : null;
   out(about ? helpFor(about) : USAGE);

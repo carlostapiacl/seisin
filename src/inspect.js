@@ -22,6 +22,7 @@ import { realOrSelf } from "./grants.js";
 import { keptFor, shutByTerritory, readPath, dataRoots } from "./territory.js";
 import { realAncestor } from "./paths.js";
 import { protections, resolveExecutable } from "./surface.js";
+import { LIMITS } from "./help.js";
 
 /**
  * A report on one config: the roles, and every way the map lies.
@@ -69,91 +70,10 @@ export function inspect(config, only = null, where = config.path) {
 }
 
 /**
- * What the tool cannot do at all — as opposed to `warnings`, which are things
- * wrong with *this* config.
- *
- * Kept apart on purpose. A limit printed as a warning reads as something a
- * person could fix, and after the third run it reads as nothing at all.
- *
- * These are the sentences someone needs before they trust the map on screen
- * more than it deserves, so `check` prints them every time rather than behind a
- * flag: the moment to learn that deletes are not covered is while you are
- * looking at the policy, not afterwards.
+ * What the tool cannot do at all lives in help.js as LIMITS, and `seisin help
+ * limits` prints it: it is the same in every repo, so it is not part of what
+ * `check` says about this one. The report still carries it, for the MCP.
  */
-const LIMITS = [
-  ...(process.platform === "darwin" ? [] : [{
-    kind: "kernel-denials-unreadable",
-    headline: "denials by the kernel are not recorded on this platform",
-    detail:
-      "on macOS `seisin run` reads them out of the system log, so a denial the hook never " +
-      "saw still lands in `seisin log` with its owner and still queues a request. There is no " +
-      "equivalent to read here — bubblewrap does not log denials, and the runtime's substitute " +
-      "is not reachable from outside it. The boundary holds exactly as well; what you lose is " +
-      "seeing it work. Run `seisin wire` so the hook records what it can. The ask is upstream: " +
-      "github.com/carlostapiacl/seisin/blob/main/docs/upstream/cli-violations.md",
-  }]),
-  {
-    kind: "keys-only-what-you-declared",
-    headline: "key isolation covers the directory you declared, and nothing else",
-    detail:
-      "a credential sitting in the repo outside [keys] dir is ordinary readable " +
-      "content to every role. Run `seisin scan` to find them — check does not, " +
-      "because reading the whole tree on every invocation is how a command stops " +
-      "being run.",
-  },
-  {
-    kind: "observe-cannot-see-the-network",
-    headline: "`--observe` opens the filesystem, never the network",
-    detail:
-      "so it cannot tell you which domains an agent needs. The runtime does record every " +
-      "denial the proxy makes — host, port and reason — but only a caller that embeds the " +
-      "library can read them; nothing reaches a caller that runs the binary, which is what " +
-      "seisin does. So for an agent whose endpoints are not published, the options are to " +
-      "find them another way or drop the network restriction for it. The ask is upstream: " +
-      "github.com/carlostapiacl/seisin/blob/main/docs/upstream/cli-violations.md",
-  },
-  ...(process.platform === "linux" ? [{
-    kind: "control-files-linux",
-    headline: "a project's hooks and settings are protected only where they already exist",
-    detail:
-      "bubblewrap denies a path by mounting over it, and for a path that is not there it would " +
-      "create it on your disk. So on Linux a role can still create a .git/hooks entry or a " +
-      ".claude/settings.json in a project of its territory that had none. On macOS the kernel " +
-      "denies creating them too.",
-  }] : []),
-  {
-    kind: "shared-scratch",
-    headline: "roles share ~/.cache, ~/.local/share and the temp dir unless isolate = \"home\"",
-    detail:
-      "programs installed there that are on your PATH are protected, and so are Claude Code's " +
-      "settings and plugins. Anything else a program outside the sandbox reads from those places — a " +
-      "cache it executes, a tool not on PATH — is writable by every role. isolate = \"home\" " +
-      "gives each role its own.",
-  },
-  {
-    kind: "agent-sign-in",
-    headline: "~/.claude goes only to runs of claude, ~/.codex only to runs of codex",
-    detail:
-      "seisin reads the agent off the command after `--`, and a run is denied the other " +
-      "agents' sign-in files (~/.codex/auth.json, ~/.claude/.credentials.json). What a run " +
-      "of an agent can still read is its own: Codex and every command Codex runs share one " +
-      "sandbox, so with a ChatGPT sign-in kept in ~/.codex/auth.json they can read those tokens. " +
-      "Codex keeps them in the keychain instead with cli_auth_credentials_store = \"keyring\" " +
-      "in its config. A wrapper script is not followed: `seisin run <role> --agent codex -- ./script` " +
-      "names it. The protected paths above are for every agent at once, because a role can be " +
-      "run as any of them.",
-  },
-  {
-    kind: "unlink-uncovered",
-    headline: "a role can delete inside its own territory",
-    detail:
-      // The path that used to be here ships with the repo and not with the npm
-      // package, so for most readers it named a file they do not have.
-      "writes and deletes are one permission to the kernel, so `rm` inside a " +
-      "role's own folders succeeds. Closing it needs denyUnlink in the sandbox " +
-      "runtime: github.com/carlostapiacl/seisin#how-it-holds",
-  },
-];
 
 /**
  * What is wrong with a role table's keys, as opposed to its paths.
@@ -786,6 +706,48 @@ function warningsFor(config, roles, shared = sharedPaths(config, roles), { scope
     });
   }
 
+  /**
+   * The one sibling that is not a guess: Claude Code's own.
+   *
+   * Claude Code's Edit and Write do not write the file. They write
+   * `<file>.tmp.<pid>.<12 hex>` beside it and rename it over, so a role that
+   * holds a file by name and not its folder is refused at the temporary file
+   * on every edit — EPERM, and the agent goes around it with a shell (measured:
+   * 4 EPERM in one real run). No grant can name that file: its name changes on
+   * every edit, and a write grant takes no glob (the runtime drops them; seisin
+   * refuses one above). So the choice is the folder, or the shell — said per
+   * role, which is where the decision is made.
+   *
+   * Said whatever agent the role runs: check cannot know, and a role that runs
+   * something else reads one line it can skip. Three roles by name and the rest
+   * as a count, for the reason the warning above gives.
+   */
+  for (const l of loose.slice(0, 3)) {
+    // A file at the root has the whole repo for a folder, which is not a
+    // suggestion: then the move is to put it in a folder of its own.
+    const dirs = [...new Set(l.globs.map((g) => dirname(g)).filter((d) => d !== "."))].map((d) => `${d}/**`);
+    const fix = dirs.length
+      ? `Either grant the folder (${dirs.join(", ")})`
+      : "Its folder is the repo root, so either move it into a folder the role can own whole and grant that";
+    warnings.push({
+      kind: "claude-atomic-write",
+      headline: `${l.role}: writes ${l.globs.slice(0, 3).join(" ")}${l.globs.length > 3 ? ` +${l.globs.length - 3}` : ""} by name — ` +
+        "Claude Code's Edit and Write on it fail (EPERM)",
+      detail:
+        "Claude Code edits a file by writing <file>.tmp.<pid>.<random> beside it and renaming it over; " +
+        "the temporary file is outside a grant on the file, and no grant can name it — its name changes " +
+        `on every edit and a write grant takes no glob. ${fix}, ` +
+        "or accept that the agent writes it with its shell (a redirect writes the file itself) instead of Edit. " +
+        "A role that does not run Claude Code can ignore this.",
+    });
+  }
+  if (loose.length > 3)
+    warnings.push({
+      kind: "claude-atomic-write",
+      headline: `${loose.length - 3} more role(s) write files by name, where Claude Code's Edit and Write fail: seisin check <role>`,
+      detail: "",
+    });
+
   if (listed.length) {
     const shown = listed.slice(0, 3)
       .map((l) => `${l.role} names ${l.named} of ${l.total} in ${l.where}`).join("; ");
@@ -1033,9 +995,12 @@ function territoryWarnings(config, r) {
     out.push({
       kind: "path-shut-by-territory",
       headline: `${r.name}: ${shut.length} PATH entr${shut.length === 1 ? "y is" : "ies are"} unreadable under read = "territory"`,
-      detail: `Shut: ${shut.map((d) => d.replace(homedir(), "~")).join(", ")}. A program found there today ` +
-        "falls through to another one inside the sandbox, or is not found. If the role needs one, name it " +
+      detail: "A program found in one of these today falls through to another one inside the sandbox, " +
+        "or is not found. If the role needs one, name it " +
         `in toolchain: toolchain = ["${shut[0].replace(homedir(), "~").replace(/\/bin$/, "")}"].`,
+      // One per line when printed: on a real PATH this was a dozen entries in
+      // one sentence, and the one a reader was looking for was in the middle.
+      items: shut.map((d) => d.replace(homedir(), "~")),
     });
   /**
    * Claude Code keeps its sign-in in the macOS login keychain, which lives

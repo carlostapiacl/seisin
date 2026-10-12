@@ -31,6 +31,7 @@ import { append, logPath } from "./log.js";
 import { record, requestsPath } from "./requests.js";
 import { inScope, scopeOf, reachedForContent } from "./violations.js";
 import { mcpServer } from "./hook.js";
+import { expectedOf } from "./kinds.js";
 
 /** A hash of the policy file as it is now, short: it names a version, it proves nothing. */
 export function policyId(config) {
@@ -60,7 +61,7 @@ export function intake({ config, role, runId, observe = false, settings, notify 
   const scope = scopeOf(settings, config.root);
   const keyDirs = (config.keyDirs ?? []).map((d) => (d.startsWith("/") ? d : join(config.root, d)));
   const connects = new Set();         // one line per refused target per run
-  const stats = { offPolicy: 0, walks: 0 };
+  const stats = { offPolicy: 0, walks: 0, expected: 0 };
 
   /**
    * Nothing from inside the sandbox is taken at its word.
@@ -197,6 +198,9 @@ export function intake({ config, role, runId, observe = false, settings, notify 
     // ~/.ssh under `isolate`, and "../../../.ssh/id_rsa" would be a worse
     // answer to "what was refused" than the path itself.
     const rel = toRepoRelative(config, d.path);
+    // Recorded like any other, and counted apart, so the end of the run can
+    // say it was expected instead of leaving it to read as a failure.
+    if (expectedOf(rel)) stats.expected++;
 
     /**
      * A refusal the hook never saw still leaves a request behind.

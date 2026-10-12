@@ -15,12 +15,22 @@
  * would mean a correct policy cannot go green.
  */
 import { review } from "../review.js";
-import { C, out } from "../render.js";
+import { parseSince } from "../views.js";
+import { C, out, safe } from "../render.js";
 import { wired } from "./wire.js";
 
 export function reviewCommand(config, argv = []) {
   const i = argv.indexOf("--min");
-  const r = review(config, { minDenials: i === -1 ? 3 : Number(argv[i + 1]) });
+  /**
+   * `--since 2026-10-01` or `--since 7d`. The MCP ignores a filter it cannot
+   * read; a person typed this one, and a review of the whole log presented as
+   * the last week is the wrong answer said confidently — so it is refused.
+   */
+  const s = argv.indexOf("--since");
+  const since = s === -1 ? null : parseSince(argv[s + 1]);
+  if (s !== -1 && !since)
+    throw new Error(`--since takes a date (2026-10-01) or a duration back from now (7d, 12h, 2w), not "${safe(argv[s + 1] ?? "")}"`);
+  const r = review(config, { minDenials: i === -1 ? 3 : Number(argv[i + 1]), since });
   // Ten rows per section unless --all: on a real 32-role log the full report
   // was 1,557 lines, which nobody reads.
   const all = argv.includes("--all");
@@ -31,13 +41,16 @@ export function reviewCommand(config, argv = []) {
   };
   const who = (owners) => owners.length > 3 ? `${owners.slice(0, 3).join(", ")} +${owners.length - 3}` : owners.join(", ");
 
+  const day = (s) => (s ?? "").slice(0, 10);
   if (!r.entries) {
-    out(`\n  ${C.dim}nothing recorded yet. Run an agent through seisin first.${C.off}\n\n`);
+    out(since
+      ? `\n  ${C.dim}nothing recorded since ${day(since)}.${C.off}\n\n`
+      : `\n  ${C.dim}nothing recorded yet. Run an agent through seisin first.${C.off}\n\n`);
     return r;
   }
 
-  const day = (s) => (s ?? "").slice(0, 10);
-  out(`\n  ${C.dim}${r.entries} entries, ${day(r.window.from)} to ${day(r.window.to)}${C.off}\n`);
+  out(`\n  ${C.dim}${r.entries} entries, ${day(r.window.from)} to ${day(r.window.to)}` +
+      `${since ? ` (since ${day(since)})` : ""}${C.off}\n`);
 
   if (r.friction.length) {
     out(`\n  ${C.b}Denied repeatedly${C.off}\n`);
@@ -49,6 +62,20 @@ export function reviewCommand(config, argv = []) {
     }
     more(r.friction);
     out(`\n  ${C.dim}seisin grant, or move the territory. Either way it is a decision, not noise.${C.off}\n`);
+  }
+
+  /**
+   * Repeated, refused correctly, and nothing to decide: Claude Code updating
+   * its plugins from inside the sandbox (kinds.js expectedOf). Under the
+   * heading above it read as a policy that is wrong, and the only grant that
+   * would quiet it is a write into what runs outside the sandbox.
+   */
+  if (r.expected?.length) {
+    out(`\n  ${C.b}Denied as expected${C.off}\n`);
+    out(`  ${C.dim}${r.expected[0].expected.hint}${C.off}\n\n`);
+    for (const f of cap(r.expected))
+      out(`    ${C.dim}${String(f.times).padStart(4)}×${C.off}  ${C.b}${f.role}${C.off} ${f.action} ${f.where}\n`);
+    more(r.expected);
   }
 
   /**
@@ -139,7 +166,7 @@ export function reviewCommand(config, argv = []) {
       out(`  ${C.dim}by kind: ${[...tally].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n.toLocaleString("en")}×`).join(" · ")}${C.off}\n`);
   }
 
-  if (!r.friction.length && !r.guarded.length && !r.unused.length && !r.unowned.length && r.unusedKnowable)
+  if (!r.friction.length && !r.expected?.length && !r.guarded.length && !r.unused.length && !r.unowned.length && r.unusedKnowable)
     out(`\n  ${C.green}nothing to report${C.off} ${C.dim}— no repeated denials, no unused grants, no unowned paths${C.off}\n`);
 
   out("\n");
