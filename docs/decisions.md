@@ -420,7 +420,7 @@ runtime synthesises them by observing write-intent syscalls through its own
 the traced process's memory — its own comment calls those events
 attacker-controlled and racy. That is not attachable from outside and not worth
 reimplementing. On Linux the watcher reports itself unavailable with the reason,
-`seisin check` lists it among the standing limits (it used to be a notice on
+`seisin help limits` lists it among the standing limits (it used to be a notice on
 every `seisin run`), and the boundary is unchanged. **Claims are made per
 platform here or they are not made.**
 

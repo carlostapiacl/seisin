@@ -238,9 +238,10 @@ internal; they may change without an API compatibility promise.
 ```bash
 seisin init                              # proposes a seisin.toml for this repo
 seisin check                             # print the map, run nothing
+seisin help limits                       # what seisin cannot do, in any repo
 seisin run frontend -- claude -p "…"     # run an agent as that role
 seisin explain frontend write src/api/x  # ask one question, exit 0 or 1
-seisin review                            # what the log says about the policy
+seisin review --since 7d                 # what the log says about the policy, this week
 seisin wire                              # install the PreToolUse hook in this repo
 seisin ui                                # a console for deciding what is waiting
 ```
@@ -482,6 +483,11 @@ $ seisin review
 
   territory: an ownable path no role claims: a real decision — give it an owner, or tell the agent not to write there
 ```
+
+`--since 2026-10-01` or `--since 7d` reads only that stretch of the log: on a log months long,
+"Denied repeatedly" is otherwise led by paths fixed long ago. A denial that is correct and needs
+nothing — Claude Code updating its plugins from inside the sandbox — is listed apart as "Denied as
+expected" and does not make `review` exit 1.
 
 Three questions, and the middle one is the reason this exists. **Every
 permission file only ever grows**, in every system, and always for the same

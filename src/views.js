@@ -9,16 +9,22 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { explain, standingOf } from "./owners.js";
-import { kindsOf, KINDS } from "./kinds.js";
+import { kindsOf, KINDS, expectedOf } from "./kinds.js";
 import { walls } from "./walls.js";
 import { pending, requestsPath, markStale } from "./requests.js";
 
 /**
  * An ISO date from what a person or an agent typed, or null for no filter.
- * Anything that does not parse is ignored rather than refused: a bad filter
- * should show everything, not an error.
+ *
+ * A date (`2026-10-01`, any ISO time) or a duration back from `now`: `7d`,
+ * `12h`, `2w`, `30m` (minutes — a month is not a fixed length). Anything that
+ * does not parse is null; the MCP ignores it rather than refusing (a bad filter
+ * should show everything, not an error), and the CLI says so instead.
  */
-export function parseSince(raw) {
+const UNIT_MS = { m: 60_000, h: 3_600_000, d: 86_400_000, w: 7 * 86_400_000 };
+export function parseSince(raw, now = Date.now()) {
+  const d = /^\s*(\d+)\s*([mhdw])\s*$/i.exec(String(raw ?? ""));
+  if (d) return new Date(now - Number(d[1]) * UNIT_MS[d[2].toLowerCase()]).toISOString();
   const t = raw ? Date.parse(raw) : NaN;
   return Number.isNaN(t) ? null : new Date(t).toISOString();
 }
@@ -176,6 +182,19 @@ export function causesOf(cfg, entries, { ask = explain, limit = 12 } = {}) {
    * shows keys, network and tools apart from files: "no role owns this" is a
    * sentence about paths, and said of a port or a tool it is simply wrong.
    */
+  /**
+   * Refusals that are expected (kinds.js expectedOf) — Claude Code's plugin
+   * updater — counted apart so the page can say them as the boundary working
+   * rather than leave them at the top of the list as something to grant.
+   */
+  const expected = { paths: 0, denials: 0 };
+  for (const g of by.values()) {
+    g.expected = expectedOf(g.target);
+    if (!g.expected) continue;
+    expected.paths++;
+    expected.denials += g.times;
+  }
+
   const about = Object.fromEntries(ABOUT.map((k) => [k, { paths: 0, denials: 0 }]));
   for (const g of by.values()) {
     const a = aboutOf(g.kind);
@@ -188,6 +207,7 @@ export function causesOf(cfg, entries, { ask = explain, limit = 12 } = {}) {
     unowned: piles.unowned.paths,
     about,
     standing: piles,
+    expected,
     // The real number of distinct causes, not the length of the list below.
     // The page says "over N distinct paths" and the list is capped at twelve,
     // so taking N from the list reported the cap as if it were the count —
@@ -208,6 +228,7 @@ export function causesOf(cfg, entries, { ask = explain, limit = 12 } = {}) {
         ...(g.standing.why && { why: g.standing.why }),
         // Only on an unowned cause: what kind of thing it is, and what to do.
         ...(g.nature && { kind: g.nature.kind, hint: g.nature.hint }),
+        ...(g.expected && { expected: g.expected }),
         owners: g.standing.owners,
         ownersThen: g.ownersThen,
         // How many of the roles that hit this would still hit it. `some` and
@@ -245,7 +266,8 @@ export function describeWalls(cfg, byRole, entries) {
   for (const [role, list] of Object.entries(byRole)) {
     out[role] = list.map((w) => {
       const about = aboutOf(kindOfLine.get(`${role}\u0000${w.action}\u0000${w.target}`));
-      const x = { ...w, about, retried: w.times - 1 };
+      // An expected wall (walls.js) is not the agent retrying anything.
+      const x = { ...w, about, retried: w.expected ? 0 : w.times - 1 };
       // Every file wall, owned or not: a protected path can also lie inside
       // someone's territory, and "owned" must not hide "never granted". The
       // owners are today's, as Denied's are.

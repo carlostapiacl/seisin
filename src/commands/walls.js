@@ -5,20 +5,25 @@ import { STALE_RUNS } from "../requests.js";
 import { logPath } from "../log.js";
 import { standingOf } from "../owners.js";
 import { kindsOf } from "../kinds.js";
+import { parseSince } from "../views.js";
 import { C, out, safe } from "../render.js";
 
 export function wallsCommand(config, argv = []) {
   const role = argv[0];
-  if (!role) throw new Error("usage: seisin walls <role> [--since <iso>] [--min <n>] [--all]");
+  if (!role) throw new Error("usage: seisin walls <role> [--since <date|duration>] [--min <n>] [--all]");
   if (!config.roles[role]) throw unknownRole(config, role);
   const at = (flag, fallback) => {
     const i = argv.indexOf(flag);
     return i === -1 ? fallback : argv[i + 1];
   };
+  // The same reading of `--since` as review and the MCP: a date or `7d`.
+  const since = argv.includes("--since") ? parseSince(at("--since", null)) : null;
+  if (argv.includes("--since") && !since)
+    throw new Error(`--since takes a date (2026-10-01) or a duration back from now (7d, 12h, 2w), not "${safe(at("--since", "") ?? "")}"`);
   const every = walls(config, role, {
     file: logPath(config.root),
     min: Number(at("--min", 2)),
-    since: at("--since", null),
+    since,
     limit: 0,
   });
   const all = argv.includes("--all");
@@ -60,6 +65,10 @@ function withKinds(config, list) {
 export function renderForPerson(role, list) {
   const lines = [`\n  ${C.b}${safe(role)}${C.off} keeps hitting:\n\n`];
   for (const w of list) {
+    if (w.expected) {
+      lines.push(`    ${C.dim}${String(w.times).padStart(3)}×  ${w.action} ${safe(w.target)}  expected · ${safe(w.expected.hint)}${C.off}\n`);
+      continue;
+    }
     const why = w.owners?.length ? `belongs to ${w.owners.map(safe).join(", ")}`
       : w.kind ? `unowned · ${w.kind === "territory" ? "ownable" : w.kind}: ${safe(w.hint)}`
       : safe(w.reason);

@@ -89,6 +89,8 @@ export interface Wall {
   owners: string[];
   firstAt: string;
   lastAt: string;
+  /** Refused as expected — the agent program's own housekeeping, not friction. */
+  expected?: { kind: "plugins"; hint: string };
 }
 
 export interface ScanHit {
