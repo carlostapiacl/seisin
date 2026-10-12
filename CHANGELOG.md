@@ -157,6 +157,18 @@ repository). What it needs and what changed is in [docs/agents.md](docs/agents.m
   there; database drivers, `psql` and `redis-cli` dial directly and are denied, on a listed port
   too. The runtime has no kernel rule for one localhost port; the evidence is in
   docs/decisions.md and a test pins it.
+- **A request can be granted as its one file, not its folder.** The queue keys a write by its
+  folder and granting widened to it; the console now offers "only the file" beside the folder,
+  and `seisin grant <n|id> --file` does the same. It takes the same lock, checks and edit as the
+  folder and lands in `seisin.toml` as a literal path. A sibling asked for later reopens the
+  request instead of folding into the settled one. Because Claude Code's Write and Edit save
+  through a temporary beside the file, choosing the file for a role whose last run was Claude
+  Code says, in one line, that it will not be able to edit it. The canary line now records the
+  agent a run ran.
+- **The console is edited in `ui/src/`** (`page.html`, `style.css`, `console.js`) and built
+  into the one file that ships, `ui/index.html`, by `npm run build:ui` — plain node, no new
+  dependency, byte for byte. A test fails when the shipped file is not what the source builds.
+  The package ships `ui/index.html` only.
 
 ## 0.5.0 — 2026-09-30
 

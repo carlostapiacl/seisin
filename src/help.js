@@ -81,10 +81,11 @@ export const COMMAND_HELP = {
     exits: [["0", "nothing pending"], ["1", "requests pending"], ["2", "usage error"]],
   },
   grant: {
-    usage: ['seisin grant <n|id> [--reason "…"]'],
+    usage: ['seisin grant <n|id> [--file] [--reason "…"]'],
     values: ["--reason"],
-    flags: [['--reason "…"', "recorded beside the grant in the policy"]],
-    examples: ["seisin grant 1", "seisin grant 'frontend:write:docs' --reason \"owns the docs now\""],
+    flags: [['--reason "…"', "recorded beside the grant in the policy"],
+            ["--file", "grant the file that was asked for, not its folder (a write). Claude Code cannot edit a lone file: its temporary lands beside it"]],
+    examples: ["seisin grant 1", "seisin grant 2 --file", "seisin grant 'frontend:write:docs' --reason \"owns the docs now\""],
     exits: [["0", "granted, or already granted"], ["2", "no such request, or it cannot be granted"]],
   },
   decline: {

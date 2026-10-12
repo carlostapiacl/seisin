@@ -31,7 +31,7 @@
   },
   "files": [
     "src",
-    "ui",
+    "ui/index.html",
     "README.md",
     "LICENSE"
   ],
@@ -43,6 +43,7 @@
   },
   "scripts": {
     "test": "node --test test/*.test.js",
+    "build:ui": "node ui/build.js",
     "prepublishOnly": "npm test"
   },
   "main": "./src/index.js",
