@@ -6,9 +6,13 @@
 <title>seisin</title>
 <meta name="description" content="Run multiple coding agents with OS-enforced permissions and explicit ownership. When the kernel denies one, seisin tells you who owns what it needs.">
 <link rel="icon" href="favicon.svg">
-<meta property="og:title" content="seisin">
-<meta property="og:description" content="The ownership layer between AI agents and the OS sandbox.">
+<meta property="og:title" content="seisin — OS-enforced permissions and ownership for AI agents">
+<meta property="og:description" content="Give each AI agent its own folders and its own keys. The kernel enforces it, and when it denies something, seisin tells you whose file it was.">
 <meta property="og:type" content="website">
+<meta property="og:url" content="https://carlostapiacl.github.io/seisin/">
+<meta property="og:image" content="https://carlostapiacl.github.io/seisin/img/demo.gif">
+<meta property="og:image:alt" content="A terminal: an agent running as the frontend role is denied a write under src/api, and seisin names the owner, backend.">
+<meta name="twitter:card" content="summary_large_image">
 <style>
 :root{
   --bg:#fbfaf8; --panel:#fff; --ink:#18181b; --dim:#6b6b76; --line:#e5e3df;
@@ -174,7 +178,7 @@ svg.flow path,svg.flow line{stroke:var(--line); fill:none}
 
 <header>
   <div class="wrap">
-    <div class="name"><img class="mark" src="favicon.svg" alt="" width="44" height="44">seisin</div>
+    <h1 class="name"><img class="mark" src="favicon.svg" alt="" width="44" height="44">seisin</h1>
     <p class="defn"><em>seisin</em> <span class="dim">(n.)</span> — the legal possession of a piece of land. Not who owns it on paper: who holds it now.</p>
 
     <p class="position">OS-enforced permissions and ownership for AI agents.</p>
@@ -183,7 +187,7 @@ svg.flow path,svg.flow line{stroke:var(--line); fill:none}
 
     <div class="badges">
       <a href="https://www.npmjs.com/package/seisin"><img src="https://img.shields.io/npm/v/seisin?color=222" alt="npm version"></a>
-      <a href="https://github.com/carlostapiacl/seisin/actions/workflows/test.yml"><img src="https://github.com/carlostapiacl/seisin/actions/workflows/test.yml/badge.svg" alt="tests"></a>
+      <a href="https://github.com/carlostapiacl/seisin/blob/main/docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run"><img src="https://img.shields.io/badge/CI-paused%20%C2%B7%20validated%20locally-222" alt="CI: paused · validated locally"></a>
       <img src="https://img.shields.io/badge/license-MIT-222" alt="MIT">
       <img src="https://img.shields.io/badge/node-%E2%89%A518-222" alt="node 18+">
       <img src="https://img.shields.io/badge/dependencies-1-222" alt="one dependency">
@@ -209,7 +213,7 @@ svg.flow path,svg.flow line{stroke:var(--line); fill:none}
     </figure>
 
     <div class="term"><span class="p">$</span> <span class="cmd">seisin run frontend -- sh -c 'echo // fix &gt;&gt; src/api/orders.ts'</span>
-<span class="note">seisin: frontend · writes src/web/** (+7 scratch) · keys none · env 18 kept, 55 dropped</span>
+<span class="note">seisin: frontend · writes src/web/** public/** (+6 scratch) · keys netlify-token.txt · runs no agent seisin knows · env 20 kept, 58 dropped · read all</span>
 <span class="no">sh: src/api/orders.ts: Operation not permitted</span>
 <span class="note">seisin: 1 kernel denial(s) recorded</span>
 
@@ -346,7 +350,7 @@ svg.flow path,svg.flow line{stroke:var(--line); fill:none}
       <li><code>seisin init</code><span class="why">Proposes a policy from what your repo already says: <code>.claude/agents/</code>, then <code>CODEOWNERS</code>, then one role per top-level folder that holds code. It <b>proposes</b> — a generated policy you did not read is not a policy.</span></li>
       <li><code>seisin check</code><span class="why">The map first, then one line for each way it does not hold — <code>--verbose</code> says why each matters. Read it before you trust it.</span></li>
       <li><code>seisin wire</code><span class="why">Lets the agent record what it does, so a denial can be explained afterwards.</span></li>
-      <li><code>seisin run frontend -- claude -p "…"</code><span class="why">Runs the agent inside its own territory. Anything not listed is denied — there is no permissive default.</span></li>
+      <li><code>seisin run &lt;role&gt; -- claude -p "…"</code><span class="why">Runs the agent as one of the roles <code>seisin check</code> lists, inside its own territory. Anything not listed is denied — there is no permissive default.</span></li>
     </ol>
   </div>
 </section>
@@ -389,7 +393,7 @@ control_files = [<span class="s">"ide"</span>]  <span class="c"># its own .vscod
     </div>
 
     <div class="note-box">
-      <strong>HTTP(S) works; SSH does not.</strong> The allow list is enforced by proxies the runtime starts. One of them is a SOCKS5 proxy that could carry SSH, but the chain breaks at its last link: it requires authentication and the <code>ProxyCommand</code> the runtime wires up cannot send any. Use an HTTPS remote for git, and run SSH deploys outside the confined run.
+      <strong>HTTP(S) works on both platforms. SSH does not work on macOS.</strong> The allow list is enforced by proxies the runtime starts. One of them is a SOCKS5 proxy that could carry SSH, but on macOS the chain breaks at its last link: it requires authentication and the <code>ProxyCommand</code> the runtime wires up cannot send any. On Linux the runtime routes git’s SSH through an authenticated proxy instead (read from its source, not measured here). Use an HTTPS remote for git, and on macOS run SSH deploys outside the confined run.
     </div>
   </div>
 </section>
@@ -446,14 +450,14 @@ control_files = [<span class="s">"ide"</span>]  <span class="c"># its own .vscod
         <ul class="plain">
           <li><b>Not a sandbox.</b> It configures <code>@anthropic-ai/sandbox-runtime</code>; the OS does the enforcing.</li>
           <li><b>Not hostile-agent containment.</b> An allowed domain is still an allowed exfiltration channel, and while tampering with the log is closed, a hostile agent can still add lines to its own history.</li>
-          <li><b>Not complete secret discovery.</b> A secret outside declared key directories remains readable; <code>seisin scan</code> helps find those.</li>
+          <li><b>Not complete secret discovery.</b> A secret outside declared key directories remains readable — with the default <code>read = "all"</code> that includes <code>~/.ssh</code>, <code>~/.aws</code> and <code>~/.npmrc</code>; <code>read = "territory"</code> closes those homes. <code>seisin scan</code> helps find the rest.</li>
           <li><b>Not an orchestrator.</b> It does not schedule agents or decide who does the work. Windows is not yet tested.</li>
         </ul>
       </div>
     </div>
 
     <div class="ok-box">
-      Two outside reviews went looking for ways past the boundary, and what running four teams of agents behind it actually cost — including the numbers that did not survive a re-check — is published too.
+      Two outside reviews, plus three follow-ups, went looking for ways past the boundary, and what running four teams of agents behind it actually cost — including the numbers that did not survive a re-check — is published too.
       <a href="https://github.com/carlostapiacl/seisin/blob/main/docs/what-it-has-been-put-through.md">What it has been put through →</a>
       <a href="https://github.com/carlostapiacl/seisin/blob/main/docs/field-notes.md">Field notes →</a>
     </div>
