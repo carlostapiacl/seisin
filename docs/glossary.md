@@ -164,8 +164,10 @@ store [28] — is the same idea. ⚠ NVIDIA OpenShell uses **provider** for the 
 itself [13]; if you come from there, our provider is the fetcher, not the credential.
 
 **key mode** — how a role receives the value of a reference: `env` (an environment variable) or
-`scratch` (a file in the **run directory**, removed when the run ends). `inject` is reserved and
-refused until it can be built. *Where:* `key_mode`, `[keys.providers.*] mode`. *Elsewhere:* Claude
+`run-file` (a file in the **run directory**, removed when the run ends). `inject` is reserved and
+refused until it can be built. *Not:* `scratch`, its name until 0.6.0 — the file left scratch on
+2026-09-23, and a policy that still says it is refused with the line to change. *Where:*
+`key_mode`, `[keys.providers.*] mode`. *Elsewhere:* Claude
 Code's credential **mask** [1] is what `inject` would be.
 
 **protected** — a path no role writes even inside its territory, because something outside the
@@ -277,10 +279,10 @@ invocation, job. *Where:* `seisin run`, "once per target per run", "not asked ag
 agent's — the hook's `SessionStart` message, "mid-turn".
 
 **run directory** — the private directory each run gets under `$TMPDIR/snr/`: its audit
-socket, its sandbox settings, and its `scratch`-mode keys. Readable by that run only.
+socket, its sandbox settings, and its `run-file` keys. Readable by that run only.
 *Why new:* since the 2026-09-23 fix this is a different place from **scratch**, and the glossary
-still said scratch-mode keys land in shared scratch — the leak that fix closed. Two places need
-two names. *Where:* the `rundir` error ("is not a directory of yours … It holds each run's socket
+still said those keys land in shared scratch — the leak that fix closed. Two places need
+two names, and in 0.6.0 the key mode took the second one. *Where:* the `rundir` error ("is not a directory of yours … It holds each run's socket
 and keys"), `docs/keys.md`. *Elsewhere:* no established meaning found.
 
 **parent** — the seisin process that starts the sandbox and stays outside it: it resolves keys,
@@ -354,7 +356,7 @@ asked, the reason. `# granted 2026-09-12 · asked 3× · «…»`.
 
 **decline** — what a person does to a request they will not grant. Recorded with a reason; the
 policy is not touched. *Not:* deny, refuse, reject, turn down. *Where:* `seisin decline`, the
-console's **Decline** button. `seisin deny` still works and is not documented. *Elsewhere:* Codex
+console's **Decline** button; `"declined"` in the queue. *Elsewhere:* Codex
 uses **decline** for the same answer [7]; Entra uses *deny* [24] — ⚠ which is exactly the collision
 ours avoids.
 
@@ -563,16 +565,25 @@ checked for.
 
 ---
 
+## Renamed in 0.6.0
+
+The names that said something other than this page, changed together in the release that
+already breaks things. None is an alias: the old name does nothing and says what to write.
+Why, and how stored data moves, is in [docs/decisions.md](decisions.md#the-060-renames-one-name-and-the-old-one-stopped).
+
+| before | now | what happens to the old one | why |
+|---|---|---|---|
+| MCP `seisin_causes` field `stillRefused` | `stillDenied` | gone | the boundary denies |
+| `.seisin/requests.jsonl` `kind: "denied"` for a decline | `kind: "declined"` | rewritten once when a person's seisin opens the queue; the original kept as `requests.jsonl.pre-0.6.0` | a person declines |
+| `key_mode = "scratch"` | `"run-file"` | refused at load, with the line to change | the value lands in the run directory, not in scratch |
+| `seisin deny` | `seisin decline` | exits 2 and names `decline` | one verb per actor |
+| `docs/permission-requests.md` | `docs/requests.md` | gone | the collision with `PermissionRequest` |
+
 ## Future, breaking
 
-Renames that would make stored data, a published schema or a command say the same thing as this
-page. None is for this release; each is listed so the next breaking release can take them together.
+Renames that would make stored data or a published schema say the same thing as this page, not
+made yet; listed so the next breaking release can take them together.
 
 | today | proposed | where it breaks | why |
 |---|---|---|---|
-| MCP `seisin_causes` field `stillRefused` | `stillDenied` | published MCP output | the boundary denies |
-| `.seisin/requests.jsonl` `kind: "denied"` for a decline | `kind: "declined"` (read both) | stored lines, anyone parsing the queue | a person declines |
 | unowned kind value `"territory"` | `"ownable"` | MCP `seisin_causes` (`kind`, `standing.unowned.kinds`) | "kind: territory" reads as the opposite |
-| `key_mode = "scratch"` | `"run-file"` | every policy that uses it | the value lands in the run directory, not in scratch |
-| `seisin deny` alias | removed | scripts that still call it | one verb per actor |
-| `docs/permission-requests.md` | `docs/requests.md` | inbound links, README anchors | the collision with `PermissionRequest` |

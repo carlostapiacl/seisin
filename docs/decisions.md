@@ -521,7 +521,8 @@ you is the failure being fixed.
 **What it does not fix, and is worth knowing.** A settled request does not
 reopen. A later `asked` for the same key raises its counter and leaves the state
 alone, so a mistaken `decline` cannot be undone by the agent asking again — the
-file is append-only and nothing rewrites a line. That is correct for evidence
+file is append-only and nothing rewrites a line (the one exception is a spelling,
+[once](#the-060-renames-one-name-and-the-old-one-stopped)). That is correct for evidence
 and wrong for recovery, and it is unresolved: the honest repair today is to
 grant the permission on its merits, which is a decision about the policy rather
 than an undo.
@@ -870,6 +871,60 @@ askable) and marks a verdict it disagrees with as `disputed`. **Redaction on a t
 the output to pass through seisin, which breaks programs that draw their own screen. It stays off
 on a TTY and says so.
 
+## The 0.6.0 renames: one name, and the old one stopped
+
+The glossary kept a table of names that said the wrong thing and could not change without
+breaking something: `stillRefused` in the MCP output (the boundary *denies*), `kind: "denied"`
+for a person's decline in `.seisin/requests.jsonl`, `key_mode = "scratch"` for a file that has
+lived in the run directory since 2026-09-23, the `seisin deny` alias, and
+`docs/permission-requests.md` (the collision with Claude Code's `PermissionRequest`). 0.6.0
+already breaks things, so it takes them together.
+
+**No aliases.** An alias that accepts the old name is a second word for one thing, kept for
+ever, and the glossary exists because four words for one thing is what a tool whose output is a
+sentence cannot afford. So the old name does nothing, and says what to write instead:
+
+- **`key_mode = "scratch"` is refused when the policy loads**, with the line to change
+  (`Change it to key_mode = "run-file"`), the same for `[keys.providers.*] mode`. It is the
+  pattern `"file"` already had in `modeOf` and misspelt settings have in `checkShape`: a policy
+  read half-right is worse than one rejected with a sentence. Read as `run-file` instead, it
+  would work today and leave the old word in the file for the next reader.
+- **`seisin deny` exits 2** and names `seisin decline` with its arguments. It runs nothing: a
+  script that calls it stops and says why, instead of doing the right thing under the wrong word.
+- **`stillRefused` and the document's old path** are renamed, with nothing left behind: an MCP
+  field and a link have no stored state to carry.
+
+**The queue is rewritten once, not read both ways.** A queue written by 0.5 has lines a person
+wrote as `"kind":"denied"`. Reading both spellings would mean every reader of the file — the
+reducer, a person with `jq`, anybody parsing it — has to know that `denied` there means the
+opposite of `denied` in the log beside it, for as long as the file exists; that is the blur the
+rename removes. Refusing the file until a person runs a migration command would mean the first
+`seisin run` after an upgrade stops, for bookkeeping. So the queue migrates when it is opened
+(`pending`, in src/requests.js) by any process that runs as a person — `seisin run`,
+`requests`, `grant`, `decline`, the console: every line with the old spelling has its `kind`
+rewritten, and nothing else.
+
+That is the one rewrite of an append-only file in this project, and it is allowed for what it
+does not do. The queue is append-only because a decision that can be rewritten is not evidence.
+The migration changes the spelling of the decision, not the decision: every line stays, in its
+order, with its time, key and reason; a line it cannot parse is kept byte for byte; and before
+it touches anything it copies the file, as it was, to `.seisin/requests.jsonl.pre-0.6.0`. It
+runs once — a migrated queue has nothing left to rewrite — and if an older seisin writes the old
+spelling again later, the next open migrates that too, beside a second copy.
+
+Three things keep it from losing a line or reading one wrong:
+
+- **Every line 0.6.0 appends to the queue takes the queue's lock**, as every log line already
+  takes the log's, and the migration holds it from the read to the rename. A run started by an
+  older seisin, still going, appends without it; for that one the migration follows the old file
+  after the rename until it has been quiet for 50 ms. Tested with a writer appending as fast as
+  it can while the queue migrates over and over: every line arrives.
+- **The MCP server opens nothing for writing** (docs/requests.md), so it does not migrate: a
+  queue that still holds the old spelling is an error there that names `seisin requests`, which
+  migrates it. Nothing reads `"denied"` as a decline anywhere.
+- **The rename is atomic**: a fresh temporary in `.seisin/`, created exclusively, renamed over
+  the queue. A crash before the rename leaves the old queue, which the next open migrates.
+
 ## Still open
 
 - ~~**An MCP tool call has no owner.**~~ **Read at the server level, 2026-09-24.** The hook used
@@ -918,8 +973,9 @@ on a TTY and says so.
   expensive side: `denied` is the value in every log line ever written and an
   enum in the MCP schema, while the person's command was one line of dispatch.
   Counted before deciding: 16 places in code, a published schema, 1,452 stored
-  lines — against one. `seisin decline` is the command now; `seisin deny` still
-  works and is no longer documented. Every term is in
+  lines — against one. `seisin decline` is the command now; the old one kept
+  working, undocumented, until 0.6.0 removed it (see
+  [the 0.6.0 renames](#the-060-renames-one-name-and-the-old-one-stopped)). Every term is in
   [the glossary](glossary.md), which did not exist and is why this drifted.
 - **Deleting inside your own territory** is not covered and not coverable here.
   [The ask is upstream](upstream/denyUnlink.md).

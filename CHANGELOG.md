@@ -16,6 +16,29 @@ Claude Code must name it with `--agent claude`, so its home and sign-in are hand
 The JavaScript package surface now exports policy decisions; sandbox tuning constants and
 execution helpers are no longer public exports.
 
+**Breaking: five names now say what the [glossary](docs/glossary.md#renamed-in-060) says.** No
+aliases — the old name does nothing and says what to write instead. Why, and how the queue is
+moved, is in [docs/decisions.md](docs/decisions.md#the-060-renames-one-name-and-the-old-one-stopped).
+
+- **`key_mode = "scratch"` is now `key_mode = "run-file"`** (and `[keys.providers.*] mode`). The
+  file has been in the run directory, not in scratch, since 2026-09-23. A policy that still says
+  `"scratch"` does not load: the error names the line to write. *What to do:* replace
+  `"scratch"` with `"run-file"` in `seisin.toml`; nothing else changes — same file, same `_FILE`
+  variable.
+- **A decline is stored as `"kind":"declined"`** in `.seisin/requests.jsonl`, not `"denied"`: a
+  person declines, the boundary denies. The first time a person's seisin opens the queue
+  (`seisin run`, `requests`, `grant`, `decline`, the console), it rewrites the old lines once,
+  under the queue's lock, keeping every line, its order, time and reason, and copies the queue as
+  it was to `.seisin/requests.jsonl.pre-0.6.0`. The MCP server writes nothing, so until then it
+  answers with an error that says to run `seisin requests`. *What to do:* nothing, or
+  `seisin requests` once; a script that parses the queue should read `"declined"`. The console's
+  API takes `decision: "declined"` only; `"denied"` is a 400.
+- **`seisin deny` is removed.** It exits 2 and names `seisin decline <n|id> [--reason "…"]`, which
+  takes the same arguments. *What to do:* change scripts that call it.
+- **MCP `seisin_causes`: `stillRefused` is now `stillDenied`.** *What to do:* read the new field.
+- **`docs/permission-requests.md` is now [`docs/requests.md`](docs/requests.md)**, away from Claude
+  Code's `PermissionRequest`. *What to do:* update links.
+
 **Security: a territory can no longer reopen a project's `.claude`.** Settings, hooks, skills
 and commands there are read or executed by Claude Code outside the sandbox, so their protection
 wins over `writes = [".claude"]`, `[".claude/**"]`, nested hook grants and `["**"]`.
@@ -218,7 +241,7 @@ repository). What it needs and what changed is in [docs/agents.md](docs/agents.m
   process holding stdout made the run wait 60 s and report that it "did not answer".
 - **A provider that prints more than 1 MiB is stopped with a message naming the limit**, not
   `ENOBUFS`.
-- **`key_mode = "scratch"` writes the value exactly as given.** The trailing newline was dropped,
+- **`key_mode = "run-file"` writes the value exactly as given.** The trailing newline was dropped,
   which made an ed25519 ssh key invalid. `env` still drops the one newline a shell adds.
 - **Each key resolution is a line in the log** (`event: "key"`: the variable's name, provider, mode,
   whether it resolved; never the value, nor the reference), as the code and docs/keys.md already said.
