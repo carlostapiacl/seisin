@@ -152,6 +152,15 @@ repository). What it needs and what changed is in [docs/agents.md](docs/agents.m
   signed in with ChatGPT and a role's list names something under `openai.com` but not
   `chatgpt.com` (or `auth.openai.com`), it says so: without `chatgpt.com` a Codex run hangs
   without printing anything. A role whose `env` passes `OPENAI_API_KEY` is left out.
+- **`private = ["dir/**"]`: a folder only one role reads and writes.** Keys are read and never
+  written, and a territory is read by every role, so material one role had to write ended up
+  readable by all of them. A private folder is part of its owner's territory; every other role
+  gets a `denyRead` and a `denyWrite` on it, in both read modes and under `isolate`. Deny-only,
+  so it holds on macOS and Linux alike. Two roles cannot name the same folder or nested ones.
+  `explain` says denied and names the owner, the hook stops another role's read of it, and
+  neither the hook nor a run queues a request for it; `grant` refuses one. `check` shows it on
+  the map and warns when it sits inside another role's territory. On Linux another role's write
+  into the folder lands in a discarded tmpfs instead of being denied; the folder is untouched.
 
 ## 0.5.0 — 2026-09-30
 

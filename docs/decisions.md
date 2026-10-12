@@ -746,6 +746,43 @@ declares the list and the launcher applies it (Claude Code: `--mcp-config` with 
 servers and `--strict-mcp-config`). A missing key means "not limited", not "none", so adding
 the key to seisin changes nothing for a policy that doesn't use it.
 
+## `private`: a role key, and deny-only for everyone else
+
+Measured in use: a role had to write material nobody else should read. Keys are read, never
+written; a territory is written by its owners and read by everyone. Moving the material into a
+territory made it writable by the one role and readable by all of them.
+
+**A role key, not a mark inside `writes`.** `private = ["notes/**"]` sits beside `writes` and
+`never_writes`, where a reader of the role already looks, and reads the same way they do: a list
+of paths relative to the repo. A marker inside `writes` (`"!notes/**"`, a table per entry) would
+be a second syntax in a list that today has one, and the policy parser has no tables in arrays on
+purpose. A private folder is added to the owner's `writes` when the policy is loaded, so
+`explain`, `whose` and the settings all read one territory and agree on it.
+
+**One folder, not a glob.** What is enforced is one path, denied to every other role. A pattern
+would have to be widened to its folder or frozen to today's files, and either way the policy would
+say something the kernel does not — the reason `reads` is limited the same way.
+
+**Deny-only for the others, nothing new for the owner.** Every other role gets `denyRead` and
+`denyWrite` on the folder; the owner gets no allow at all, only the write grant it already had
+through its territory. That is the one shape that holds on both platforms: on macOS an allow
+nested around a deny is re-emitted after it, and on Linux a read allow is mounted read-only over
+the writable mounts (both measured; territory.js has the detail). A deny with no allow around it
+composes with everything seisin already emits, in `read = "all"`, `read = "territory"` and under
+`isolate`. Measured against the kernel in all four, on macOS and in Linux (Docker, bwrap), with
+positive controls. One difference stays: on Linux the runtime answers a read-denied directory with
+an empty tmpfs, so another role's write there succeeds into memory thrown away with the run. Nothing
+reaches the folder and nothing in it is read — the tests measure the folder on disk, not the exit
+code — but the role is not told no, as it is on macOS. The hook tells it first.
+
+**One owner.** Two roles naming the same folder, or one inside the other, would each be denied the
+other's, so neither could read its own. Refused at load with both names rather than resolved.
+
+**What it costs.** A role whose `writes` covers the folder loses it, reading included; `check`
+says so beside it. A private folder that does not exist yet is created empty on Linux before a run,
+because bubblewrap cannot deny a missing path without placing something on the host — and the
+owner would then find a file where its folder belongs.
+
 ## `extends` between roles: decided, not built yet
 
 nono lets a profile extend others (`"extends": ["team-base", "python-tools"]`), and a team of

@@ -340,6 +340,28 @@ leaves **no request** in the queue: granting one would undo a subtraction somebo
 entry that no `writes` of the same role covers, or a misspelling like `never_write`, is named
 by `seisin check` instead of being ignored.
 
+A folder only one role may see is `private`. The role reads and writes it; every other role is
+denied both, whatever its `writes` say, in either read mode and under `isolate`:
+
+```toml
+[roles.legal]
+writes  = ["contracts/drafts/**"]
+private = ["contracts/signed/**"]     # part of legal's territory, and no other role reads it
+
+[roles.dev]
+writes = ["**"]                       # still cannot read or write contracts/signed
+```
+
+An entry is one folder inside the repo, `dir` or `dir/**`: no patterns, no absolute path, no
+`..`, not the repo itself. Two roles naming the same folder, or one inside the other, is refused
+at load, because each would be denied its own. `seisin check` shows it under the role and says
+when it sits inside another role's territory, since that role loses it. `seisin explain dev read
+contracts/signed/x` answers denied and names the owner, and a denial there leaves **no request**:
+no grant opens it. On Linux a missing private folder is created empty before a run, because
+bubblewrap cannot deny a path that does not exist without placing something there; and another
+role sees an empty folder in its place, where a write succeeds into memory that is discarded with
+the run and never reaches the real one. On macOS the write is denied.
+
 A role that starts a server — a dev server, the backend an end-to-end test drives — needs
 `local_binding = true`. Listening is off by default and per role: most roles never start one.
 It is wider than the name: the role can also listen on every interface and **connect to every
