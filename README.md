@@ -323,10 +323,11 @@ resources; concurrent checks can race and produce misleading failures. Plain `--
 serial and is the recommended default. `--parallel` requires `--verify`.
 
 `reads` and `toolchain` take literal paths or a subtree ending in `/**`; interior globs,
-`*` and `?` are refused. `verify` is an argv array and may not be empty. Carving a data
-root stops when any directory on the way contains more than 1,000 entries: each neighbour
-would become a sandbox rule, so `check` names whether the repo or a `reads` path must move
-or narrow. Details and platform costs are in [Scratch and read territory](https://github.com/carlostapiacl/seisin/blob/main/docs/scratch.md).
+`*` and `?` are refused. `verify` is an argv array and may not be empty. Each data root is
+denied whole and what the role keeps is allowed back, so what appears there during the run is
+shut as well. On Linux a kept directory holding a write path is allowed back entry by entry;
+one with more than 1,000 entries is refused, and the error names whether the repo or a `reads`
+path must move or narrow. Details and platform costs are in [Scratch and read territory](https://github.com/carlostapiacl/seisin/blob/main/docs/scratch.md).
 
 `[network] allow` is the fallback for roles that do not name their own. A role that needs one
 extra host should say so on its own line: a domain in the global list is reachable by every

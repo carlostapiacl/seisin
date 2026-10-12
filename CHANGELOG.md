@@ -32,8 +32,7 @@ in every mode and gives each run a temp directory of its own — the role's when
 - **A file name the runtime would read as a glob no longer stops every run.** With
   `read = "territory"`, a name holding `[`, `]`, `*` or `?` beside the way to the repo (one with
   two unclosed `[` was enough) turned into an invalid pattern inside the runtime, and no run on
-  that machine started. Such names are now denied by a pattern that cannot break; one that would
-  also shut something the role keeps is refused by name.
+  that machine started. Names beside the repo no longer become rules at all (below).
 - **A canary the runtime refused to start says why.** "The sandbox did not run the canary at all"
   now carries the runtime's own last lines.
 - **A TMPDIR too long for the run's socket is named as such**, instead of `listen EINVAL` and a path.
@@ -48,6 +47,14 @@ in every mode and gives each run a temp directory of its own — the role's when
 - **`read = "territory"` denies the places data lives** — homes, temp directories, volumes —
   and leaves each role its repo, its territory, its run and the program it started. Opt-in;
   `"all"` stays the default and changes nothing. Roles get `reads`, `toolchain` and `verify`.
+- **…including what is created there after the run starts.** Each data root is denied whole and
+  what the role keeps is allowed back; earlier builds denied the siblings found at launch, so
+  another run's directory made beside this one later (its MCP config, its transcript) was
+  readable. Measured on both platforms with a regression test that creates the entries during
+  the run. `ls` along the way to the repo no longer lists the neighbours either (on Linux it
+  shows the mount points of what is kept). On Linux, a directory on the way to a write path is
+  allowed back entry by entry, so an entry created there during the run is not visible until
+  the next run, and one with more than 1,000 entries is refused.
 - **Every run starts with a canary**, in every mode: a write outside the territory, a planted
   secret, the run's own settings and a decoy loopback port are tried from inside, beside a
   positive control. Any wrong answer and the agent is not started: exit 86, `confined=false` in
