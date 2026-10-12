@@ -44,7 +44,8 @@ export function decideHandoff({
   if (!config || !config.roles) throw new Error("decideHandoff: config needs roles");
 
   const depthMax = limits.depth ?? MAX_DEPTH;
-  const visited = chain?.visited ?? [request.role];
+  // A caller may provide incomplete history. The requester is always visited.
+  const visited = [...new Set([...(chain?.visited ?? []), request.role])];
   const depth = chain?.depth ?? 0;
   const at = (type, extra = {}) => ({ type, revision, chainId: chain?.id ?? null, ...extra });
 
