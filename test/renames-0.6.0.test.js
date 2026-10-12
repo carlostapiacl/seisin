@@ -103,7 +103,7 @@ test("a decline an older seisin writes later is migrated too, beside the first c
 test("the read-only MCP server does not rewrite an old queue: it says what to run", () => {
   const { dir, f, text } = oldQueue();
   writeFileSync(join(dir, "seisin.toml"), '[roles.web]\nwrites = ["web/**"]\n');
-  assert.throws(() => queue(dir, [], null, { readOnly: true }), (e) =>
+  assert.throws(() => queue({ root: dir, roles: {} }, [], { readOnly: true }), (e) =>
     e.code === "EQUEUEFORMAT" && /2 declines written by seisin before 0\.6\.0/.test(e.message) && /seisin requests/.test(e.message));
   const cwd = process.cwd();
   process.chdir(dir);
