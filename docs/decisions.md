@@ -169,14 +169,43 @@ crash: `check` names every PATH entry the mode shuts, a role declares
 sandbox before an agent does. Opt-in; `"all"` stays the default, because it is
 the right trade for agents you run yourself.
 
-Carved, not allowed back: each data root is walked toward what is kept and
-every sibling on the way denied. `allowRead` would have been shorter and is
-wrong on both platforms — on macOS a deny nested in an allow is re-emitted
-after it, which shut the key files `[keys]` re-allows; on Linux the runtime
-mounts `allowRead` read-only after the writable mounts, which made the role's
-own territory read-only. The carving is a photograph (an entry created during
-the run beside a kept path is not covered) and leaves the names along the path
-listable; both are said in docs/scratch.md.
+Denied whole, allowed back (revised 2026-10-12). The first build carved:
+each data root walked toward what is kept, every sibling on the way denied by
+name. That is a photograph. Measured: with two runs sharing a data directory
+(`turns/<run>/`, `worktrees/<task>/`), the directory of a run started after
+this one — its MCP config with a token, its transcript — was readable from
+this one, because it was not there when the siblings were listed. No list
+taken at launch can cover it; only a deny of the parent can. So each data
+root is now one deny and what the role keeps is `allowRead`.
+
+The two reasons the allow was rejected the first time were measured, and each
+is handled where it bites rather than avoided:
+
+- macOS: srt emits the allows after the denies and re-emits a deny that sits
+  inside an allow after them, whole — which shut the key files `[keys]`
+  re-allows inside the key directory inside the repo. srt re-emits a deny
+  spelt as a *pattern* minus the allows its pattern covers (srt 0.0.78,
+  `lateReadDenyFilters`), so a deny that is inside an allow and has allows of
+  its own is spelt as a pattern matching exactly its path (`.secret[s]`). Only
+  those; every other deny is spelt as before.
+- Linux: the runtime restores the write mounts a deny wiped, then the read
+  allows read-only on top of them (`pushReadDenyDirMounts`), so the repo as an
+  allow made the territory inside it read-only. A kept directory that holds a
+  write path is allowed back entry by entry around it instead. Its cost: an
+  entry created during the run in a directory on the way to a write path is
+  not visible until the next run (closed, not leaked), and such a directory
+  with more than 1,000 entries is refused (each entry is one mount).
+
+Rejected: a Seatbelt regex that denies everything under the parent except the
+kept names. Seatbelt has the negated class it needs, but srt escapes `^` in a
+pattern and there is no other way to hand it a regex; positive ranges spanning
+non-ASCII bytes matched nothing when measured. Rejected: patching
+sandbox-runtime in place. Two upstream changes would remove both workarounds,
+and are filed as asks, not carried as patches: on macOS, re-emit a literal deny
+nested in a literal allow minus the allows strictly inside it, as
+`lateReadDenyFilters` already does for patterns; on Linux, emit the restores in
+`pushReadDenyDirMounts` shallow first across writes and reads, so a write
+nested in a read allow lands on top of it.
 
 Rejected: opening `~/Library/Keychains` so Claude Code stays signed in under
 this mode. It signs in, and the role can read every item in the keychain —

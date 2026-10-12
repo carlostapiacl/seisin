@@ -147,8 +147,11 @@ and a Claude run keeps that file readable while a Codex run or a plain command d
 - **Claude Code is signed out on macOS.** Its sign-in is in the login keychain, under the home.
   Hand it a token as a key (`claude setup-token`, or `ANTHROPIC_API_KEY`). Putting
   `~/Library/Keychains` in `reads` signs it in and gives the role every password in the keychain.
-- **What it does not close.** The names along the way to the repo stay listable (`ls ~/work`
-  shows what is there; nothing in it opens). It is a photograph: an entry created during the run
-  beside a kept path is not covered, so secrets belong in folders that hold no repo. A directory
-  on the way with more than 1,000 entries is refused rather than carved — keep repos out of
-  `$TMPDIR`.
+- **What is created later is closed too.** Each data root is one deny and what the role keeps is
+  allowed back inside it, so an entry made beside the repo during the run — another run's
+  directory, its config, its transcript — is shut the moment it exists. `ls ~/work` lists
+  nothing on macOS; on Linux it lists only the mount points of what is kept.
+- **What it costs on Linux.** A kept directory that holds a write path (the repo around
+  `src/**`) is allowed back entry by entry, because the runtime would mount it read-only over the
+  territory. An entry created during the run in such a directory is not visible to the role until
+  the next run, and one with more than 1,000 entries is refused — keep repos out of `$TMPDIR`.

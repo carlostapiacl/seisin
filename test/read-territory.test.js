@@ -16,7 +16,7 @@ import { mkdirSync, writeFileSync, symlinkSync, realpathSync, existsSync } from 
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { carveDenies, readPath, dataRoots, shutByTerritory } from "../src/territory.js";
+import { territoryReads, outlastAllows, readPath, dataRoots, shutByTerritory, MAX_CARVE } from "../src/territory.js";
 import { loadConfig, readReadMode } from "../src/config.js";
 import { settingsFor } from "../src/srt.js";
 import { inspect } from "../src/inspect.js";
@@ -31,7 +31,7 @@ const scratch = (prefix) => { const d = mkdtempSync(join(homedir(), prefix)); ma
 
 const CLI = fileURLToPath(new URL("../src/cli.js", import.meta.url));
 
-/* ── the carving, against a fake disk ────────────────────────────────── */
+/* ── the rules, against a fake disk ───────────────────────────────────── */
 
 const disk = (tree) => {
   const kind = (p) => {
@@ -63,38 +63,70 @@ const tree = {
   tmp: { a: 1, b: { c: 1 } },
 };
 
-test("a data root with nothing kept under it is denied whole", () => {
-  assert.deepEqual(carveDenies(["/tmp"], ["/home/ana/work/repo"], disk(tree)), ["/tmp"]);
+const mac = (roots, keep, opts = {}) => territoryReads(roots, keep, { platform: "darwin", fs: disk(tree), ...opts });
+const linux = (roots, keep, opts = {}) => territoryReads(roots, keep, { platform: "linux", fs: disk(tree), ...opts });
+
+test("a data root is denied whole, and what is kept inside it is allowed back", () => {
+  assert.deepEqual(mac(["/home", "/tmp"], ["/home/ana/work/repo"]),
+    { deny: ["/home", "/tmp"], allow: ["/home/ana/work/repo"] });
 });
 
-test("the way to a kept path stays open, and every sibling on it is denied", () => {
-  const out = carveDenies(["/home"], ["/home/ana/work/repo"], disk(tree));
-  assert.deepEqual(out.sort(), [
-    "/home/ana/.claude", "/home/ana/.ssh", "/home/ana/notes",
-    "/home/ana/work/other", "/home/ana/work/reserved", "/home/bob",
-  ]);
+test("nothing is denied by name: an entry made after the rules is under the deny like the rest", () => {
+  // The carving this replaced listed /home/ana/work/other by name, and a
+  // /home/ana/work/later made during the run was in no rule at all.
+  const { deny } = mac(["/home"], ["/home/ana/work/repo"]);
+  assert.deepEqual(deny, ["/home"]);
 });
 
-test("a symlink on the way is left alone: denying it would deny where it points", () => {
-  const out = carveDenies(["/home"], ["/home/ana/work/repo"], disk(tree));
-  assert.ok(!out.includes("/home/ana/link"));
+test("a root kept whole is not denied, and a nested root is covered by the outer one", () => {
+  assert.deepEqual(mac(["/home", "/home/ana"], ["/home/ana/work/repo"]).deny, ["/home"]);
+  assert.deepEqual(mac(["/home", "/tmp"], ["/home"]), { deny: ["/tmp"], allow: [] });
 });
 
-test("a kept path is readable whole; nothing below it is visited", () => {
-  const out = carveDenies(["/home"], ["/home/ana"], disk(tree));
-  assert.deepEqual(out, ["/home/bob"]);
+test("a kept path outside every root needs no allow", () => {
+  assert.deepEqual(mac(["/tmp"], ["/home/ana/work/repo"]), { deny: ["/tmp"], allow: [] });
 });
 
-test("a kept path that does not exist yet still keeps the way to it", () => {
-  const out = carveDenies(["/home"], ["/home/ana/work/new/deep"], disk(tree));
-  assert.ok(!out.includes("/home/ana/work"));
-  assert.ok(out.includes("/home/ana/work/repo"));
+test("Linux: a kept directory holding a write path is allowed back around it, not over it", () => {
+  // The runtime mounts read allows read-only on top of the write mounts, so
+  // the repo itself as an allow would make src read-only.
+  const out = linux(["/home"], ["/home/ana/work/repo", "/home/ana/work/repo/src"], { writes: ["/home/ana/work/repo/src"] });
+  assert.deepEqual(out.deny, ["/home"]);
+  assert.ok(!out.allow.includes("/home/ana/work/repo"), out.allow.join(" "));
+  assert.ok(!out.allow.some((p) => p.startsWith("/home/ana/work/repo/src")), "the write comes back as a write");
+  const t2 = { home: { ana: { repo: { ".git": { x: 1 }, README: 1, lib: { a: 1, gen: { b: 1 } }, link: "link" } } } };
+  const deep = territoryReads(["/home"], ["/home/ana/repo"], { platform: "linux", fs: disk(t2), writes: ["/home/ana/repo/lib/gen"] });
+  assert.deepEqual(deep.allow.sort(), ["/home/ana/repo/.git", "/home/ana/repo/README", "/home/ana/repo/lib/a", "/home/ana/repo/link"]);
+  assert.deepEqual(territoryReads(["/home"], ["/home/ana/repo"], { platform: "darwin", fs: disk(t2), writes: ["/home/ana/repo/lib/gen"] }).allow,
+    ["/home/ana/repo"], "macOS keeps read and write apart, so the repo is one allow");
+  // A piece that is itself denied — the key directory — is not allowed back:
+  // on Linux the deny's own mount would restore it whole.
+  const keyed = territoryReads(["/home"], ["/home/ana/repo"], { platform: "linux", fs: disk(t2), writes: ["/home/ana/repo/lib/gen"], denied: ["/home/ana/repo/.git"] });
+  assert.ok(!keyed.allow.includes("/home/ana/repo/.git"), keyed.allow.join(" "));
 });
 
-test("a directory too big to carve is refused, and named", () => {
-  const big = { home: { ana: Object.fromEntries(Array.from({ length: 1001 }, (_, i) => [`f${i}`, 1])) } };
-  big.home.ana.repo = {};
-  assert.throws(() => carveDenies(["/home"], ["/home/ana/repo"], disk(big)), /cannot carve \/home\/ana: it holds 1002 entries/);
+test("a kept path at or under a deny of seisin's own is not allowed back", () => {
+  assert.deepEqual(mac(["/home"], ["/home/ana/work/repo", "/home/ana/.ssh/config"], { denied: ["/home/ana/.ssh"] }).allow,
+    ["/home/ana/work/repo"]);
+});
+
+test("Linux: a directory too big to allow back piece by piece is refused, and named", () => {
+  const big = { home: { ana: { repo: Object.fromEntries(Array.from({ length: MAX_CARVE + 1 }, (_, i) => [`f${i}`, 1])) } } };
+  big.home.ana.repo.src = {};
+  assert.throws(() => territoryReads(["/home"], ["/home/ana/repo"], { platform: "linux", fs: disk(big), writes: ["/home/ana/repo/src"] }),
+    /cannot keep \/home\/ana\/repo readable around what the role writes inside it: it holds 1002 entries/);
+});
+
+test("macOS: a deny inside an allow, with allows of its own, is spelt so it comes back minus them", () => {
+  // srt re-emits a deny inside an allow after the allows; as a path it comes
+  // back whole and shuts the key, as a pattern it comes back minus the key.
+  const out = outlastAllows(
+    ["/home/ana/repo/.secrets", "/home/ana/repo/private", "/home", "/run/x"],
+    ["/home/ana/repo", "/home/ana/repo/.secrets/k.txt", "/run/x/mine"]);
+  assert.deepEqual(out, ["/home/ana/repo/.secret[s]", "/home/ana/repo/private", "/home", "/run/x"],
+    "only the one inside an allow AND around one changes");
+  assert.deepEqual(outlastAllows(["/h/r/.d.."], ["/h/r", "/h/r/.d../k"]), ["/h/r/.[d].."]);
+  assert.throws(() => outlastAllows(["/h/r/a[1]"], ["/h/r", "/h/r/a[1]/k"]), /cannot keep \/h\/r\/a\[1\] shut/);
 });
 
 test("the data roots include HOME and TMPDIR wherever they are", () => {
@@ -139,13 +171,21 @@ test("reads and toolchain take a path or a subtree, never a pattern", () => {
   assert.equal(readPath("/r", "docs/**"), "/r/docs");
 });
 
-test("the settings deny the sibling outside the repo and keep the repo", () => {
+test("the settings deny the home whole and allow the repo back", () => {
   const { base, root } = repo(POLICY);
   const s = settingsFor(loadConfig(join(root, "seisin.toml")), "dev");
-  const deny = s.filesystem.denyRead;
-  assert.ok(deny.includes(join(base, "reserved")), "the reserved check, beside the repo");
-  assert.ok(!deny.some((p) => p === root || root.startsWith(p + "/")), "nothing on the way to the repo");
-  assert.equal(s.filesystem.allowRead.length >= 1, true, "the key is re-allowed as before");
+  const { denyRead: deny, allowRead: allow } = s.filesystem;
+  assert.ok(deny.includes(realpathSync(homedir())) || deny.some((d) => homedir().startsWith(d + "/")), "the home, whole");
+  assert.ok(!deny.includes(join(base, "reserved")), "nothing beside the repo is named: the deny covers it, now and later");
+  assert.ok(allow.some((p) => p === root || root.startsWith(p + "/")) ||
+    (process.platform === "linux" && allow.includes(join(root, "seisin.toml"))), "the repo is allowed back");
+  assert.ok(allow.some((p) => p.endsWith("/k.txt")), "the key is re-allowed as before");
+});
+
+test("a reads entry inside a deny of its own stays shut", () => {
+  const { root } = repo(POLICY.replace('keys = ["k.txt"]', 'keys = ["k.txt"]\nreads = [".secrets/other.txt"]'));
+  const s = settingsFor(loadConfig(join(root, "seisin.toml")), "dev");
+  assert.ok(!s.filesystem.allowRead.some((p) => p.endsWith("other.txt")), s.filesystem.allowRead.join(" "));
 });
 
 test("the run's own settings are denied to the run", () => {
@@ -183,21 +223,6 @@ test("check: a PATH entry under a data root and not kept is shut", () => {
   assert.equal(shutByTerritory("/usr/local/bin", ["/home/ana/work/repo"], ["/home"], id), false);
 });
 
-test("a name the runtime would read as a glob is denied by a pattern that still matches it", () => {
-  // srt 0.0.78 has no escape for `[ ] * ?`: `notes [draft` became a regex with
-  // an unterminated class and no run started on that machine.
-  const t = { home: { ana: { "notes [a [b": 1, "a*b": { x: 1 }, work: { repo: { src: 1 } } } } };
-  const out = carveDenies(["/home"], ["/home/ana/work/repo"], disk(t));
-  assert.deepEqual(out.sort(), ["/home/ana/a?b", "/home/ana/notes ?a ?b"]);
-  for (const p of out) assert.doesNotMatch(p, /[[\]*]/);
-});
-
-test("a glob-shaped name whose pattern would shut a kept sibling is refused, by name", () => {
-  // `a?` matches `a[` and `ab` alike: denying one by pattern would shut both.
-  const t = { home: { ana: { "a[": 1, ab: { repo: 1 } } } };
-  assert.throws(() => carveDenies(["/home"], ["/home/ana/ab/repo"], disk(t)), /cannot deny \/home\/ana\/a\[.*\/home\/ana\/ab.*Rename/s);
-});
-
 /* ── against the kernel ───────────────────────────────────────────────── */
 
 const skip = srtSkip();
@@ -229,6 +254,51 @@ test("against the kernel: the repo and the key read, the sibling and the setting
   assert.doesNotMatch(out, /POLICY-READ/, "the run's own settings");
   assert.equal(existsSync(join(base, "reserved", "escaped.txt")), false,
     "positive control: a sibling outside the role's territory is not writable");
+});
+
+test("against the kernel: what another run creates beside this one, after it started, does not read", { skip }, async () => {
+  // A data directory shared by concurrent runs: each has its turn directory
+  // under turns/ and its worktree under worktrees/. Run B's turn directory —
+  // its MCP token, its transcript — is made after run A started. The carving
+  // that came before denied the siblings it found at start, and B's was not
+  // one of them.
+  const base = realpathSync(scratch("seisin-late-"));
+  const root = join(base, "worktrees", "task-a");
+  mkdirSync(join(root, "src"), { recursive: true });
+  mkdirSync(join(root, ".secrets"), { recursive: true });
+  mkdirSync(join(base, "turns", "a"), { recursive: true });
+  writeFileSync(join(root, "src", "a.txt"), "inside\n");
+  writeFileSync(join(root, ".secrets", "k.txt"), "KEY-VALUE\n");
+  writeFileSync(join(base, "turns", "a", "early.txt"), "OWN-TURN-EARLY\n");
+  writeFileSync(join(root, "seisin.toml"), POLICY.replace('keys = ["k.txt"]', 'keys = ["k.txt"]\nreads = ["../../turns/a"]'));
+  const go = join(root, "src", "go");
+  const script = `i=0; while [ ! -f src/go ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; test -f src/go && echo STARTED-BEFORE; ` +
+    `cat src/a.txt ../../turns/a/early.txt ../../turns/a/late.txt; cat .secrets/k.txt >/dev/null && echo KEY-READ; ` +
+    `cat ../../turns/b/config/mcp.json ../../turns/b/private/t.jsonl ../../worktrees/task-b/x ../../late.txt 2>/dev/null; ` +
+    `echo w > src/new.txt && cat src/new.txt; echo DONE`;
+  const done = run(root, "dev", script);
+  // Made once the run is confined: the run reads src/go only after this.
+  await new Promise((ok) => setTimeout(ok, 3000));
+  mkdirSync(join(base, "turns", "b", "config"), { recursive: true });
+  mkdirSync(join(base, "turns", "b", "private"), { recursive: true });
+  mkdirSync(join(base, "worktrees", "task-b"), { recursive: true });
+  writeFileSync(join(base, "turns", "b", "config", "mcp.json"), '{"token":"LATE-MCP-TOKEN"}\n');
+  writeFileSync(join(base, "turns", "b", "private", "t.jsonl"), "LATE-TRANSCRIPT\n");
+  writeFileSync(join(base, "worktrees", "task-b", "x"), "LATE-WORKTREE\n");
+  writeFileSync(join(base, "late.txt"), "LATE-TOP\n");
+  writeFileSync(join(base, "turns", "a", "late.txt"), "OWN-TURN-LATE\n");
+  writeFileSync(go, "");
+  const { out, code } = await done;
+  assert.equal(code, 0, out);
+  assert.match(out, /STARTED-BEFORE/, "the entries were made while the run was already running");
+  assert.match(out, /inside/, "positive control: the repo reads");
+  assert.match(out, /KEY-READ/, "positive control: the granted key reads");
+  assert.match(out, /OWN-TURN-EARLY/, "positive control: the run's own turn directory reads");
+  assert.match(out, /OWN-TURN-LATE/, "positive control: an entry made during the run where the role keeps it reads");
+  assert.match(out, /^w$/m, "positive control: the territory writes");
+  for (const leak of ["LATE-MCP-TOKEN", "LATE-TRANSCRIPT", "LATE-WORKTREE", "LATE-TOP"])
+    assert.doesNotMatch(out, new RegExp(leak), leak);
+  assert.match(out, /DONE/);
 });
 
 test("against the kernel: a name with two unclosed [ beside the repo neither stops the run nor reads", { skip }, async () => {

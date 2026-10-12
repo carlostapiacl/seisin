@@ -25,7 +25,7 @@ import { realAncestor } from "./paths.js";
 import { denyFor } from "./surface.js";
 import { runsRootOf, SETTINGS_NAME, TMP_NAME } from "./rundir.js";
 import { FIFO_SUFFIX } from "./spool.js";
-import { carveDenies, dataRoots, keptFor } from "./territory.js";
+import { territoryReads, outlastAllows, dataRoots, keptFor } from "./territory.js";
 import {
   SOCKET_MAX, isLink, realOrSelf, expand, homeFits, roleHome, roleHomeRoot,
   CREDENTIAL_HOMES, toWritePath, writePathsOf, otherAgentsCredentials,
@@ -350,20 +350,17 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
   }
 
   /**
-   * `[runtime] read = "territory"`: the data roots are denied, carved around
-   * what this role needs. See territory.js for why carved and not allowed.
+   * `[runtime] read = "territory"`: the data roots are denied whole and what
+   * this role needs is allowed back inside them. See territory.js for why
+   * allowed back and no longer carved.
    *
-   * Carved toward: the repo (key directories inside it stay denied by name,
+   * Allowed back: the repo (key directories inside it stay denied by name,
    * above), what the role writes, and what it declares in `reads` and
-   * `toolchain`.
+   * `toolchain` — except where a deny above already covers it. A `reads`
+   * entry under `~/.ssh` stays shut, as it did when the mode only denied.
    *
-   * NOT carved toward: what is already re-allowed above — this run's directory,
-   * the role's own home, the key files. Each of those is an allow inside a deny
-   * that has no allow around it, which is the one shape the runtime honours on
-   * both platforms; it is how they work in the ordinary mode too. And carving
-   * toward them is what does not scale: they live in TMPDIR, which on a Mac
-   * that has been on for a while holds thousands of entries. Measured: 9,163
-   * denies, 815 KB of profile, and `spawn E2BIG` before the agent started.
+   * Not allowed back twice: what is already re-allowed above — this run's
+   * directory, the role's own home, the key files.
    */
   /**
    * Other roles' private folders: denied to read and to write, whatever this
@@ -386,12 +383,37 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
   const shut = othersPrivate(config, roleName, abs, { make: forRun });
   denyRead.push(...shut);
 
+  const allowWrite = [
+    // Observing means the kernel stops refusing, because otherwise there is
+    // nothing to observe. `--observe` used to relax only the hook, so the
+    // sandbox denied the write anyway and the banner said "nothing denied"
+    // over a transcript of denials — and `init --from-observations` builds
+    // a policy out of that transcript. It would read "the agent needs
+    // nothing outside its territory", which is the opposite of the truth.
+    //
+    // The repo, and only the repo. Everything in denyWrite below still
+    // holds: the config, the state directory and the key directories stay
+    // shut even here, because observing is not a reason to hand over the
+    // paperwork of the confinement.
+    // One function answers "what may this role write" for the settings and
+    // for surface.js, which needs the union over every role. Two copies of
+    // that arithmetic would be two answers the day one of them changes.
+    ...writePathsOf(config, role, { observe, agent }),
+    ...(isFifo ? [spool] : []),
+    ...(tmp ? [tmp] : []),
+  ];
+
   if (config.read === "territory") {
     const reopened = allowRead.map(realOrSelf);
     const inReopened = (p) => { const r = realAncestor(p); return reopened.some((a) => r === a || r.startsWith(a + "/")); };
     const keep = keptFor(config, role, { observe, agent, program }).filter((p) => !inReopened(p));
-    denyRead.push(...carveDenies(dataRoots(), keep));
+    const { deny, allow } = territoryReads(dataRoots(), keep, { writes: allowWrite, denied: [...denyRead] });
+    denyRead.push(...deny);
+    allowRead.push(...allow);
   }
+  // The key directory inside a repo that is now an allow: see outlastAllows.
+  const spelt = config.read === "territory" && process.platform === "darwin"
+    ? outlastAllows(denyRead, allowRead, realAncestor) : denyRead;
 
   return {
     network: {
@@ -411,27 +433,9 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
       allowLocalBinding: role.localBinding === true,
     },
     filesystem: {
-      denyRead,
+      denyRead: spelt,
       allowRead,
-      allowWrite: [
-        // Observing means the kernel stops refusing, because otherwise there is
-        // nothing to observe. `--observe` used to relax only the hook, so the
-        // sandbox denied the write anyway and the banner said "nothing denied"
-        // over a transcript of denials — and `init --from-observations` builds
-        // a policy out of that transcript. It would read "the agent needs
-        // nothing outside its territory", which is the opposite of the truth.
-        //
-        // The repo, and only the repo. Everything in denyWrite below still
-        // holds: the config, the state directory and the key directories stay
-        // shut even here, because observing is not a reason to hand over the
-        // paperwork of the confinement.
-        // One function answers "what may this role write" for the settings and
-        // for surface.js, which needs the union over every role. Two copies of
-        // that arithmetic would be two answers the day one of them changes.
-        ...writePathsOf(config, role, { observe, agent }),
-        ...(isFifo ? [spool] : []),
-        ...(tmp ? [tmp] : []),
-      ],
+      allowWrite,
       /**
        * The confinement's own paperwork, never writable — not even by a role
        * that was granted the whole repo.
