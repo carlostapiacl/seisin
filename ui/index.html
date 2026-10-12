@@ -371,6 +371,11 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
   .req .scope{font-size:12.5px;margin-top:4px;color:var(--fg)}
   .req .scope.wide>b{color:var(--amber)}
   .req .scope .own{display:block;color:var(--mid);font-size:12px;margin-top:2px}
+  .req .pick{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;margin-top:4px;color:var(--mid)}
+  .req .pick label{display:inline-flex;gap:5px;align-items:center;cursor:pointer}
+  .req .pick input{padding:0;margin:0;width:auto;border:0}
+  .req .fnote{font-size:12px;color:var(--amber);margin-top:3px}
+  .req .fnote[hidden]{display:none}
   .req .err{font-size:12px;color:var(--amber);margin-top:4px}
   .req .err[hidden]{display:none}
   .req input[aria-invalid="true"]{border-color:var(--amber)}
@@ -1699,6 +1704,33 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       esc(r.grant) + "</code></b>, not only that file." + own + "</div>";
   }
 
+  /** A write keyed by a folder can be granted as the one file instead. */
+  function narrowable(r){ return r.action === "write" && r.grant !== r.target; }
+
+  /** The line a one-file grant carries. Live, the server says it from the role's last run;
+   *  the example has no runs, so it says it conditionally. */
+  function fileNoteOf(r){
+    if (typeof r.fileNote === "string") return r.fileNote;
+    return "If " + r.role + " runs Claude Code, a one-file grant will not let it edit: Claude Code's Write and Edit " +
+      "save to a temporary beside the file and rename it over, and the temporary is outside a one-file grant (EPERM).";
+  }
+
+  /** Folder (as before) or only the file: the choice, and what the file choice costs. */
+  function scopeChoice(r, i){
+    if (!narrowable(r)) return "";
+    return '<div class="pick" role="radiogroup" aria-label="What to grant">' +
+      '<label><input type="radio" name="scope-' + i + '" value="folder" checked> the folder <code>' + esc(r.grant) + "</code></label>" +
+      '<label><input type="radio" name="scope-' + i + '" value="file"> only the file <code>' + esc(r.target) + "</code></label>" +
+      "</div>" +
+      '<div class="fnote" id="fnote-' + i + '" hidden>' + esc(fileNoteOf(r)) + "</div>";
+  }
+
+  /** What the row's Grant button would write: the folder, or the one file chosen instead. */
+  function chosen(r, i){
+    var f = document.querySelector('input[name="scope-' + i + '"][value="file"]');
+    return narrowable(r) && f && f.checked ? { scope: "file", grant: r.target } : { scope: "folder", grant: r.grant };
+  }
+
   function drawReqs(){
     var host = document.getElementById("reqs");
     pill("req-pin", REQS.length, REQS.length === 1 ? "request" : "requests");
@@ -1716,7 +1748,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       return '<div class="req' + (r.stale ? ' stale' : '') + '">' +
         '<div class="who">' +
           "<div><b>" + esc(r.role) + "</b> wants to " + esc(r.action) + ' <span class="path">' + esc(r.target) + "</span></div>" +
-          scopeOf(r) +
+          scopeOf(r) + scopeChoice(r, i) +
           '<div class="sub"><span class="asked">' + times + "</span>" +
             (w.text ? ' · last <span title="' + escA(w.title) + '">' + esc(w.text) + "</span>" : "") + stale + "</div>" +
           '<div class="err" id="err-' + i + '" role="alert" hidden></div>' +
@@ -1732,6 +1764,12 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
 
     host.querySelectorAll("button[data-n]").forEach(function(b){
       b.addEventListener("click", function(){ act(b); });
+    });
+    host.querySelectorAll('input[type="radio"][name^="scope-"]').forEach(function(x){
+      x.addEventListener("change", function(){
+        var n = x.name.slice(6), note = document.getElementById("fnote-" + n);
+        if (note) note.hidden = !(x.value === "file" && x.checked && note.textContent);
+      });
     });
     drawBulk();
     lockWrites();
@@ -1842,9 +1880,10 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       input.value = "declined from the console";
       filled = true;
     }
+    var pick = chosen(req, i);
     var needsArm = granting ? (req.owners || []).length > 0 : filled;
     if (needsArm && !btn.dataset.armed) {
-      arm(btn, granting ? "Click again to share " + req.grant + " with " + req.role
+      arm(btn, granting ? "Click again to share " + pick.grant + " with " + req.role
                         : "Click again to decline with this reason", rest);
       return;
     }
@@ -1854,15 +1893,15 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     if (!LIVE) {
       if (granting) {
         var r0 = ROLES.filter(function(x){ return x.name === req.role; })[0];
-        if (r0 && r0.writes.indexOf(req.grant) === -1) r0.writes.push(req.grant);
+        if (r0 && r0.writes.indexOf(pick.grant) === -1) r0.writes.push(pick.grant);
       }
       DEMO.requests = DEMO.requests.filter(function(q){ return q.role + ":" + q.action + ":" + q.target !== key; });
       decided(granting
-        ? "Granted <code>" + esc(req.grant) + "</code> to <b>" + esc(req.role) + "</b> in the example. Live, this line is written to seisin.toml:" +
-          '<span class="ln">"' + esc(req.grant) + '"   # granted … · «' + esc(why) + "»</span>Nothing was saved. " +
+        ? "Granted <code>" + esc(pick.grant) + "</code> to <b>" + esc(req.role) + "</b> in the example. Live, this line is written to seisin.toml:" +
+          '<span class="ln">"' + esc(pick.grant) + '"   # granted … · «' + esc(why) + "»</span>Nothing was saved. " +
           '<a href="#configfile">see the example seisin.toml</a>'
         : "Declined <b>" + esc(req.role) + "</b>’s request for <code>" + esc(req.grant) + "</code> in the example · reason «" + esc(why) + "».");
-      note(granting ? "granted" : "declined", req.role + " · " + req.grant);
+      note(granting ? "granted" : "declined", req.role + " · " + (granting ? pick.grant : req.grant));
       return;
     }
 
@@ -1871,7 +1910,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
       var r = await fetch("/api/decide", {
         method: "POST",
         headers: { "content-type": "application/json", "x-seisin-token": TOKEN },
-        body: JSON.stringify({ key: key, decision: btn.dataset.d, reason: why })
+        body: JSON.stringify({ key: key, decision: btn.dataset.d, reason: why, scope: granting ? pick.scope : "folder" })
       });
       var out = await r.json();
       if (!r.ok) { var e2 = new Error(out.error || "the console did not accept that"); e2.status = r.status; throw e2; }

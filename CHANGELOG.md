@@ -152,6 +152,14 @@ repository). What it needs and what changed is in [docs/agents.md](docs/agents.m
   signed in with ChatGPT and a role's list names something under `openai.com` but not
   `chatgpt.com` (or `auth.openai.com`), it says so: without `chatgpt.com` a Codex run hangs
   without printing anything. A role whose `env` passes `OPENAI_API_KEY` is left out.
+- **A request can be granted as its one file, not its folder.** The queue keys a write by its
+  folder and granting widened to it; the console now offers "only the file" beside the folder,
+  and `seisin grant <n|id> --file` does the same. It takes the same lock, checks and edit as the
+  folder and lands in `seisin.toml` as a literal path. A sibling asked for later reopens the
+  request instead of folding into the settled one. Because Claude Code's Write and Edit save
+  through a temporary beside the file, choosing the file for a role whose last run was Claude
+  Code says, in one line, that it will not be able to edit it. The canary line now records the
+  agent a run ran.
 
 ## 0.5.0 — 2026-09-30
 
