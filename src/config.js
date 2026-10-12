@@ -508,6 +508,7 @@ export function loadConfig(path, text = readFileSync(path, "utf8")) {
     const controlFiles = readControlFiles(own(r, "control_files"), `${path}: roles.${name}.control_files`);
     const reads = readReadList(own(r, "reads"), `${path}: roles.${name}.reads`);
     const toolchain = readReadList(own(r, "toolchain"), `${path}: roles.${name}.toolchain`);
+    const priv = readPrivate(own(r, "private"), `${path}: roles.${name}.private`);
     const verify = own(r, "verify") === undefined ? null : asArray(own(r, "verify"), `roles.${name}.verify`);
     if (verify && verify.length === 0)
       throw new Error(`${path}: roles.${name}.verify is empty. It is the command that proves the role can check ` +
@@ -525,8 +526,17 @@ export function loadConfig(path, text = readFileSync(path, "utf8")) {
        * kept so that regenerating a config writes back what a person typed
        * rather than the expansion.
        */
-      writes: withSidecars(writes),
+      writes: withSidecars([...new Set([...writes, ...priv])]),
       writesDeclared: writes,
+      /**
+       * Folders only this role reads and writes. Each is also part of its
+       * territory (added to `writes` above, so `explain`, `whose` and the
+       * settings agree it is this role's), and every OTHER role is given a
+       * denyRead and a denyWrite on it — in either read mode, isolated or not.
+       * Deny-only, for the reason territory.js gives for carving: an allow
+       * nested in a deny is the shape that breaks on one platform or the other.
+       */
+      private: priv,
       keys,
       keyEntries,
       keyMode: keyMode ?? null,
@@ -620,6 +630,7 @@ export function loadConfig(path, text = readFileSync(path, "utf8")) {
       unknownKeys: Object.keys(r).filter((k) => !ROLE_KEYS.includes(k)),
     };
   }
+  checkPrivateOverlap(out.roles, path);
   out.notify = readNotify(own(parsed, "notify"), { path, root: out.root, keyDirs, roles: out.roles, own });
   return out;
 }
@@ -788,7 +799,7 @@ function readBoolean(value, where) {
 }
 
 /** The keys a `[roles.<name>]` table can hold. Anything else is reported by `check`. */
-export const ROLE_KEYS = ["writes", "keys", "key_mode", "env", "network", "never_writes", "local_binding", "local_ports", "mcp", "trustd", "control_files", "reads", "toolchain", "verify"];
+export const ROLE_KEYS = ["writes", "private", "keys", "key_mode", "env", "network", "never_writes", "local_binding", "local_ports", "mcp", "trustd", "control_files", "reads", "toolchain", "verify"];
 
 /**
  * `control_files`: which families of control files a role may edit. Refused at
@@ -888,6 +899,56 @@ function readNeverWrites(value, where) {
       throw new Error(`${where}: "${g}" contains "..". never_writes names paths inside the repo.`);
   }
   return list;
+}
+
+/**
+ * `private`: folders inside the repo, written `dir` or `dir/**`.
+ *
+ * A folder and not a glob, because what is enforced is a deny on one path for
+ * every other role: `notes/*.md` would have to be widened to `notes` or frozen
+ * to today's files. Not absolute and no `..`, because the denies are given
+ * against the repo the policy describes and `explain` answers in it. Not the
+ * repo itself: private to one role, the whole repo is shut to all the others,
+ * which is a policy of one role written in the long way.
+ */
+function readPrivate(value, where) {
+  const list = value === undefined ? [] : asArray(value, where);
+  for (const p of list) {
+    const dir = p.replace(/\/\*\*$/, "").replace(/\/+$/, "").replace(/^\.\//, "");
+    if (p.startsWith("/"))
+      throw new Error(`${where}: "${p}" is absolute. A private folder is relative to the repo root, like writes.`);
+    if (dir.split("/").includes(".."))
+      throw new Error(`${where}: "${p}" contains "..". A private folder is inside the repo.`);
+    if (dir === "" || dir === "." || dir === "**")
+      throw new Error(`${where}: "${p}" is the whole repo. A private folder is a folder inside it — ` +
+        `"notes/**" — and every other role is denied it.`);
+    if (/[*?[\]{}]/.test(dir))
+      throw new Error(`${where}: "${p}" is a pattern. A private folder is one path and everything under it: ` +
+        `write "${dir.replace(/\/?[^/]*[*?[\]{}].*$/, "") || "dir"}/**".`);
+  }
+  return list;
+}
+
+/** `private` with its `/**` and `./` taken off: the folder itself. */
+export const privateDir = (p) => p.replace(/\/\*\*$/, "").replace(/\/+$/, "").replace(/^\.\//, "");
+
+/**
+ * One owner per private folder. Two roles naming the same folder, or one
+ * inside the other, would each be denied the other's — so neither could read
+ * its own. Refused at load, with both names.
+ */
+function checkPrivateOverlap(roles, path) {
+  const all = Object.values(roles).flatMap((r) => (r.private ?? []).map((p) => ({ role: r.name, p, dir: privateDir(p) })));
+  const inside = (a, b) => a === b || a.startsWith(b + "/");
+  for (let i = 0; i < all.length; i++)
+    for (let j = i + 1; j < all.length; j++) {
+      const a = all[i], b = all[j];
+      if (a.role === b.role || !(inside(a.dir, b.dir) || inside(b.dir, a.dir))) continue;
+      throw new Error(
+        `${path}: roles.${a.role}.private "${a.p}" and roles.${b.role}.private "${b.p}" ` +
+        `${a.dir === b.dir ? "are the same folder" : "overlap"}. A private folder has one owner: every ` +
+        `other role is denied it, so each of these two would be denied its own. Give it to one of them.`);
+    }
 }
 
 /**

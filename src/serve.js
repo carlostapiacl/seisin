@@ -136,6 +136,7 @@ export function state(configPath, { since = null, snap = snapshot(configPath) } 
     keys: r.keys,
     env: r.env,
     neverWrites: r.neverWritesDeclared ?? r.neverWrites ?? [],
+    private: r.private ?? [],
     localBinding: r.localBinding === true,
     localPorts: r.localPorts ?? [],
     mcp: r.mcp ?? null,

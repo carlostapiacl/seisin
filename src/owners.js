@@ -245,9 +245,53 @@ export function ownersOf(config, path) {
     if (!config.root || !path.startsWith(root)) return [];
     path = path.slice(root.length);
   }
+  // A private folder has one owner, whatever else covers it: every other role
+  // is given a denyWrite on it (srt.js), and denyWrite wins over any territory.
+  const mine = privateOwner(config, path);
   return Object.values(config.roles)
     .filter((r) => r.writes.some((g) => covers(g, path)) && !neverWrites(r, path, config))
+    .filter((r) => !mine || r.name === mine.role)
     .map((r) => r.name);
+}
+
+/**
+ * The private folder that holds `path` — `{ role, entry }` — or null.
+ *
+ * `path` is repo-relative, or absolute inside the repo. One answer for the
+ * settings, `explain`, the hook and `check`, so the denies the kernel is given
+ * and the sentence about them cannot drift apart.
+ */
+export function privateOwner(config, path) {
+  let p = String(path ?? "");
+  if (p.startsWith("/")) {
+    const root = config.root?.endsWith("/") ? config.root : `${config.root}/`;
+    if (!config.root || !p.startsWith(root)) return null;
+    p = p.slice(root.length);
+  }
+  for (const r of Object.values(config.roles ?? {}))
+    for (const entry of r.private ?? [])
+      if (covers(entry.replace(/\/\*\*$/, "").replace(/\/+$/, ""), p)) return { role: r.name, entry };
+  return null;
+}
+
+/** The answer for `role` touching another role's private folder, or null. */
+function privateAnswer(config, role, target, read = false) {
+  const hit = privateOwner(config, target);
+  if (!hit) return null;
+  // The owner's write goes on through the ordinary questions (never_writes
+  // still subtracts inside it); its read is answered here, because "every
+  // role reads it" is exactly what is no longer true.
+  if (hit.role === role)
+    return read
+      ? { allowed: true, owners: [role], privateTo: role,
+          reason: `${target} is in ${role}'s private folder (private = ["${hit.entry}"]): ${role} reads it, and no other role does` }
+      : null;
+  return {
+    allowed: false, owners: [hit.role], privateTo: hit.role,
+    reason: `${target} is in ${hit.role}'s private folder (private = ["${hit.entry}"]): only ${hit.role} ` +
+      `reads or writes it, and every other role is denied both, in any read mode. ` +
+      `There is nothing to grant — ask ${hit.role} for what you need from it`,
+  };
 }
 
 /**
@@ -438,6 +482,8 @@ export function explainFileRead(config, role, rel, credentialHomes = []) {
   }
   const signIn = signInAnswer(role, rel);
   if (signIn) return signIn;
+  const shut = privateAnswer(config, role, rel, true);
+  if (shut) return shut;
   if (config.read === "territory" && rel.startsWith("/") &&
       shutByTerritory(rel, keptFor(config, config.roles[role])))
     return {
@@ -714,6 +760,8 @@ function explainPolicy(config, role, action, target) {
    * approves it, and the subtraction is undone from the other side without
    * anyone deciding to undo it.
    */
+  const shut = privateAnswer(config, role, target);
+  if (shut) return shut;
   const r = config.roles[role];
   const barred = r && r.writes.some((g) => covers(g, target)) ? neverWrites(r, target, config) : null;
   if (barred)
