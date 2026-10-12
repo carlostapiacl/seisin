@@ -357,7 +357,7 @@ An entry is one folder inside the repo, `dir` or `dir/**`: no patterns, no absol
 at load, because each would be denied its own. `seisin check` shows it under the role and says
 when it sits inside another role's territory, since that role loses it. `seisin explain dev read
 contracts/signed/x` answers denied and names the owner, and a denial there leaves **no request**:
-no grant opens it. On Linux a missing private folder is created empty before a run, because
+no grant opens it. On Linux a missing private folder is created empty by `seisin run` (never by `check`), because
 bubblewrap cannot deny a path that does not exist without placing something there; and another
 role sees an empty folder in its place, where a write succeeds into memory that is discarded with
 the run and never reaches the real one. On macOS the write is denied.
