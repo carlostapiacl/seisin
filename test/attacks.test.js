@@ -258,7 +258,9 @@ test("ATTACK-006 a failing provider's stderr does not carry the secret out", () 
   const run = () => ({ status: 1, stdout: "sk_live_abcdef123456\n", stderr: "could not finish: sk_live_abcdef123456\n" });
   const entry = { raw: "T=p://x", scheme: "p", ref: "x", name: "T", kind: "ref" };
   assert.throws(() => resolveRef(entry, { command: ["p", "{ref}"] }, { run }),
-    (e) => !e.message.includes("sk_live_abcdef123456") && /‹redacted›/.test(e.message));
+    // Its output is not shown at all now — a provider can print the value on
+    // stderr alone, where there is nothing to redact it against.
+    (e) => !e.message.includes("sk_live_abcdef123456") && /is not shown/.test(e.message));
 });
 
 test("ATTACK-007 a provider that never answers stops the run with a reason", () => {
