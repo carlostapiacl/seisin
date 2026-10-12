@@ -83,6 +83,20 @@ export function roleKeyWarnings(roles, config = null) {
           "restricts nothing for this role. Drop local_binding if the role only needs to reach " +
           "those ports; keep it only if the role has to listen.",
       });
+    // The port list lives in the runtime's proxy, not in the kernel: a client
+    // that dials 127.0.0.1:N itself is refused even on a listed port. Said on
+    // every check, because the clients people list ports for — databases,
+    // caches — are mostly that kind. See docs/decisions.md.
+    else if (r.localPorts?.length)
+      warnings.push({
+        kind: "local-ports-proxy-only",
+        headline: `${r.name}: local_ports ${r.localPorts.join(", ")} reaches only clients that use HTTP_PROXY`,
+        detail: "The port list is enforced by the sandbox's proxy; the kernel has no rule for one localhost port. " +
+          "curl, Python's urllib and requests, and Node's fetch (22+) go through it. Database drivers, " +
+          "psql, mysql and redis-cli dial directly and are denied. To tell, run it with " +
+          `\`seisin run ${r.name} -- <client>\`: on macOS a \`connect tcp:<port>\` in \`seisin log\` means it ` +
+          "skipped the proxy; on Linux it fails with ECONNREFUSED.",
+      });
     // trustd is a macOS service; on Linux the key changes nothing.
     if (r.trustd && process.platform === "darwin")
       warnings.push({

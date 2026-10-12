@@ -80,6 +80,17 @@ test("check shows the ports, and says so when local_binding makes them moot", ()
   assert.equal(both.warnings.some((w) => w.kind === "local-ports-moot"), process.platform === "darwin");
 });
 
+test("check says local_ports reaches only clients that use the proxy, and how to tell", () => {
+  const w = inspect(load(TWO)).warnings.filter((x) => x.kind === "local-ports-proxy-only");
+  assert.equal(w.length, 1, "one per role that names ports, none for the others");
+  assert.match(w[0].headline, /e2e: local_ports 8001, 8081 reaches only clients that use HTTP_PROXY/);
+  assert.match(w[0].detail, /psql/);
+  assert.match(w[0].detail, /seisin run e2e -- <client>/);
+  // Where local_binding already opens every port, the moot warning says it instead.
+  const both = inspect(load('[roles.e2e]\nwrites = ["app/**"]\nlocal_ports = [8001]\nlocal_binding = true\n')).warnings;
+  assert.equal(both.some((x) => x.kind === "local-ports-proxy-only"), process.platform !== "darwin");
+});
+
 const skip = srtSkip();
 
 test("against the kernel: the named port answers, the next one does not", { skip }, async (t) => {
@@ -110,6 +121,46 @@ test("against the kernel: the named port answers, the next one does not", { skip
   assert.match(e2e, new RegExp(`${other} refused`), `an unlisted port answered: ${e2e}`);
   const docs = await as("docs");
   assert.match(docs, new RegExp(`${allowed} refused`), `a role without the key reached it: ${docs}`);
+});
+
+test("against the kernel: a client that skips the proxy is refused on a listed port too", { skip }, async (t) => {
+  // The limit, pinned. A database driver, psql or redis-cli dials 127.0.0.1:N
+  // itself; the runtime offers the kernel no rule for one loopback port (see
+  // docs/decisions.md), so a listed port is closed to it like any other. If a
+  // runtime upgrade turns this green for the listed port, local_ports can move
+  // to the kernel. Controls: the same role's curl reaches the listed port
+  // through the proxy, and on macOS local_binding lets the same probe in.
+  const servers = await Promise.all([0, 1].map(() => new Promise((ok) => {
+    const s = createServer((q, r) => r.end("open")).listen(0, "127.0.0.1", () => ok(s));
+  })));
+  t.after(() => servers.forEach((s) => s.close()));
+  const [listed, other] = servers.map((s) => s.address().port);
+  const dir = repoWith(`[roles.e2e]\nwrites = ["app/**"]\nlocal_ports = [${listed}]\n\n` +
+    `[roles.wide]\nwrites = ["app/**"]\nlocal_binding = true\n`);
+  writeFileSync(join(dir, "app", "dial.cjs"),
+    'const net = require("net");\n' +
+    "for (const p of process.argv.slice(2)) {\n" +
+    '  const c = net.connect(Number(p), "127.0.0.1", () => { console.log(p, "direct open"); c.destroy(); });\n' +
+    '  c.on("error", (e) => console.log(p, "direct refused", e.code));\n' +
+    "}\n");
+  const script = `"${process.execPath}" app/dial.cjs ${listed} ${other};` +
+    ` o=$(curl -s --max-time 8 --retry 5 --retry-connrefused "http://127.0.0.1:${listed}/" 2>/dev/null);` +
+    ` [ "$o" = open ] && echo "${listed} proxy open" || echo "${listed} proxy refused"`;
+  const as = (role) => new Promise((ok) => {
+    let out = "";
+    const p = spawn(process.execPath, [CLI, "run", role, "--", "sh", "-c", script], { cwd: dir });
+    p.stdout.on("data", (d) => (out += d));
+    p.on("close", () => ok(out));
+  });
+  const e2e = await as("e2e");
+  assert.match(e2e, new RegExp(`${listed} proxy open`), `positive control failed: ${e2e}`);
+  assert.match(e2e, new RegExp(`${other} direct refused`), e2e);
+  assert.match(e2e, new RegExp(`${listed} direct refused`),
+    `a direct dial reached a listed port; the runtime may now enforce ports in the kernel: ${e2e}`);
+  if (process.platform === "darwin") {
+    const wide = await as("wide");
+    assert.match(wide, new RegExp(`${listed} direct open`), `the probe cannot succeed at all: ${wide}`);
+  }
 });
 
 /* ── refused connections, in the record ─────────────────────────────── */
