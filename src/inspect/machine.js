@@ -1,6 +1,6 @@
-import { resolve, delimiter } from "node:path";
-import { RUNTIME_WRITES, expand } from "../srt.js";
-import { realOrSelf } from "../grants.js";
+import { resolve, delimiter, join } from "node:path";
+import { realOrSelf, runtimeWritesFor, toWritePath } from "../grants.js";
+import { realAncestor } from "../paths.js";
 import { wired, broadlyWired } from "../commands/wire.js";
 
 export function relativePathWarnings() {
@@ -25,21 +25,54 @@ export function scratchWarnings(config) {
   // by all of them no matter what the territory says. Saying so is the
   // difference between a limitation and a trap — and it is not hypothetical:
   // the test fixture lived in the temp dir and made a boundary test pass for
-  // the wrong reason.
+  // the wrong reason, and a role in a toy repo under /tmp wrote outside its
+  // `writes` with nothing on screen to say why.
   // Both sides resolved, or the comparison is a coin flip. `expand()` follows
   // symlinks — it has to, because on macOS /tmp is a link to /private/tmp and a
   // grant written as /tmp grants nothing — so the root has to be followed too.
   // Without this a repo at /tmp/x is never reported as sitting in scratch,
   // which is the one case where the warning matters most.
-  const scratch = (config.runtimeWrites ?? RUNTIME_WRITES).map(expand);
+  //
+  // The scratch a role is really given, not the default list: `[runtime]
+  // writes` when the policy sets it, and none of it under `isolate = "home"`,
+  // where each role gets a home of its own instead (grants.js, writePathsOf).
+  const level = config.isolate === true ? "home" : config.isolate;
+  const scratch = level === "home" ? [] : runtimeWritesFor(config, undefined);
+  const under = (p) => scratch.find((s) => p === s || p.startsWith(s + "/"));
+  const fix = (s) => `Move it out of ${s}, or set [runtime] writes to a list that leaves ${s} out ` +
+    `(\`[runtime] writes = []\` gives no role any shared scratch).`;
   const root = realOrSelf(resolve(config.root));
-  const inside = scratch.filter((s) => root === s || root.startsWith(s + "/"));
-  if (inside.length)
+  const around = under(root);
+  if (around) {
     warnings.push({
       kind: "scratch",
-      headline: `this repo lives inside shared scratch space (${inside[0]})`,
-      detail: "Every role can write scratch, so territory does not hold here. Move the repo, or set [runtime] writes = [].",
+      headline: `every role can write the whole repo: it lives inside ${around}, which every role gets as scratch`,
+      detail: "Territory does not hold here — a role's writes is no limit when the directory around the repo " +
+        `is granted to all of them. ${fix(around)}`,
     });
+    return warnings;
+  }
+  /**
+   * The repo is outside scratch, and part of a territory still is: a `writes`
+   * entry that goes through a symlink (`out -> /tmp/out`) or up and out with
+   * `..`. The kernel enforces on the real path, so that part of the role's
+   * territory is every role's. Said per resolved path, once.
+   */
+  const seen = new Set();
+  for (const r of Object.values(config.roles)) {
+    for (const g of r.writes ?? []) {
+      let real;
+      try { real = realAncestor(join(config.root, toWritePath(g))); } catch { continue; }
+      const s = under(real);
+      if (!s || seen.has(real)) continue;
+      seen.add(real);
+      warnings.push({
+        kind: "territory-in-scratch",
+        headline: `every role can write ${r.name}'s ${g}: it resolves to ${real}, inside ${s}, which every role gets as scratch`,
+        detail: `That part of ${r.name}'s territory does not hold — the kernel enforces on the real path. ${fix(s)}`,
+      });
+    }
+  }
   return warnings;
 }
 

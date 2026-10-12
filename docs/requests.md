@@ -147,7 +147,10 @@ this without adopting a process.
 The last line under each request is its **handoff**: where the work goes, decided from the
 policy as it stands every time the queue is read (`src/handoff.js`). A write owned by one role
 is *handed to* that role. Nobody owns it, more than one role does, or it is a key or a read:
-*a person decides*. The asker owns it by now: *no handoff needed*. The same decision is in
+*a person decides*. A role with `handoff = false` — a pipeline phase, not a worker — owns its
+territory and is never handed work: with one other owner that takes work, that one gets it;
+with several, a person decides between them; with none, *a person decides: prepare owns this and
+takes no handed work*. The asker owns it by now: *no handoff needed*. The same decision is in
 `seisin requests --json`, `seisin_requests`, the notification and the console, as a field
 `handoff`:
 
@@ -156,8 +159,10 @@ is *handed to* that role. Nobody owns it, more than one role does, or it is a ke
   "visited": ["frontend", "backend"], "chainId": "frontend:write:migrations", "revision": "68e9ab91c01b" }
 ```
 
-`type` is `route`, `human` (with a `reason`: `unowned`, `ambiguous`, `key`, `read`), `resolved`,
-`cycle`, `depth` or `throttled`. `revision` is the policy it was decided against.
+`type` is `route`, `human` (with a `reason`: `unowned`, `ambiguous`, `no-receiver`, `key`,
+`read`), `resolved`, `cycle`, `depth` or `throttled`. `revision` is the policy it was decided
+against. When a `handoff = false` role left an owner out of the choice, `receivers` lists the ones
+that were left in.
 
 seisin does not act on it. Something that starts roles does, and the only way it can is
 `seisin run <handoff.role> --handoff <id>`, which starts the run only if the policy routes that
@@ -189,6 +194,7 @@ from `toAgent` in `src/handoff.js`, so the three cannot drift from the queue:
 | route | `src/api/x.ts belongs to backend. It is not frontend's to change. It is handed to backend: hand it over rather than working around it.` |
 | two owners | `src/shared/x.ts belongs to platform, infra. … With more than one owner, a person decides who takes it. Do not pick one, and do not work around it.` |
 | no owner | `docs/x.md has no owner. A person decides who takes it. Do not work around it.` |
+| owner takes no work | `.canary belongs to prepare. It is not web's to change. prepare does not take handed work, so a person decides who takes it. Do not work around it.` |
 | a key | `.secrets/db.txt is declared for backend, not frontend. Ask for what you need from it rather than reading the key.` |
 | cycle | `src/web/app.ts belongs to frontend. … It is not handed back: this work already came through frontend (handoff chain frontend → backend). A person decides how to split it.` |
 | depth | `… The handoff chain stops here, 5 of 4 deep. A person decides.` |
@@ -199,6 +205,36 @@ hook as `SEISIN_HANDOFF_CHAIN`, which `seisin run --handoff` sets and every othe
 it shapes these words and nothing else. The chain a request is recorded in is the parent's, so a
 process that rewrote the variable changes only the sentence it is told. A key cannot be
 delivered under that name.
+
+## A denial the caller expects
+
+Something that starts roles may probe the sandbox itself: write a file it knows the role may not
+write and check it was refused, beside seisin's own canary. That denial is the answer it wanted,
+and filed as a request it was noise in the queue, a notification, and a handoff decision that
+routed the probe to whichever role owns the root — which a caller obeying the decision would
+then have started. So it says which paths it will probe:
+
+```
+$ seisin run web --expect-denied .canary-ab12 -- sh -c 'echo > .canary-ab12; echo > notes.md'
+…
+seisin: 2 kernel denial(s) recorded
+seisin: 1 of them expected by the caller (--expect-denied) — nothing queued
+
+    #1  web wants write on notes.md (owned by prepare)
+```
+
+The probe's denial stays in the log, with `"expected": true`, and nothing else: no request, no
+notification, no line in `walls`, `review` or the console's causes. The flag is repeatable and
+takes a path relative to the repo or absolute, compared the way every other path is (through the
+symlinked spelling of the root, `./` and trailing slashes made one). Exactly that path: the
+directory around it, a file next to it and anything under it are requests as usual, and a glob
+stops the run before it starts.
+
+Only the caller can say it. The list is read from `seisin run`'s own argv and applied in the
+parent, to both sources of requests — the kernel's denials and the hook's. Nothing in the
+environment, the repo or the hook's messages adds to it, so a confined process cannot keep a
+denial of its own out of the queue. The hook still tells the agent its denial was queued; it does
+not know the list, and does not need to ([why](decisions.md#an-expected-denial-is-the-callers-to-declare-and-the-parents-to-apply)).
 
 ## Provenance
 

@@ -52,9 +52,11 @@ export const MIN_HITS = 2;
 export function walls(config, role, { file, entries = null, min = MIN_HITS, since = null, limit = 6, fresh = false, ask = explain } = {}) {
   // `entries`: the log already read, for a caller asking about every role at
   // once (the console asks for 32 on a real policy) — one read instead of 32.
-  const denied = entries
+  // Less the caller's own probes (`seisin run --expect-denied`): denied as
+  // whoever started the run asked, and not a wall the role keeps hitting.
+  const denied = (entries
     ? entries.filter((e) => e.role === role && e.verdict === "denied" && (!since || e.at >= since))
-    : read(file, { role, verdict: "denied", ...(since ? { since } : {}) });
+    : read(file, { role, verdict: "denied", ...(since ? { since } : {}) })).filter((e) => e.expected !== true);
 
   const byKey = new Map();
   for (const e of denied) {

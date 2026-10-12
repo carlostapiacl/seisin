@@ -1009,6 +1009,48 @@ children, and it is acceptable here for one reason: it reaches words and nothing
 queue's chain is written by the parent from the run it started, and a sentence the agent forged
 for itself is a sentence it could have made up anyway.
 
+## An expected denial is the caller's to declare, and the parent's to apply
+
+An orchestrator that probes each run with a write it expects to be denied got its probe back as
+a request, routed by the handoff decision to the role that owned the repo root. Two ways out
+were offered: a marker the probe carries — an environment variable with a nonce, a reserved name
+prefix — or documenting that an expected denial is a request too and moving the probe somewhere
+seisin does not record.
+
+**Neither.** A marker the probe carries is a marker the agent can carry: the variable is in its
+environment and the prefix is a name it can write, so either one is a way for a confined process
+to keep its own denials out of the queue. And there is no place to move the probe to that both
+seisin leaves unrecorded and the boundary denies — the useful probe is exactly a write the role
+is refused.
+
+**What it is instead.** `seisin run --expect-denied <path>`, read from the parent's own argv,
+which nothing inside the sandbox can reach. The parent's intake applies it to both sources of
+requests: the kernel's denials and what the hook sends over the socket. The hook runs inside
+and never suppresses anything — giving it the list would mean a channel the agent can rewrite
+(the hook's environment, like the handoff chain's), and with it, an agent that could widen the
+list. Applied in the parent alone it cannot be widened, and nothing is lost: the hook's request
+reaches the parent, which drops it there. The cost is a sentence: the hook still tells the agent
+its denial was queued.
+
+It is not a wildcard. An exact path, compared in one spelling (`samePath`): the directory around
+it, a neighbour and anything under it are still requests, and seisin rejects a glob at the
+command line instead of reading it literally, because `*` meaning one file is not what anybody
+who typed it meant. The denial stays in the log, marked, and the readers that count repeated
+denials — `walls`, `review`, the console's causes — leave it out, so the record is complete and
+nothing reads it as a role stuck.
+
+## `handoff = false`: a phase owns its territory and takes no work
+
+A role generated for a pipeline phase — it prepares the tree, it is not someone to pass a file
+to — usually writes `**`, so every write any other role was denied at the root was routed to it.
+The key takes it out of the choice and leaves ownership alone: `owners` still names it, the agent
+still hears whose the path is, and the existing rule runs over the owners that are left. One is a
+route; several, or none, are a person's (`ambiguous`, or `no-receiver`, which says the owner is
+there and does not take the work). Falling through to "the next owner" was considered and is
+what happens when exactly one other owner takes work; picking among several by specificity
+would be a second routing rule nobody asked for. `seisin run <role> --handoff <id>` for such a
+role is refused before the id is looked up: no decision can route there.
+
 ## Still open
 
 - ~~**An MCP tool call has no owner.**~~ **Read at the server level, 2026-09-24.** The hook used

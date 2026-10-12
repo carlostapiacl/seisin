@@ -12,13 +12,14 @@ import { LIMITS } from "./inspect/limits.js";
 
 export const COMMAND_HELP = {
   run: {
-    usage: ["seisin run <role> [--observe] [--debug-env] [--agent <name>] [--handoff <id>] -- <command...>"],
-    values: ["--agent", "--handoff"],
+    usage: ["seisin run <role> [--observe] [--debug-env] [--agent <name>] [--handoff <id>] [--expect-denied <path>]... -- <command...>"],
+    values: ["--agent", "--handoff", "--expect-denied"],
     flags: [
       ["--observe", "open the repo for this run and record what the agent writes; keys and network stay shut"],
       ["--debug-env", "print the environment variables the role does not get"],
       ["--agent <name>", "claude, codex or none: which agent the command runs, when seisin cannot tell from it (a wrapper script). Its home is the run's scratch; the other agents' sign-in is closed"],
       ["--handoff <id>", "this run takes a pending request handed to this role, and starts only if the policy routes that request here. Its own requests join the handoff chain"],
+      ["--expect-denied <path>", "a path the caller will probe and expects to be denied (its own canary). That exact path is logged as expected and files no request; repeatable. Any other path is asked as usual"],
     ],
     notes: ["Everything after -- is the command's own, flags included: `-- claude --settings x.json` goes to claude."],
     examples: ['seisin run frontend -- claude', 'seisin run backend --observe -- claude -p "…"'],

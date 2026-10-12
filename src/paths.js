@@ -12,7 +12,7 @@
  * project refuses. Found by the read-only review of 2026-09-22.
  */
 import { realpathSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, normalize, relative, sep } from "node:path";
 
 /**
  * `p` with its deepest existing ancestor resolved through symlinks and the rest
@@ -55,6 +55,22 @@ export function toRepoRelative(config, target) {
   const realTarget = realAncestor(target);
   if (inside(realRoot, realTarget)) return relative(realRoot, realTarget) || ".";
   return target;
+}
+
+/**
+ * One spelling for a path, so two of them can be compared with `===`.
+ *
+ * Repo-relative and normalized inside the repo (`./a/`, `a/../a` and the
+ * absolute path through either symlinked spelling of the root are all `a`);
+ * absolute and resolved through its existing ancestors outside it. Used where
+ * a path a caller gave must match the path a denial names exactly — never as
+ * a prefix and never as a glob.
+ */
+export function samePath(config, target) {
+  if (typeof target !== "string" || !target.trim()) return null;
+  const rel = toRepoRelative(config, isAbsolute(target) ? normalize(target) : target);
+  if (isAbsolute(rel)) return realAncestor(normalize(rel)).replace(/(.)\/+$/, "$1");
+  return normalize(rel).replace(/\/+$/, "") || ".";
 }
 
 /**

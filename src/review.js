@@ -76,6 +76,8 @@ function findings(config, entries, minDenials) {
   const stopped = new Map();                 // role + directory -> how often
   for (const e of entries) {
     if (e.verdict !== "denied" || !e.target) continue;
+    // The caller's own probe (`seisin run --expect-denied`): denied on purpose.
+    if (e.expected === true) continue;
     const dir = e.action === "read" || e.action === "connect" ? e.target : dirOf(e.target);
     const expected = expectedOf(e.target);
     const key = `${e.role} ${e.action} ${dir}${expected ? " expected" : ""}`;

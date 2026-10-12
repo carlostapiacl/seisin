@@ -85,6 +85,25 @@ in every mode and gives each run a temp directory of its own — the role's when
   cannot be delivered under that name.
 - **The package exports `requestQueue`, `decideHandoff`, `MAX_DEPTH` and `recordHandoff`**, for
   a caller that starts roles and has its own admission limits.
+- **`seisin run <role> --expect-denied <path>`**, repeatable: a path the caller will probe and
+  expects to be denied — an orchestrator's own canary. A denial of exactly that path is logged
+  with `"expected": true` and files no request, sends no notification and is left out of
+  `walls`, `review` and the console's causes; the end of the run counts it apart. Any other path,
+  the directory around it included, is asked as before, and a glob is refused. The list is read
+  from the parent's own argv and applied by the parent; the hook inside never suppresses
+  anything.
+- **`handoff = false` on a role** marks a pipeline phase rather than a worker: it keeps its
+  territory and is never handed work. A write it owns goes to another owner when exactly one
+  other takes handed work, and otherwise to a person, with the reason `no-receiver` — *a person
+  decides: prepare owns this and takes no handed work*. `seisin run <role> --handoff <id>` for
+  such a role is refused.
+- **`check` says what a repo inside scratch costs:** *every role can write the whole repo*, with
+  the fix (move it, or set `[runtime] writes`). Measured against the scratch the policy really
+  gives — `[runtime] writes` when set, none under `isolate = "home"`, which used to be warned
+  about anyway. New kind `territory-in-scratch`: a `writes` entry whose real path is in scratch,
+  through a symlink or `..`, is every role's.
+- **`seisin run <role> --handoff <id>` without `--` checked the id as a flag.** The flags that
+  take a value now come from one table in both places that skip them.
 
 **`[runtime] read = "territory"`, a canary before every run, measured on macOS and Linux**
 (Debian 12, bubblewrap 0.8.0). What it closes and what it costs is in

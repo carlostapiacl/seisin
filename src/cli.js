@@ -252,7 +252,9 @@ function refuseUnknownFlags(name, args) {
     if (split !== -1) ours = args.slice(1, split);
     else {
       let i = 1;
-      while (i < args.length && args[i].startsWith("-")) i += args[i] === "--agent" ? 2 : 1;
+      // Every flag that takes a value, from the one table: listing them here by
+      // hand left `--handoff` out, so its id was checked as a flag of its own.
+      while (i < args.length && args[i].startsWith("-")) i += f.values.includes(args[i]) ? 2 : 1;
       ours = args.slice(1, i);
     }
   }

@@ -87,9 +87,6 @@ export function decideHandoff({
    * wrong thing.
    */
   if (owners.length === 0) return at("human", { reason: "unowned", owners });
-  if (owners.length > 1) return at("human", { reason: "ambiguous", owners });
-
-  const [owner] = owners;
 
   /**
    * The policy moved and the asker owns it now. Nobody granted anything, so
@@ -97,6 +94,28 @@ export function decideHandoff({
    * so is what keeps the human queue readable. Sending this to a person would
    * be asking them to decide something already decided.
    */
+  if (owners.length === 1 && owners[0] === request.role)
+    return at("resolved", { resolution: "policy_changed", role: request.role, owners });
+
+  /**
+   * Only an owner that takes handed work can be handed it.
+   *
+   * A role marked `handoff = false` is a pipeline phase, not a worker: it owns
+   * its territory — often all of it, `**` — and starting it because some other
+   * role reached for a file there would run a phase for a reason that has
+   * nothing to do with it. So it is left out of the choice, and the existing
+   * rule runs over who is left: one receiver is a route, several are for a
+   * person, and none is a person's too, with a reason that says the owner is
+   * there and does not take the work. Ownership itself is untouched — the
+   * queue and the agent still hear whose it is.
+   */
+  const receivers = owners.filter((o) => config.roles[o]?.handoff !== false);
+  const narrowed = receivers.length < owners.length ? { receivers } : {};
+  if (receivers.length === 0) return at("human", { reason: "no-receiver", owners, receivers });
+  if (receivers.length > 1) return at("human", { reason: "ambiguous", owners, ...narrowed });
+
+  const [owner] = receivers;
+  // The asker is that one receiver: it owns the path now, whoever else does.
   if (owner === request.role)
     return at("resolved", { resolution: "policy_changed", role: owner, owners });
 
@@ -132,6 +151,7 @@ export function decideHandoff({
   return at("route", {
     role: owner,
     owners,
+    ...narrowed,
     depth: depth + 1,
     visited: [...visited, owner],
   });
@@ -222,6 +242,9 @@ export function nextStep(decision, role) {
       return `It is handed to ${d.role}: hand it over rather than working around it.`;
     case "human":
       if (d.reason === "key") return "Ask for what you need from it rather than reading the key.";
+      if (d.reason === "no-receiver")
+        return `${(d.owners ?? []).join(", ") || "Its owner"} ${(d.owners ?? []).length > 1 ? "do" : "does"} not take handed work, ` +
+          "so a person decides who takes it. Do not work around it.";
       return d.reason === "ambiguous"
         ? "With more than one owner, a person decides who takes it. Do not pick one, and do not work around it."
         : "A person decides who takes it. Do not work around it.";
@@ -266,7 +289,9 @@ export function describeHandoff(decision, attempt = null) {
     case "depth":
       return `handoff stopped: handoff chain reached ${d.depth} of ${d.max} — needs a person`;
     case "human":
-      if (d.reason === "ambiguous") return `a person decides: more than one role owns this (${d.owners.join(", ")})`;
+      if (d.reason === "ambiguous") return `a person decides: more than one role owns this (${(d.receivers ?? d.owners).join(", ")})`;
+      if (d.reason === "no-receiver")
+        return `a person decides: ${d.owners.join(", ")} ${d.owners.length > 1 ? "own" : "owns"} this and ${d.owners.length > 1 ? "take" : "takes"} no handed work (handoff = false)`;
       if (d.reason === "key") return "a person decides: a key is shared by a grant, never handed over";
       if (d.reason === "read") return "a person decides: a read is not handed over";
       return "a person decides: no role owns this";

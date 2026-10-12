@@ -32,6 +32,8 @@ export interface RolePolicy {
   mcp: string[] | null;
   trustd: boolean;
   controlFiles: string[];
+  /** False for `handoff = false`: the role owns its territory but is never handed work. */
+  handoff: boolean;
   [key: string]: unknown;
 }
 
@@ -170,7 +172,9 @@ export interface HandoffDecision {
   /** The role a route goes to; for cycle/depth/throttled, the one it would have gone to. */
   role?: string;
   /** For `human`: why a person decides. */
-  reason?: "unowned" | "ambiguous" | "key" | "read";
+  reason?: "unowned" | "ambiguous" | "no-receiver" | "key" | "read";
+  /** The owners that take handed work, when a `handoff = false` role left some out. */
+  receivers?: string[];
   /** For `resolved`. */
   resolution?: "policy_changed";
   /** For a route: the receiver's depth in the handoff chain, and every role the chain has visited. */
