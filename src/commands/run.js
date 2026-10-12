@@ -17,7 +17,7 @@ import { settingsFor, roleHome, loopbackVia, agentOf, AGENTS, AGENT_HOMES } from
 import { buildEnv } from "../env.js";
 import { resolveKeys } from "../keys.js";
 import { nestedSandboxWarning } from "../nested.js";
-import { spool, SOCK_ENV } from "../spool.js";
+import { spool, SOCK_ENV, FIFO_SUFFIX } from "../spool.js";
 import { openRun } from "../rundir.js";
 import { secretsOf, redactor } from "../redact.js";
 import { C, err } from "../render.js";
@@ -28,7 +28,7 @@ import { unknownRole } from "../suggest.js";
 import { watchDenials } from "../violations.js";
 import { intake } from "../intake.js";
 import { toolchainBins } from "../territory.js";
-import { writePathsOf } from "../grants.js";
+import { writePathsOf, realOrSelf, SOCKET_MAX } from "../grants.js";
 import { runCanary, CANARY_EXIT } from "../canary.js";
 import { append, logPath } from "../log.js";
 
@@ -234,7 +234,25 @@ export async function run(config, argv) {
     ? [...toolchainBins(config, config.roles[role], isDir), process.env.PATH ?? ""].join(delimiter)
     : process.env.PATH;
   const program = whichOn(cmd[0], searchPath);
-  const settings = settingsFor(config, role, sockPath, observe, { agent, program });
+  /**
+   * The run's temp directory: one the role may write, never the runtime's.
+   *
+   * sandbox-runtime hands every child `/tmp/claude` as TMPDIR, and that
+   * directory is now denied (srt.js, SHARED_TMP). It takes CLAUDE_CODE_TMPDIR
+   * instead when set, so that is where the run's goes: the role's own tmp under
+   * `isolate = "home"`, else the parent's TMPDIR when the role may already write
+   * it, else one made for this run beside the runs root, granted to it alone. A caller's
+   * own CLAUDE_CODE_TMPDIR is kept only if the role may write it: an
+   * environment variable is not a way to widen the policy.
+   */
+  const granted = writePathsOf(config, config.roles[role], { observe, agent });
+  const writable = (p) => !!p && [p, realOrSelf(p)].some((q) =>
+    granted.some((g) => q === g || q === realOrSelf(g) || q.startsWith(g + "/") || q.startsWith(realOrSelf(g) + "/")));
+  const isolatedHome = config.isolate === "home" || config.isolate === true;
+  let runTmp = [process.env.CLAUDE_CODE_TMPDIR,
+    isolatedHome ? join(roleHome(config, role), "tmp") : process.env.TMPDIR].find(writable);
+  if (!runTmp) runTmp = theRun.tmp();
+  const settings = settingsFor(config, role, sockPath, observe, { agent, program, tmp: runTmp });
   // Per run, never per role: `.seisin/<role>.json` was one file for every run
   // of that role, and two at once wrote each other's socket path into it.
   const file = theRun.writeSettings(settings);
@@ -242,6 +260,13 @@ export async function run(config, argv) {
   // What arrives from the hook and from the kernel, checked against the policy
   // this run started with and written with the run's id on it. See intake.js.
   const take = intake({ config, role, runId: theRun.id, observe, settings, notify });
+  // The channel is a unix socket on macOS, and a socket path is capped. Past
+  // the cap the listen dies on `EINVAL` and a path, which says nothing about
+  // TMPDIR — the one thing that decides how long it is.
+  if (!sockPath.endsWith(FIFO_SUFFIX) && Buffer.byteLength(sockPath) >= SOCKET_MAX)
+    throw new Error(
+      `TMPDIR is too long for this run's socket: ${Buffer.byteLength(sockPath)} bytes, and a unix socket ` +
+      `path is capped near ${SOCKET_MAX}.\n  Run seisin with a shorter TMPDIR (TMPDIR=/tmp/<short> seisin run …).`);
   audit = await spool(take.fromHook, sockPath);
 
   const srt = resolveSrt();
@@ -344,6 +369,12 @@ export async function run(config, argv) {
     // failed with the role's own tmp a directory away (measured by an orchestrator running zsh scripts).
     env.TMPPREFIX = join(home, "tmp", "zsh");
   }
+  env.TMPDIR = runTmp;
+  env.CLAUDE_CODE_TMPDIR = runTmp;
+  // zsh writes heredocs to $TMPPREFIX (default /tmp/zsh), not $TMPDIR: see
+  // the isolated-home note above. Same answer for every run now.
+  env.TMPPREFIX = join(runTmp, "zsh");
+  delete env.CLAUDE_TMPDIR;
   if (observe) env.SEISIN_OBSERVE = "1";
   if (mine.includes("--debug-env")) err(`${C.dim}seisin: dropped ${dropped.join(" ")}${C.off}\n`);
 

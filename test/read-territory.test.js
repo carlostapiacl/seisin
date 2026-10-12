@@ -183,6 +183,21 @@ test("check: a PATH entry under a data root and not kept is shut", () => {
   assert.equal(shutByTerritory("/usr/local/bin", ["/home/ana/work/repo"], ["/home"], id), false);
 });
 
+test("a name the runtime would read as a glob is denied by a pattern that still matches it", () => {
+  // srt 0.0.78 has no escape for `[ ] * ?`: `notes [draft` became a regex with
+  // an unterminated class and no run started on that machine.
+  const t = { home: { ana: { "notes [a [b": 1, "a*b": { x: 1 }, work: { repo: { src: 1 } } } } };
+  const out = carveDenies(["/home"], ["/home/ana/work/repo"], disk(t));
+  assert.deepEqual(out.sort(), ["/home/ana/a?b", "/home/ana/notes ?a ?b"]);
+  for (const p of out) assert.doesNotMatch(p, /[[\]*]/);
+});
+
+test("a glob-shaped name whose pattern would shut a kept sibling is refused, by name", () => {
+  // `a?` matches `a[` and `ab` alike: denying one by pattern would shut both.
+  const t = { home: { ana: { "a[": 1, ab: { repo: 1 } } } };
+  assert.throws(() => carveDenies(["/home"], ["/home/ana/ab/repo"], disk(t)), /cannot deny \/home\/ana\/a\[.*\/home\/ana\/ab.*Rename/s);
+});
+
 /* ── against the kernel ───────────────────────────────────────────────── */
 
 const skip = srtSkip();
@@ -214,6 +229,15 @@ test("against the kernel: the repo and the key read, the sibling and the setting
   assert.doesNotMatch(out, /POLICY-READ/, "the run's own settings");
   assert.equal(existsSync(join(base, "reserved", "escaped.txt")), false,
     "positive control: a sibling outside the role's territory is not writable");
+});
+
+test("against the kernel: a name with two unclosed [ beside the repo neither stops the run nor reads", { skip }, async () => {
+  const { base, root } = repo(POLICY);
+  writeFileSync(join(base, "notes [a [b"), "BRACKET-SECRET\n");
+  const { out, code } = await run(root, "dev", `cat '${join(base, "notes [a [b")}' 2>/dev/null; cat src/a.txt; echo DONE`);
+  assert.equal(code, 0, out);
+  assert.match(out, /inside/, "positive control: the run started and the repo reads");
+  assert.doesNotMatch(out, /BRACKET-SECRET/);
 });
 
 test("against the kernel: a symlink out of the repo does not carry the read with it", { skip }, async () => {
@@ -293,6 +317,13 @@ const BREAKS = {
     ? { "loopback open": [(s) => { s.network.allowLocalBinding = true; return s; }, /loopback port outside the policy was reachable/] }
     : {}),
   "the territory's grant lost": [(s) => { s.filesystem.allowWrite = []; return s; }, /positive control/],
+  // The runtime grants /tmp/claude to every sandbox; only seisin's deny takes
+  // it back. Made if missing, as Claude Code would: there is no probe without it.
+  "the runtime's shared temp directory left writable": [(s) => {
+    mkdirSync("/tmp/claude", { recursive: true });
+    s.filesystem.denyWrite = s.filesystem.denyWrite.filter((p) => !/^(\/private)?\/tmp\/claude$/.test(p));
+    return s;
+  }, /shared temp directory went through/],
 };
 
 for (const [name, [mutate, expect]] of Object.entries(BREAKS))

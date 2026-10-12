@@ -22,7 +22,7 @@ import { entriesOf } from "./keys.js";
 import { enforcedNeverWrites } from "./owners.js";
 import { realAncestor } from "./paths.js";
 import { denyFor } from "./surface.js";
-import { runsRootOf, SETTINGS_NAME } from "./rundir.js";
+import { runsRootOf, SETTINGS_NAME, TMP_NAME } from "./rundir.js";
 import { FIFO_SUFFIX } from "./spool.js";
 import { carveDenies, dataRoots, keptFor } from "./territory.js";
 import {
@@ -94,13 +94,16 @@ export function loopbackVia(role, cmd) {
   return ["env", `NO_PROXY=${NO_PROXY_WITHOUT_LOOPBACK}`, `no_proxy=${NO_PROXY_WITHOUT_LOOPBACK}`, ...cmd];
 }
 
+/** The temp directory sandbox-runtime grants every sandbox it starts. See settingsFor. */
+export const SHARED_TMP = { darwin: ["/tmp/claude", "/private/tmp/claude"], linux: ["/tmp/claude"] };
+
 /**
  * `agent` is what the run's command runs — `agentOf(cmd)`, or `--agent`. It
  * decides which agent's home is scratch for this run and whose sign-in files
  * are closed to it. Left out (check, console, explain: no command), the
  * settings are the most the role can get, which is every agent's home.
  */
-export function settingsFor(config, roleName, spool = null, observe = false, { agent, program } = {}) {
+export function settingsFor(config, roleName, spool = null, observe = false, { agent, program, tmp } = {}) {
   const role = config.roles[roleName];
   if (!role) throw unknownRole(config, roleName);
   const claudeGrant = role.writes.find((g) => /^(?:\.\/)?\.claude(?:\/|$)/.test(g));
@@ -145,6 +148,21 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
   const scratch = writePathsOf(config, config.roles[roleName] ?? { name: roleName, writes: [] }, { agent });
   const runtimeConvenience = ["~/.npm/_logs", "~/.claude/debug"]
     .map(expand)
+    .filter((p) => process.platform !== "linux" || existsSync(p) || madeFirst(p, scratch));
+  /**
+   * The runtime's own temp directory, shared by every sandbox on the machine.
+   *
+   * sandbox-runtime grants `/tmp/claude` to every sandbox it starts, outside
+   * any allowWrite and "never left out", and hands it to the child as TMPDIR.
+   * Every Claude Code session on the machine keeps its own temp files there
+   * too, so a confined role could write beside them — caches, locks — with
+   * nothing in the policy saying so (measured: `echo x > /tmp/claude/…` from
+   * a role with `read = "territory"` and no scratch, rc=0). Only a denyWrite
+   * takes it back. The run gets a temp directory of its own instead
+   * (`tmp`, passed in, through CLAUDE_CODE_TMPDIR in commands/run.js), so
+   * nothing the runtime does needs the shared one.
+   */
+  const sharedTmp = SHARED_TMP[process.platform === "linux" ? "linux" : "darwin"]
     .filter((p) => process.platform !== "linux" || existsSync(p) || madeFirst(p, scratch));
 
   /**
@@ -309,6 +327,15 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
     denyRead.push(runs);
     allowRead.push(dirname(spool));
     /**
+     * And the temp directories runs are given when their role may write no
+     * other (rundir.js, TMP_NAME): denied as a whole, this run's own allowed
+     * back. Same shape again, and for the same reason — every run is the same
+     * user, so a run could otherwise read what another left in its temp.
+     */
+    const tmps = join(dirname(runs), TMP_NAME);
+    denyRead.push(tmps);
+    if (tmp && (tmp === tmps || tmp.startsWith(tmps + "/"))) allowRead.push(tmp);
+    /**
      * This run's settings are not this run's to read.
      *
      * They sit in the run's own directory, which the run reads for its scratch
@@ -381,6 +408,7 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
         // that arithmetic would be two answers the day one of them changes.
         ...writePathsOf(config, role, { observe, agent }),
         ...(isFifo ? [spool] : []),
+        ...(tmp ? [tmp] : []),
       ],
       /**
        * The confinement's own paperwork, never writable — not even by a role
@@ -399,6 +427,7 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
        */
       denyWrite: [
         ...runtimeConvenience,
+        ...sharedTmp,
         ...notMine,
         /**
          * The role's own subtractions, `never_writes`.

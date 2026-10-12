@@ -30,6 +30,9 @@ import { randomBytes } from "node:crypto";
 import { writeFileSync, readFileSync, rmSync, existsSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 
+/** Where sandbox-runtime's shared temp directory is on this host. */
+const SHARED_TMP_DIR = "/tmp/claude";
+
 /** The exit code of a run the canary stopped: not the agent's, and not one a shell uses. */
 export const CANARY_EXIT = 86;
 
@@ -59,6 +62,10 @@ export async function runCanary({ srt, settingsFile, settings, env, cwd, runDir,
   const candidates = (granted ?? settings.filesystem.allowWrite ?? []).filter((p) => isDir(p));
   const writable = candidates.find((p) => !(cwd && (p === cwd || p.startsWith(cwd + "/") || cwd.startsWith(p + "/")))) ?? candidates[0];
   const inside = writable ? join(writable, `.seisin-canary-${nonce}`) : null;
+  // The runtime's shared temp directory (srt.js, SHARED_TMP): granted by the
+  // runtime to every sandbox, taken back by seisin. Probed where it exists;
+  // where it does not, there is nothing beside which to write.
+  const shared = isDir(SHARED_TMP_DIR) ? join(SHARED_TMP_DIR, `.seisin-canary-${nonce}`) : null;
   const policy = settingsFile;
 
   writeFileSync(secret, `SECRET-${nonce}\n`, { mode: 0o600 });
@@ -78,6 +85,7 @@ export async function runCanary({ srt, settingsFile, settings, env, cwd, runDir,
     `cat ${q(secret)} 2>/dev/null`,
     `cat ${q(policy)} >/dev/null 2>&1 && echo POLICY-READ-${nonce}`,
     inside ? `(echo IN-${nonce} > ${q(inside)}) 2>/dev/null` : ":",
+    shared ? `(echo x > ${q(shared)}) 2>/dev/null` : ":",
     // curl when there is one; otherwise the node seisin itself runs on, which
     // every machine with seisin has — a slim image without curl would
     // otherwise never start anything. Neither: a failed canary, not a pass.
@@ -87,6 +95,7 @@ export async function runCanary({ srt, settingsFile, settings, env, cwd, runDir,
   ].join("; ");
 
   let output = "";
+  let stderr = "";
   let timedOut = false;
   try {
     const status = await new Promise((resolve) => {
@@ -95,7 +104,7 @@ export async function runCanary({ srt, settingsFile, settings, env, cwd, runDir,
       });
       const timer = setTimeout(() => { timedOut = true; try { child.kill("SIGKILL"); } catch {} }, timeoutMs);
       child.stdout.on("data", (d) => { output += d; });
-      child.stderr.on("data", () => {});
+      child.stderr.on("data", (d) => { stderr = (stderr + d).slice(-2000); });
       child.on("error", () => { clearTimeout(timer); resolve(null); });
       child.on("close", (code) => { clearTimeout(timer); resolve(code); });
     });
@@ -105,8 +114,15 @@ export async function runCanary({ srt, settingsFile, settings, env, cwd, runDir,
   }
 
   if (timedOut) failed.push(`the canary did not finish in ${timeoutMs / 1000}s`);
-  if (!output.includes(`ALIVE-${nonce}`)) failed.push("the sandbox did not run the canary at all");
+  if (!output.includes(`ALIVE-${nonce}`)) {
+    // The runtime's own words, when it said any: a sandbox that refuses to
+    // start usually says why (measured: a path the runtime read as a broken
+    // glob), and without this the reason was thrown away with the stream.
+    const said = stderr.trim().split("\n").filter(Boolean).slice(-3).join(" / ");
+    failed.push(`the sandbox did not run the canary at all${said ? ` — the runtime said: ${said}` : ""}`);
+  }
   if (existsSync(outside)) failed.push(`a write outside the territory went through (${outside})`);
+  if (shared && existsSync(shared)) failed.push(`a write into the runtime's shared temp directory went through (${shared})`);
   if (output.includes(`SECRET-${nonce}`)) failed.push(`a planted secret was readable (${secret})`);
   if (output.includes(`POLICY-READ-${nonce}`)) failed.push(`the run's own settings were readable (${policy})`);
   if (inside) {
@@ -123,6 +139,6 @@ export async function runCanary({ srt, settingsFile, settings, env, cwd, runDir,
     if (output.includes(`NET-${nonce}`)) failed.push(`a loopback port outside the policy was reachable (127.0.0.1:${port})`);
   }
 
-  for (const p of [secret, outside, inside]) if (p) try { rmSync(p, { force: true }); } catch {}
+  for (const p of [secret, outside, inside, shared]) if (p) try { rmSync(p, { force: true }); } catch {}
   return { ok: failed.length === 0, failed, ms: Date.now() - t0 };
 }

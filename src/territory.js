@@ -87,6 +87,10 @@ export function dataRoots(platform = process.platform, home = homedir(), tmp = t
  */
 export const MAX_CARVE = 1000;
 
+/** What the runtime treats as glob syntax in a path (sandbox-utils containsGlobChars). */
+const GLOB = /[[\]*?]/;
+const GLOB_G = /[[\]*?]/g;
+
 const under = (p, dir) => p === dir || p.startsWith(dir === "/" ? "/" : dir + "/");
 
 /**
@@ -126,12 +130,30 @@ export function carveDenies(roots, keep, fs = realFs) {
         `deny in the sandbox profile (the most it takes is ${MAX_CARVE} per directory).\n` +
         `  Something the role keeps is inside it: ${kept.filter((k) => under(k, dir)).join(", ")}.\n` +
         `  Move the repo to a directory with fewer neighbours, or narrow the reads entry that keeps this path.`);
+    const deny = (child, name) => {
+      if (!GLOB.test(name)) return out.push(child);
+      // The runtime reads `[ ] * ?` in a path as a glob and has no escape for
+      // them: a name like `notes [draft].md` became a regex with an unterminated
+      // class and every run died before starting (measured, srt 0.0.78). So
+      // each of them is turned into `?` — one character, any — which still
+      // matches this name. It may match a sibling of the same length too; that
+      // is fine for a sibling being denied anyway, and refused for one kept.
+      const pattern = name.replace(GLOB_G, "?");
+      const re = new RegExp(`^${pattern.replace(/[.^$+{}()|\\]/g, "\\$&").replace(/\?/g, "[^/]")}$`);
+      const clash = names.find((n) => n !== name && re.test(n) && kept.some((k) => under(k, `${dir === "/" ? "" : dir}/${n}`)));
+      if (clash)
+        throw new Error(
+          `read = "territory" cannot deny ${child}: its name holds characters the sandbox reads as a ` +
+          `pattern, and the pattern would also shut ${dir === "/" ? "" : dir}/${clash}, which the role keeps.\n` +
+          `  Rename one of the two.`);
+      out.push(`${dir === "/" ? "" : dir}/${pattern}`);
+    };
     for (const name of names.sort()) {
       const child = dir === "/" ? `/${name}` : `${dir}/${name}`;
       const kind = fs.kind(child);
       if (kind === "link" || kind === null) continue;
-      if (kind === "dir") walk(child);
-      else if (!kept.some((k) => under(child, k))) out.push(child);
+      if (kind === "dir" && kept.some((k) => under(k, child))) walk(child);
+      else if (!kept.some((k) => under(child, k))) deny(child, name);
     }
   };
   // Nested roots (`/private/var/folders/…/T` inside `/private/var/folders`)
