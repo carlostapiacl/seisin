@@ -217,8 +217,8 @@ repository). What it needs and what changed is in [docs/agents.md](docs/agents.m
   `ENOBUFS`.
 - **`key_mode = "scratch"` writes the value exactly as given.** The trailing newline was dropped,
   which made an ed25519 ssh key invalid. `env` still drops the one newline a shell adds.
-- **Each key resolution is a line in the log** (`event: "key"`: key, provider, mode, whether it
-  resolved; never the value), as the code and docs/keys.md already said.
+- **Each key resolution is a line in the log** (`event: "key"`: the variable's name, provider, mode,
+  whether it resolved; never the value, nor the reference), as the code and docs/keys.md already said.
 - **docs/keys.md:** the 1Password recipe passes `op://{ref}`, since `op read` takes the full
   reference; the keychain recipe says that `security -w` answers in hexadecimal for a value with a
   newline, tab or non-ASCII character, and how to store such a value instead.
