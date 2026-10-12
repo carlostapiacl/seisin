@@ -86,6 +86,8 @@ export function renderReport(report, { verbose = true } = {}) {
     lines.push(`  ${C.b}${r.name.padEnd(width)}${C.off}  ${C.blue}writes${C.off} ${writes}\n`);
     // Only when present: absent is the default, and a "never_writes nothing" line
     // on every role is noise that teaches the reader to skip the one that matters.
+    if (r.private?.length)
+      lines.push(`  ${" ".repeat(width)}  ${C.yellow}private${C.off} ${r.private.join(" ")} ${C.dim}(only this role reads or writes it)${C.off}\n`);
     if (r.neverWrites?.length)
       lines.push(`  ${" ".repeat(width)}  ${C.yellow}never${C.off}  ${collapseSidecars(r.neverWrites).join(" ")}\n`);
     if (r.trustd)

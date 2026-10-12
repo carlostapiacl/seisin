@@ -1,6 +1,7 @@
 import { resolve, dirname, basename, relative, join } from "node:path";
 import { existsSync } from "node:fs";
 import { territoryOf, implicitSidecar, under, regularFilesIn } from "./files.js";
+import { covers } from "../owners.js";
 
 export function layoutWarnings(config, roles, scoped) {
   const warnings = [];
@@ -9,6 +10,27 @@ export function layoutWarnings(config, roles, scoped) {
   // and it should be a sentence somebody chose rather than a line that drifted.
   const loose = [];      // roles granting individual files
   const listed = [];     // role + folder pairs that enumerate
+
+  /**
+   * A private folder inside another role's territory. Allowed — it is how a
+   * folder is taken out of a wide `writes = ["**"]` — but that role loses it,
+   * reading included, and nothing in its own table says so.
+   */
+  for (const r of roles)
+    for (const p of r.private ?? []) {
+      const dir = p.replace(/\/\*\*$/, "").replace(/\/+$/, "").replace(/^\.\//, "");
+      for (const o of Object.values(config.roles)) {
+        if (o.name === r.name) continue;
+        const g = (o.writesDeclared ?? o.writes).find((w) => covers(w, dir));
+        if (g)
+          warnings.push({
+            kind: "private-inside-territory",
+            headline: `${r.name}: private "${p}" is inside ${o.name}'s writes ("${g}") — ${o.name} can neither read nor write it`,
+            detail: `Every role but ${r.name} is denied the folder, and the deny wins over ${o.name}'s territory. ` +
+              `If ${o.name} needs what is in it, it asks ${r.name}; if it should keep it, the folder is not private.`,
+          });
+      }
+    }
 
   for (const r of roles) {
     const out = r.writes.filter((w) => w.startsWith("/") || w.startsWith("../"));

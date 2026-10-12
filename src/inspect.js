@@ -36,7 +36,7 @@ export function inspect(config, only = null, where = config.path) {
     where,
     roles: roles.map((r) => ({ name: r.name, writes: r.writes, keys: r.keys,
       reads: r.reads ?? [], toolchain: r.toolchain ?? [], verify: r.verify,
-      neverWrites: r.neverWrites ?? [], localBinding: r.localBinding === true,
+      neverWrites: r.neverWrites ?? [], private: r.private ?? [], localBinding: r.localBinding === true,
       localPorts: r.localPorts ?? [], mcp: r.mcp ?? null, trustd: r.trustd === true })),
     /**
      * The provider commands this config would run, listed because they are the

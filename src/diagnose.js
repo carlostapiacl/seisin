@@ -162,6 +162,10 @@ export function atSessionStart(config, role, event, { file } = {}) {
   ];
   if ((r.neverWritesDeclared ?? r.neverWrites ?? []).length)
     lines.push(`Never, even inside that: ${(r.neverWritesDeclared ?? r.neverWrites).join(", ")}.`);
+  if (r.private?.length) lines.push(`Private to you (yours to read and write; no other role reads it): ${r.private.join(", ")}.`);
+  const theirs = Object.values(config.roles).filter((o) => o.name !== role && o.private?.length)
+    .map((o) => `${o.private.join(", ")} (${o.name})`);
+  if (theirs.length) lines.push(`Private to another role — you can neither read nor write it: ${theirs.join("; ")}.`);
   if (r.keys.length) lines.push(`Keys you hold: ${r.keys.join(", ")}.`);
   const w = file ? walls(config, role, { file, limit: 5, fresh: true }) : [];
   if (w.length) {
