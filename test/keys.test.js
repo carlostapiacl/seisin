@@ -691,6 +691,22 @@ test("a provider that ignores SIGTERM is killed at the deadline, and the error s
   assert.ok(Date.now() - t0 < 5_000);
 });
 
+test("at the deadline the provider's children die with it", { timeout: 20_000 }, () => {
+  const dir = scratch("seisin-prov-tree-");
+  const pidfile = join(dir, "child.pid");
+  assert.throws(() => resolveRef(refOf("fake://t"),
+    script(`sleep 60 &\necho $! > '${pidfile}'\ntrap '' TERM; while :; do sleep 1; done`), { timeoutMs: 500 }),
+    /was killed \(SIGKILL\)/);
+  const pid = Number(readFileSync(pidfile, "utf8"));
+  assert.ok(pid > 0);
+  let alive = true;
+  for (let i = 0; i < 20 && alive; i++) {
+    try { process.kill(pid, 0); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100); } catch { alive = false; }
+  }
+  if (alive) try { process.kill(pid, "SIGKILL"); } catch {}
+  assert.ok(!alive, "the provider's child outlived the deadline");
+});
+
 test("the answer is taken when the provider exits, not when a process it left behind lets go of stdout", { timeout: 20_000 }, () => {
   const t0 = Date.now();
   const v = resolveRef(refOf("fake://t"), script(`echo "${SYNTH}"; sleep 3 &\nexit 0`), { timeoutMs: 10_000 });

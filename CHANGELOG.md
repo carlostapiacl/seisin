@@ -212,7 +212,8 @@ repository). What it needs and what changed is in [docs/agents.md](docs/agents.m
 - **A key value with a NUL byte is refused** by a message that does not carry it. Node's own
   refusal to set the variable quoted the whole value.
 - **A provider that ignores SIGTERM no longer holds the run.** At the deadline it is killed with
-  SIGKILL, and the error says so.
+  SIGKILL, and the error says so. So is every process below it: a child the provider was waiting on
+  no longer lives on after the deadline. A provider that exits on its own keeps what it started.
 - **A provider's answer is taken when it exits.** One that printed the value and left a background
   process holding stdout made the run wait 60 s and report that it "did not answer".
 - **A provider that prints more than 1 MiB is stopped with a message naming the limit**, not
