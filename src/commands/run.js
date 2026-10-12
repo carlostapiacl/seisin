@@ -314,7 +314,10 @@ export async function run(config, argv) {
    */
   const resolved = resolveKeys(config, config.roles[role], {
     record: ({ entry, mode, ok }) => append(logPath(config.root), {
-      event: "key", role, run: theRun.id.slice(0, 8), key: entry.raw, provider: entry.scheme, mode, ok,
+      // The variable's name and the provider, never the reference: a reference
+      // can carry what it points at (a provider that echoes it, a path that
+      // names the secret), and the log is read by more people than the policy.
+      event: "key", role, run: theRun.id.slice(0, 8), key: entry.name, provider: entry.scheme, mode, ok,
     }),
   });
   const scratchKeys = theRun.keys;
