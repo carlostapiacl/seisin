@@ -23,6 +23,10 @@ import { keptFor, shutByTerritory, readPath, dataRoots } from "./territory.js";
 import { realAncestor } from "./paths.js";
 import { protections, resolveExecutable } from "./surface.js";
 import { LIMITS } from "./inspect/limits.js";
+import { sharedPaths } from "./inspect/shared.js";
+import { homeReachWarning } from "./inspect/home.js";
+import { credentialish } from "./inspect/credentials.js";
+import { codexSignIn, codexSignInWarnings } from "./inspect/codex.js";
 
 /**
  * A report on one config: the roles, and every way the map lies.
@@ -31,6 +35,8 @@ import { LIMITS } from "./inspect/limits.js";
  * an empty report — asking about a role that does not exist is a typo, and
  * answering it with silence is how a typo becomes a belief.
  */
+export { sharedPaths, codexSignIn };
+
 export function inspect(config, only = null, where = config.path) {
   if (only && !config.roles[only]) throw unknownRole(config, only);
   const roles = only ? [config.roles[only]] : Object.values(config.roles);
@@ -183,130 +189,6 @@ function nearest(word, candidates) {
 }
 
 /**
- * Paths more than one role claims.
- *
- * Overlap is allowed and sometimes right — a hotfix role deliberately reaches
- * into the territory of the role that normally owns a repo. It is reported so
- * that it stays a decision somebody made rather than a thing that drifted.
- */
-export function sharedPaths(config, roles = Object.values(config.roles)) {
-  // Asked once per distinct glob: a real policy repeats them (1,332 writes,
-  // 303 distinct in a multi-repo workspace), and each question is every glob of every
-  // role again.
-  const seen = new Set();
-  const asked = new Map();
-  for (const r of roles)
-    for (const glob of r.writes) {
-      let many = asked.get(glob);
-      if (many === undefined) asked.set(glob, (many = ownersOf(config, glob.replace(/\/\*\*$/, "")).length > 1));
-      if (many) seen.add(glob);
-    }
-  /**
-   * A shared database counts once, not four times.
-   *
-   * `writes` carries the sidecar expansion so that the grant and the sentence
-   * agree (see config.js), and this list read straight off it turned nine
-   * shared things into thirty-three — the same name with three suffixes,
-   * announced as if it were three more decisions to make. The expansion exists
-   * to stop a policy saying one thing four times; a warning that undoes that
-   * is the feature leaking into the place it was meant to clean up.
-   *
-   * A sidecar shared WITHOUT its database still counts on its own, because
-   * that is a real and odd thing to have.
-   */
-  const todas = new Set(seen);
-  return [...seen].filter((p) => !(/-(wal|shm|journal)$/.test(p) && todas.has(p.replace(/-(wal|shm|journal)$/, ""))));
-}
-
-/**
- * What a role can still read in YOUR home, which is the limit people are most
- * surprised by.
- *
- * `~/.ssh`, `~/.aws/credentials`, `~/.npmrc` and `~/.config/gh/hosts.yml` are
- * ordinary readable files to every role unless `[runtime] isolate` says
- * otherwise, and nothing on screen said so. Reads outside the key directories
- * being open is a deliberate trade - an agent that cannot read the machine
- * cannot work - but a trade nobody was shown is not a trade they made.
- *
- * It reports the level rather than pushing one. `credentials` closes those four
- * and leaves the agent logged in; `home` closes the agent's own directories too
- * and costs the session. Which of the two you want is the threat model, which
- * is why there is no default beyond off.
- */
-function homeReachWarning(config) {
-  if (config.read === "territory") return null;
-  const level = config.isolate === true ? "home" : config.isolate;
-  if (level === "home") return null;             // nothing left to say
-
-  const where = CREDENTIAL_HOMES.slice(0, 4).join(" ");
-  return level === "credentials"
-    ? {
-        kind: "home-partly-open",
-        headline: "your credentials are closed to every role; the agent's own directories are not",
-        detail:
-          `isolate = "credentials" denies ${where} and the rest. What stays open is ` +
-          "~/.claude to runs of claude and ~/.codex to runs of codex, which is what keeps the " +
-          "agent signed in, so the runs of one agent share its session and can read each other's. " +
-          '`isolate = "home"` closes those ' +
-          "too, and then every CLI in the sandbox will ask you to log in again.",
-      }
-    : {
-        kind: "home-open",
-        headline: `every role can read ${where} and the rest of your home`,
-        detail:
-          "reads outside the [keys] dir are open on purpose - an agent that cannot read the " +
-          "machine cannot work - but that includes the places credentials live. " +
-          '`[runtime] isolate = "credentials"` closes them, and the agent stays logged in.',
-      };
-}
-
-
-/**
- * Credential-shaped names at the top of the repository, and nothing deeper.
- *
- * One `readdir`, no recursion, conventional names only. It exists to answer
- * "does this repo plausibly have secrets" fast enough to run on every `check`,
- * not to find them — `seisin scan` is the one that looks properly.
- */
-const CREDENTIAL_NAMES = /^(\.env(\..+)?|\.secrets|secrets|\.netrc|.*\.(pem|key|p12|pfx))$/i;
-
-function credentialish(root) {
-  let entries;
-  try {
-    entries = readdirSync(root, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  const found = new Set(entries.filter((e) => CREDENTIAL_NAMES.test(e.name)).map((e) => e.name));
-
-  /**
-   * And the ones whose name gives nothing away.
-   *
-   * The name test misses `credentials.txt`, `tokens.conf`, `config.local` —
-   * which a field review found by writing a test file this did not catch, and
-   * then blaming the test. The test was fine; the detector was name-only.
-   *
-   * So the root's small text files are also read, with the same shapes
-   * `seisin scan` uses. Root only, small only, and it stops at the first hit
-   * per file: this runs on every `check` and the full walk is `scan`'s job.
-   */
-  const CERTAIN = SHAPES.filter(([c]) => c === "certain").map(([, , re]) => re);
-  for (const e of entries) {
-    if (found.size >= 4) break;
-    if (!e.isFile() || found.has(e.name)) continue;
-    try {
-      const p = join(root, e.name);
-      if (statSync(p).size > 64 * 1024) continue;
-      const text = readFileSync(p, "utf8");
-      if (CERTAIN.some((re) => re.test(text))) found.add(e.name);
-    } catch {
-      /* unreadable, or not text: not our business here */
-    }
-  }
-  return [...found].sort().slice(0, 4);
-}
-
-/**
  * Would the parent find this command? The same lookup `run` makes
  * (resolveExecutable), so check does not call "missing" a program that is
  * only in a directory a role writes — that has its own warning, above.
@@ -319,67 +201,6 @@ function onPath(cmd, config) {
   } catch (e) {
     return /a role can write/.test(e.message);
   }
-}
-
-/**
- * How Codex is signed in on this machine: "chatgpt", "apikey", or null.
- *
- * Read from `auth.json` in `CODEX_HOME` or `~/.codex`, by the parent, which
- * `check` is. Only the shape is looked at — which fields are set — and
- * nothing from the file is kept or printed.
- */
-export function codexSignIn(env = process.env) {
-  const home = env.CODEX_HOME && isAbsolute(env.CODEX_HOME) ? env.CODEX_HOME : join(homedir(), ".codex");
-  let auth;
-  try { auth = JSON.parse(readFileSync(join(home, "auth.json"), "utf8")); } catch { return null; }
-  if (!auth || typeof auth !== "object") return null;
-  if (typeof auth.OPENAI_API_KEY === "string" && auth.OPENAI_API_KEY) return "apikey";
-  if (auth.tokens && typeof auth.tokens === "object" && auth.tokens.refresh_token) return "chatgpt";
-  return null;
-}
-
-/**
- * A role that looks set up for OpenAI and would leave Codex hanging.
- *
- * Signed in with ChatGPT, Codex talks to `chatgpt.com` for the model and to
- * `auth.openai.com` to renew the sign-in — never to `api.openai.com` (measured
- * 2026-09-30, codex 0.150.1: 0 connections). Without `chatgpt.com` it does not
- * fail: it retries without end and prints nothing, which reads as an agent
- * thinking. And the proxy's refusal does not reach seisin's log.
- *
- * `check` does not know which CLI a role runs, so the signal is the two facts
- * it can see: this machine's Codex is signed in with ChatGPT, and the role's
- * list names something under `openai.com` — a list written for OpenAI — but
- * not `chatgpt.com`. A role whose `env` passes `OPENAI_API_KEY` is left out:
- * it is set up for the API, where `api.openai.com` is right. Wrong costs a
- * sentence, never a run, the same trade as the model-endpoint warning above.
- */
-function codexSignInWarnings(config, roles, env = process.env) {
-  if (codexSignIn(env) !== "chatgpt") return [];
-  const reaches = (list, host) => list.some((d) => d === "*" || d === host ||
-    (d.startsWith("*.") && host.endsWith(d.slice(1))));
-  const out = [];
-  for (const r of roles) {
-    const list = r.network ?? config.allowedDomains ?? [];
-    if (!list.some((d) => /(^|\.)openai\.com$/i.test(d))) continue;
-    if ((r.env ?? []).includes("OPENAI_API_KEY")) continue;
-    const missing = ["chatgpt.com", "auth.openai.com"].filter((h) => !reaches(list, h));
-    if (!missing.length) continue;
-    out.push({
-      kind: "codex-chatgpt-endpoint",
-      headline: `${r.name} allows ${list.filter((d) => /openai\.com$/i.test(d)).join(" ")} but not ${missing.join(" ")}`,
-      detail:
-        "Codex on this machine is signed in with ChatGPT, and with that sign-in it talks to " +
-        "chatgpt.com for the model and to auth.openai.com to renew the sign-in, never to " +
-        "api.openai.com. " +
-        (missing.includes("chatgpt.com")
-          ? "Without chatgpt.com a Codex run does not fail: it retries without end and prints " +
-            "nothing, and the proxy's denial does not reach seisin's log. "
-          : "Without auth.openai.com a Codex run works until the sign-in has to be renewed. ") +
-        `If ${r.name} runs Codex, add ${missing.join(" and ")}; if it does not, this is not about it.`,
-    });
-  }
-  return out;
 }
 
 /** Every way this policy does not hold, each with what to do about it. */
