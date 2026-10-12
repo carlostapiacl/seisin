@@ -10,7 +10,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, realpathSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, realpathSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { parseKey, defaultName, modeOf, resolveRef, resolveKeys, entriesOf, MODES, readFileRef } from "../src/keys.js";
@@ -19,6 +19,7 @@ import { settingsFor } from "../src/srt.js";
 import { resolveExecutable, denyFor } from "../src/surface.js";
 import { inspect } from "../src/inspect.js";
 import { scratch } from "./_tmp.js";
+import { renderEntry } from "../src/render.js";
 
 /** A repo with a seisin.toml in it, and a .secrets to hold path-keys. */
 function repo(toml) {
@@ -198,9 +199,10 @@ test("exactly one trailing newline is the shell's, and it is dropped", () => {
 });
 
 test("a provider that fails stops the run — it does not degrade to anything", () => {
+  // Its stderr is counted, not shown, and the command to read it is named.
   assert.throws(() => resolveRef(refOf("keychain://t"), provider,
     { run: () => ({ status: 1, stdout: "", stderr: "not signed in" }) }),
-    /exited 1[\s\S]*not signed in/);
+    /exited 1 and wrote 13 bytes to stderr[\s\S]*run it yourself: security find -s t/);
 });
 
 test("a provider that succeeds and prints nothing is a failure, not an empty key", () => {
@@ -222,7 +224,7 @@ test("what the provider printed on stdout never reaches the error message", () =
     resolveRef(refOf("keychain://t"), provider,
       { run: () => ({ status: 2, stdout: "SUPER-SECRET-VALUE", stderr: "auth required" }) });
   } catch (e) { msg = e.message; }
-  assert.ok(msg.includes("auth required"));
+  assert.match(msg, /exited 2 and wrote 13 bytes to stderr/);
   assert.ok(!msg.includes("SUPER-SECRET-VALUE"));
 });
 
@@ -642,4 +644,108 @@ test("every .env line seisin reads, it reads exactly as dotenv does", () => {
     writeFileSync(join(dir, "f.env"), line + "\n");
     assert.throws(() => readFileRef({ ref: "f.env#A", raw: "A" }, dir), undefined, line);
   }
+});
+
+// ── a provider that misbehaves ──────────────────────────────────────────────
+
+/** A provider that is a real script, spawned the way a run spawns it. */
+function script(body) {
+  const dir = scratch("seisin-prov-");
+  const file = join(dir, "prov.sh");
+  writeFileSync(file, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+  return { name: "fake", command: ["/bin/sh", file, "{ref}"], mode: "env" };
+}
+const SYNTH = "SYNTH-7f3a91c0e2d4b856";
+
+test("a failed provider's output never reaches the error, on either stream or mixed with other text", () => {
+  const cases = [
+    { stdout: "", stderr: `error: ${SYNTH}\n` },                 // the value on stderr only
+    { stdout: `token=${SYNTH}\nmore\n`, stderr: `${SYNTH}\n` },  // beside other text on stdout
+  ];
+  for (const r of cases) {
+    let msg = "";
+    try { resolveRef(refOf("keychain://t"), provider, { run: () => ({ status: 3, ...r }) }); } catch (e) { msg = e.message; }
+    assert.match(msg, /exited 3/);
+    assert.ok(!msg.includes(SYNTH), msg);
+  }
+  // And through a real spawn.
+  let msg = "";
+  try { resolveRef(refOf("fake://t"), script(`echo "${SYNTH}" >&2; echo "x ${SYNTH}"; exit 1`)); } catch (e) { msg = e.message; }
+  assert.match(msg, /exited 1/);
+  assert.ok(!msg.includes(SYNTH), msg);
+});
+
+test("a value with a NUL byte is refused by a message that does not carry it", () => {
+  let msg = "";
+  try {
+    resolveRef(refOf("keychain://t"), provider, { run: () => ({ status: 0, stdout: `${SYNTH}\0tail\n` }) });
+  } catch (e) { msg = e.message; }
+  assert.match(msg, /NUL byte/);
+  assert.ok(!msg.includes(SYNTH), msg);
+});
+
+test("a provider that ignores SIGTERM is killed at the deadline, and the error says SIGKILL", { timeout: 20_000 }, () => {
+  const t0 = Date.now();
+  assert.throws(() => resolveRef(refOf("fake://t"), script(`trap '' TERM; while :; do sleep 1; done`), { timeoutMs: 500 }),
+    /did not answer in 0.5 s and was killed \(SIGKILL\)/);
+  assert.ok(Date.now() - t0 < 5_000);
+});
+
+test("the answer is taken when the provider exits, not when a process it left behind lets go of stdout", { timeout: 20_000 }, () => {
+  const t0 = Date.now();
+  const v = resolveRef(refOf("fake://t"), script(`echo "${SYNTH}"; sleep 3 &\nexit 0`), { timeoutMs: 10_000 });
+  assert.equal(v, SYNTH);
+  assert.ok(Date.now() - t0 < 2_000, `took ${Date.now() - t0} ms`);
+});
+
+test("a provider that prints megabytes is stopped with a message that names the limit", { timeout: 20_000 }, () => {
+  assert.throws(() => resolveRef(refOf("fake://t"), script(`head -c 3000000 /dev/zero | tr '\\000' a`)),
+    /printed more than 1 MiB on stdout/);
+  // A runner of the caller's own reports it the way spawnSync does.
+  assert.throws(() => resolveRef(refOf("keychain://t"), provider,
+    { run: () => ({ error: Object.assign(new Error("spawnSync ENOBUFS"), { code: "ENOBUFS" }) }) }),
+    /printed more than 1 MiB/);
+});
+
+test("scratch hands the value over exactly as given; env drops the shell's one newline", () => {
+  const pem = "-----BEGIN OPENSSH PRIVATE KEY-----\nSYNTHAAAA\n-----END OPENSSH PRIVATE KEY-----\n";
+  const toml = (mode) =>
+    `[keys.providers.fake]\ncommand = ["fake", "{ref}"]\n\n` +
+    `[roles.r]\nkey_mode = "${mode}"\nkeys = ["A=file://id.key", "B=fake://b"]\n`;
+  for (const mode of ["scratch", "env"]) {
+    const dir = scratch("seisin-exact-");
+    writeFileSync(join(dir, "id.key"), pem);
+    writeFileSync(join(dir, "seisin.toml"), toml(mode));
+    const cfg = loadConfig(join(dir, "seisin.toml"));
+    const got = resolveKeys(cfg, cfg.roles.r, { run: () => ({ status: 0, stdout: pem }) });
+    const want = mode === "scratch" ? pem : pem.replace(/\n$/, "");
+    assert.deepEqual(got.map((g) => g.value), [want, want], mode);
+  }
+});
+
+test("every resolution is recorded without its value, the failed one included", () => {
+  const dir = repo(
+    `[keys.providers.keychain]\ncommand = ["security", "{ref}"]\nmode = "env"\n\n` +
+    `[roles.frontend]\nkeys = ["keychain://a", "keychain://b"]\n`);
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  const seen = [];
+  const run = (cmd, args) => args[0] === "a" ? { status: 0, stdout: SYNTH } : { status: 1, stdout: "" };
+  assert.throws(() => resolveKeys(cfg, cfg.roles.frontend, { run, record: (r) => seen.push(r) }), /exited 1/);
+  assert.deepEqual(seen.map((r) => [r.entry.raw, r.mode, r.ok]), [["keychain://a", "env", true], ["keychain://b", "env", false]]);
+  assert.ok(!JSON.stringify(seen).includes(SYNTH));
+  const line = renderEntry({ event: "key", role: "frontend", key: "keychain://a", mode: "env", ok: true });
+  assert.match(line, /key resolved[\s\S]*keychain:\/\/a/);
+});
+
+const DOC = readFileSync(new URL("../docs/keys.md", import.meta.url), "utf8");
+
+test("docs: the op recipe writes op:// back, because {ref} is what follows the scheme", () => {
+  const cmds = [...DOC.matchAll(/\[keys\.providers\.op\][^\n]*\ncommand = (\[[^\n]*\])/g)].map((m) => m[1]);
+  assert.ok(cmds.length > 0);
+  for (const c of cmds) assert.ok(c.includes('"op://{ref}"'), c);
+});
+
+test("docs: the keychain recipe warns that some values come back in hexadecimal", () => {
+  assert.match(DOC, /hexadecimal[\s\S]{0,400}newline/);
+  assert.match(DOC, /base64 -D/);
 });

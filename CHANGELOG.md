@@ -152,6 +152,25 @@ repository). What it needs and what changed is in [docs/agents.md](docs/agents.m
   signed in with ChatGPT and a role's list names something under `openai.com` but not
   `chatgpt.com` (or `auth.openai.com`), it says so: without `chatgpt.com` a Codex run hangs
   without printing anything. A role whose `env` passes `OPENAI_API_KEY` is left out.
+- **A failed key provider's output is no longer shown.** stdout was taken out of stderr before
+  stderr was printed, so a provider that printed the value only on stderr, or beside other text
+  on stdout, put it in the console. The error now gives the exit status, how many bytes went to
+  stderr, and the command to run by hand.
+- **A key value with a NUL byte is refused** by a message that does not carry it. Node's own
+  refusal to set the variable quoted the whole value.
+- **A provider that ignores SIGTERM no longer holds the run.** At the deadline it is killed with
+  SIGKILL, and the error says so.
+- **A provider's answer is taken when it exits.** One that printed the value and left a background
+  process holding stdout made the run wait 60 s and report that it "did not answer".
+- **A provider that prints more than 1 MiB is stopped with a message naming the limit**, not
+  `ENOBUFS`.
+- **`key_mode = "scratch"` writes the value exactly as given.** The trailing newline was dropped,
+  which made an ed25519 ssh key invalid. `env` still drops the one newline a shell adds.
+- **Each key resolution is a line in the log** (`event: "key"`: key, provider, mode, whether it
+  resolved; never the value), as the code and docs/keys.md already said.
+- **docs/keys.md:** the 1Password recipe passes `op://{ref}`, since `op read` takes the full
+  reference; the keychain recipe says that `security -w` answers in hexadecimal for a value with a
+  newline, tab or non-ASCII character, and how to store such a value instead.
 
 ## 0.5.0 — 2026-09-30
 

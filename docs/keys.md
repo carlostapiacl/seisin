@@ -38,7 +38,7 @@ command = ["security", "find-generic-password", "-w", "-s", "{ref}"]
 mode    = "env"                       # how every key of this provider is delivered
 
 [keys.providers.op]
-command = ["op", "read", "{ref}"]
+command = ["op", "read", "op://{ref}"]   # keys = ["op://vault/item/field"]
 
 [roles.frontend]
 keys      = ["keychain://netlify-token", "netlify-token.txt"]   # both forms coexist
@@ -91,9 +91,10 @@ is stable:
 | | |
 |---|---|
 | **input** | your `command`, with every `{ref}` replaced by the text after `://`. No shell: the array is the `argv`, so a reference cannot inject one |
-| **success** | exit `0`, the value on **stdout**. Exactly one trailing newline is stripped |
+| **success** | exit `0`, the value on **stdout**. The answer is what it printed by the time it exited — a background process it left holding stdout is not waited for. With `mode = "env"` exactly one trailing newline is stripped; with `mode = "scratch"` the file holds the value exactly as printed |
 | **failure** | any non-zero exit, or empty output. The run stops; nothing is substituted |
-| **diagnostics** | **stderr** is passed through to the person running it. `stdout` never is, so a provider that prints the secret and then fails does not leak it into the terminal or the log |
+| **limits** | 60 s, then the provider is killed with `SIGKILL`; 1 MiB of stdout, then it is stopped. A value with a NUL byte is refused. Each says so, without the value |
+| **diagnostics** | neither stream of a failed provider is shown — a provider can print the secret on either. The error gives the exit status, how many bytes went to stderr, and the command to run by hand to read them |
 | **where it runs** | the parent, outside the sandbox, before the child starts — it holds your vault's credential and the confined side must not reach it |
 | **what it must not do** | prompt on a tty an agent does not have. Cache your session first (`op signin`, `gpg-agent`, an unlocked keychain) |
 
@@ -109,8 +110,8 @@ command = ["security", "find-generic-password", "-w", "-s", "{ref}"]
 [keys.providers.gpg]        # ✅ measured — see the script note below
 command = ["./bin/open.sh", "{ref}"]
 
-[keys.providers.op]         # 1Password — not measured here
-command = ["op", "read", "{ref}"]
+[keys.providers.op]         # 1Password — not measured here. `op read` takes op://vault/item/field;
+command = ["op", "read", "op://{ref}"]   # the scheme is not part of {ref}, so it is written back
 
 [keys.providers.bw]         # Bitwarden
 command = ["bw", "get", "password", "{ref}"]
@@ -134,6 +135,18 @@ command = ["gcloud", "secrets", "versions", "access", "latest", "--secret={ref}"
 If one of these is wrong, a pull request fixing it is worth more than an issue: the table is
 the part of this that ages.
 
+**The keychain recipe answers in hexadecimal for some values, and exits 0.** `security
+find-generic-password -w` prints a password that has anything outside printable ASCII in it — a
+newline, a tab, an `ñ` — as hex (`SYNTH-a⏎b` comes back as `5359…0a62`). Measured on macOS 15
+with a throwaway keychain. The role then receives a wrong credential with no error, and seisin
+does not decode it for you: a genuine hex token looks exactly the same. For a multi-line value
+(a PEM or ssh key) store it base64-encoded and decode it in a script provider:
+
+```sh
+#!/bin/sh
+security find-generic-password -w -s "$1" | base64 -D
+```
+
 **Put anything with a pipe or a quote in a script.** The config format has no escapes, so a
 command cannot contain a `"` — and a shell pipeline inside a TOML array is unreadable in a
 diff, which is what this feature exists to fix. A script is also how you compose:
@@ -150,7 +163,7 @@ parent executes them, so a role that could rewrite one would decide what runs ou
 | | |
 |---|---|
 | **`mode = "env"`** | resolved and passed as a variable |
-| **`mode = "scratch"`** | written to a file in the **run directory** (private to the run), removed when the run ends. The path arrives **both** as `NETLIFY_TOKEN` and as `NETLIFY_TOKEN_FILE` — `_FILE` is the Docker-secrets convention, while `KUBECONFIG` and `GOOGLE_APPLICATION_CREDENTIALS` already expect a path in the plain name. Neither holds the value |
+| **`mode = "scratch"`** | written to a file in the **run directory** (private to the run), removed when the run ends. The file holds the value exactly as the provider printed it, or for `file://` exactly the file's bytes — trailing newline included, which an ssh key needs. The path arrives **both** as `NETLIFY_TOKEN` and as `NETLIFY_TOKEN_FILE` — `_FILE` is the Docker-secrets convention, while `KUBECONFIG` and `GOOGLE_APPLICATION_CREDENTIALS` already expect a path in the plain name. Neither holds the value |
 | **`mode = "inject"`** | the agent never sees the value — **not implemented**, and refused by name rather than left looking available. It needs the runtime's credential masking, which does not load without terminating that role's TLS with a CA of seisin's own. That is MITM over all of the role's traffic, and it is a decision to take deliberately |
 
 There is **no default mode**. A reference with none declared anywhere is an error, because
@@ -160,7 +173,9 @@ how much a leak costs you.
 **Four rules, each of which is the feature rather than a precaution around it:**
 
 - **The value never enters the `.toml`, the log or the console.** What is written, recorded
-  and granted is the reference. That is what makes a key policy reviewable in a diff.
+  and granted is the reference. That is what makes a key policy reviewable in a diff. Each
+  resolution is a line in the log (`event: "key"`: the key as written, its provider, the mode,
+  whether it resolved) and `seisin log` shows it.
 - **An unknown scheme is refused, not ignored.** `keys = ["vault://x"]` with no
   `[keys.providers.vault]` is a configuration error, never a key that quietly never arrives.
 - **The parent runs the provider, never the confined process.** The provider command holds
