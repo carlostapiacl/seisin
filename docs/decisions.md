@@ -998,6 +998,17 @@ with `recordHandoff` so the queue says "handoff held" instead of looking idle.
 private folder is the policy working. Who declares or owns it is still decided in the same place,
 which is what removed the CLI's separate correction for keys.
 
+**The agent hears it too.** The denial the hook returns, the note after a failed tool call and
+`seisin whose` used to build their own sentence from `explain`'s owners: two owners read as
+"belongs to a, b — hand it over", which left the agent to pick one, and nothing could say a
+cycle. They now word the same decision (`toAgent`). The cost is one more ownership lookup per
+denial: 12 µs on a 32-role policy, against ~360 µs for the whole decision and ~130 ms for the
+hook's process. The run's chain reaches the hook through an environment variable the parent sets
+only for a `--handoff` run. That is a channel the confined process could rewrite for its own
+children, and it is acceptable here for one reason: it reaches words and nothing else. The
+queue's chain is written by the parent from the run it started, and a sentence the agent forged
+for itself is a sentence it could have made up anyway.
+
 ## Still open
 
 - ~~**An MCP tool call has no owner.**~~ **Read at the server level, 2026-09-24.** The hook used

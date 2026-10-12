@@ -106,8 +106,12 @@ $ seisin run frontend -- seisin whose src/api/orders.ts
 seisin: frontend · writes src/web/** public/** (+6 scratch) · keys netlify-token.txt · runs no agent seisin knows · env 20 kept, 58 dropped · read all
 
   src/api/orders.ts belongs to backend
-  you are frontend. Hand it over rather than working around it.
+  you are frontend. It is handed to backend: hand it over rather than working around it.
 ```
+
+The second line is the same handoff decision the queue shows: with two owners it says a person
+decides and not to pick one, and in a run started with `--handoff` it says when handing the work
+back would be a cycle. The hook's denial and the note after a failed command say it the same way.
 
 ## Sixty seconds
 
@@ -815,9 +819,9 @@ measured.
 So a denial now carries its own history:
 
 ```
-deploy/x.yml belongs to infra. It is not dev's to change — hand it over rather than
-working around it. You have been denied this 3 times now; it is not going to work on
-the fourth try. Already queued for a person to answer…
+deploy/x.yml belongs to infra. It is not dev's to change. It is handed to infra: hand it
+over rather than working around it. You have been denied this 3 times now; it is not going
+to work on the fourth try. Already queued for a person to answer…
 ```
 
 And the standing list is a command:
@@ -960,8 +964,8 @@ the same kernel or workspace, and which one you want depends on what you are pro
 
 ## Status
 
-**976 tests on macOS, 974 passing and 2 platform skips** (`main` before 0.6.0); **975 on
-Debian 12 under bubblewrap 0.8.0, 953 passing and 22 platform skips** (2026-10-12). On 2026-10-12, 89 of the suite's tests
+**989 tests on macOS, 987 passing and 2 platform skips** (`main` before 0.6.0); **988 on
+Debian 12 under bubblewrap 0.8.0, 966 passing and 22 platform skips** (2026-10-12). On 2026-10-12, 90 of the suite's tests
 needed `@anthropic-ai/sandbox-runtime` installed — counted by running it with the runtime
 hidden — and run real commands through the real kernel; 26 of them are the core boundary file,
 `test/sandbox.test.js`, which the CI gate fails if it *skips*, because a green run that quietly
