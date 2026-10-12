@@ -240,7 +240,7 @@ const ALLOW = [
   { file: "src/grants.js", re: /Refusing rather than widening/, why: "seisin refuses a glob it cannot enforce" },
   { file: "src/keys.js", re: /refused rather than half-available/, why: "seisin refuses a key mode it cannot honour" },
   // an editor's own feature, named: what a role writing .vscode/ can switch on
-  { file: "src/inspect.js", re: /auto-approval/, why: "the editors' name for the setting that runs an agent's tool calls unasked" },
+  { file: "src/inspect/role-keys.js", re: /auto-approval/, why: "the editors' name for the setting that runs an agent's tool calls unasked" },
   // a PEM header, not a denial
   { file: "src/scan.js", re: /private key block/, why: "the name of a PEM block, which is what scan looks for" },
   // other tools' words, quoted
