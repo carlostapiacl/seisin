@@ -803,6 +803,8 @@
   /** One cause's line under its path: whose it is, or what kind of thing it is. */
   function causeSays(c){
     if (c.about && c.about !== "file") return unownedSays(c.about);
+    // Refused correctly and nothing to grant: said as expected, before "protected".
+    if (c.expected) return "expected · " + c.expected.hint;
     if (c.standing === "protected") return "protected: " + (c.why || "");
     if (c.standing === "outside") return c.why || "outside the map";
     if (c.owners && c.owners.length) return "owned by " + c.owners.join(", ");
@@ -867,6 +869,10 @@
               ["git", "temporary", "build", "credential"].filter(function(k){ return kinds[k] && kinds[k].paths; })
                 .map(function(k){ return kinds[k].paths.toLocaleString() + " " + k; }).join(", ") +
               ", each with its own fix and none of them an owner.";
+    var ex = f.expected;
+    if (ex && ex.denials)
+      h += " <b>" + plural(ex.denials, "denial") + "</b> " + (ex.denials === 1 ? "is" : "are") +
+              " expected: Claude Code updating its plugins from inside the sandbox. They run and update outside it — nothing to grant.";
     var closed = (st.protected ? st.protected.paths : 0);
     if (closed)
       h += " <b>" + closed.toLocaleString() + "</b> " + (closed === 1 ? "is" : "are") +
@@ -931,7 +937,7 @@
   }
 
   /** Retries on a list of walls: every call after the first denial of each. */
-  function retriesOf(list){ return list.reduce(function(n, w){ return n + (w.retried !== undefined ? w.retried : w.times - 1); }, 0); }
+  function retriesOf(list){ return list.reduce(function(n, w){ return n + (w.expected ? 0 : w.retried !== undefined ? w.retried : w.times - 1); }, 0); }
 
   /**
    * What a wall says under its path: the sentence Denied gives the same path, from the same
