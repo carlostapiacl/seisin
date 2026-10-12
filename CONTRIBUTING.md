@@ -75,7 +75,7 @@ counts as a surface of their own:
 |---|---|---|
 | **the CLI** | a person at a terminal, and every agent, through `run` | `src/`, `src/commands/` |
 | **the hook** | the agent, mid-session: a denial it can see coming, whose a path was, its walls at session start | `src/hook.js`, `src/diagnose.js` |
-| **the console** | a person deciding something | `ui/index.html`, served by `src/serve.js` |
+| **the console** | a person deciding something | `ui/src/`, built into `ui/index.html` (`npm run build:ui`), served by `src/serve.js` |
 | **the MCP server** | an agent asking about its own situation | `src/mcp.js` |
 
 **A change that touches what any of them say has to land in all of them**, or the product
