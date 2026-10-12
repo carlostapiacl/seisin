@@ -95,8 +95,9 @@ other fields and drops an answer that does not fit, so `seisin hook` prints only
 `hookSpecificOutput` now; before, the same turn ran the command into the kernel.
 
 All four on macOS 15 (Seatbelt). Linux is no longer a one-off measurement on one machine:
-[CI](../.github/workflows/test.yml) runs the whole suite on Ubuntu and macOS, Node 18/20/22/24,
-on every push — and fails if the sandbox half *skips*.
+[CI](../.github/workflows/test.yml) ran the whole suite on Ubuntu and macOS, Node 18/20/22/24,
+on every push — failing if the sandbox half *skips* — until it was paused; its last green run
+was on 2026-10-04, and this release is validated locally on macOS and Debian 12 (bubblewrap 0.8.0).
 
 The opencode run is the interesting one, because **opencode has no per-path sandbox flag** —
 its only permission control is `--auto`, "auto-approve permissions that are not explicitly
