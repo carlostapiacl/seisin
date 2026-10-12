@@ -973,8 +973,8 @@ the same kernel or workspace, and which one you want depends on what you are pro
 
 ## Status
 
-**989 tests on macOS, 987 passing and 2 platform skips** (`main` before 0.6.0); **988 on
-Debian 12 under bubblewrap 0.8.0, 966 passing and 22 platform skips** (2026-10-12). On 2026-10-12, 90 of the suite's tests
+**1004 tests on macOS, 1002 passing and 2 platform skips** (`main` before 0.6.0); **1003 on
+Debian 12 under bubblewrap 0.8.0, 980 passing and 23 platform skips** (2026-10-12). On 2026-10-12, 91 of the suite's tests
 needed `@anthropic-ai/sandbox-runtime` installed — counted by running it with the runtime
 hidden — and run real commands through the real kernel; 26 of them are the core boundary file,
 `test/sandbox.test.js`, which the CI gate fails if it *skips*, because a green run that quietly
