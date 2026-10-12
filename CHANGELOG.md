@@ -1,12 +1,14 @@
 # Changelog
 
-Versions that were published. What changed in the repository between them is in the git
-history; what changed for someone who installs it is here.
+What changed for someone who installs it. Every dated version below was published to npm,
+except where it says otherwise; **Unreleased** is what the next one will contain, and gets its
+date the day it is published. What changed in the repository between versions is in the git
+history.
 
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
-## 0.6.0 — 2026-10-10
+## Unreleased (0.6.0)
 
 **Breaking:** every run now starts with a mandatory canary. A machine or policy where 0.5.0
 started despite a boundary that did not hold now stops with exit 86. Wrapper commands that hide
@@ -624,7 +626,9 @@ From a first-run review with a small sample repo.
   hooks, `.git/config.worktree`, a worktree's `commondir` — were not. The rest of `.git` stays
   writable, so an ordinary commit is untouched.
 
-## 0.4.1 — 2026-09-28
+## 0.4.1 — 2026-09-28 — tagged, not published to npm
+
+Tagged as `v0.4.1` in git; npm never received it, and 0.4.2 carries these changes.
 
 - **"Paths no role owns" is counted against the policy, as it always said it was.** The console's
   headline and `seisin_causes` took each path's owners from the log line written the day it was

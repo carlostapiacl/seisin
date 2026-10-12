@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Something got past the boundary (report privately)
+    url: https://github.com/carlostapiacl/seisin/security/advisories/new
+    about: A bypass goes through private vulnerability reporting, not a public issue. SECURITY.md says what counts.

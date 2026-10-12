@@ -127,6 +127,14 @@ secret folder, personal. *Where:* `[roles.<name>] private`, `seisin check`, `sei
 hook's message. *Elsewhere:* the sandbox runtime's `denyRead` plus `denyWrite` [6], given to every
 role but the owner.
 
+**`local_ports`** — the localhost ports a role may reach, and the only ones: `local_ports =
+[8001, 8081]`. The sandbox's proxy enforces the list, so a client that does not use the proxy (a
+database driver, a raw socket) is denied. *Next to:* `local_binding = true` is for a role
+that listens, and on macOS it also reaches every port on localhost; `local_ports` is the narrow
+form for a role that only needs to reach one. A port is not anyone's territory, so a denial on one
+files no request. *Not:* allowed ports, port allowlist. *Where:* `[roles.<name>]`, `seisin check`,
+`seisin walls`.
+
 **key** — a credential a role may read, declared in the policy: either a file inside a declared
 `[keys] dir`, or a **reference** resolved by a **provider**. Only a credential the policy names is a
 key. *Next to:* a *secret* is the value; a *credential* is anything secret-shaped wherever it lives
@@ -203,8 +211,8 @@ it `cli_auth_credentials_store` (`file`, `keyring`, `auto`).
 denied. What `seisin check` prints and `seisin_state` returns. *Not:* permission map. "Outside the
 map" (console) is **standing: outside**.
 
-**resource** — *(not built; the word is reserved so it cannot be used for anything else)* a
-named set of paths that several roles may refer to. A resource is **not** owned — territory is
+**resource** — seisin has none, and the word is kept out of its vocabulary so it cannot come to
+mean something else. If it ever names anything here, it will be a named set of paths that several roles may refer to. A resource is **not** owned — territory is
 still what decides who the owner is. *Elsewhere:* ⚠ MCP **resources** [22] and Cedar's
 **resource** [14] are unrelated; the reservation keeps a third meaning out.
 
@@ -243,7 +251,7 @@ sandbox" hint. *Elsewhere:* Claude Code, Codex, Cursor, VS Code all use *sandbox
 *Not:* sandboxed (acceptable in plain English, avoided in labels), jailed. *Elsewhere:* AppArmor
 and nono both say a process is **confined** [12, 26]. Aligned.
 
-**unconfined** — *(new, replaces the console's "unsandboxed" / "open")* a role run without a
+**unconfined** — a role run without a
 sandbox. **`seisin.toml` cannot express it**: it exists only in the console's example-mode what-if.
 *Why new:* the console had three words for a state the product does not have, and a live KPI card
 counting it; one word, defined as "not expressible", ends that. *Elsewhere:* AppArmor calls a
@@ -268,7 +276,7 @@ invocation, job. *Where:* `seisin run`, "once per target per run", "not asked ag
 **turn** (one response) belong to the agent inside the run [3, 4]. Use them only when you mean the
 agent's — the hook's `SessionStart` message, "mid-turn".
 
-**run directory** — *(new)* the private directory each run gets under `$TMPDIR/snr/`: its audit
+**run directory** — the private directory each run gets under `$TMPDIR/snr/`: its audit
 socket, its sandbox settings, and its `scratch`-mode keys. Readable by that run only.
 *Why new:* since the 2026-09-23 fix this is a different place from **scratch**, and the glossary
 still said scratch-mode keys land in shared scratch — the leak that fix closed. Two places need
@@ -350,7 +358,7 @@ console's **Decline** button. `seisin deny` still works and is not documented. *
 uses **decline** for the same answer [7]; Entra uses *deny* [24] — ⚠ which is exactly the collision
 ours avoids.
 
-**revoke** — *(new to this page; the console already uses it)* remove an entry from a role's
+**revoke** — remove an entry from a role's
 `writes` or `keys`. There is no command for it: you edit `seisin.toml`, or preview it in the
 console. *Why here:* the console's activity labels say "revoked folder / revoked key" and the word
 had no line. *Elsewhere:* the standard opposite of *grant* — SQL `REVOKE`, "grant or revoke access"
@@ -536,7 +544,7 @@ checked for.
 10. [Linux Landlock](https://docs.kernel.org/userspace-api/landlock.html) — *ruleset*, *access rights*, *domain* (a ruleset enforced on a thread)
 11. [bubblewrap](https://github.com/containers/bubblewrap) — bind-mount based sandbox; no log of what it denies (already stated in [upstream/cli-violations.md](upstream/cli-violations.md))
 12. [nono](https://nono.sh/) · [source](https://github.com/nolabs-ai/nono) — *capability* sandbox, **profiles**, `nono why` ("allowed or denied"), hash-chained **audit** record, *approval* webhooks, planned **`nono learn`** (trace → profile)
-13. [NVIDIA OpenShell — Overview](https://docs.nvidia.com/openshell/about/overview) · [Providers](https://docs.nvidia.com/openshell/sandboxes/manage-providers) — per-sandbox declarative **policy**; **providers** = "credentials as first-class entities" (credential records / provider profiles), a *different* meaning from seisin's provider
+13. [NVIDIA OpenShell — Overview](https://docs.nvidia.com/openshell/about/overview) · [Providers](https://docs.nvidia.com/openshell/how-it-works/providers/overview) — per-sandbox declarative **policy**; **providers** = "credentials as first-class entities" (credential records / provider profiles), a *different* meaning from seisin's provider
 14. [Cedar — Authorization](https://docs.cedarpolicy.com/auth/authorization.html) — *principal* / *action* / *resource*; **permit** / **forbid**; default **deny**, forbid overrides permit
 15. [AWS IAM — Policy evaluation (explicit/implicit deny)](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_evaluation-logic_policy-eval-denyallow.html) · [**Permissions boundaries**](https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_boundaries.html) — *explicit deny*, *implicit deny*; **permissions boundary** = a policy that caps what a role may be granted (a different "boundary"); IAM *role* = an identity you assume
 16. [AWS IAM Access Analyzer — unused access](https://docs.aws.amazon.com/IAM/latest/UserGuide/access-analyzer-concepts.html) — *unused access* findings computed over a *usage window* (≈ seisin's "Granted, never used")

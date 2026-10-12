@@ -13,7 +13,10 @@
     "codeowners",
     "rbac",
     "agent-permissions",
-    "code-ownership"
+    "code-ownership",
+    "mcp",
+    "security",
+    "developer-tools"
   ],
   "license": "MIT",
   "author": "Carlos Tapia",
