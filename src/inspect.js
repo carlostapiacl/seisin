@@ -41,7 +41,7 @@ export function inspect(config, only = null, where = config.path) {
     where,
     roles: roles.map((r) => ({ name: r.name, writes: r.writes, keys: r.keys,
       reads: r.reads ?? [], toolchain: r.toolchain ?? [], verify: r.verify,
-      neverWrites: r.neverWrites ?? [], localBinding: r.localBinding === true,
+      neverWrites: r.neverWrites ?? [], private: r.private ?? [], localBinding: r.localBinding === true,
       localPorts: r.localPorts ?? [], mcp: r.mcp ?? null, trustd: r.trustd === true })),
     /**
      * The provider commands this config would run, listed because they are the
@@ -245,6 +245,25 @@ function roleKeyWarnings(roles, config = null) {
           "outside the sandbox, the URLs a certificate carries. The runtime calls it an exfiltration vector; " +
           "no public demonstration exists. Go 1.27+ does not need it: seisin sets SSL_CERT_FILE.",
       });
+    /**
+     * A private folder inside another role's territory. Allowed — it is how a
+     * folder is taken out of a wide `writes = ["**"]` — but that role loses it,
+     * reading included, and nothing in its own table says so.
+     */
+    for (const p of r.private ?? []) {
+      const dir = p.replace(/\/\*\*$/, "").replace(/\/+$/, "").replace(/^\.\//, "");
+      for (const o of Object.values(config?.roles ?? {})) {
+        if (o.name === r.name) continue;
+        const g = (o.writesDeclared ?? o.writes).find((w) => covers(w, dir));
+        if (g)
+          warnings.push({
+            kind: "private-inside-territory",
+            headline: `${r.name}: private "${p}" is inside ${o.name}'s writes ("${g}") — ${o.name} can neither read nor write it`,
+            detail: `Every role but ${r.name} is denied the folder, and the deny wins over ${o.name}'s territory. ` +
+              `If ${o.name} needs what is in it, it asks ${r.name}; if it should keep it, the folder is not private.`,
+          });
+      }
+    }
     for (const g of r.neverWrites ?? []) {
       if (r.writes.some((w) => covers(w, g) || covers(w, g.replace(/\/\*\*$/, ""))))
         continue;
