@@ -33,6 +33,8 @@ import { toolchainBins } from "../territory.js";
 import { writePathsOf, realOrSelf, SOCKET_MAX } from "../grants.js";
 import { runCanary, CANARY_EXIT } from "../canary.js";
 import { append, logPath } from "../log.js";
+import { flagsOf } from "../help.js";
+import { WILD } from "../paths.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -154,7 +156,8 @@ export async function run(config, argv) {
     // `--observe` as seisin's and put the run in observe mode; now that flag
     // belongs to `echo`, and observe needs `seisin run x --observe -- echo hi`.
     let i = 1;
-    while (i < argv.length && argv[i].startsWith("-")) i += argv[i] === "--agent" || argv[i] === "--handoff" ? 2 : 1;
+    const values = flagsOf("run").values;
+    while (i < argv.length && argv[i].startsWith("-")) i += values.includes(argv[i]) ? 2 : 1;
     mine = argv.slice(1, i);
     cmd = argv.slice(i);
   }
@@ -188,6 +191,7 @@ export async function run(config, argv) {
     );
 
   const handed = handoffOf(config, role, mine);
+  const expectDenied = expectedDenials(mine);
 
   /**
    * The audit spool: this process holds the log and the queue, and the hook
@@ -263,7 +267,7 @@ export async function run(config, argv) {
 
   // What arrives from the hook and from the kernel, checked against the policy
   // this run started with and written with the run's id on it. See intake.js.
-  const take = intake({ config, role, runId: theRun.id, observe, settings, notify, chain: handed?.chain ?? null });
+  const take = intake({ config, role, runId: theRun.id, observe, settings, notify, chain: handed?.chain ?? null, expectDenied });
   // The channel is a unix socket on macOS, and a socket path is capped. Past
   // the cap the listen dies on `EINVAL` and a path, which says nothing about
   // TMPDIR — the one thing that decides how long it is.
@@ -647,7 +651,7 @@ export async function run(config, argv) {
     // policy's paths` is a line that answers a question nobody asked — the
     // counts exist to explain a filter, not to announce that one ran.
     const { attributed } = denials.stats;
-    const { offPolicy, walks, expected } = take.stats;
+    const { offPolicy, walks, expected, probes } = take.stats;
     const recorded = attributed - offPolicy - walks;
     if (recorded > 0)
       err(`${C.dim}seisin: ${recorded} kernel denial(s) recorded` +
@@ -655,7 +659,9 @@ export async function run(config, argv) {
           `${offPolicy ? `, ${offPolicy} outside the policy's paths` : ""}${C.off}\n` +
           // Claude Code's plugin updater, refused correctly: said as expected so
           // it does not read as the run failing (kinds.js expectedOf).
-          (expected ? `${C.dim}seisin: ${expected} of them expected: ${EXPECTED.plugins}${C.off}\n` : ""));
+          (expected ? `${C.dim}seisin: ${expected} of them expected: ${EXPECTED.plugins}${C.off}\n` : "") +
+          // The caller's own probes: denied as it asked, and nothing to grant.
+          (probes ? `${C.dim}seisin: ${probes} of them expected by the caller (--expect-denied) — nothing queued${C.off}\n` : ""));
 
     // Only what this run added, with the numbers `grant` takes, and one line
     // for the rest. The whole queue after every run buried the new request
@@ -708,6 +714,10 @@ export async function run(config, argv) {
 export function handoffOf(config, role, mine) {
   const at = mine.indexOf("--handoff");
   if (at === -1) return null;
+  // Said before the request is looked up: whatever the id, this role is not
+  // one the policy hands work to, and that is the answer.
+  if (config.roles[role]?.handoff === false)
+    throw new Error(`${role} does not take handed work (handoff = false in its role): no request is handed to it. Nothing was started.`);
   const id = mine[at + 1];
   if (!id || id.startsWith("-")) throw new Error("usage: seisin run <role> --handoff <id> -- <command...> (the id from seisin requests)");
   const request = queueOf(config).find((r) => r.key === id);
@@ -718,6 +728,32 @@ export function handoffOf(config, role, mine) {
   if (d.role !== role)
     throw new Error(`${id} is handed to ${d.role}, not ${role}: the policy decides who takes it. Nothing was started.`);
   return { request, chain: chainFrom(d) };
+}
+
+/**
+ * `--expect-denied <path>`, as many times as given: the paths whose denial the
+ * caller is waiting for (intake.js). Read from this process's argv and nowhere
+ * else — not the environment, not a file in the repo — because everything
+ * else is something the sandboxed side could reach, and a list it could add
+ * to would be a way to keep its own denials out of the queue.
+ *
+ * A path, exactly. A glob is refused rather than read literally: `*` meaning
+ * "this one file" is not what anyone who typed it meant, and meaning "every
+ * file" would make a probe a way to silence a whole directory.
+ */
+export function expectedDenials(mine) {
+  const out = [];
+  for (let i = 0; i < mine.length; i++) {
+    if (mine[i] !== "--expect-denied") continue;
+    const p = mine[++i];
+    if (!p || p.startsWith("-") || !p.trim())
+      throw new Error("usage: seisin run <role> --expect-denied <path> -- <command...> (a path, relative to the repo or absolute)");
+    if (WILD.test(p))
+      throw new Error(`--expect-denied ${p}: a path, not a pattern. Only a denial of exactly that path is expected; ` +
+        `name each one with its own --expect-denied.`);
+    out.push(p);
+  }
+  return out;
 }
 
 /** Is `name` a program the role can start with this PATH? */

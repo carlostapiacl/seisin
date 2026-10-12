@@ -515,6 +515,9 @@ export function loadConfig(path, text = readFileSync(path, "utf8")) {
       throw new Error(`${path}: roles.${name}.trustd must be true or false, not ${JSON.stringify(trustd)}`);
     if (localBinding !== undefined && typeof localBinding !== "boolean")
       throw new Error(`${path}: roles.${name}.local_binding must be true or false, not ${JSON.stringify(localBinding)}`);
+    const handoff = own(r, "handoff");
+    if (handoff !== undefined && typeof handoff !== "boolean")
+      throw new Error(`${path}: roles.${name}.handoff must be true or false, not ${JSON.stringify(handoff)}`);
     const localPorts = readLocalPorts(own(r, "local_ports"), `${path}: roles.${name}.local_ports`);
     const mcp = readMcp(own(r, "mcp"), `${path}: roles.${name}.mcp`);
     const controlFiles = readControlFiles(own(r, "control_files"), `${path}: roles.${name}.control_files`);
@@ -614,6 +617,14 @@ export function loadConfig(path, text = readFileSync(path, "utf8")) {
        * is and why only these two can be handed out. Absent is none.
        */
       controlFiles,
+      /**
+       * Whether this role takes work handed to it (handoff.js). True unless the
+       * role says `handoff = false`: a role that is a pipeline phase rather
+       * than a worker — it prepares the tree, it is not someone to pass a
+       * file to — still owns its territory, and a write denied there goes to
+       * another owner or to a person instead of starting it.
+       */
+      handoff: handoff !== false,
       /**
        * What this role reads beyond its repo, under `read = "territory"`.
        *
@@ -809,7 +820,7 @@ function readBoolean(value, where) {
 }
 
 /** The keys a `[roles.<name>]` table can hold. Anything else is reported by `check`. */
-export const ROLE_KEYS = ["writes", "private", "keys", "key_mode", "env", "network", "never_writes", "local_binding", "local_ports", "mcp", "trustd", "control_files", "reads", "toolchain", "verify"];
+export const ROLE_KEYS = ["writes", "private", "keys", "key_mode", "env", "network", "never_writes", "local_binding", "local_ports", "mcp", "trustd", "control_files", "reads", "toolchain", "verify", "handoff"];
 
 /**
  * `control_files`: which families of control files a role may edit. Refused at

@@ -381,6 +381,14 @@ stands, never from a role name a model chose. `handed to backend`, `handoff held
 *Elsewhere:* the OpenAI Agents SDK's **handoff** is one agent delegating to another [25]. Aligned —
 ours is decided by ownership, not by the model.
 
+**`handoff = false`** — a role key: the role keeps its territory and is never handed work. For a
+role that is a pipeline phase, not a worker. What it owns goes to another owner, or to a person
+(`no-receiver`).
+
+**expected denial** — a denial the caller of `seisin run` said it would probe for, with
+`--expect-denied <path>`: logged with `"expected": true`, asked of nobody. *Not:* the plugin
+updater's denials, which `walls` and `review` call expected on their own.
+
 **handoff chain** — the sequence of roles one handoff has passed through, bounded in depth. Always
 qualified: a bare *chain* is the log's hash chain.
 

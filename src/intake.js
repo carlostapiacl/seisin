@@ -23,7 +23,7 @@
  * the signal handling — 180 lines of policy arithmetic inside the launcher.
  */
 import { join } from "node:path";
-import { toRepoRelative } from "./paths.js";
+import { toRepoRelative, samePath } from "./paths.js";
 import { explain, ownersOf, keyHolders, inKeyDir, privateOwner } from "./owners.js";
 import { append, logPath } from "./log.js";
 import { record, requestsPath } from "./requests.js";
@@ -41,8 +41,12 @@ export { policyId };
  * `fromHook(to, entry)` is the spool's sink; `fromKernel(denial)` is
  * watchDenials' callback; `stats` counts what the kernel said that was left
  * out on purpose, for the line at the end of the run.
+ *
+ * `expectDenied` is the paths the caller said it expects to be denied
+ * (`seisin run --expect-denied`): taken from the parent's own argv, never from
+ * anything the sandbox can reach. See expectedByCaller below.
  */
-export function intake({ config, role, runId, observe = false, settings, notify, chain = null }) {
+export function intake({ config, role, runId, observe = false, settings, notify, chain = null, expectDenied = [] }) {
   const stamp = { run: runId.slice(0, 8), policy: policyId(config) };
   // No `at` from here or from the sandbox: append() stamps the parent's clock and
   // ignores any other. The confined process chose the time of its own lines —
@@ -56,7 +60,25 @@ export function intake({ config, role, runId, observe = false, settings, notify,
   const scope = scopeOf(settings, config.root);
   const keyDirs = (config.keyDirs ?? []).map((d) => (d.startsWith("/") ? d : join(config.root, d)));
   const connects = new Set();         // one line per refused target per run
-  const stats = { offPolicy: 0, walks: 0, expected: 0 };
+  const stats = { offPolicy: 0, walks: 0, expected: 0, probes: 0 };
+
+  /**
+   * A denial the caller asked for is recorded, and asked about by nobody.
+   *
+   * An orchestrator that probes the sandbox with a write it expects to be
+   * denied — its own canary, beside seisin's — got a request for it: a line in
+   * the queue, a notification, and a handoff decision that routed the probe to
+   * whichever role owns the repo root, which an orchestrator obeying the
+   * decision would then have started. The denial is the answer the caller
+   * wanted, so it stays in the log, marked `expected`, and files nothing.
+   *
+   * Exact paths, compared in one spelling (paths.js, samePath): a denial on any
+   * other path, the directory around it included, is still a request. The
+   * list is the parent's, from its own argv; the hook inside never suppresses
+   * anything, and nothing it sends can add to the list (docs/decisions.md).
+   */
+  const probes = new Set(expectDenied.map((p) => samePath(config, p)).filter(Boolean));
+  const expectedByCaller = (target) => probes.size > 0 && probes.has(samePath(config, target));
 
   /**
    * Nothing from inside the sandbox is taken at its word.
@@ -122,6 +144,9 @@ export function intake({ config, role, runId, observe = false, settings, notify,
       const expected = observe
         ? "observed"
         : explain(config, role, entry.action, entry.target).allowed ? "allowed" : "denied";
+      // Marked only when the hook and the parent agree it was a denial: the
+      // hook's word alone does not make a line expected.
+      const asked = entry.verdict === "denied" && expected === "denied" && expectedByCaller(entry.target);
       return void log({
         role,
         tool: String(entry.tool ?? "").slice(0, 40),
@@ -132,6 +157,7 @@ export function intake({ config, role, runId, observe = false, settings, notify,
         owners: ownersOf(config, entry.target),      // recomputed, never taken
         reason: String(entry.reason ?? "").slice(0, 500),
         ...(expected !== entry.verdict ? { disputed: expected } : {}),
+        ...(asked ? { expected: true } : {}),
       });
     }
 
@@ -158,6 +184,8 @@ export function intake({ config, role, runId, observe = false, settings, notify,
     const v = explain(config, role, entry.action, entry.target);
     if (v.allowed || v.neverWrites || v.gitMetadata || v.protected || v.privateTo) return;
     if (temporary(entry.action, entry.target)) return;
+    // The caller's probe: its log line above says it was expected.
+    if (expectedByCaller(entry.target)) return;
     // The owners explain found: for a key that is who declares it, not who
     // writes the directory it sits in — the queue said "owned by dev" about
     // backend's key because dev writes `**`.
@@ -197,6 +225,8 @@ export function intake({ config, role, runId, observe = false, settings, notify,
     // Recorded like any other, and counted apart, so the end of the run can
     // say it was expected instead of leaving it to read as a failure.
     if (expectedOf(rel)) stats.expected++;
+    const asked = expectedByCaller(rel);
+    if (asked) stats.probes++;
 
     /**
      * A refusal the hook never saw still leaves a request behind.
@@ -230,7 +260,7 @@ export function intake({ config, role, runId, observe = false, settings, notify,
     // is always nobody, and the queue said "(unowned)" over another role's key.
     const whose = d.action === "read" && inKeyDir(config, rel) ? keyHolders(config, rel) : ownersOf(config, rel);
     const scratch = rel !== d.path && temporary(d.action, rel);
-    if (rel !== d.path && !barred && !unaskable && !granted && !scratch)
+    if (rel !== d.path && !barred && !unaskable && !granted && !scratch && !asked)
       ask({ role, action: d.action, target: rel, owners: whose });
 
     log({
@@ -250,6 +280,8 @@ export function intake({ config, role, runId, observe = false, settings, notify,
       ...(verdict?.privateTo ? { privateTo: verdict.privateTo } : {}),
       // Why no request was queued for it: a temporary file is not territory.
       ...(scratch ? { nature: "temporary" } : {}),
+      // Why no request was queued for it: the caller said it would be denied.
+      ...(asked ? { expected: true } : {}),
     });
   }
 

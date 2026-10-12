@@ -94,6 +94,13 @@ backend. Whatever does reads that decision (`seisin requests --json`, `seisin_re
 `seisin run backend --handoff frontend:write:src/api`, which starts only if the policy hands that
 request to backend — and anything backend is then denied joins the same handoff chain, so work
 cannot bounce back to frontend ([where a request goes](https://github.com/carlostapiacl/seisin/blob/main/docs/requests.md#where-a-request-goes)).
+A role that is a pipeline phase rather than a worker says `handoff = false`: it keeps its
+territory and is never handed work — what it owns goes to another owner, or to a person.
+
+A caller that probes the sandbox with a write it expects to be denied — its own canary — names
+that path with `--expect-denied <path>` (repeatable). The denial is logged as expected and asked
+of nobody: no request, no notification, no handoff. Only that exact path; any other is a request
+as usual ([expected denials](https://github.com/carlostapiacl/seisin/blob/main/docs/requests.md#a-denial-the-caller-expects)).
 
 **Whose it was, at the moment it was denied.** Other permission layers answer *yes* or *no*, and the good ones say which rule it was and how to widen it. Answering **"no, and it belongs to `backend`"** turns a denial into a handoff — and one a person can grant in a command, rather than a line somebody has to remember to go and read.
 
@@ -874,7 +881,9 @@ directory and its tools write to the temp dir, so *your folders and nothing else
 agent from starting. Every role gets `~/.cache`, `$TMPDIR` and `/tmp`, and a run of Claude Code
 or Codex gets that agent's own directory (`~/.claude`, `~/.codex`) — never the other's, nor the
 other's sign-in. Shared scratch is a real hole, because two roles share a temp directory and
-territory does not hold in it.
+territory does not hold in it. A repo that lives inside scratch — a toy repo under `/tmp` — is
+writable by every role whatever its `writes` say; `seisin check` says so (*every role can write
+the whole repo*), and the same for a `writes` entry whose real path is in scratch.
 It is one line to turn off. The runtime's own shared temp directory, `/tmp/claude`, is never
 writable: each run gets a temp directory of its own instead.
 

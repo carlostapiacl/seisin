@@ -83,6 +83,9 @@ export function causesOf(cfg, entries, { ask = explain, limit = 12 } = {}) {
   const by = new Map();
   for (const e of entries) {
     if (e.verdict !== "denied" || !e.target || !e.action) continue;
+    // A probe the caller of the run asked to be denied (`--expect-denied`):
+    // in the log, and not a cause of anything.
+    if (e.expected === true) continue;
     const k = `${e.action}\u0000${e.target}`;
     const g = by.get(k) ?? { action: e.action, target: e.target, kind: e.kind, times: 0, roles: new Set(), ownersThen: e.owners ?? [] };
     g.times++;

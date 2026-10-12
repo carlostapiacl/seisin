@@ -46,7 +46,11 @@ discover:
 
 - **Scratch is shared.** Every role can write it, so two agents can reach each other's temp
   files. If your repo lives inside the temp dir, territory does not hold at all — `seisin check`
-  says so out loud when it detects that.
+  says so out loud (`scratch`: *every role can write the whole repo*), and the same for one
+  `writes` entry whose real path is in scratch through a symlink or `..`
+  (`territory-in-scratch`). Both are measured against the scratch the policy really gives: this
+  list or your `[runtime] writes`, and none of it under `isolate = "home"`. The canary does not
+  catch it: a repo in scratch is the policy as written, held exactly.
 - **The home directory itself is never granted.** Only those named subdirectories. A grant that
   reached `~` would hand over the shell profile, the ssh config, and every dotfile with a token
   in it. There is a test that fails if that ever changes.
