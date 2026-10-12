@@ -1,0 +1,431 @@
+/* Nothing moves on its own: fixed widths on the columns that change,
+   min-heights on the cards, tabular numerals everywhere a digit updates.
+   A console that reflows while you read it makes you lose your place. */
+:root{
+  --bg:#fff; --panel:#fff; --side:#f6f8fa;
+  --line:#d1d9e0; --line2:#d8dee4;
+  /* --dim carries informative text at 10–12px, so it is held to AA (4.5:1) on every surface it
+     sits on — white, the sidebar and a hovered row. It was #818b98: 3.45:1 on white. */
+  --fg:#1f2328; --mid:#59636e; --dim:#656d76;
+  --green:#1a7f37; --amber:#8a5a00; --blue:#0969da; --on-blue:#fff;
+  --amber-bg:#fff8c5;
+  --hover:#eaeef2; --active:#ddf4ff;
+  /* Declared, and it was not: `.req .path` asked for `var(--mono)` against a variable that
+     never existed, so the one place showing a requested path fell back to the body sans —
+     the exact place where a path has to read as a path. */
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  /* One duration for everything that responds to a pointer. The reduced-motion rule at the
+     bottom already switched transitions off; there were none to switch. */
+  --quick:140ms cubic-bezier(.2,0,.2,1);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --bg:#0e1116; --panel:#161b22; --side:#10151c;
+  --line:#262d38; --line2:#30363d;
+  --fg:#e6edf3; --mid:#9ea7b3; --dim:#848d97;
+  --green:#3fb950; --amber:#d29922; --blue:#58a6ff; --on-blue:#0e1116;
+  --amber-bg:#2b2111;
+  --hover:#1c2430; --active:#1f2d3d;
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0e1116; --panel:#161b22; --side:#10151c;
+  --line:#262d38; --line2:#30363d;
+  --fg:#e6edf3; --mid:#9ea7b3; --dim:#848d97;
+  --green:#3fb950; --amber:#d29922; --blue:#58a6ff; --on-blue:#0e1116;
+  --amber-bg:#2b2111;
+  --hover:#1c2430; --active:#1f2d3d;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{max-width:100%;overflow-x:clip}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.mono{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace}
+
+/* `dvh`, not `vh`: on iOS Safari the address bar moves in and out of the measurement and the
+   page jumps while you scroll. Same pixel on a desktop. */
+.frame{display:grid;grid-template-columns:216px 1fr;min-height:100dvh}
+.side{background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column}
+.brand{padding:15px 14px 13px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
+.brand b{font-size:15px;font-weight:600;letter-spacing:-.01em}
+.brand small{font-size:11px;color:var(--mid);display:block;margin-top:1px}
+.brand .id{display:flex;align-items:center;gap:10px}
+.brand .mark{width:28px;height:28px;flex:none}
+.theme{display:flex;gap:2px;background:var(--hover);border-radius:6px;padding:2px}
+.theme button{flex:1;border:0;background:none;color:var(--mid);padding:4px 0;border-radius:4px;
+  cursor:pointer;font:inherit;font-size:12px}
+.theme button.on{background:var(--panel);color:var(--fg);box-shadow:0 1px 2px #0002}
+.side .list{padding:8px 0}
+.side .cap{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--dim);padding:12px 14px 6px}
+.side a{display:flex;align-items:center;gap:9px;padding:5px 14px;color:var(--mid);
+  text-decoration:none;font-size:13px;border-left:2px solid transparent}
+.side a:hover{background:var(--hover);color:var(--fg)}
+.side a.on{background:var(--active);color:var(--blue);border-left-color:var(--blue)}
+.side a i{font-style:normal;font-size:11px;width:12px;opacity:.8}
+.side a .pin{margin-left:auto;font-size:10px;font-weight:600;min-width:17px;height:17px;padding:0 5px;
+  border-radius:9px;background:var(--active);color:var(--blue);display:grid;place-items:center;
+  font-variant-numeric:tabular-nums}
+
+main{min-width:0;overflow-x:hidden;padding:20px 22px 40px;display:flex;flex-direction:column;gap:18px}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.head h1{font-size:19px;font-weight:600;margin:0;letter-spacing:-.01em}
+.head p{margin:2px 0 0;font-size:12px;color:var(--mid)}
+button.btn{font:inherit;font-size:12px;font-weight:600;cursor:pointer;padding:6px 12px;border-radius:6px;
+  border:1px solid var(--line2);background:var(--panel);color:var(--fg)}
+button.btn:hover{background:var(--hover)}
+button.btn.warn{border-color:var(--amber);color:var(--amber)}
+/* The consequential action is the filled one. Decline was amber and Grant plain, so the eye
+   went to the safe button and read the one that edits the policy as secondary. */
+button.btn.primary{background:var(--blue);border-color:var(--blue);color:var(--on-blue)}
+button.btn.primary:hover{filter:brightness(1.08);background:var(--blue)}
+button.btn.armed{background:var(--amber-bg);border-color:var(--amber);color:var(--fg)}
+button.btn:disabled{opacity:.5;cursor:not-allowed}
+button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,[tabindex]:focus-visible,summary:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+.cards{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+/* Time window: quick presets plus a free "from". Filters what comes from the log. */
+.range{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--mid)}
+.range .seg{display:flex;gap:2px;background:var(--hover);border-radius:6px;padding:2px}
+.range .seg button{border:0;background:none;color:var(--mid);padding:4px 10px;border-radius:4px;
+  cursor:pointer;font:inherit;font-size:12px}
+.range .seg button.on{background:var(--panel);color:var(--fg);box-shadow:0 1px 2px #0002}
+.range input{font:inherit;font-size:12px;padding:4px 8px;border:1px solid var(--line2);
+  border-radius:6px;background:var(--bg);color:var(--fg)}
+.range input.on{border-color:var(--fg)}
+.card{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--line2);
+  border-radius:8px;padding:14px 16px;min-height:96px;display:flex;flex-direction:column}
+.card.g{border-left-color:var(--green)} .card.a{border-left-color:var(--amber)} .card.b{border-left-color:var(--blue)}
+.card h2{font-size:11px;font-weight:600;margin:0;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+.card .n{font-size:28px;font-weight:600;line-height:1;margin-top:12px;font-variant-numeric:tabular-nums;min-width:2.2ch}
+.card .s{font-size:11px;color:var(--mid);margin-top:5px;min-height:16px}
+.card.g .n{color:var(--green)} .card.a .n{color:var(--amber)} .card.b .n{color:var(--blue)}
+.card.kpi{text-decoration:none;color:inherit;transition:border-color .12s,transform .12s}
+.card.kpi:hover{border-color:var(--line2)}
+.card.kpi:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+/* Only when it is not zero. An indicator that shouts at rest is one people
+   learn to ignore, and these two are the ones that mean "do something". */
+.card.kpi.live{border-left-color:var(--blue)} .card.kpi.live .n{color:var(--blue)}
+.card.kpi.alarm{border-left-color:var(--amber)} .card.kpi.alarm .n{color:var(--amber)}
+.card.kpi.calm .n{color:var(--dim)}
+/* Left border follows the state too. A card that is amber at zero has cried
+   wolf before you read the number. */
+.card.kpi{border-left-color:var(--line2)}
+
+/* The shape of the day. A hundred identical rows is not a reading, so each cause gets a
+   bar proportional to the others and the eye does the arithmetic. */
+.lede{font-size:14px;line-height:1.55;margin:0 0 16px;color:var(--fg)}
+.lede b{font-weight:600}
+.lede .q{color:var(--mid)}
+.lede code{font-family:var(--mono);color:var(--fg);font-size:13px}
+.pad{padding:16px}
+.bars{display:flex;flex-direction:column;gap:10px}
+.bar{display:grid;grid-template-columns:1fr 132px;gap:14px;align-items:baseline}
+.bar .lbl{min-width:0;font-size:12px}
+.bar .p{font-family:var(--mono);color:var(--fg);overflow-wrap:anywhere}
+.bar .who{color:var(--mid);font-size:11px;margin-top:2px}
+.bar .t{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:6px}
+.bar .f{height:100%;border-radius:3px;background:var(--blue);display:block}
+.bar.cold .f{background:var(--line2)}
+.bar .num{text-align:right;font-variant-numeric:tabular-nums;font-size:12px;color:var(--fg)}
+.bar .num s{display:block;color:var(--mid);font-size:11px;text-decoration:none;margin-top:2px}
+.bar.cold .p,.bar.cold .num{color:var(--mid)}
+.fam{padding:14px 0;border-top:1px solid var(--line)}
+.fam:first-child{border-top:0;padding-top:0}
+.fam-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.fam-h code{font-family:var(--mono);font-size:13px;color:var(--fg);font-weight:600}
+.fam-h .num{font-variant-numeric:tabular-nums;font-size:13px;color:var(--fg);white-space:nowrap}
+.fam-h .num s{color:var(--mid);text-decoration:none;font-size:11px;margin-left:4px}
+.fam .t{height:5px;border-radius:3px;background:var(--line);overflow:hidden;margin:8px 0 6px}
+.fam .f{display:block;height:100%;border-radius:3px;background:var(--blue)}
+.fam .who{font-size:11px;color:var(--mid)}
+.places{margin:8px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+.places li{display:flex;gap:12px;justify-content:space-between;align-items:baseline;
+  font-family:var(--mono);font-size:11px;color:var(--mid)}
+.places li span{overflow-wrap:anywhere}
+.places li em{font-family:inherit;font-style:normal;color:var(--dim)}
+.places li b{color:var(--fg);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+.box{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.box>header{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;
+  justify-content:space-between;gap:12px}
+.box>header h2{font-size:13px;font-weight:600;margin:0}
+.box>header .note{font-size:11px;color:var(--dim)}
+.box>header .bulk{margin-left:auto;display:flex;gap:6px;align-items:center}
+.box>header .bulk[hidden]{display:none}
+.box>header .bulk input{font:inherit;font-size:12px;padding:5px 8px;min-width:230px;border:1px solid var(--line2);
+  border-radius:6px;background:var(--bg);color:var(--fg)}
+
+.scrollx{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:720px}
+th{text-align:left;font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--dim);padding:9px 12px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover td{background:var(--hover)}
+tbody tr.on td{background:var(--active)}
+td.role{font-weight:500;white-space:nowrap;width:132px;cursor:pointer}
+td.role i{font-style:normal;margin-right:8px;font-size:11px;color:var(--dim)}
+tr.g td.role i{color:var(--green)} tr.a td.role i{color:var(--amber)}
+td.num{text-align:right;font-variant-numeric:tabular-nums;width:70px}
+td.st{width:122px}
+td.terr{min-width:200px}
+
+.tags{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.tag{font:11px/1.45 ui-monospace,SFMono-Regular,monospace;padding:2px 6px;border-radius:6px;
+  border:1px solid var(--line2);color:var(--mid);background:var(--bg);white-space:nowrap;
+  display:inline-flex;align-items:center;gap:5px}
+.tag.w{border-color:var(--blue);color:var(--blue);background:var(--active)}
+.tag .x{border:0;background:none;color:inherit;cursor:pointer;opacity:.6;font-size:12px;line-height:1;padding:0;font-family:inherit}
+.tag .x:hover{opacity:1}
+button.tag{cursor:pointer;font-family:ui-monospace,SFMono-Regular,monospace}
+button.tag:hover{border-color:var(--blue)}
+button.tag[aria-pressed="true"]{border-color:var(--green);color:var(--green)}
+button.add{font:11px inherit;font-family:inherit;padding:2px 7px;border-radius:6px;border:1px dashed var(--line2);
+  background:none;color:var(--dim);cursor:pointer}
+button.add:hover{border-color:var(--blue);color:var(--blue)}
+
+button.sw{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line2);background:var(--bg);
+  border-radius:6px;padding:4px 9px;cursor:pointer;font:inherit;font-size:12px;color:var(--mid);width:114px}
+button.sw i{font-style:normal;width:7px;height:7px;border-radius:50%;background:var(--dim);flex:0 0 7px}
+button.sw[data-on="true"]{color:var(--green)} button.sw[data-on="true"] i{background:var(--green)}
+button.sw[data-on="false"]{color:var(--amber);border-color:var(--amber)} button.sw[data-on="false"] i{background:var(--amber)}
+button.sw:hover{background:var(--hover)}
+
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+pre{margin:0;padding:13px 14px;font:12px/1.65 ui-monospace,SFMono-Regular,monospace;color:var(--mid);
+  overflow-x:auto;white-space:pre;min-height:286px}
+pre .c{color:var(--dim)} pre .k{color:var(--blue)} pre .d{color:var(--amber)} pre .g{color:var(--green)}
+
+.ev{display:flex;align-items:baseline;gap:8px;padding:9px 14px;border-bottom:1px solid var(--line)}
+.ev:last-child{border-bottom:0}
+.ev b{font-weight:600;font-size:12px;flex:0 0 auto;width:52px}
+.ev.deny b{color:var(--amber)} .ev.allow b{color:var(--green)} .ev.admin b{color:var(--blue)} .ev.observed b{color:var(--dim)}
+.ev .body{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}
+.ev .what{font:11px ui-monospace,SFMono-Regular,monospace;color:var(--dim);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ev .what em{font-style:normal;color:var(--fg)}
+.ev .who{font-size:11px;color:var(--mid)}
+.ev .who em{font-style:normal;color:var(--blue);font-weight:600}
+.ev .when{font-size:11px;color:var(--dim);flex:0 0 auto;font-variant-numeric:tabular-nums}
+/* Which writer saw it. The hook reports an attempt and can be talked around; the kernel
+   reports a denial and cannot. When the two disagree about a run the reader needs to know
+   which line carries more weight, so the one that does is the one that is marked — a small
+   word in the margin, not a column. Lines without the field render exactly as before. */
+.ev .src{font:10px/1.6 var(--mono);color:var(--dim);flex:0 0 auto;padding:0 5px;
+  border:1px solid var(--line2);border-radius:4px;letter-spacing:.02em;cursor:default}
+
+.foot{font-size:11px;color:var(--dim);line-height:1.7;border-top:1px solid var(--line);padding-top:14px}
+.foot b{color:var(--mid);font-weight:600}
+
+/* Things that answer a pointer, answer visibly. Colour only — nothing moves position, so a
+   row cannot shift under the cursor while you are reading it. The press is the one exception
+   and it is 1px: enough to feel, too little to lose your place. */
+.side a,button.btn,button.tag,button.add,button.sw,.tag .x,td.role{
+  transition:background-color var(--quick),border-color var(--quick),color var(--quick)}
+button.btn:active,button.tag:active,button.add:active,button.sw:active{transform:translateY(1px)}
+
+/* THE TERRITORY COLUMN, which is where this table stops being readable.
+   A role whose policy names files one by one — because an OS sandbox cannot express
+   "the .py in this folder but not its subfolders" — arrives with dozens of paths, and forty
+   tags in a table cell is not a list, it is a wall. Collapsed, the cell says which folders
+   the role writes and how many paths in each; expanded, every path is there with its own
+   remove button. The summary is the useful reading and the detail is the one you ask for. */
+.terr .fold{border-style:dashed;color:var(--mid);cursor:pointer}
+.terr .fold b{font-weight:600;color:var(--fg);font-variant-numeric:tabular-nums}
+.terr .fold:hover{border-color:var(--blue);color:var(--blue)}
+.terr .more{font-size:11px;color:var(--blue);background:none;border:0;cursor:pointer;padding:2px 4px;
+  font:inherit;font-size:11px;text-decoration:underline;text-underline-offset:2px}
+
+/* The filter. The console could show you the map but not ask it anything — the one question
+   this tool exists to answer, "whose is this path", was only reachable from the CLI. */
+.filter{display:flex;align-items:center;gap:8px}
+.filter input{font:inherit;font-size:12px;padding:5px 9px;border:1px solid var(--line2);
+  border-radius:6px;background:var(--bg);color:var(--fg);width:min(46vw,260px);
+  font-family:var(--mono)}
+.filter input::placeholder{color:var(--dim);font-family:inherit}
+.filter .hits{font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums;min-width:7ch}
+.nohits{padding:22px 14px;color:var(--mid);font-size:13px}
+.nohits b{color:var(--fg);font-family:var(--mono)}
+
+/* An empty count is not a count. `.pin` has a background and a min-width, so a role with no
+   pending anything rendered as a small grey blob next to the label — a badge that says
+   nothing but looks like it is trying to. */
+.side a .pin:empty{display:none}
+
+/* What a view says when it has nothing to show. Not a shrug: the two reasons a log is empty
+   need different answers, so it names them. */
+.blank{margin:0;padding:34px 16px;color:var(--fg);font-size:13px;line-height:1.7;text-align:center}
+.blank.quiet{padding:16px;font-size:12px;color:var(--mid)}
+.blank.quiet span{display:inline}
+.blank span{color:var(--mid);display:block;margin-top:6px;font-size:12px;
+  max-width:58ch;margin-inline:auto;text-wrap:pretty}
+.blank code{font-family:var(--mono);font-size:11.5px;background:var(--hover);
+  padding:1px 5px;border-radius:4px;color:var(--fg)}
+
+@media (max-width:980px){.two{grid-template-columns:1fr}}
+@media (max-width:720px){
+  /* minmax(0,1fr), not 1fr: a bare 1fr never shrinks below its widest child's
+     min-content, and the nav's unwrapped links made the whole page 793px wide on a
+     375px phone. The tabs scroll inside .list instead. */
+  .frame{grid-template-columns:minmax(0,1fr)}
+  .side{border-right:0;border-bottom:1px solid var(--line);min-width:0}
+  .side .list{display:flex;overflow-x:auto;padding:6px 8px}
+  .side .cap{display:none}
+  .side a{border-left:0;border-bottom:2px solid transparent;white-space:nowrap}
+  .side a.on{border-left-color:transparent;border-bottom-color:var(--blue)}
+  main{padding:16px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+  /* Requests. A queue nobody opens is not human-in-the-loop, so it looks like
+     something waiting rather than another table of facts. */
+  .req{display:flex;gap:14px;align-items:flex-start;padding:14px 16px;border-top:1px solid var(--line)}
+  .req.stale .who{opacity:.6}
+  .req:first-child{border-top:0}
+  .req .who{flex:1;min-width:0}
+  .req .who b{font-weight:600}
+  .req .path{font-family:var(--mono);font-size:12.5px;color:var(--fg)}
+  .req .sub{font-size:12px;color:var(--dim);margin-top:3px}
+  .req .act{display:flex;gap:8px;align-items:center;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end}
+  .req input{font:inherit;font-size:12.5px;padding:6px 9px;border:1px solid var(--line);border-radius:6px;
+             background:var(--bg);color:var(--fg);width:min(30vw,220px)}
+  .req input:focus{outline:2px solid var(--blue);outline-offset:1px}
+  .req .empty{color:var(--dim);padding:18px 16px}
+  .asked{font-variant-numeric:tabular-nums}
+
+  /* Control files. The one place on Roles that writes — so it never writes on the click
+     that changes it: the toggle asks the server what the profile would become, the
+     answer is shown, and only the second, separate button saves. */
+  .ctl{display:flex;flex-direction:column}
+  .ctl-row{display:flex;gap:14px;align-items:center;justify-content:space-between;padding:12px 16px;
+           border-top:1px solid var(--line)}
+  .ctl-row:first-child{border-top:0}
+  .ctl-row.glob{background:var(--side)}
+  .ctl-row .lbl{min-width:0}
+  .ctl-row .lbl b{font-weight:600;font-size:13px}
+  .ctl-row .lbl code{font-family:var(--mono);font-size:11.5px;color:var(--mid)}
+  .ctl-row .lbl p{margin:2px 0 0;font-size:12px;color:var(--mid);max-width:70ch}
+  button.sw[data-state="shut"]{color:var(--green)} button.sw[data-state="shut"] i{background:var(--green)}
+  button.sw[data-state="open"]{color:var(--amber);border-color:var(--amber)} button.sw[data-state="open"] i{background:var(--amber)}
+  button.sw:disabled{opacity:.45;cursor:not-allowed}
+  button.sw:disabled:hover{background:var(--bg)}
+  .preview{border-top:1px solid var(--line);padding:14px 16px;background:var(--side);display:flex;flex-direction:column;gap:10px}
+  .preview[hidden]{display:none}
+  .preview h3{margin:0;font-size:13px;font-weight:600}
+  .preview p{margin:0;font-size:12px;color:var(--mid)}
+  .preview p b{color:var(--fg)}
+  .preview code{font-family:var(--mono);font-size:11.5px;color:var(--fg)}
+  .diff{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+  .diff li{display:grid;grid-template-columns:14px 1fr;gap:6px;font-family:var(--mono);font-size:11.5px}
+  .diff li span{overflow-wrap:anywhere;color:var(--fg)}
+  .diff li em{display:block;font-family:ui-sans-serif,system-ui,sans-serif;font-style:normal;color:var(--dim);font-size:11px}
+  .diff li.open b{color:var(--amber)} .diff li.shut b{color:var(--green)}
+  .preview .act{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .preview input{font:inherit;font-size:12.5px;padding:6px 9px;border:1px solid var(--line);border-radius:6px;
+                 background:var(--bg);color:var(--fg);width:min(40vw,260px)}
+  .preview .err{color:var(--amber)}
+
+  /* ── added with the review of 2026-09-30 ────────────────────────────────── */
+
+  /* One sentence on top that says which page this is. The example and a real repo look the
+     same otherwise, and an offline tab looks exactly like a live one. */
+  .banner{border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:8px;
+    padding:10px 14px;font-size:13px;line-height:1.55;background:var(--panel)}
+  .banner[hidden]{display:none}
+  section[data-view]{display:flex;flex-direction:column;gap:14px}
+  section[data-view][hidden]{display:none}
+  .places li em{font-family:ui-sans-serif,system-ui,sans-serif}
+  .banner.off{border-left-color:var(--amber);background:var(--amber-bg)}
+  .banner code,.notice code,.req code{font-family:var(--mono);font-size:12px}
+  .banner b{font-weight:600}
+
+  /* What a decision did, left on screen until the next one — not a toast that is gone before
+     it is read. */
+  .notice{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;
+    padding:10px 16px;border-bottom:1px solid var(--line);background:var(--side);font-size:12.5px}
+  .notice[hidden]{display:none}
+  .notice .txt{min-width:0;overflow-wrap:anywhere}
+  .notice .ln{display:block;margin-top:4px;font-family:var(--mono);font-size:11.5px;color:var(--mid)}
+  .notice a{color:var(--blue)}
+  .notice button{flex:none;border:0;background:none;color:var(--mid);cursor:pointer;font:inherit;font-size:12px;text-decoration:underline}
+
+  /* A request: who, what was asked, what granting covers — in that order. */
+  .req .scope{font-size:12.5px;margin-top:4px;color:var(--fg)}
+  .req .scope.wide>b{color:var(--amber)}
+  .req .scope .own{display:block;color:var(--mid);font-size:12px;margin-top:2px}
+  .req .pick{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;margin-top:4px;color:var(--mid)}
+  .req .pick label{display:inline-flex;gap:5px;align-items:center;cursor:pointer}
+  .req .pick input{padding:0;margin:0;width:auto;border:0}
+  .req .fnote{font-size:12px;color:var(--amber);margin-top:3px}
+  .req .fnote[hidden]{display:none}
+  .req .err{font-size:12px;color:var(--amber);margin-top:4px}
+  .req .err[hidden]{display:none}
+  .req input[aria-invalid="true"]{border-color:var(--amber)}
+
+  /* Denied: tabs, and the parts that are not paths. */
+  .tabs{display:flex;gap:2px;background:var(--hover);border-radius:6px;padding:2px}
+  .tabs a{font-size:12px;padding:3px 10px;border-radius:4px;color:var(--mid);text-decoration:none}
+  .tabs a[aria-selected="true"]{background:var(--panel);color:var(--fg);box-shadow:0 1px 2px #0002}
+  .showall{margin-top:12px;font:inherit;font-size:12px;border:0;background:none;color:var(--blue);cursor:pointer;padding:0;text-decoration:underline}
+  .other{margin-top:20px;border-top:1px solid var(--line);padding-top:14px}
+  .other h3{font-size:12px;font-weight:600;margin:0 0 2px}
+  .other p{font-size:12px;color:var(--mid);margin:0 0 8px}
+
+  /* Roles, read-only when live. */
+  .ro{font-size:11px;color:var(--mid)}
+  td.role button{font:inherit;font-weight:500;color:inherit;background:none;border:0;padding:0;cursor:pointer;
+    display:inline-flex;align-items:center;gap:8px;text-align:left}
+  td.role button i{font-style:normal;font-size:11px;color:var(--dim)}
+  tr.g td.role i{color:var(--green)} tr.a td.role i{color:var(--amber)}
+  .state{font-size:12px;color:var(--green);display:inline-flex;align-items:center;gap:6px}
+  .state i{width:7px;height:7px;border-radius:50%;background:var(--green)}
+
+  /* The control-files preview: grouped, and the exact line. */
+  .diff li.shut b,.diff li.shut .cnt{color:var(--amber)}
+  .diff li.open b,.diff li.open .cnt{color:var(--blue)}
+  .diff details{margin-top:4px}
+  .diff summary{cursor:pointer;color:var(--mid);font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px}
+  .diff details ul{margin:4px 0 0;padding-left:14px;color:var(--mid)}
+  .tomlline{margin:0;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);
+    font:11.5px/1.6 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;min-height:0}
+  .tomlline .d{color:var(--amber)} .tomlline .g{color:var(--green)}
+  pre mark{background:var(--amber-bg);color:var(--fg);outline:1px solid var(--amber);border-radius:2px}
+
+  /* KPIs: full cards on the landing view, a strip everywhere else. */
+  #kpis.compact{display:flex;flex-wrap:wrap;gap:8px}
+  #kpis.compact .card{min-height:0;padding:6px 12px;flex-direction:row;align-items:baseline;gap:8px;flex:1 1 150px}
+  #kpis.compact .card .n{font-size:16px;margin-top:0;order:-1;min-width:0}
+  #kpis.compact .card .s{display:none}
+  #kpis.compact .card h2{font-size:10px}
+  .range .custom[hidden]{display:none}
+  .range[hidden]{display:none}
+  .range label{display:inline-flex;align-items:center;gap:6px}
+
+  @media (max-width:720px){
+    /* A request stacks: the sentence gets the width, the actions go under it at full width. */
+    .req{flex-direction:column;align-items:stretch}
+    .req .act{justify-content:stretch}
+    .req input{width:100%;flex:1 1 100%}
+    .req .act .btn{flex:1 1 0}
+    .box>header{flex-wrap:wrap}
+    .box>header .note{flex-basis:100%}
+    .box>header .bulk{margin-left:0;flex-basis:100%;flex-wrap:wrap}
+    .box>header .bulk input{flex:1 1 100%;min-width:0}
+    .box>header .bulk .btn{flex:1 1 100%}
+    /* The roles table becomes one card per role: a column name beside each value. */
+    table.roles{min-width:0}
+    table.roles thead{display:none}
+    table.roles tr{display:block;border-bottom:1px solid var(--line);padding:6px 0}
+    table.roles tbody tr:last-child{border-bottom:0}
+    table.roles td{display:grid;grid-template-columns:76px minmax(0,1fr);gap:8px;border:0;padding:4px 14px;width:auto;text-align:left}
+    table.roles td::before{content:attr(data-label);font-size:10px;font-weight:600;letter-spacing:.06em;
+      text-transform:uppercase;color:var(--dim);padding-top:3px}
+    #kpis.compact{flex-wrap:nowrap;overflow-x:auto}
+    #kpis.compact .card{flex:0 0 auto}
+    .ctl-row{flex-direction:column;align-items:flex-start}
+    .preview input{width:100%}
+    .places li{flex-direction:column;gap:2px}
+  }

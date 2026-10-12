@@ -494,7 +494,7 @@ export async function run(config, argv) {
   });
   if (!probe.ok) {
     append(logPath(config.root), {
-      event: "canary", role, run: theRun.id.slice(0, 8), confined: false, reasons: probe.failed,
+      event: "canary", role, run: theRun.id.slice(0, 8), agent: agent ?? null, confined: false, reasons: probe.failed,
     });
     err(`${C.red}seisin: ${role} was NOT started — the sandbox failed its canary:${C.off}\n` +
       probe.failed.map((f) => `  - ${f}\n`).join("") +
@@ -504,7 +504,7 @@ export async function run(config, argv) {
     process.exit(CANARY_EXIT);
   }
   append(logPath(config.root), {
-    event: "canary", role, run: theRun.id.slice(0, 8), confined: true, reasons: [],
+    event: "canary", role, run: theRun.id.slice(0, 8), agent: agent ?? null, confined: true, reasons: [],
   });
 
   const boxed = ["env", ...restoreTmp, `SEISIN_RUN_ID=${theRun.id}`, ...loopbackVia(config.roles[role], cmd)];

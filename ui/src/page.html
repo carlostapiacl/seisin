@@ -1,0 +1,236 @@
+<!doctype html>
+<!-- Built from ui/src/ by ui/build.js. Edit there, then run: npm run build:ui -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>seisin console</title>
+<!-- A boundary, which is what the word is about: seisin is the legal term for who
+     actually holds a piece of LAND. The S is a property line splitting one plot between
+     two holders, and the filled side is held. One stroke and one fill so it survives at
+     16px, where a favicon actually lives. Also in ui/favicon.svg for anyone who wants
+     the file; inline here so the console needs no second route to serve it. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%231f2328%22%2F%3E%3Cpath%20d%3D%22M16%205.5C8%205.5%208%2016%2016%2016S24%2026.5%2016%2026.5H26.5V5.5Z%22%20fill%3D%22%232da44e%22%2F%3E%3Cpath%20d%3D%22M16%205.5C8%205.5%208%2016%2016%2016S24%2026.5%2016%2026.5%22%20fill%3D%22none%22%20stroke%3D%22%23fff%22%20stroke-width%3D%222.8%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E">
+<meta name="description" content="Which territory each role writes, which keys it may read, and whose a path is when the answer is no.">
+<meta name="color-scheme" content="light dark">
+<style>
+<!-- @inline style.css -->
+</style>
+</head>
+<body>
+<div class="frame">
+
+  <nav class="side">
+    <div class="brand">
+      <div class="id"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--fg)"/><path d="M16 5.5C8 5.5 8 16 16 16S24 26.5 16 26.5H26.5V5.5Z" fill="var(--green)"/><path d="M16 5.5C8 5.5 8 16 16 16S24 26.5 16 26.5" fill="none" stroke="var(--bg)" stroke-width="2.8" stroke-linecap="round"/></svg><div><b>seisin</b><small id="source" role="status">folders and keys, per agent</small></div></div>
+      <div class="theme" role="group" aria-label="Theme">
+        <button type="button" id="t-light">light</button>
+        <button type="button" id="t-dark">dark</button>
+        <button type="button" id="t-auto" class="on">auto</button>
+      </div>
+    </div>
+    <div class="list">
+      <div class="cap">Policy</div>
+      <a class="on" href="#requests" id="nav-req" aria-current="page" title="Requests: access an agent asked for and cannot have"><i>⚖</i>Waiting on you<span class="pin" id="req-pin"></span></a>
+      <a href="#denied" title="Every denial in the window: what an agent tried and the OS denied"><i>⊘</i>Denied<span class="pin" id="dn-pin"></span></a>
+      <a href="#walls" title="A wall: something a role was denied twice or more and would still be denied today"><i>▦</i>Walls<span class="pin" id="wl-pin"></span></a>
+      <a href="#policy" title="Each role's territory (the folders it may write) and the keys it may read"><i>⚷</i>Roles<span class="pin" id="pin"></span></a>
+      <a href="#activity" title="The log: every entry, newest first"><i>◷</i>Activity</a>
+      <a href="#configfile" title="seisin.toml, the policy file"><i>⚙</i>Config file</a>
+      <div class="cap">Docs</div>
+      <a href="https://github.com/carlostapiacl/seisin#readme" target="_blank" rel="noopener"><i>↗</i>seisin README</a>
+      <a href="https://github.com/carlostapiacl/seisin/blob/main/docs/glossary.md" target="_blank" rel="noopener"><i>↗</i>Glossary</a>
+      <a href="https://github.com/anthropics/sandbox-runtime" target="_blank" rel="noopener"><i>↗</i>sandbox-runtime</a>
+    </div>
+  </nav>
+
+  <!-- FOUR VIEWS, not four anchors into one long page. The sidebar used to jump you down a
+       scroll it had already rendered: the Config file link landed on a box under a table of
+       24 roles, and "Activity" meant "keep going". Each of these answers a different
+       question and none of them is a footnote to Roles, so each gets the screen. -->
+  <main>
+    <!-- Which page this is. Opened as a file it is an example with nothing behind it; a live tab
+         whose server went away looked exactly like one that was still answering. -->
+    <div class="banner" id="demo-banner" hidden>
+      <b>Preview with example data — nothing here is saved.</b>
+      seisin gives each AI coding agent its own folders and keys, has the OS enforce them, and
+      when it says no, tells you whose file it was. To see your own repository, run
+      <code>seisin ui</code> in it.
+    </div>
+    <div class="banner off" id="off-banner" role="alert" hidden></div>
+
+    <div class="head">
+      <div>
+        <h1 id="v-title">Roles</h1>
+        <p id="v-sub">Which territory each role writes, and which keys it may read.</p>
+      </div>
+      <button class="btn warn" id="kill" type="button">Run every role unconfined</button>
+    </div>
+
+    <!-- The window filters what is read from the log. Not the request queue: that is what is
+         waiting now, whatever the window. -->
+    <div class="range" id="range" hidden>
+      <span id="range-lbl">Window</span>
+      <div class="seg" role="group" aria-labelledby="range-lbl">
+        <button type="button" data-r="1h">1h</button>
+        <button type="button" data-r="4h">4h</button>
+        <button type="button" data-r="24h">24h</button>
+        <button type="button" data-r="7d">7d</button>
+        <button type="button" data-r="30d">30d</button>
+        <button type="button" data-r="all" class="on">All</button>
+        <button type="button" data-r="custom" id="range-custom">From a date…</button>
+      </div>
+      <label class="custom" id="range-from-box" hidden>since <input type="datetime-local" id="range-from"></label>
+    </div>
+
+    <!-- Each number is a link to the screen that explains it. Full cards on the landing view,
+         a strip on the others: the same five cards on every screen pushed every view's own
+         content below the fold, on a phone by a whole screen. -->
+    <div class="cards" id="kpis">
+      <a class="card kpi" href="#requests" id="k-wait">
+        <h2>waiting on you</h2><div class="n" id="c-wait">0</div><div class="s" id="c-wait-s">nothing to decide</div></a>
+      <!-- Example only: seisin.toml cannot express an unconfined role, so live this card would
+           always say 0 and is removed with the what-if button. -->
+      <a class="card kpi" href="#policy" id="k-open" title="Roles run without a sandbox in this example: nothing enforces their territory">
+        <h2>unconfined</h2><div class="n" id="c-off">0</div><div class="s" id="c-off-s">every role confined</div></a>
+      <a class="card kpi" href="#denied" id="k-ref">
+        <h2>denied</h2><div class="n" id="c-blocks">0</div><div class="s" id="c-blocks-s">in this window</div></a>
+      <a class="card kpi" href="#causes" id="k-conc" title="How much of the window's denials share one file name">
+        <h2>top cause</h2><div class="n" id="c-conc">—</div><div class="s" id="c-conc-s">of all denials</div></a>
+      <a class="card kpi" href="#walls" id="k-retry" title="Calls made after the first denial of the same thing">
+        <h2>spent retrying</h2><div class="n" id="c-retry">0</div><div class="s" id="c-retry-s">calls on known walls</div></a>
+    </div>
+
+    <section data-view="roles">
+
+    <div class="box">
+      <header id="policy">
+        <h2>Policy</h2>
+        <span class="note ro" id="roles-note"></span>
+        <!-- The filter takes a path as readily as a role name, because "whose is this path"
+             is the question the CLI answers with `seisin whose` and the console could not
+             ask at all. A map you cannot query is a poster. -->
+        <div class="filter">
+          <label class="note" for="f">filter</label>
+          <input id="f" type="search" spellcheck="false" autocomplete="off"
+                 placeholder="a role, or a path like src/api">
+          <span class="hits" id="f-hits" aria-live="polite"></span>
+        </div>
+      </header>
+      <div class="scrollx">
+        <table class="roles">
+          <thead><tr>
+            <th>role</th><th class="terr" title="Territory: the paths a role may write">writes (territory)</th><th title="Credentials the role may read">keys</th><th class="st" title="Whether the OS enforces this role's territory">confined</th><th class="num">denials</th>
+          </tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <p class="nohits" id="nohits" hidden></p>
+      </div>
+    </div>
+
+    <!-- Policy-wide first, then per role. The one global switch used to sit inside the
+         selected role's box, so turning it on read as a change to that role alone. -->
+    <div class="box">
+      <header><h2>Policy-wide</h2><span class="note">applies to every role</span></header>
+      <div class="ctl" id="pw"></div>
+      <div class="preview" id="pw-preview" hidden aria-live="polite"></div>
+      <div class="notice" id="pw-done" role="status" hidden></div>
+    </div>
+
+    <div class="box">
+      <header><h2 id="ctl-title">Control files</h2><span class="note" id="ctl-note" title="Control files: files an editor or the next agent session acts on — editor settings and instruction files">files an editor or the next agent session acts on — protected unless the policy hands them over</span></header>
+      <div class="ctl" id="ctl"></div>
+      <div class="preview" id="ctl-preview" hidden aria-live="polite"></div>
+      <div class="notice" id="ctl-done" role="status" hidden></div>
+    </div>
+
+    <!-- The generated settings stay with Roles: they are not a fifth subject, they are what
+         the row you clicked resolves to. -->
+    <div class="box">
+      <header><h2 id="cfg-title">.seisin/….json</h2><span class="note" id="cfg-note">what seisin hands the runtime for the selected role</span></header>
+      <pre id="cfg"></pre>
+    </div>
+    </section>
+
+    <section data-view="requests" hidden>
+      <div class="box" id="requests">
+        <header>
+          <h2>Pending decisions</h2>
+          <span class="note" id="req-note">granting edits seisin.toml · here or in the terminal, never through MCP</span>
+          <span class="bulk" id="bulk" hidden>
+            <input id="why-all" placeholder="reason, for all of them (required)" aria-label="Reason for declining all">
+            <button class="btn" id="decline-all" type="button" data-write>Decline all</button>
+          </span>
+        </header>
+        <div class="notice" id="decided" role="status" hidden></div>
+        <div id="reqs"></div>
+      </div>
+    </section>
+
+    <!-- Denied, by path or by name: one view with two cuts. "Causes" was a view the nav never
+         listed, reachable only from a KPI. #causes still lands on the name cut. -->
+    <section data-view="denied" hidden>
+      <div class="box">
+        <header>
+          <h2>Denied</h2>
+          <nav class="tabs" role="tablist" aria-label="Group denials">
+            <a href="#denied" role="tab" id="tab-path">by path</a>
+            <a href="#causes" role="tab" id="tab-name">by name</a>
+          </nav>
+          <span class="note" id="dn-window"></span>
+        </header>
+        <div class="pad" id="dn-path" role="tabpanel" aria-labelledby="tab-path">
+          <p class="lede" id="ca-lede"></p>
+          <div class="bars" id="ca-bars"></div>
+          <div id="ca-more"></div>
+          <div id="ca-other"></div>
+        </div>
+        <div class="pad" id="dn-name" role="tabpanel" aria-labelledby="tab-name" hidden>
+          <p class="lede" id="fa-lede"></p>
+          <div id="fa-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-view="walls" hidden>
+      <div class="box">
+        <header>
+          <h2>Walls</h2>
+          <span class="note">denied twice or more, and the policy still denies it · a retry is every call after the first denial</span>
+        </header>
+        <div class="pad">
+          <p class="lede" id="wl-lede"></p>
+          <div id="wl-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-view="activity" hidden>
+      <div class="box">
+        <header><h2>Activity</h2><span class="note">newest first · each denial with whose it was</span></header>
+        <div id="log"></div>
+      </div>
+    </section>
+
+    <section data-view="config" hidden>
+    <div class="box">
+      <header id="configfile"><h2>seisin.toml</h2><span class="note" id="toml-note">generated from the example policy in this page — there is no file behind it</span></header>
+      <pre id="toml"></pre>
+    </div>
+    </section>
+
+    <!-- The footer stays outside the views: it says what mode the page is in and what the
+         JSON is measured against, and that is true on all of them. -->
+    <div class="foot">
+      <b id="foot-mode">Preview.</b> <span id="foot-text">Opened as a file, this page edits an example policy in memory and
+      shows what would be generated. Nothing is saved; run <b>seisin ui</b> in a repository to see yours.</span><br>
+      The JSON matches <b>@anthropic-ai/sandbox-runtime 0.0.78</b>, whose schema the test suite exercises against the real binary.
+    </div>
+  </main>
+</div>
+
+<script>
+<!-- @inline console.js -->
+</script>
+</body>
+</html>

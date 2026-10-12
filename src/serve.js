@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
 import { read, logPath, logSegments } from "./log.js";
 import { settingsFor } from "./srt.js";
-import { pending, requestsPath, settle, applyGrant, refuseIfBarred, editPolicy, cleanReason } from "./requests.js";
+import { pending, requestsPath, settle, applyGrant, refuseIfBarred, editPolicy, cleanReason, asFileGrant, lastAgentOf, fileOnlyNote } from "./requests.js";
 import { causesOf, describeWalls, parseSince, queue, verdicts, wallsByRole } from "./views.js";
 import { planEdit, hashOf } from "./controls.js";
 import { inspect } from "./inspect.js";
@@ -157,7 +157,11 @@ export function state(configPath, { since = null, snap = snapshot(configPath) } 
     // is not old just because the filter hides the runs that made it old. The
     // whole log, every verdict, as `seisin requests` and the MCP read it — this
     // counted runs over denials only, and marked differently from both.
-    requests: queue(cfg.root, all, cfg.keyDirs),
+    // A write keyed by a folder can be granted as its one file instead; the
+    // line that choice carries is said here, once, so the page and the CLI
+    // say the same thing about Claude Code.
+    requests: queue(cfg.root, all, cfg.keyDirs).map((r) => r.action === "write" && r.grant !== r.target
+      ? { ...r, fileNote: fileOnlyNote(r.role, lastAgentOf(all, r.role)) } : r),
     since,
     // The file itself, not a regeneration of it. The page can render a policy
     // from its own model, and that model has no comments — so showing it under
@@ -216,7 +220,7 @@ function settingsOf(configPath, role) {
  * an exception for loopback. That is what lets the console hold the half the
  * MCP server deliberately does not.
  */
-function decide(configPath, { key, decision, reason }) {
+function decide(configPath, { key, decision, reason, scope = "folder" }) {
   /**
    * By the request's id, never by its place in the queue.
    *
@@ -246,9 +250,11 @@ function decide(configPath, { key, decision, reason }) {
   if (typeof reason !== "string" || !cleanReason(reason))
     throw bad("a reason is required — it is written next to the decision");
   // It grants the folder the request is keyed by (docs/api.md asked, docs/**
-  // granted), and the page says so before the click. Granting the one file
-  // instead would need the queue to key by file: a later ask for a sibling
-  // folds into this settled request and would never reach the queue.
+  // granted), and the page says so before the click — or, with scope "file",
+  // the one file that was asked for, as a literal path. The queue stays keyed
+  // by folder; the settle line records the file, so a later ask for a sibling
+  // reopens the request instead of folding into it (requests.js, reduce).
+  if (scope !== "folder" && scope !== "file") throw bad(`scope must be folder or file`);
   const cfg = loadConfig(configPath);
   const file = requestsPath(cfg.root);
 
@@ -271,9 +277,10 @@ function decide(configPath, { key, decision, reason }) {
       req = pending(file, { keyDirs: current.keyDirs }).find((r) => r.key === key);
       if (!req) throw bad(`request ${key} is no longer pending — reload to see the queue as it is now`);
       if (decision !== "granted") return { toml: before, changed: false };
+      if (scope === "file") req = asFileGrant(req);
       refuseIfBarred(current, req);
       return applyGrant(before, req, reason);
-    }, { after: () => settle(file, req.key, decision === "granted" ? "granted" : "denied", reason) });
+    }, { after: () => settle(file, req.key, decision === "granted" ? "granted" : "denied", reason, { only: req.only }) });
   } catch (e) {
     if (e.code === "ELOCKED") throw Object.assign(new Error("another grant is in progress — try again in a moment"), { status: 503 });
     throw e;
