@@ -27,7 +27,8 @@
  * rewritten is not evidence. A request that is granted or declined is not
  * deleted — it is followed by a line saying what happened to it.
  */
-import { neverWrites, isGitMetadata, covers, keyHolders, inKeyDir, privateOwner } from "./owners.js";
+import { neverWrites, isGitMetadata, covers, privateOwner } from "./owners.js";
+import { decideHandoff, chainOf, isKeyRequest } from "./handoff.js";
 import { protectedBy } from "./surface.js";
 import { appendFileSync, chmodSync, closeSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { randomBytes } from "node:crypto";
@@ -35,7 +36,7 @@ import { dirname, join } from "node:path";
 import { STATE_DIR, tomlString } from "./layout.js";
 import { send } from "./spool.js";
 import { withLock, readEntries } from "./log.js";
-import { loadConfig } from "./config.js";
+import { loadConfig, policyId } from "./config.js";
 
 const REQUESTS_NAME = "requests.jsonl";
 
@@ -110,28 +111,81 @@ function write(file, entry) {
 }
 
 /**
- * Who a read request's key belongs to, from the policy as it is now.
+ * Who each request goes to, decided now (handoff.js), and whose it is.
  *
- * A key is declared, not owned: nobody writes `.secrets/`, so the owners a
- * write-territory lookup finds for one are always none, and the queue said
- * "(unowned)" about a key another role declares — right before a grant that
- * would share it. Recomputed rather than read from the line, like every other
- * field that decides what a person is shown.
+ * Every reader of the queue goes through here — `seisin requests`, the end of
+ * `seisin run`, the notification, the console, the MCP — so they cannot
+ * disagree about where a request goes, and none of them works it out on its
+ * own. `owners` is replaced by the decision's: the owners stored on the line
+ * are who owned the path when it was denied, which is evidence; who owns it
+ * now is the policy's answer, and that is the one shown. For a key it is who
+ * declares it — nobody writes `.secrets/`, and the queue used to say
+ * "(unowned)" about a key another role declares, right before a grant that
+ * would share it.
+ *
+ * `handoff` is the decision as decideHandoff returns it: `type` is route,
+ * human, resolved, cycle or depth, and a route names `role`. It is the field
+ * something outside seisin reads to act on; seisin itself starts nothing.
  */
-export function withDeclarers(config, queue) {
+export function withHandoffs(config, queue, revision = policyId(config)) {
+  // Reading the queue must not be the thing that fails: a caller holding only
+  // a root gets every request decided as nobody's, which is what it can know.
+  const policy = config?.roles ? config : { ...config, roles: {} };
   for (const r of queue) {
-    if (r.action !== "read" || typeof r.target !== "string") continue;
-    if (!inKeyDir(config, r.target) && r.target.includes("/")) continue;
-    r.owners = keyHolders(config, r.target);
-    r.declared = true;
+    if (typeof r.role !== "string" || typeof r.target !== "string") continue;
+    r.ownersThen = r.owners;
+    r.handoff = decideHandoff({ request: r, config: policy, chain: chainOf(r), revision });
+    r.owners = r.handoff.owners ?? [];
+    if (isKeyRequest(config, r)) r.declared = true;
   }
   return queue;
 }
 
-/** Records that a role asked for something the policy denies it. Safe to call
- *  on every denial; `seisin run` drops anything the policy does not deny. */
-export function record(file, { role, action, target, owners }) {
-  return write(file, { kind: "asked", key: keyOf({ role, action, target }), role, action, target, owners: owners ?? [] });
+/**
+ * The pending queue as a person and an agent read it: keys in the policy's own
+ * form, each request's handoff decided against the policy as it stands, and —
+ * given the log — the ones the role stopped asking for marked. `readOnly` is
+ * pending()'s: the MCP server reads the queue and never migrates it.
+ */
+export function queueOf(config, history = null, { readOnly = false } = {}) {
+  const queue = withHandoffs(config, pending(requestsPath(config.root), { keyDirs: config.keyDirs, readOnly }));
+  return history ? markStale(queue, history) : queue;
+}
+
+/**
+ * The queue as data: what `seisin requests --json` prints and `seisin_requests`
+ * returns, one shape for both.
+ *
+ * `handoff` is the field to act on. It is decided by seisin from the policy as
+ * it stands (handoff.js) and carried whole, so whatever reads it — an agent, a
+ * script that starts roles — is reading a decision and not making one: a route
+ * names the role, and `seisin run <role> --handoff <id>` refuses any other.
+ */
+export function queueData(queue) {
+  return {
+    pending: queue.map((r, i) => ({
+      number: i + 1, id: r.key, role: r.role, action: r.action, target: r.target,
+      wants: r.grant, ownedBy: r.owners, asked: r.times, lastAsked: r.last,
+      handoff: r.handoff ?? null,
+      ...(r.attempt ? { attempt: r.attempt } : {}),
+      ...(r.stale ? { stale: `not asked again in ${r.stale.runs} runs of ${r.role} since` } : {}),
+    })),
+  };
+}
+
+/**
+ * Records that a role asked for something the policy denies it. Safe to call
+ * on every denial; `seisin run` drops anything the policy does not deny.
+ *
+ * `chain` is set only by a run started for a handoff (`seisin run --handoff`),
+ * from the decision the parent checked before starting it — never from
+ * anything the sandbox sent. A line without one starts a chain of its own.
+ */
+export function record(file, { role, action, target, owners, chain = null }) {
+  return write(file, {
+    kind: "asked", key: keyOf({ role, action, target }), role, action, target, owners: owners ?? [],
+    ...(chain && { chain: { id: chain.id, depth: chain.depth, visited: chain.visited } }),
+  });
 }
 
 /**
@@ -203,8 +257,9 @@ export function fileOnlyNote(role, agent) {
  * It exists so that a refusal to run cannot be invisible. Admission may
  * postpone work; it may not make work disappear from the queue a person reads.
  *
- * Nothing in src/ calls it today — handoff.js decides but nothing records the
- * outcome; the tests do, and pending() keeps reading what it writes.
+ * `seisin run --handoff` writes one when it starts the receiver; whatever
+ * else starts roles writes one when it holds one back. It reaches a request
+ * as `attempt`, beside the decision, and never as `state`.
  */
 export function recordHandoff(file, key, decision = {}) {
   const { type, role, limit, max, reason, depth, chainId, revision } = decision;
@@ -285,14 +340,19 @@ function reduce(entries) {
           times: 1, first: e.at, last: e.at, state: "pending", reason: "",
         });
         delete seen.decided;
+        delete seen.chain;
+        delete seen.attempt;
+        keepChain(seen, e);
         continue;
       }
-      if (seen) { seen.times++; seen.last = e.at; continue; }
-      byKey.set(e.key, {
+      if (seen) { seen.times++; seen.last = e.at; keepChain(seen, e); continue; }
+      const fresh = {
         key: e.key, role: e.role, action: e.action, target: e.target,
         owners: e.owners ?? [], grant: grantFor(e),
         times: 1, first: e.at, last: e.at, state: "pending", reason: "",
-      });
+      };
+      keepChain(fresh, e);
+      byKey.set(e.key, fresh);
       continue;
     }
     const seen = byKey.get(e.key);
@@ -303,11 +363,12 @@ function reduce(entries) {
      *
      * Without this branch the catch-all below would set state = "handoff" and a
      * throttled attempt would drop out of the pending queue — the exact silent
-     * disappearance the attempt is recorded to prevent. (Only the tests write
-     * handoff lines today — see recordHandoff.)
+     * disappearance the attempt is recorded to prevent. It is `attempt`, not
+     * `handoff`: the decision is recomputed on every read (withHandoffs), and
+     * what was tried is a different fact from where it goes.
      */
     if (e.kind === "handoff") {
-      seen.handoff = {
+      seen.attempt = {
         outcome: e.outcome, role: e.role, limit: e.limit, max: e.max,
         reason: e.reason, depth: e.depth, chainId: e.chainId, at: e.at,
       };
@@ -436,6 +497,20 @@ export function migrateQueue(file) {
       return n;
     } finally { closeSync(fd); }
   });
+}
+
+/**
+ * The chain a request was asked in, kept as the deepest one seen.
+ *
+ * One request (same role, action, folder) can be asked by a run that was
+ * handed work and by one that was not. The deeper chain is the one that knows
+ * more of where the work has been, so it is the one kept: dropping it on a
+ * later plain ask would let the work be handed back to a role it came from.
+ */
+function keepChain(seen, e) {
+  const c = e.chain;
+  if (!c || typeof c !== "object" || !Number.isInteger(c.depth)) return;
+  if (!seen.chain || c.depth > seen.chain.depth) seen.chain = c;
 }
 
 /**

@@ -30,8 +30,8 @@ import { renderConfig, renderObserved, discover } from "../src/commands/init.js"
 import * as publica from "../src/index.js";
 import { record, settle, pending, applyGrant, grantFor, cleanReason, recordHandoff, keyOf } from "../src/requests.js";
 import { Readable } from "node:stream";
-import { decideHandoff, MAX_DEPTH } from "../src/handoff.js";
-import { renderQueue, handoffNote, decline as declineCmd } from "../src/commands/requests.js";
+import { decideHandoff, MAX_DEPTH, describeHandoff } from "../src/handoff.js";
+import { renderQueue, decline as declineCmd } from "../src/commands/requests.js";
 import { serveMcp, TOOLS, HANDLERS, PROTOCOLS } from "../src/mcp.js";
 import { serve } from "../src/serve.js";
 import { review } from "../src/review.js";
@@ -1645,8 +1645,8 @@ test("a throttled handoff leaves the request pending, not settled", () => {
   rmSync(box, { recursive: true, force: true });
   assert.equal(q.length, 1);                 // still in the human queue
   assert.equal(q[0].state, "pending");       // admission is not a verdict
-  assert.equal(q[0].handoff.outcome, "throttled");
-  assert.equal(q[0].handoff.limit, "senderChains");
+  assert.equal(q[0].attempt.outcome, "throttled");
+  assert.equal(q[0].attempt.limit, "senderChains");
 });
 
 test("the two lifecycles do not overwrite each other, in either order", () => {
@@ -1660,24 +1660,36 @@ test("the two lifecycles do not overwrite each other, in either order", () => {
   const later = pending(f, { includeSettled: true })[0];
   rmSync(box, { recursive: true, force: true });
   assert.equal(after.state, "granted");
-  assert.equal(after.handoff.outcome, "throttled");
+  assert.equal(after.attempt.outcome, "throttled");
   assert.equal(later.state, "granted");
-  assert.equal(later.handoff.outcome, "route");
+  assert.equal(later.attempt.outcome, "route");
 });
 
 test("a held handoff says which limit held it, in words a person reads", () => {
-  assert.match(handoffNote({ outcome: "throttled", limit: "senderChains", max: 3 }), /open handoff chains/);
-  assert.match(handoffNote({ outcome: "throttled", limit: "receiverConcurrent", max: 2, role: "backend" }), /backend already running/);
-  assert.match(handoffNote({ outcome: "cycle", role: "frontend" }), /already in this handoff chain/);
-  assert.match(handoffNote({ outcome: "depth", depth: 5, max: 4 }), /5 of 4/);
-  assert.equal(handoffNote(undefined), "");   // a request nobody tried to route says nothing
+  const route = { type: "route", role: "backend", depth: 1 };
+  assert.match(describeHandoff({ type: "throttled", role: "backend", limit: "senderChains", max: 3 }), /open handoff chains/);
+  // Recorded by whatever starts roles, over a decision that still routes there.
+  assert.match(describeHandoff(route, { outcome: "throttled", limit: "receiverConcurrent", max: 2, role: "backend" }), /backend already running/);
+  assert.match(describeHandoff({ type: "cycle", role: "frontend" }), /already in this handoff chain/);
+  assert.match(describeHandoff({ type: "depth", depth: 5, max: 4 }), /5 of 4/);
+  assert.equal(describeHandoff(undefined), "");   // nothing decided says nothing
+});
+
+test("a recorded attempt cannot overrule the policy's own decision", () => {
+  // Held back for backend, but the policy has since moved the path to nobody:
+  // the person reads the policy hole, not a stale throttle.
+  const held = { outcome: "throttled", limit: "senderChains", max: 3, role: "backend" };
+  assert.match(describeHandoff({ type: "human", reason: "unowned", owners: [] }, held), /a person decides: no role owns this/);
+  // And one recorded for another receiver says nothing about this one.
+  assert.equal(describeHandoff({ type: "route", role: "qa", depth: 1 }, held), "handed to qa");
 });
 
 test("the queue shows a held handoff on the request it belongs to", () => {
   const plain = renderQueue([{
     key: "k", role: "frontend", action: "write", target: "src/api/orders.ts",
     owners: ["backend"], grant: "src/api/**", times: 1, state: "pending",
-    handoff: { outcome: "throttled", limit: "senderChains", max: 3 },
+    handoff: { type: "route", role: "backend", owners: ["backend"], depth: 1 },
+    attempt: { outcome: "throttled", role: "backend", limit: "senderChains", max: 3 },
   }]).replace(/\x1b\[[0-9;]*m/g, "");
   assert.match(plain, /1 pending request/);
   assert.match(plain, /handoff held/);

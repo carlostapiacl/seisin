@@ -57,7 +57,7 @@ test("one message per new request, naming the owner and the command that answers
   assert.equal(sent.length, 1);
   assert.equal(sent[0].url, "http://127.0.0.1:9/");
   assert.equal(sent[0].redirect, "error");
-  assert.match(sent[0].body, /web was denied write on src\/api\/x\.ts\. It belongs to api\. Grant: seisin grant 'web:write:src\/api'/);
+  assert.match(sent[0].body, /web was denied write on src\/api\/x\.ts\. It belongs to api\. Handed to api\. Grant: seisin grant 'web:write:src\/api'/);
 });
 
 test("formats: slack and json carry the same sentence", () => {

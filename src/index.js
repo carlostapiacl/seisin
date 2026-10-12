@@ -54,7 +54,19 @@ export { read as readLog, logPath, observed, generalise } from "./log.js";
  * the surface should make that hard to get wrong rather than merely document
  * it. See docs/requests.md.
  */
-export { pending as pendingRequests, requestsPath, grantFor } from "./requests.js";
+export { pending as pendingRequests, requestsPath, grantFor, queueOf as requestQueue, recordHandoff } from "./requests.js";
+
+/**
+ * Where a denied write goes — decided, never executed.
+ *
+ * `requestQueue(config)` is the pending queue with each request's `handoff`
+ * decision against the policy as it stands. Something that starts roles reads
+ * it, starts `seisin run <handoff.role> --handoff <id>`, and may record with
+ * `recordHandoff` that it held one back; `decideHandoff` is there for the
+ * limits only that caller knows (how many chains a role has open, how many of
+ * the receiver are running). None of them grants anything.
+ */
+export { decideHandoff, MAX_DEPTH } from "./handoff.js";
 
 /** One PreToolUse decision. */
 export { decide, targetsOf } from "./hook.js";

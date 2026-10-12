@@ -22,8 +22,6 @@
  * Pulled out of run.js, which held both handlers inline between the spawn and
  * the signal handling — 180 lines of policy arithmetic inside the launcher.
  */
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { toRepoRelative } from "./paths.js";
 import { explain, ownersOf, keyHolders, inKeyDir, privateOwner } from "./owners.js";
@@ -31,16 +29,11 @@ import { append, logPath } from "./log.js";
 import { record, requestsPath } from "./requests.js";
 import { inScope, scopeOf, reachedForContent } from "./violations.js";
 import { mcpServer } from "./hook.js";
+import { policyId } from "./config.js";
 import { expectedOf, kindOf } from "./kinds.js";
 
-/** A hash of the policy file as it is now, short: it names a version, it proves nothing. */
-export function policyId(config) {
-  try {
-    return createHash("sha256").update(readFileSync(config.path)).digest("hex").slice(0, 12);
-  } catch {
-    return null;
-  }
-}
+/** Moved to config.js, where the handoff decisions read it too; kept here for callers. */
+export { policyId };
 
 /**
  * The handlers for one run.
@@ -49,14 +42,16 @@ export function policyId(config) {
  * watchDenials' callback; `stats` counts what the kernel said that was left
  * out on purpose, for the line at the end of the run.
  */
-export function intake({ config, role, runId, observe = false, settings, notify }) {
+export function intake({ config, role, runId, observe = false, settings, notify, chain = null }) {
   const stamp = { run: runId.slice(0, 8), policy: policyId(config) };
   // No `at` from here or from the sandbox: append() stamps the parent's clock and
   // ignores any other. The confined process chose the time of its own lines —
   // it could date them into or out of every `since` window, or make its
   // requests look old enough to be passed over.
   const log = (entry) => append(logPath(config.root), { ...entry, ...stamp });
-  const ask = (asked) => { record(requestsPath(config.root), asked); notify?.maybe(asked); };
+  // The chain is this run's (run.js, --handoff), the same for every request it
+  // files; nothing the sandbox sends can set or change it.
+  const ask = (asked) => { record(requestsPath(config.root), { ...asked, chain }); notify?.maybe(asked); };
 
   const scope = scopeOf(settings, config.root);
   const keyDirs = (config.keyDirs ?? []).map((d) => (d.startsWith("/") ? d : join(config.root, d)));

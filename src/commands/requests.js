@@ -6,7 +6,8 @@
  * person acting in a channel the agent does not have. That is the invariant the
  * whole feature rests on — see docs/requests.md.
  */
-import { pending, settle, applyGrant, refuseIfBarred, requestsPath, markStale, editPolicy, withDeclarers, shellId, asFileGrant, lastAgentOf, fileOnlyNote } from "../requests.js";
+import { settle, applyGrant, refuseIfBarred, requestsPath, editPolicy, queueOf, queueData, shellId, asFileGrant, lastAgentOf, fileOnlyNote } from "../requests.js";
+import { describeHandoff } from "../handoff.js";
 import { keyHolders } from "../owners.js";
 import { loadConfig } from "../config.js";
 import { read, logPath } from "../log.js";
@@ -57,14 +58,11 @@ function pick(config, n, verb = "grant") {
       : "  Use its number, or the id printed under it by `seisin requests`."));
 }
 
-/** The pending queue, with keys in the policy's own form and their declarers. */
-export function queueOf(config) {
-  return withDeclarers(config, pending(requestsPath(config.root), { keyDirs: config.keyDirs }));
-}
+export { queueOf };
 
-export function requests(config) {
-  const queue = markStale(queueOf(config), read(logPath(config.root)));
-  out(renderQueue(queue));
+export function requests(config, argv = []) {
+  const queue = queueOf(config, read(logPath(config.root)));
+  out(argv.includes("--json") ? JSON.stringify(queueData(queue), null, 2) + "\n" : renderQueue(queue));
   return queue;
 }
 
@@ -108,46 +106,12 @@ function entryLines(r, n) {
     // Marked, not moved: the number above is what `grant <n>` is typed against.
     if (r.stale)
       lines.push(`        ${C.dim}not asked again in ${r.stale.runs} runs of ${r.role} since — likely no longer needed${C.off}\n`);
-    const note = handoffNote(r.handoff);
-    if (note) lines.push(`        ${C.yellow}${note}${C.off}\n`);
+    // Where it goes, decided now. A route is the expected case and reads as
+    // information; anything that needs a person is said in yellow.
+    const note = describeHandoff(r.handoff, r.attempt);
+    if (note) lines.push(`        ${r.handoff?.type === "route" ? C.dim : C.yellow}${safe(note)}${C.off}\n`);
   }
   return lines;
-}
-
-/**
- * One line saying why no worker is running for a request that is still open.
- *
- * Deliberately not a scheduler view. The failure this closes is narrow and
- * expensive: work that was refused admission, left the queue looking idle, and
- * was never done by anybody. A row that says which limit held it back is the
- * whole fix; deciding who retries and when is a separate question that this
- * does not have to answer first.
- */
-export function handoffNote(h) {
-  if (!h) return "";
-  switch (h.outcome) {
-    case "throttled":
-      return `handoff held: ${limitWords(h.limit, h.role)} ${h.max}/${h.max} — still to do`;
-    case "cycle":
-      return `handoff stopped: ${h.role} is already in this handoff chain — needs a person to split the work`;
-    case "depth":
-      return `handoff stopped: handoff chain reached ${h.depth} of ${h.max} — needs a person`;
-    case "human":
-      return `handoff stopped: ${h.reason === "ambiguous" ? "more than one role owns this" : "no role owns this"}`;
-    case "route":
-      return `handed to ${h.role}`;
-    case "resolved":
-      return `no handoff needed — the policy moved and ${h.role} owns it now`;
-    default:
-      return `handoff outcome: ${h.outcome}`;
-  }
-}
-
-/** The limit names are internal; what a person reads should not be a field name. */
-function limitWords(limit, role) {
-  if (limit === "senderChains") return "open handoff chains for this role";
-  if (limit === "receiverConcurrent") return `${role ?? "the owner"} already running`;
-  return limit ?? "a limit";
 }
 
 export function grant(config, argv = []) {
