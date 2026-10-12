@@ -68,9 +68,12 @@ export function territoryWarnings(config, r) {
     out.push({
       kind: "path-shut-by-territory",
       headline: `${r.name}: ${shut.length} PATH entr${shut.length === 1 ? "y is" : "ies are"} unreadable under read = "territory"`,
-      detail: `Shut: ${shut.map((d) => d.replace(homedir(), "~")).join(", ")}. A program found there today ` +
-        "falls through to another one inside the sandbox, or is not found. If the role needs one, name it " +
+      detail: "A program found in one of these today falls through to another one inside the sandbox, " +
+        "or is not found. If the role needs one, name it " +
         `in toolchain: toolchain = ["${shut[0].replace(homedir(), "~").replace(/\/bin$/, "")}"].`,
+      // One per line when printed: on a real PATH this was a dozen entries in
+      // one sentence, and the one a reader was looking for was in the middle.
+      items: shut.map((d) => d.replace(homedir(), "~")),
     });
   /**
    * Claude Code keeps its sign-in in the macOS login keychain, which lives

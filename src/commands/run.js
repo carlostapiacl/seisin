@@ -27,6 +27,7 @@ import { renderAdded } from "./requests.js";
 import { unknownRole } from "../suggest.js";
 import { watchDenials } from "../violations.js";
 import { intake } from "../intake.js";
+import { EXPECTED } from "../kinds.js";
 import { toolchainBins } from "../territory.js";
 import { writePathsOf, realOrSelf, SOCKET_MAX } from "../grants.js";
 import { runCanary, CANARY_EXIT } from "../canary.js";
@@ -617,12 +618,15 @@ export async function run(config, argv) {
     // policy's paths` is a line that answers a question nobody asked — the
     // counts exist to explain a filter, not to announce that one ran.
     const { attributed } = denials.stats;
-    const { offPolicy, walks } = take.stats;
+    const { offPolicy, walks, expected } = take.stats;
     const recorded = attributed - offPolicy - walks;
     if (recorded > 0)
       err(`${C.dim}seisin: ${recorded} kernel denial(s) recorded` +
           `${walks ? `, ${walks} directory scan(s)` : ""}` +
-          `${offPolicy ? `, ${offPolicy} outside the policy's paths` : ""}${C.off}\n`);
+          `${offPolicy ? `, ${offPolicy} outside the policy's paths` : ""}${C.off}\n` +
+          // Claude Code's plugin updater, refused correctly: said as expected so
+          // it does not read as the run failing (kinds.js expectedOf).
+          (expected ? `${C.dim}seisin: ${expected} of them expected: ${EXPECTED.plugins}${C.off}\n` : ""));
 
     // Only what this run added, with the numbers `grant` takes, and one line
     // for the rest. The whole queue after every run buried the new request

@@ -157,6 +157,29 @@ repository). What it needs and what changed is in [docs/agents.md](docs/agents.m
   there; database drivers, `psql` and `redis-cli` dial directly and are denied, on a listed port
   too. The runtime has no kernel rule for one localhost port; the evidence is in
   docs/decisions.md and a test pins it.
+- **Claude Code updating its plugins is said as expected.** Claude Code writes plugin updates
+  into `~/.claude/plugins/cache` from inside the run and the kernel denies it, correctly: plugins
+  run and update outside the sandbox. Those denials read as a role stuck on something to grant.
+  Now `seisin run` counts them as expected at the end, `seisin walls` and the console mark them
+  "expected" and count no retries, `seisin review` lists them under "Denied as expected" instead of
+  "Denied repeatedly" (so they no longer make it exit 1), and the agent is no longer told about
+  them as walls.
+- **`seisin review --since <date|duration>`.** `--since 2026-10-01` or `--since 7d` (also `12h`,
+  `2w`) reviews only that stretch of the log, so old paths stop leading "Denied repeatedly". A
+  value it cannot read is an error, not the whole log. `seisin walls --since` and the MCP's
+  `seisin_causes` take the same durations.
+- **`check` tells a role that names a file that Claude Code's Edit on it fails.** Claude Code
+  edits by writing `<file>.tmp.<pid>.<hex>` beside the file and renaming it; a grant on the file
+  does not cover that, and no grant can name it. `check` now says so per role, with the folder to
+  grant instead, or the choice to let the agent write it with its shell. See docs/scratch.md.
+- **`check --verbose` is about this repo.** The standing limits, the same paragraphs in every
+  repo, moved to `seisin help limits`; `check` says how many there are in one line. A list of
+  PATH entries prints one per line.
+- **A denied temporary file no longer queues a request, and no request grants the whole repo.**
+  The kernel denying `BACKLOG.md.tmp.<pid>.<hex>` at the root of the repo queued `dev:write:.`,
+  which read as asking for everything. A write to a temporary file is now logged (with
+  `nature: "temporary"`) and not queued, and `grant` and the console refuse a request whose grant
+  would be the whole repository (`.`, `**`), with what to do instead.
 
 ## 0.5.0 — 2026-09-30
 

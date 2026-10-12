@@ -5,10 +5,11 @@
  * Kept apart on purpose. A limit printed as a warning reads as something a
  * person could fix, and after the third run it reads as nothing at all.
  *
- * These are the sentences someone needs before they trust the map on screen
- * more than it deserves, so `check` prints them every time rather than behind a
- * flag: the moment to learn that deletes are not covered is while you are
- * looking at the policy, not afterwards.
+ * They used to close `check --verbose`, six paragraphs under every repo's
+ * findings, identical in each one — so the part of the output about *this*
+ * repo was the part nobody reached. `check` now names how many there are and
+ * where to read them: `seisin help limits` (help.js prints this list).
+ * `inspect()` still returns them, so the MCP hands them out with the map.
  */
 export const LIMITS = [
   ...(process.platform === "darwin" ? [] : [{
@@ -70,8 +71,8 @@ export const LIMITS = [
       "sandbox, so with a ChatGPT sign-in kept in ~/.codex/auth.json they can read those tokens. " +
       "Codex keeps them in the keychain instead with cli_auth_credentials_store = \"keyring\" " +
       "in its config. A wrapper script is not followed: `seisin run <role> --agent codex -- ./script` " +
-      "names it. The protected paths above are for every agent at once, because a role can be " +
-      "run as any of them.",
+      "names it. The protected paths `seisin check --verbose` lists are for every agent at once, " +
+      "because a role can be run as any of them.",
   },
   {
     kind: "unlink-uncovered",
