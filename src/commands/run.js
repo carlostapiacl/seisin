@@ -252,7 +252,7 @@ export async function run(config, argv) {
   let runTmp = [process.env.CLAUDE_CODE_TMPDIR,
     isolatedHome ? join(roleHome(config, role), "tmp") : process.env.TMPDIR].find(writable);
   if (!runTmp) runTmp = theRun.tmp();
-  const settings = settingsFor(config, role, sockPath, observe, { agent, program, tmp: runTmp });
+  const settings = settingsFor(config, role, sockPath, observe, { agent, program, tmp: runTmp, forRun: true });
   // Per run, never per role: `.seisin/<role>.json` was one file for every run
   // of that role, and two at once wrote each other's socket path into it.
   const file = theRun.writeSettings(settings);

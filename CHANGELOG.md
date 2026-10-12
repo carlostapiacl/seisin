@@ -169,6 +169,17 @@ repository). What it needs and what changed is in [docs/agents.md](docs/agents.m
   into the one file that ships, `ui/index.html`, by `npm run build:ui` — plain node, no new
   dependency, byte for byte. A test fails when the shipped file is not what the source builds.
   The package ships `ui/index.html` only.
+- **`private = ["dir/**"]`: a folder only one role reads and writes.** Keys are read and never
+  written, and a territory is read by every role, so material one role had to write ended up
+  readable by all of them. A private folder is part of its owner's territory; every other role
+  gets a `denyRead` and a `denyWrite` on it, in both read modes and under `isolate`. Deny-only,
+  so it holds on macOS and Linux alike. Two roles cannot name the same folder or nested ones.
+  `explain` says denied and names the owner, the hook stops another role's read of it, and
+  neither the hook nor a run queues a request for it; `grant` refuses one. `check` shows it on
+  the map and warns when it sits inside another role's territory. On Linux another role's write
+  into the folder lands in a discarded tmpfs instead of being denied; the folder is untouched.
+  A missing private folder is created empty on Linux by `seisin run` only; `check` and `explain`
+  write nothing.
 
 ## 0.5.0 — 2026-09-30
 

@@ -14,6 +14,7 @@
  *      error, which is most of what this file is for.
  */
 import { unknownRole } from "./suggest.js";
+import { privateDir } from "./config.js";
 import { existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
@@ -103,7 +104,7 @@ export const SHARED_TMP = { darwin: ["/tmp/claude", "/private/tmp/claude"], linu
  * are closed to it. Left out (check, console, explain: no command), the
  * settings are the most the role can get, which is every agent's home.
  */
-export function settingsFor(config, roleName, spool = null, observe = false, { agent, program, tmp } = {}) {
+export function settingsFor(config, roleName, spool = null, observe = false, { agent, program, tmp, forRun = false } = {}) {
   const role = config.roles[roleName];
   if (!role) throw unknownRole(config, roleName);
   const claudeGrant = role.writes.find((g) => /^(?:\.\/)?\.claude(?:\/|$)/.test(g));
@@ -364,6 +365,27 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
    * that has been on for a while holds thousands of entries. Measured: 9,163
    * denies, 815 KB of profile, and `spawn E2BIG` before the agent started.
    */
+  /**
+   * Other roles' private folders: denied to read and to write, whatever this
+   * role's territory says and in either read mode.
+   *
+   * Deny-only, and never an allow for the owner: the owner reaches its folder
+   * the way it reaches the rest of its territory, and nobody else gets an
+   * allow anywhere near it. That is the shape that holds on both platforms —
+   * an allow around a deny is re-emitted after it on macOS, and a read allow
+   * is mounted over the writable mounts on Linux (territory.js).
+   *
+   * On Linux the folder is made first when it is missing: bubblewrap denies a
+   * missing path by putting something on the host in its place, and the owner
+   * would find a file where its folder should be. It is the owner's territory,
+   * so an empty folder there is what the policy already says. Only for a run
+   * (`forRun`, passed by `seisin run`): check, explain and the console ask for
+   * these settings too, and they write nothing to disk. For them a missing
+   * folder on Linux is left out — there is no run for it to be denied in.
+   */
+  const shut = othersPrivate(config, roleName, abs, { make: forRun });
+  denyRead.push(...shut);
+
   if (config.read === "territory") {
     const reopened = allowRead.map(realOrSelf);
     const inReopened = (p) => { const r = realAncestor(p); return reopened.some((a) => r === a || r.startsWith(a + "/")); };
@@ -453,6 +475,7 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
          * each member of the family is on it. `seisin check` prints it.
          */
         ...denyFor(config, role, { observe }).map((e) => e.path),
+        ...shut,
         // The audit socket, and the directory holding it. Denying only the
         // socket left `mv /tmp/seisin-xxxx /tmp/gone` as a way to take the
         // channel out without ever touching the file that was protected.
@@ -476,6 +499,26 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
      */
     ...(role.trustd === true ? { enableWeakerNetworkIsolation: true } : {}),
   };
+}
+
+/**
+ * The private folders of every role but `roleName`, absolute, in both
+ * spellings (as written and as the kernel meets it through a symlink).
+ */
+export function othersPrivate(config, roleName, abs = (p) => (p.startsWith("/") ? p : join(config.root, p)), { make = false } = {}) {
+  const out = [];
+  for (const r of Object.values(config.roles))
+    if (r.name !== roleName)
+      for (const entry of r.private ?? []) {
+        const p = abs(privateDir(entry));
+        if (process.platform === "linux" && !existsSync(p)) {
+          if (!make) continue;
+          try { mkdirSync(p, { recursive: true }); } catch { continue; }
+        }
+        const real = realAncestor(p);
+        out.push(...(real === p ? [p] : [p, real]));
+      }
+  return out;
 }
 
 /** Creates `p` when its parent exists and a role may write there; says whether it now exists. */

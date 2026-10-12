@@ -26,7 +26,7 @@
  * rewritten is not evidence. A request that is granted or declined is not
  * deleted — it is followed by a line saying what happened to it.
  */
-import { neverWrites, isGitMetadata, covers, keyHolders, inKeyDir } from "./owners.js";
+import { neverWrites, isGitMetadata, covers, keyHolders, inKeyDir, privateOwner } from "./owners.js";
 import { protectedBy } from "./surface.js";
 import { appendFileSync, chmodSync, mkdirSync, readFileSync, statSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { randomBytes } from "node:crypto";
@@ -400,6 +400,14 @@ export function refuseIfBarred(config, request) {
         `what you mean; otherwise decline this request.`
       : `${request.target} is protected (${guard.why}) and no role can ever be granted it. ` +
         `Decline this request.`);
+  // Another role's private folder: the kernel denies it to every role but its
+  // owner, however wide `writes` gets, so a grant would read as done and open nothing.
+  const mine = privateOwner(config, request.target);
+  if (mine && mine.role !== request.role)
+    throw new Error(
+      `${request.target} is in ${mine.role}'s private folder (private = ["${mine.entry}"]): every other role ` +
+      `is denied it, so a grant to ${request.role} would change nothing. Decline this request, or move the ` +
+      `folder out of ${mine.role}'s private list if it should not be private.`);
   // Only a repository the role does not write: its own `.git` is its own business.
   if (isGitMetadata(request.target) && !(role?.writes ?? []).some((g) => covers(g, request.target)))
     throw new Error(

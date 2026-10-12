@@ -17,7 +17,7 @@
  * What escapes this file goes unexplained, not unblocked.
  */
 import { toRepoRelative } from "./paths.js";
-import { explain, normalize } from "./owners.js";
+import { explain, normalize, privateOwner } from "./owners.js";
 import { append, logPath } from "./log.js";
 import { timesHit } from "./walls.js";
 import { record, requestsPath } from "./requests.js";
@@ -242,9 +242,12 @@ export function decide(config, role, event, { observe = false, now = append, ask
     // of a markdown file, the agent burned its turns unable to look at what it
     // had been asked to edit, and the log showed a tidy `denied` that looked
     // like the system working.
-    if (t.action === "read" && kind !== "key") continue;
+    // The one exception: another role's private folder, which the kernel shuts
+    // to reading as well, so the hook says so before the read is tried.
+    const shutRead = t.action === "read" && kind !== "key" && privateOwner(config, rel);
+    if (t.action === "read" && kind !== "key" && (!shutRead || shutRead.role === role)) continue;
 
-    const v = explain(config, role, kind === "key" ? "read" : "write", rel);
+    const v = explain(config, role, kind === "key" || shutRead ? "read" : "write", rel);
     if (!observe && !v.allowed) priorOnce(kind === "key" ? "read" : t.action, rel);
 
     now(file, {
@@ -267,7 +270,8 @@ export function decide(config, role, event, { observe = false, now = append, ask
     // wrote, and approving it is how the subtraction disappears unnoticed.
     // Nor a protected file: no grant opens one (the kernel keeps refusing it),
     // which is why `seisin run` never queued those either (intake.js).
-    if (!observe && !v.allowed && !v.neverWrites && !v.gitMetadata && !v.protected)
+    // Nor another role's private folder: no grant opens it either.
+    if (!observe && !v.allowed && !v.neverWrites && !v.gitMetadata && !v.protected && !v.privateTo)
       ask(queue, { role, action: kind === "key" ? "read" : t.action, target: rel, owners: v.owners ?? [] });
 
     // The action as it was RECORDED, not as the tool named it: a read of a key
@@ -318,7 +322,7 @@ export function decide(config, role, event, { observe = false, now = append, ask
         // told "no" retries; an agent told whose it is asks, or moves on.
         denied.neverWrites
           ? `${denied.reason}. Do not ask for it: nothing was queued, because the answer is already written down.` + again
-          : denied.gitMetadata || denied.protected
+          : denied.gitMetadata || denied.protected || denied.privateTo
           ? `${denied.reason}. Nothing was queued.` + again
           : denied.mcp
           ? `${denied.reason}. Nothing was queued: which MCP servers a role may load is set in its mcp list, a policy change a person makes, not something they grant from the queue.` + again

@@ -26,7 +26,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { toRepoRelative } from "./paths.js";
-import { explain, ownersOf, keyHolders, inKeyDir } from "./owners.js";
+import { explain, ownersOf, keyHolders, inKeyDir, privateOwner } from "./owners.js";
 import { append, logPath } from "./log.js";
 import { record, requestsPath } from "./requests.js";
 import { inScope, scopeOf, reachedForContent } from "./violations.js";
@@ -160,7 +160,7 @@ export function intake({ config, role, runId, observe = false, settings, notify 
      * grant can open.
      */
     const v = explain(config, role, entry.action, entry.target);
-    if (v.allowed || v.neverWrites || v.gitMetadata || v.protected) return;
+    if (v.allowed || v.neverWrites || v.gitMetadata || v.protected || v.privateTo) return;
     // The owners explain found: for a key that is who declares it, not who
     // writes the directory it sits in — the queue said "owned by dev" about
     // backend's key because dev writes `**`.
@@ -213,11 +213,13 @@ export function intake({ config, role, runId, observe = false, settings, notify 
      * reason this exists. Inside the repo only: `~/.ssh` is refused on purpose
      * under `isolate` and is not a territory anyone is meant to ask for.
      */
-    const verdict = rel !== d.path && d.action === "write"
-      ? explain(config, role, "write", rel)
+    // Reads are asked too when they land in another role's private folder:
+    // that refusal is the policy, not a missing grant, so it is not queued.
+    const verdict = rel !== d.path && (d.action === "write" || (d.action === "read" && privateOwner(config, rel)))
+      ? explain(config, role, d.action === "write" ? "write" : "read", rel)
       : null;
     const barred = verdict?.neverWrites ?? null;
-    const unaskable = verdict?.gitMetadata === true || verdict?.protected != null;
+    const unaskable = verdict?.gitMetadata === true || verdict?.protected != null || verdict?.privateTo != null;
     // A request for something the policy already grants cannot be approved into
     // anything: it is misattribution or a kernel/policy mismatch, and either way
     // the line in the log is the evidence, not a question for a person. The hook
@@ -244,6 +246,7 @@ export function intake({ config, role, runId, observe = false, settings, notify 
       // and a protected file from a territory somebody could be asked for.
       ...(barred ? { neverWrites: barred } : {}),
       ...(verdict?.protected ? { protected: verdict.protected } : {}),
+      ...(verdict?.privateTo ? { privateTo: verdict.privateTo } : {}),
     });
   }
 
