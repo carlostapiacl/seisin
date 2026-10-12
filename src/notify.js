@@ -24,7 +24,8 @@
  */
 import { readFileSync } from "node:fs";
 import { basename, join, resolve, sep } from "node:path";
-import { keyOf, pending, requestsPath, grantFor, shellId } from "./requests.js";
+import { keyOf, pending, requestsPath, grantFor, shellId, queueOf, withHandoffs } from "./requests.js";
+import { describeHandoff } from "./handoff.js";
 import { realAncestor } from "./paths.js";
 
 const FORMATS = ["text", "json", "slack"];
@@ -42,9 +43,19 @@ function notifyUrl(config, env = process.env) {
   }
 }
 
-/** The body for one request, in the chosen format. */
+/**
+ * The body for one request, in the chosen format.
+ *
+ * Whose it is and where it goes are the queue's decision (handoff.js), the
+ * same one `seisin requests` prints; a request handed in without one is
+ * decided here by the same function, never described from its stored owners.
+ */
 export function message(config, req, number, format = "text") {
-  const owner = req.owners?.length ? `It belongs to ${req.owners.join(", ")}.` : "Nobody owns it.";
+  const d = req.handoff ?? withHandoffs(config, [{ ...req, key: keyOf(req) }])[0].handoff;
+  const owners = d.owners ?? [];
+  const where = describeHandoff(d, req.attempt);
+  const owner = (owners.length ? `It belongs to ${owners.join(", ")}.` : "Nobody owns it.") +
+    (where ? ` ${where[0].toUpperCase()}${where.slice(1)}.` : "");
   const text =
     `seisin (${basename(config.root)}): ${req.role} was denied ${req.action} on ${req.target}. ${owner} ` +
     `Grant: seisin grant ${shellId(keyOf(req))} · decline: seisin decline ${shellId(keyOf(req))}`;
@@ -59,7 +70,7 @@ export function message(config, req, number, format = "text") {
       type: "application/json",
       body: JSON.stringify({
         text, repo: basename(config.root), number, id: keyOf(req), role: req.role, action: req.action,
-        target: req.target, owners: req.owners ?? [], grant: grantFor(req),
+        target: req.target, owners, grant: grantFor(req), handoff: d,
       }),
     };
   return { type: "text/plain; charset=utf-8", body: text };
@@ -87,10 +98,10 @@ export function notifier(config, { env = process.env, fetchImpl = globalThis.fet
     const key = keyOf(req);
     if (known.has(key)) return false;
     known.add(key);
-    const queue = pending(file);
+    const queue = queueOf(config);
     const number = queue.findIndex((p) => p.key === key) + 1;
     if (number < 1) return false;
-    const { type, body } = message(config, { ...req, owners: req.owners ?? queue[number - 1].owners }, number, format);
+    const { type, body } = message(config, queue[number - 1], number, format);
     inflight.push(
       fetchImpl(url, {
         method: "POST",

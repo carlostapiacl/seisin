@@ -21,7 +21,8 @@ import { spool, SOCK_ENV, FIFO_SUFFIX } from "../spool.js";
 import { openRun } from "../rundir.js";
 import { secretsOf, redactor } from "../redact.js";
 import { C, err } from "../render.js";
-import { pending, requestsPath, withDeclarers } from "../requests.js";
+import { pending, requestsPath, queueOf, recordHandoff } from "../requests.js";
+import { chainFrom, describeHandoff, MAX_DEPTH } from "../handoff.js";
 import { notifier } from "../notify.js";
 import { renderAdded } from "./requests.js";
 import { unknownRole } from "../suggest.js";
@@ -153,7 +154,7 @@ export async function run(config, argv) {
     // `--observe` as seisin's and put the run in observe mode; now that flag
     // belongs to `echo`, and observe needs `seisin run x --observe -- echo hi`.
     let i = 1;
-    while (i < argv.length && argv[i].startsWith("-")) i += argv[i] === "--agent" ? 2 : 1;
+    while (i < argv.length && argv[i].startsWith("-")) i += argv[i] === "--agent" || argv[i] === "--handoff" ? 2 : 1;
     mine = argv.slice(1, i);
     cmd = argv.slice(i);
   }
@@ -185,6 +186,8 @@ export async function run(config, argv) {
       `  Run roles as siblings from outside instead. Something that needs to start roles belongs\n` +
       `  above them — asked by the role that wants the work done, not run inside it.`,
     );
+
+  const handed = handoffOf(config, role, mine);
 
   /**
    * The audit spool: this process holds the log and the queue, and the hook
@@ -260,7 +263,7 @@ export async function run(config, argv) {
 
   // What arrives from the hook and from the kernel, checked against the policy
   // this run started with and written with the run's id on it. See intake.js.
-  const take = intake({ config, role, runId: theRun.id, observe, settings, notify });
+  const take = intake({ config, role, runId: theRun.id, observe, settings, notify, chain: handed?.chain ?? null });
   // The channel is a unix socket on macOS, and a socket path is capped. Past
   // the cap the listen dies on `EINVAL` and a path, which says nothing about
   // TMPDIR — the one thing that decides how long it is.
@@ -521,6 +524,13 @@ export async function run(config, argv) {
   append(logPath(config.root), {
     event: "canary", role, run: theRun.id.slice(0, 8), agent: agent ?? null, confined: true, reasons: [],
   });
+  // Recorded once the receiver is confined and about to start, not before: a
+  // run that failed its canary did not take the work.
+  if (handed) {
+    recordHandoff(requestsPath(config.root), handed.request.key, handed.request.handoff);
+    err(`${C.dim}seisin: ${role} took ${handed.request.key} — handoff chain ${handed.chain.visited.join(" → ")}, ` +
+        `${handed.chain.depth} of ${MAX_DEPTH}${C.off}\n`);
+  }
 
   const boxed = ["env", ...restoreTmp, `SEISIN_RUN_ID=${theRun.id}`, ...loopbackVia(config.roles[role], cmd)];
   denials = watchDenials(take.fromKernel, { argv: boxed });
@@ -645,7 +655,7 @@ export async function run(config, argv) {
     // Only what this run added, with the numbers `grant` takes, and one line
     // for the rest. The whole queue after every run buried the new request
     // under the ones already seen; nothing new, nothing said.
-    const queue = withDeclarers(config, pending(requestsPath(config.root), { keyDirs: config.keyDirs }));
+    const queue = queueOf(config);
     const added = queue.map((q, i) => ({ ...q, n: i + 1 })).filter((q) => !before.has(q.key));
     if (added.length) err(renderAdded(added, queue.length - added.length));
     const failed = await notify.settle();
@@ -676,6 +686,33 @@ export async function run(config, argv) {
     err(`${C.red}seisin:${C.off} could not start the sandbox: ${e.message}\n`);
     process.exit(2);
   });
+}
+
+/**
+ * `--handoff <id>`: this run is the role a pending request was handed to.
+ *
+ * The flag names a request, never a role. Which role takes it is the decision
+ * handoff.js makes from the policy as it stands, and a run of any other role
+ * is refused — so whatever starts roles can act on `handoff.role` but cannot
+ * substitute its own choice, and a model upstream of it choosing "backend"
+ * changes nothing. What the run carries forward is the chain the decision
+ * extends; every request it files is recorded in that chain, which is how a
+ * cycle back to a role the work came from, or a chain past its depth, is
+ * caught instead of routed.
+ */
+export function handoffOf(config, role, mine) {
+  const at = mine.indexOf("--handoff");
+  if (at === -1) return null;
+  const id = mine[at + 1];
+  if (!id || id.startsWith("-")) throw new Error("usage: seisin run <role> --handoff <id> -- <command...> (the id from seisin requests)");
+  const request = queueOf(config).find((r) => r.key === id);
+  if (!request) throw new Error(`no pending request has the id "${id}" — seisin requests lists them`);
+  const d = request.handoff;
+  if (d.type !== "route")
+    throw new Error(`${id} is not handed to anybody: ${describeHandoff(d, request.attempt)}. Nothing was started.`);
+  if (d.role !== role)
+    throw new Error(`${id} is handed to ${d.role}, not ${role}: the policy decides who takes it. Nothing was started.`);
+  return { request, chain: chainFrom(d) };
 }
 
 /** Is `name` a program the role can start with this PATH? */

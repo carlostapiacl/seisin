@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
 import { read, logPath, logSegments } from "./log.js";
 import { settingsFor } from "./srt.js";
+import { describeHandoff } from "./handoff.js";
 import { pending, requestsPath, settle, applyGrant, refuseIfBarred, editPolicy, cleanReason, asFileGrant, lastAgentOf, fileOnlyNote } from "./requests.js";
 import { causesOf, describeWalls, parseSince, queue, verdicts, wallsByRole } from "./views.js";
 import { planEdit, hashOf } from "./controls.js";
@@ -161,8 +162,13 @@ export function state(configPath, { since = null, snap = snapshot(configPath) } 
     // A write keyed by a folder can be granted as its one file instead; the
     // line that choice carries is said here, once, so the page and the CLI
     // say the same thing about Claude Code.
-    requests: queue(cfg.root, all, cfg.keyDirs).map((r) => r.action === "write" && r.grant !== r.target
-      ? { ...r, fileNote: fileOnlyNote(r.role, lastAgentOf(all, r.role)) } : r),
+    requests: queue(cfg, all).map((r) => ({
+      ...r,
+      // Said by the server in the same words as the CLI, so the page never
+      // works out where a request goes on its own (handoff.js).
+      handoffNote: describeHandoff(r.handoff, r.attempt),
+      ...(r.action === "write" && r.grant !== r.target ? { fileNote: fileOnlyNote(r.role, lastAgentOf(all, r.role)) } : {}),
+    })),
     since,
     // The file itself, not a regeneration of it. The page can render a policy
     // from its own model, and that model has no comments — so showing it under

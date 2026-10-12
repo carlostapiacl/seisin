@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { explain, standingOf } from "./owners.js";
 import { kindsOf, KINDS, expectedOf } from "./kinds.js";
 import { walls } from "./walls.js";
-import { pending, requestsPath, markStale } from "./requests.js";
+import { queueOf } from "./requests.js";
 
 /**
  * An ISO date from what a person or an agent typed, or null for no filter.
@@ -302,10 +302,11 @@ export function wallsByRole(cfg, entries, { ask } = {}) {
 }
 
 /**
- * The request queue as a person should read it: pending, with the requests
- * the role has stopped asking for marked. `history` is the whole log, every
- * verdict — a run that was only allowed things is still a run.
+ * The request queue as a person should read it: pending, each with its handoff
+ * decided, and the requests the role has stopped asking for marked. `history`
+ * is the whole log, every verdict — a run that was only allowed things is
+ * still a run.
  */
-export function queue(root, history, keyDirs = null, { readOnly = false } = {}) {
-  return markStale(pending(requestsPath(root), { keyDirs, readOnly }), history);
+export function queue(cfg, history, { readOnly = false } = {}) {
+  return queueOf(cfg, history, { readOnly });
 }

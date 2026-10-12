@@ -161,6 +161,52 @@ export function pendingRequests(file: string, options?: { includeSettled?: boole
 export function requestsPath(root: string): string;
 export function grantFor(request: { action: string; target: string }, keyDir?: string | null): string;
 
+/** Where a denied write goes, decided from the policy as it stands. Nothing executes it. */
+export type HandoffType = "route" | "human" | "resolved" | "cycle" | "depth" | "throttled";
+export interface HandoffDecision {
+  type: HandoffType;
+  /** The owners as the policy says now — for a key, the roles that declare it. */
+  owners: string[];
+  /** The role a route goes to; for cycle/depth/throttled, the one it would have gone to. */
+  role?: string;
+  /** For `human`: why a person decides. */
+  reason?: "unowned" | "ambiguous" | "key" | "read";
+  /** For `resolved`. */
+  resolution?: "policy_changed";
+  /** For a route: the receiver's depth in the handoff chain, and every role the chain has visited. */
+  depth?: number;
+  visited?: string[];
+  max?: number;
+  limit?: "senderChains" | "receiverConcurrent";
+  /** The handoff chain this decision extends: the id of the request that started it. */
+  chainId: string | null;
+  /** Hash of the policy file the decision was made against. */
+  revision: string | null;
+}
+export interface HandoffChain { id: string | null; depth: number; visited: string[] }
+export interface QueuedRequest {
+  key: string; role: string; action: "read" | "write"; target: string; grant: string;
+  owners: string[]; ownersThen?: string[]; declared?: boolean;
+  times: number; first: string; last: string; state: string;
+  handoff: HandoffDecision;
+  /** Present when the request was asked by a run started with `--handoff`. */
+  chain?: HandoffChain;
+  /** What whatever starts roles last recorded about it (recordHandoff). */
+  attempt?: { outcome: string; role?: string; limit?: string; max?: number; reason?: string; depth?: number; chainId?: string; at: string };
+  stale?: { runs: number; since: string };
+}
+export const MAX_DEPTH: number;
+export function decideHandoff(input: {
+  request: { role: string; target: string; action?: string; key?: string };
+  config: SeisinConfig | { roles: Record<string, unknown> };
+  chain?: Partial<HandoffChain> | null;
+  limits?: { depth?: number; senderChains?: number; receiverConcurrent?: number };
+  load?: { senderOpenChains?: number; receiverRunning?: number };
+  revision?: string | null;
+}): HandoffDecision;
+export function requestQueue(config: SeisinConfig, history?: LogEntry[] | null): QueuedRequest[];
+export function recordHandoff(file: string, key: string, decision: Partial<HandoffDecision> & { type: string }): boolean;
+
 export function targetsOf(tool: string, input?: Record<string, unknown>): unknown[];
 export function decide(config: SeisinConfig, role: string, event: Record<string, unknown>, options?: {
   observe?: boolean; now?: (...args: unknown[]) => unknown; ask?: (...args: unknown[]) => unknown;

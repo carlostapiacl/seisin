@@ -110,7 +110,7 @@ const COMMANDS = {
   wire: async () => void (await import("./commands/wire.js")).wire(config()),
   review: async () => ((await import("./commands/review.js")).reviewCommand(config(), argv).friction.length ? 1 : 0),
   walls: async () => ((await import("./commands/walls.js")).wallsCommand(config(), argv).some((w) => !w.expected) ? 1 : 0),
-  requests: async () => ((await import("./commands/requests.js")).requests(config()).length ? 1 : 0),
+  requests: async () => ((await import("./commands/requests.js")).requests(config(), argv).length ? 1 : 0),
   grant: async () => void (await import("./commands/requests.js")).grant(config(), argv),
   /**
    * A person DECLINES a request; the boundary DENIES a write. One word each,

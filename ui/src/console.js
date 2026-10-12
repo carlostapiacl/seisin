@@ -197,7 +197,9 @@
                  blocks: denied.filter(function(e){ return e.role === r.name; }).length };
       }),
       requests: DEMO.requests.map(function(q){
-        return Object.assign({ key: q.role + ":" + q.action + ":" + q.target, owners: ownersIn(roles, q.target),
+        var owners = ownersIn(roles, q.target);
+        return Object.assign({ key: q.role + ":" + q.action + ":" + q.target, owners: owners,
+                               handoffNote: demoHandoff(q, owners),
                                last: new Date(now - q.first * 6e4).toISOString() }, q);
       }),
       causes: { total: total, distinct: groups.length, unowned: unowned, about: about,
@@ -206,6 +208,15 @@
       walls: walls,
       log: entries.slice().reverse()
     };
+  }
+
+  /** Where an example request goes. Live, the server says it (handoff.js); the example has no
+   *  server, so it says the three cases its requests can reach, in the same words. */
+  function demoHandoff(q, owners){
+    if (owners.length === 1) return owners[0] === q.role
+      ? "no handoff needed — the policy moved and " + q.role + " has it now" : "handed to " + owners[0];
+    return owners.length ? "a person decides: more than one role owns this (" + owners.join(", ") + ")"
+                         : "a person decides: no role owns this";
   }
 
   /** The example's state again, after a change made in it. */
@@ -1049,6 +1060,14 @@
       esc(r.grant) + "</code></b>, not only that file." + own + "</div>";
   }
 
+  /** Where the request goes, as the server decided it: handed to its owner, or a person decides.
+   *  Not worked out here — the page shows the decision seisin requests and the MCP show. */
+  function handoffOf(r){
+    if (typeof r.handoffNote !== "string" || !r.handoffNote) return "";
+    var routed = /^handed to /.test(r.handoffNote);
+    return '<div class="handoff' + (routed ? "" : " person") + '">' + esc(r.handoffNote) + "</div>";
+  }
+
   /** A write keyed by a folder can be granted as the one file instead. */
   function narrowable(r){ return r.action === "write" && r.grant !== r.target; }
 
@@ -1093,7 +1112,7 @@
       return '<div class="req' + (r.stale ? ' stale' : '') + '">' +
         '<div class="who">' +
           "<div><b>" + esc(r.role) + "</b> wants to " + esc(r.action) + ' <span class="path">' + esc(r.target) + "</span></div>" +
-          scopeOf(r) + scopeChoice(r, i) +
+          scopeOf(r) + handoffOf(r) + scopeChoice(r, i) +
           '<div class="sub"><span class="asked">' + times + "</span>" +
             (w.text ? ' · last <span title="' + escA(w.title) + '">' + esc(w.text) + "</span>" : "") + stale + "</div>" +
           '<div class="err" id="err-' + i + '" role="alert" hidden></div>' +

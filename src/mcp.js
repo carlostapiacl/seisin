@@ -31,7 +31,7 @@ import { loadConfig, findConfig } from "./config.js";
 import { inspect } from "./inspect.js";
 import { explain, ownersOf } from "./owners.js";
 import { settingsFor } from "./srt.js";
-import { pending, requestsPath, refuseIfBarred, shellId } from "./requests.js";
+import { queueOf, queueData, refuseIfBarred, shellId } from "./requests.js";
 import { read, logPath } from "./log.js";
 import { causesOf, parseSince, queue as requestQueue, verdicts, wallsByRole } from "./views.js";
 import { walls, wasted } from "./walls.js";
@@ -80,9 +80,11 @@ const TOOLS = [
     name: "seisin_requests",
     description:
       "Requests: access agents asked for and cannot have yet, waiting on a person, with how many " +
-      "times each was asked. A denial files one of these automatically, so this is where " +
-      "to look after being denied rather than retrying. Read-only — granting is not " +
-      "available here, by design.",
+      "times each was asked and where each goes: `handoff` is seisin's decision from the policy " +
+      "(route to the owning role, or a person decides; a cycle or a chain too deep stops). " +
+      "A denial files one of these automatically, so this is where to look after being denied " +
+      "rather than retrying. Read-only — granting is not available here, and nothing here " +
+      "starts a role, by design.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -205,13 +207,12 @@ const HANDLERS = {
 
   seisin_requests() {
     const cfg = config();
-    const queue = requestQueue(cfg.root, read(logPath(cfg.root)), cfg.keyDirs, { readOnly: true });
+    const queue = requestQueue(cfg, read(logPath(cfg.root)), { readOnly: true });
     return {
-      pending: queue.map((r, i) => ({
-        number: i + 1, id: r.key, role: r.role, action: r.action,
-        wants: r.grant, ownedBy: r.owners, asked: r.times, lastAsked: r.last,
-        ...(r.stale ? { stale: `not asked again in ${r.stale.runs} runs of ${r.role} since` } : {}),
-      })),
+      // The same shape as `seisin requests --json`, each with its handoff
+      // decision. Reading it tells an agent where its request goes; it cannot
+      // change where, and nothing here starts the role it names.
+      ...queueData(queue),
       // Said in the payload and not only in the tool description, because a
       // model reading this is deciding what to do next.
       note: queue.length
@@ -273,7 +274,8 @@ const HANDLERS = {
 
   seisin_draft_grant({ id, number } = {}) {
     const cfg = config();
-    const queue = pending(requestsPath(cfg.root), { keyDirs: cfg.keyDirs, readOnly: true });
+    // Owners as the policy says now, the same as seisin_requests shows.
+    const queue = queueOf(cfg, null, { readOnly: true });
     let req;
     if (typeof id === "string" && id) {
       req = queue.find((r) => r.key === id);

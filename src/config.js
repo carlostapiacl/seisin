@@ -8,6 +8,7 @@
  *
  * If your config outgrows this subset, the config is doing too much.
  */
+import { createHash } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { CONFIG_NAME } from "./layout.js";
@@ -339,6 +340,19 @@ export function readIsolate(v) {
   throw new Error(
     `runtime.isolate must be false, true, "credentials", or "home", not ${JSON.stringify(v)}. ` +
     `An unknown value cannot silently turn credential isolation off.`);
+}
+
+/**
+ * A hash of the policy file as it is now, short: it names a version, it proves
+ * nothing. Every log line carries the one its run started with (intake.js), and
+ * every handoff decision the one it was made against (requests.js, queueOf).
+ */
+export function policyId(config) {
+  try {
+    return createHash("sha256").update(readFileSync(config.path)).digest("hex").slice(0, 12);
+  } catch {
+    return null;
+  }
 }
 
 /**

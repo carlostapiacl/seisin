@@ -12,12 +12,13 @@ import { LIMITS } from "./inspect/limits.js";
 
 export const COMMAND_HELP = {
   run: {
-    usage: ["seisin run <role> [--observe] [--debug-env] [--agent <name>] -- <command...>"],
-    values: ["--agent"],
+    usage: ["seisin run <role> [--observe] [--debug-env] [--agent <name>] [--handoff <id>] -- <command...>"],
+    values: ["--agent", "--handoff"],
     flags: [
       ["--observe", "open the repo for this run and record what the agent writes; keys and network stay shut"],
       ["--debug-env", "print the environment variables the role does not get"],
       ["--agent <name>", "claude, codex or none: which agent the command runs, when seisin cannot tell from it (a wrapper script). Its home is the run's scratch; the other agents' sign-in is closed"],
+      ["--handoff <id>", "this run takes a pending request handed to this role, and starts only if the policy routes that request here. Its own requests join the handoff chain"],
     ],
     notes: ["Everything after -- is the command's own, flags included: `-- claude --settings x.json` goes to claude."],
     examples: ['seisin run frontend -- claude', 'seisin run backend --observe -- claude -p "…"'],
@@ -77,10 +78,11 @@ export const COMMAND_HELP = {
     exits: [["0", "wired, or already wired"], ["2", "usage error, or settings.json is not valid JSON"]],
   },
   requests: {
-    usage: ["seisin requests"],
-    flags: [],
-    notes: ["#n is a position and shifts as requests are settled; the id under each one does not."],
-    examples: ["seisin requests"],
+    usage: ["seisin requests [--json]"],
+    flags: [["--json", "the queue as data, each request with its handoff decision — the shape seisin_requests returns"]],
+    notes: ["#n is a position and shifts as requests are settled; the id under each one does not.",
+      "The line under each request says where it goes, decided from the policy as it stands: handed to its owner, or a person decides."],
+    examples: ["seisin requests", "seisin requests --json"],
     exits: [["0", "nothing pending"], ["1", "requests pending"], ["2", "usage error"]],
   },
   grant: {
