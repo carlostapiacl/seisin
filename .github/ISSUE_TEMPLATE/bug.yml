@@ -1,0 +1,54 @@
+name: Bug
+description: Something seisin does that it should not, or says that is not true.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Something got past the boundary?** Do not file it here — report it privately,
+        as [SECURITY.md](https://github.com/carlostapiacl/seisin/blob/main/SECURITY.md) says.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+      description: The command you ran and what it printed. Replace your home directory with `~`.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: seisin --version
+    validations:
+      required: true
+  - type: textarea
+    id: check
+    attributes:
+      label: seisin check
+      description: Its output in the repository where it happened. Leave out anything private.
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS
+        - Linux
+        - Linux, inside a container
+        - Windows
+        - other
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS version, and bubblewrap version on Linux
+      placeholder: "macOS 15.4 · or · Debian 12, bubblewrap 0.8.0"
+  - type: input
+    id: srt
+    attributes:
+      label: srt (sandbox-runtime) version
+      description: "`npm ls @anthropic-ai/sandbox-runtime`, or `srt --version` if it is installed globally"
+    validations:
+      required: true
