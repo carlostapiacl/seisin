@@ -180,6 +180,10 @@ export function renderEntry(e) {
     const why = e.reasons?.length ? `  ${C.dim}${e.reasons.join("; ")}${C.off}` : "";
     return `  ${C.dim}${(e.at ?? "").slice(11, 19)}${C.off}  ${mark}  ${C.b}${e.role}${C.off}${why}\n`;
   }
+  if (e.event === "key") {
+    const mark = e.ok ? `${C.green}key resolved${C.off}` : `${C.red}key failed${C.off}`;
+    return `  ${C.dim}${(e.at ?? "").slice(11, 19)}${C.off}  ${mark}  ${C.b}${e.role}${C.off} ${safe(e.key)}  ${C.dim}${e.mode}${C.off}\n`;
+  }
   const mark =
     e.verdict === "denied" ? `${C.yellow}denied ${C.off}`
     : e.verdict === "observed" ? `${C.dim}seen   ${C.off}`

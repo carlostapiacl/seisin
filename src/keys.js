@@ -28,7 +28,7 @@
  * still reaches the process and the agent can still read it. That is a strict
  * improvement over a plaintext file — the secret stops living on disk, the
  * policy holds a reviewable reference instead of a path, and every resolution
- * is logged without its value — but it is not "the agent never sees it". That
+ * is logged without its value (`event: "key"`, see commands/run.js) — but it is not "the agent never sees it". That
  * is `inject`, it costs terminating the role's TLS with a CA of your own, and
  * it is not built. `modeOf` refuses it by name rather than letting it read as
  * available.
@@ -41,6 +41,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { resolve, isAbsolute, delimiter } from "node:path";
 import { BASE, DEFAULTS } from "./env.js";
 import { SOCK_ENV } from "./spool.js";
@@ -317,7 +318,7 @@ function fromDotEnv(text, key, ref) {
  * differently depending on where you were standing when you typed the command
  * is a key that works in your shell and fails in the agent's.
  */
-export function readFileRef(entry, root = ".") {
+export function readFileRef(entry, root = ".", { exact = false } = {}) {
   const hash = entry.ref.lastIndexOf("#");
   const path = hash === -1 ? entry.ref : entry.ref.slice(0, hash);
   const key = hash === -1 ? null : entry.ref.slice(hash + 1);
@@ -332,7 +333,11 @@ export function readFileRef(entry, root = ".") {
   }
   let value;
   if (key === null) {
-    value = unterminate(text);
+    // `exact` (scratch) hands the file over byte for byte: the file is the
+    // value, and an ssh key without its last newline is an invalid ssh key.
+    if (unterminate(text) === "")
+      throw new Error(`key "${entry.raw}": ${full} is empty. An empty credential is not a credential.`);
+    value = exact ? text : unterminate(text);
   } else {
     // Sniffed, not taken from the extension. The file that motivated this was
     // named `.txt` and the one before it `.env`; the name is a hint and the
@@ -495,6 +500,65 @@ export function modeOf(config, role, entry) {
 }
 
 /**
+ * How long a provider's stdout is still read after it exits.
+ *
+ * Bytes written just before exit may still be in the pipe. A descendant that
+ * kept the pipe open is not the provider, and its silence is not an answer
+ * worth waiting a minute for.
+ */
+export const PROVIDER_DRAIN_MS = 250;
+
+const HELPER = fileURLToPath(new URL("./provider-run.js", import.meta.url));
+
+/**
+ * Run the provider through provider-run.js, which returns when the provider
+ * exits rather than when every holder of its stdout lets go, and stops it with
+ * SIGKILL at the deadline. The outer call has a deadline of its own, a little
+ * later, so a helper that never answers cannot hold the run either.
+ */
+function spawnProvider(argv, { env, timeoutMs }) {
+  const r = spawnSync(process.execPath,
+    [HELPER, String(timeoutMs), String(PROVIDER_MAX_BYTES), String(PROVIDER_DRAIN_MS), ...argv], {
+      encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], env,
+      timeout: timeoutMs + 5_000, killSignal: "SIGKILL", maxBuffer: PROVIDER_MAX_BYTES * 2 + 4096,
+    });
+  let got = null;
+  try { got = JSON.parse(r.stdout ?? ""); } catch {}
+  if (!got) return { status: null, stdout: "", errBytes: 0, timedOut: true };
+  if (got.error) return { error: new Error(`spawn ${got.error}`) };
+  return {
+    status: got.status, stdout: Buffer.from(got.out, "base64").toString("utf8"),
+    errBytes: got.errBytes, timedOut: got.timedOut, tooBig: got.tooBig,
+  };
+}
+
+/** What a runner of the caller's own returned, in the shape spawnProvider returns. */
+function normalise(r) {
+  return {
+    ...r,
+    timedOut: r.error?.code === "ETIMEDOUT",
+    tooBig: r.error?.code === "ENOBUFS",
+    errBytes: Buffer.byteLength(r.stderr ?? ""),
+  };
+}
+
+/**
+ * The value as a provider or a file gave it, refused if it cannot be delivered.
+ *
+ * A NUL byte cannot be in an environment variable, and Node's refusal to set
+ * one quotes the whole string — the value, in the terminal. Checked here, by a
+ * message that does not carry it.
+ */
+function deliverable(entry, value) {
+  if (value.includes("\0"))
+    throw new Error(
+      `key "${entry.raw}": the value contains a NUL byte, which cannot be delivered.\n` +
+      `  The value is not shown. A credential with a NUL in it is binary; store it encoded ` +
+      `(base64) and decode it where it is used.`);
+  return value;
+}
+
+/**
  * Run a provider and hand back what it printed.
  *
  * Three properties, each of which was a requirement before it was code:
@@ -510,14 +574,19 @@ export function modeOf(config, role, entry) {
  *     cannot measure and says ok lies more than one that says no. A role that
  *     starts without the credential it declared fails later, further away, and
  *     looking like something else.
- *   - **The value is not in the error.** `stderr` from the provider is passed
- *     through because it is how `op` says "not signed in", but `stdout` never
- *     is — a provider that prints the secret and then exits non-zero would
- *     otherwise put it in the terminal and the log.
+ *   - **The value is not in the error.** Neither stream of a failed provider is
+ *     shown. Taking stdout out of stderr was not enough: a provider that printed
+ *     the value only on stderr, or printed it beside other text on stdout, got
+ *     it into the terminal through the error meant to explain it. The error
+ *     says the exit status, how much was written to stderr, and the command to
+ *     run by hand to read it.
+ *
+ * `exact` hands the value back as printed. Without it exactly one trailing
+ * newline comes off, which is right for a variable and wrong for a file.
  */
-export function resolveRef(entry, provider, { run = spawnSync, root = ".", config = null, env = process.env } = {}) {
+export function resolveRef(entry, provider, { run = spawnSync, root = ".", config = null, env = process.env, exact = false, timeoutMs = PROVIDER_TIMEOUT_MS } = {}) {
   if (provider?.builtin === "file" || (provider === undefined && entry.scheme === "file"))
-    return readFileRef(entry, root);
+    return deliverable(entry, readFileRef(entry, root, { exact }));
   const argv = provider.command.map((part) => part.replaceAll("{ref}", entry.ref));
   /**
    * Found where no role can write, and handed the same PATH.
@@ -531,43 +600,46 @@ export function resolveRef(entry, provider, { run = spawnSync, root = ".", confi
    * caller's own, the argv is handed over as given: finding the program is part
    * of spawning it, and whoever replaced the spawn owns that too.
    */
-  const opts = { encoding: "utf8", timeout: PROVIDER_TIMEOUT_MS, maxBuffer: PROVIDER_MAX_BYTES };
+  const opts = { encoding: "utf8", timeout: timeoutMs, killSignal: "SIGKILL", maxBuffer: PROVIDER_MAX_BYTES };
   if (config && run === spawnSync) {
     argv[0] = resolveExecutable(argv[0], config, env);
     opts.env = { ...env, PATH: trustedPath(config, env).join(delimiter) };
   }
-  const r = run(argv[0], argv.slice(1), opts);
-  if (r.error?.code === "ETIMEDOUT")
+  const r = run === spawnSync
+    ? spawnProvider(argv, { env: opts.env, timeoutMs })
+    : normalise(run(argv[0], argv.slice(1), opts));
+  if (r.timedOut)
     throw new Error(
       `key "${entry.raw}": the ${entry.scheme} provider (${argv[0]}) did not answer in ` +
-      `${PROVIDER_TIMEOUT_MS / 1000} s and was stopped.\n` +
+      `${timeoutMs / 1000} s and was killed (SIGKILL).\n` +
       `  A provider that waits on a prompt nobody sees would otherwise hold the run forever.`);
+  if (r.tooBig)
+    throw new Error(
+      `key "${entry.raw}": the ${entry.scheme} provider (${argv[0]}) printed more than ` +
+      `${PROVIDER_MAX_BYTES / 1024 / 1024} MiB on stdout and was stopped.\n` +
+      `  A credential is bytes, not megabytes: check that the command prints one value.`);
   if (r.error)
     throw new Error(
       `key "${entry.raw}": could not run the ${entry.scheme} provider (${argv[0]}): ${r.error.message}`);
   if (r.status !== 0) {
-    // Whatever it printed on stdout is taken out of stderr before stderr is
-    // shown: a provider that echoes the secret to both and then fails would
-    // otherwise put it in the terminal through the error meant to explain it.
-    const leaked = (r.stdout ?? "").trim();
-    const clean = leaked.length >= 4 ? (r.stderr ?? "").split(leaked).join("‹redacted›") : (r.stderr ?? "");
-    const said = clean.trim().split("\n").slice(0, 3).map((l) => l.slice(0, 200)).join("\n    ");
     throw new Error(
-      `key "${entry.raw}": the ${entry.scheme} provider exited ${r.status ?? "on a signal"}.` +
-      (said ? `\n    ${said}` : "") +
-      `\n  Nothing is substituted for a key that did not resolve — the run stops here rather ` +
+      `key "${entry.raw}": the ${entry.scheme} provider exited ${r.status ?? "on a signal"}` +
+      (r.errBytes ? ` and wrote ${r.errBytes} bytes to stderr` : "") + `.\n` +
+      `  What it printed is not shown, because a provider can print the value. To read it, ` +
+      `run it yourself: ${argv.join(" ")}\n` +
+      `  Nothing is substituted for a key that did not resolve — the run stops here rather ` +
       `than starting a role without a credential it declared.`);
   }
+  const printed = r.stdout ?? "";
   // One trailing newline is the shell's, not the secret's: `security -w` and
   // `op read` both add one, and a token with a newline welded to it fails
   // authentication in a way that looks like a wrong token.
-  const value = (r.stdout ?? "").replace(/\r?\n$/, "");
-  if (value === "")
+  if (unterminate(printed) === "")
     throw new Error(
       `key "${entry.raw}": the ${entry.scheme} provider succeeded and printed nothing.\n` +
       `  An empty credential is not a credential. Check the reference — most providers exit 0 ` +
       `for a name they do not have.`);
-  return value;
+  return deliverable(entry, exact ? printed : unterminate(printed));
 }
 
 /**
@@ -577,12 +649,21 @@ export function resolveRef(entry, provider, { run = spawnSync, root = ".", confi
  * provider runs. A config with three bad references should say so once, and it
  * should say so without asking anyone's keychain for a password first.
  */
-export function resolveKeys(config, role, opts = {}) {
+export function resolveKeys(config, role, { record = () => {}, ...opts } = {}) {
   opts = { root: config.root ?? ".", config, ...opts };
   const refs = entriesOf(role).filter((e) => e.kind === "ref");
   const plan = refs.map((entry) => ({ entry, mode: modeOf(config, role, entry) }));
-  return plan.map((p) => ({
-    ...p,
-    value: resolveRef(p.entry, config.keyProviders[p.entry.scheme], opts),
-  }));
+  return plan.map((p) => {
+    // `scratch` writes a file, and a file is handed over as the provider gave
+    // it; `env` drops the one trailing newline a shell adds. See resolveRef.
+    let value;
+    try {
+      value = resolveRef(p.entry, config.keyProviders[p.entry.scheme], { ...opts, exact: p.mode === "scratch" });
+    } catch (e) {
+      record({ entry: p.entry, mode: p.mode, ok: false });
+      throw e;
+    }
+    record({ entry: p.entry, mode: p.mode, ok: true });
+    return { ...p, value };
+  });
 }

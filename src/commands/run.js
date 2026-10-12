@@ -304,7 +304,18 @@ export async function run(config, argv) {
    * name, not a skipped key: a role that starts without a credential it
    * declared fails later, somewhere else, looking like something it is not.
    */
-  const resolved = resolveKeys(config, config.roles[role]);
+  /**
+   * Each resolution is a line in the log: which key, which provider, which
+   * mode, whether it resolved. Never the value — the log is the record of what
+   * the policy did, and a secret in it would be a second plaintext copy with
+   * worse access control than the first. Shaped like the canary's line, a
+   * run-level event beside the verdicts, so readers that count verdicts skip it.
+   */
+  const resolved = resolveKeys(config, config.roles[role], {
+    record: ({ entry, mode, ok }) => append(logPath(config.root), {
+      event: "key", role, run: theRun.id.slice(0, 8), key: entry.raw, provider: entry.scheme, mode, ok,
+    }),
+  });
   const scratchKeys = theRun.keys;
   if (resolved.some((r) => r.mode === "scratch")) mkdirSync(scratchKeys, { recursive: true, mode: 0o700 });
   for (const { entry, mode, value } of resolved) {
