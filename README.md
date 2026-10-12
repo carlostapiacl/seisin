@@ -904,7 +904,7 @@ the same kernel or workspace, and which one you want depends on what you are pro
 
 ## Status
 
-`main` (before 0.6.0), 887 tests on macOS, **885 passing and 2 platform skips**, of which
+`main` (before 0.6.0), 891 tests on macOS, **889 passing and 2 platform skips**, of which
 **29 need `@anthropic-ai/sandbox-runtime` installed**
 and run real commands through the real kernel — and the CI gate fails if the sandbox half *skips*, because
 a green run that quietly tested nothing looks exactly like a real one. That is not hypothetical:
@@ -913,7 +913,7 @@ install and missed the bundled one, and hid a defect that broke `seisin run` on 
 entirely. **811 tests on macOS 15, 809 passing and 2 skipped** (they are Linux-only) — 2026-09-30;
 `ubuntu-latest` is configured to run the same suite under bubblewrap with Node 18/20/22/24. Actions
 are temporarily unavailable because of account billing; the release is validated locally meanwhile.
-The 2026-10-11 Docker measurement was 886 tests (865 passing, 21 platform skips) on Debian 12
+The 2026-10-11 Docker measurement was 890 tests (869 passing, 21 platform skips) on Debian 12
 with bubblewrap 0.8.0.
 [Which claim was measured where](docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),
 and [what running agents behind it cost the people using it](docs/field-notes.md).
