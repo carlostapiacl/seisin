@@ -279,9 +279,16 @@ test("a decision is looked up, applied and settled under the policy lock", async
        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 700);
        settle(${JSON.stringify(q)}, ${JSON.stringify(key)}, "denied", "the other channel");
      });`]);
-  await new Promise((ok) => child.stdout.once("data", ok));
+  // Listened for before anything is awaited: the holder exits as soon as it
+  // lets go of the lock, often before the console answers, and a listener
+  // added after that waits forever — the suite once hung here for hours.
+  const closed = new Promise((ok) => child.once("close", ok));
+  await Promise.race([
+    new Promise((ok) => child.stdout.once("data", ok)),
+    closed.then(() => { throw new Error("the lock holder exited without taking the lock"); }),
+  ]);
   const r = await post("/api/decide", JSON.stringify({ key, decision: "granted", reason: "r" }));
-  await new Promise((ok) => child.once("close", ok));
+  await closed;
   assert.equal(r.status, 400, "the request had been settled by the lock holder");
   assert.ok(!readFileSync(policy, "utf8").includes("checkout"), "granted what the other channel declined");
 });
