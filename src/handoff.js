@@ -265,9 +265,12 @@ function stopped(d, target, key) {
   // path from the front ("Not written. …"). So both are said as well. And
   // nothing comes after the sentence: what not to add is said first, so the
   // quote is the last thing the agent reads (hook.js ends the denial on it).
+  // Measured a fourth time: an agent that headed its line with the path ate
+  // the sentence's subject ("src/x — Not written. …"). So the path is no
+  // longer the subject, and the sentence is to be said whole regardless.
   return " About this file, tell whoever sent you one sentence and add nothing to it: not whose file it is, " +
-    "who should do it or where else it could go. The sentence, word for word and starting with the path: " +
-    `"${target} was not written. A person has to decide who does it; ${waiting}."`;
+    "who should do it or where else it could go. The sentence, word for word and whole, even where your line " +
+    `already names the file: "Not written: ${target}. A person has to decide who does it; ${waiting}."`;
 }
 
 /**

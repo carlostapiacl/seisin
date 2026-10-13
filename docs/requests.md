@@ -203,8 +203,8 @@ of the rows below:
 | no owner | `docs/x.md has no owner. A person decides who takes it. Do not work around it.` |
 | owner takes no work | `.canary belongs to prepare. It is not web's to change. prepare does not take handed work, so a person decides who takes it. Do not work around it.` |
 | a key | `.secrets/db.txt is declared for backend, not frontend. Ask for what you need from it rather than reading the key.` |
-| cycle | `src/web/app.ts is not backend's to change, and its handoff chain stops here: handing it on would send it back the way it came. A person decides. … About this file, tell whoever sent you one sentence and add nothing to it: not whose file it is, who should do it or where else it could go. The sentence, word for word and starting with the path: "src/web/app.ts was not written. A person has to decide who does it; the request backend:write:src/web is waiting in seisin requests."` |
-| depth | `test/a.ts is not backend's to change, and its handoff chain stops here: 5 of 4 deep. A person decides. … About this file, tell whoever sent you one sentence … The sentence, word for word and starting with the path: "…"` |
+| cycle | `src/web/app.ts is not backend's to change, and its handoff chain stops here: handing it on would send it back the way it came. A person decides. … About this file, tell whoever sent you one sentence and add nothing to it: not whose file it is, who should do it or where else it could go. The sentence, word for word and whole, even where your line already names the file: "Not written: src/web/app.ts. A person has to decide who does it; the request backend:write:src/web is waiting in seisin requests."` |
+| depth | `test/a.ts is not backend's to change, and its handoff chain stops here: 5 of 4 deep. A person decides. … About this file, tell whoever sent you one sentence … The sentence, word for word and whole, …: "Not written: test/a.ts. …"` |
 
 The hook's denial, the only one of the three that files a request, then says so, and for whom. A
 route ends *"Already queued as a handoff to backend: a run of backend, or a person, picks it up —
@@ -229,7 +229,9 @@ pass on"*, and the map's last line does not ask the agent to say whose a file is
 the owner on the map, an agent added it after the sentence anyway.
 
 "Word for word" is about the words. An agent that sets the path in bold or in backticks has passed
-the sentence on; one that drops the path, or adds to it, has not.
+the sentence on; one that drops the path, or adds to it, has not. The path is not the sentence's
+subject: measured, an agent that headed its line with the path dropped it from a sentence that
+began with it ("src/x — Not written. …").
 
 It informs and offers nothing to answer with: every role it names is one the policy named, and
 nothing the agent says back changes who takes the work. The chain behind a cycle reaches the

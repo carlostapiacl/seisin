@@ -98,10 +98,11 @@ in every mode and gives each run a temp directory of its own — the role's when
   decides: prepare owns this and takes no handed work*. `seisin run <role> --handoff <id>` for
   such a role is refused.
 - **The end of a denial, measured again with real runs.** The literal sentence for a stopped
-  chain is now to be passed on *"word for word and starting with the path"*, and ends *"Say only
-  that sentence about this file: do not add whose file it is, who should do it or where else it
-  could go"* — passed on in three runs of three, it was then contradicted in two; with the ending,
-  in none, though one run named the owner and one dropped the path. Where a chain stops, the
+  chain is now *"Not written: <path>. A person has to decide who does it; the request <id> is
+  waiting in seisin requests."*, to be passed on *"word for word and whole"*, after being told not
+  to add whose file it is, who should do it or where else it could go — passed on in three runs
+  of three, it was first contradicted in two; then an agent named the owner, and agents that
+  headed the line with the path dropped it from a sentence that began with it. Where a chain stops, the
   agent is no longer told whose the file is or the chain it came along (with them, two runs of
   three added the owner), and the denial ends on the quoted sentence: what not to add is said
   before it, and *"Already queued…"* not at all. The session-start map does the same in a handed
@@ -129,8 +130,10 @@ in every mode and gives each run a temp directory of its own — the role's when
   round it.** The hook's denial ends *"Already queued as a handoff to backend: a run of backend,
   or a person, picks it up"* when the work routes to a role, and *"queued for a person"* only
   otherwise. Every denied write adds *"Do not put the change somewhere else instead (another
-  path, a copy, /tmp)."* A route inside a handoff chain names the chain and its depth, and a
-  cycle names the role it will not go back to and says nothing is asked of it; where a chain stops (a cycle, or too deep) the agent is given, literally, the sentence to pass on: *"src/web/app.ts was not written. A person has to decide who does it; the request backend:write:src/web is waiting in seisin requests."* The request a chain started from says where its chain stopped (`chainStopped`), instead of reading as handed and done. At session start, walls outside the repository
+  path, a copy, /tmp)."* A route inside a handoff chain names the chain and its depth;
+  where a chain stops (a cycle, or too deep) the agent is told neither the owner nor the chain,
+  and is given, literally, the sentence to pass on: *"Not written: src/web/app.ts. A person has
+  to decide who does it; the request backend:write:src/web is waiting in seisin requests."* The request a chain started from says where its chain stopped (`chainStopped`), instead of reading as handed and done. At session start, walls outside the repository
   are listed apart — *nothing to hand over; leave it* — instead of under "hand it over".
 - **`check` says what a repo inside scratch costs:** *every role can write the whole repo*, with
   the fix (move it, or set `[runtime] writes`). Measured against the scratch the policy really
