@@ -661,7 +661,17 @@ export async function run(config, argv) {
           `kernel denials may be missing from the log and the queue. ` +
           `\`seisin check --system-log\` says what is flooding it.${C.off}\n`);
     }
-    const { offPolicy, walks, expected, probes } = take.stats;
+    const { offPolicy, walks, expected, probes, atomic } = take.stats;
+    // A save refused at its temporary file, beside a file this role may write:
+    // the file was not saved, and nothing was queued because there is nothing
+    // to grant (the temporary name changes every time). Said whether or not
+    // anything else was recorded, because the agent's error said neither.
+    if (atomic.length) {
+      const files = [...new Set(atomic)];
+      err(`${C.yellow}seisin: ${files.length} file(s) ${role} may write were not saved: the save's temporary file beside ` +
+          `${files.slice(0, 3).join(", ")}${files.length > 3 ? ` and ${files.length - 3} more` : ""} was denied ` +
+          `(Claude Code's Edit and Write). \`seisin check ${role}\` says whether a grant can fix it.${C.off}\n`);
+    }
     const recorded = attributed - offPolicy - walks;
     if (recorded > 0)
       err(`${C.dim}seisin: ${recorded} kernel denial(s) recorded` +

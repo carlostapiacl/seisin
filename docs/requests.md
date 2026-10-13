@@ -212,6 +212,9 @@ retrying or waiting will not move it."*; every other decision ends *"Already que
 to answer — …"*. Measured before, when every denial ended on a person: in a cycle the agent said
 the work was going to the role the chain had just come from.
 
+A repeated denial says how many times. Inside `seisin run` the count starts at the run's canary,
+and tries from earlier runs are named apart, so a fresh run is not told about its fourth try.
+
 Where a chain stops, the agent is given the sentence to pass on, literally. Measured with real
 runs: told only what not to say, an agent stopped saying the owner would make the change and,
 in one run of two, told its user to coordinate with the owner instead.

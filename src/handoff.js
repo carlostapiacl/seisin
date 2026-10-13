@@ -247,7 +247,11 @@ export function toAgent(decision, { target, role, key = null }) {
 function stopped(d, target, key) {
   if (d.type !== "cycle" && d.type !== "depth") return "";
   const waiting = key ? `the request ${key} is waiting in seisin requests` : "the request is waiting in seisin requests";
-  return ` Tell whoever sent you, in these words: "${target} was not written. A person has to decide who does it; ${waiting}."`;
+  // Measured again with the literal words: passed on in three runs of three,
+  // and then contradicted in two, by an agent adding who should do it or where
+  // else it could go. So the sentence ends on that, too.
+  return ` Tell whoever sent you, in these words: "${target} was not written. A person has to decide who does it; ${waiting}." ` +
+    "Say only that sentence about this file: do not add who should do it or where else it could go.";
 }
 
 /**

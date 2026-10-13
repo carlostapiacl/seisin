@@ -79,7 +79,7 @@ test("in a handoff chain, reaching back is a cycle and a long chain stops", () =
   const back = said(decide(config, "backend", write(dir, "src/web/app.ts"), { ...quiet, chain: CHAIN }));
   assert.match(back, /belongs to frontend\. It is not backend's to change\. It is not handed back to frontend: this work already came through frontend \(handoff chain frontend → backend\), so nothing is asked of frontend\. A person decides how to split it\./);
   // The words to pass on, literally: told what not to say, an agent in one run of two sent its user to frontend.
-  assert.match(back, /Tell whoever sent you, in these words: "src\/web\/app\.ts was not written\. A person has to decide who does it; the request backend:write:src\/web is waiting in seisin requests\."/);
+  assert.match(back, /Tell whoever sent you, in these words: "src\/web\/app\.ts was not written\. A person has to decide who does it; the request backend:write:src\/web is waiting in seisin requests\." Say only that sentence about this file: do not add who should do it or where else it could go\./);
   const deep = said(decide(config, "backend", write(dir, "test/a.ts"), { ...quiet, chain: { id: "c", depth: 4, visited: ["a", "b", "c", "backend"] } }));
   assert.match(deep, /The handoff chain stops here, 5 of 4 deep\. A person decides/);
   // The same request outside any chain is an ordinary route.
@@ -236,4 +236,21 @@ test("a --handoff run carries its chain to the hook; any other run never does", 
   const plain = run(["frontend"], { [CHAIN_ENV]: JSON.stringify(CHAIN) });
   assert.equal(plain.status, 0, plain.stderr);
   assert.equal(plain.stdout, "none");
+});
+
+test("the hook counts this run's tries, and names the earlier runs' apart", () => {
+  const { dir, config } = repo();
+  mkdirSync(join(dir, ".seisin"), { recursive: true });
+  const line = (o) => appendFileSync(logPath(dir), JSON.stringify({ at: new Date().toISOString(), ...o }) + "\n");
+  const denial = { role: "frontend", tool: "Write", action: "write", kind: "file", target: "src/api/x.ts", verdict: "denied" };
+  for (let i = 0; i < 3; i++) line(denial);
+  line({ event: "canary", role: "frontend", run: "feedbeef", confined: true });
+  const first = said(decide(config, "frontend", write(dir, "src/api/x.ts"), { ...quiet, run: "feedbeef-1111" }));
+  assert.match(first, /It was denied 3 time\(s\) in earlier runs too; this run gets the same answer\./);
+  assert.doesNotMatch(first, /4 times/, "a fresh run is not told about its fourth try");
+  line(denial);
+  const second = said(decide(config, "frontend", write(dir, "src/api/x.ts"), { ...quiet, run: "feedbeef-1111" }));
+  assert.match(second, /You have been denied this 2 times in this run \(and 3 in earlier runs\); it is not going to work on the third try\./);
+  // Outside a run nothing marks where this one began: the count is the log's.
+  assert.match(said(decide(config, "frontend", write(dir, "src/api/x.ts"), { ...quiet, run: null })), /You have been denied this 5 times now/);
 });
