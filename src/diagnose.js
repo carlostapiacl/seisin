@@ -28,11 +28,12 @@
  * On Linux the runtime's refusals cannot be read from outside (violations.js),
  * so the after-the-fact half finds nothing there and stays quiet.
  */
+import { isAbsolute } from "node:path";
 import { readEntries } from "./log.js";
 import { explain } from "./owners.js";
 import { timesHit, walls } from "./walls.js";
 import { collapseSidecars } from "./render.js";
-import { decideHandoff, toAgent } from "./handoff.js";
+import { decideHandoff, toAgent, ELSEWHERE } from "./handoff.js";
 
 /** What a refused write or read looks like in a tool's output. A trigger to look, not a verdict. */
 export const DENIAL_SIGNS = /Operation not permitted|EPERM|EACCES|Permission denied|Read-only file system/i;
@@ -90,7 +91,7 @@ function sentence(config, role, file, e, chain = null) {
   if (v.allowed) return null;             // the policy moved since: nothing to say
   const times = timesHit(file, role, action, e.target);
   const again = times > 1 ? ` Refused ${times} times now; the next try ends the same way.` : "";
-  if (v.neverWrites) return `${v.reason}. Do not ask for it.${again}`;
+  if (v.neverWrites) return `${v.reason}. Do not ask for it. ${ELSEWHERE}${again}`;
   // A write, or a key: the denials that become requests, worded from the same
   // handoff decision the hook and the queue use. Everything else — a protected
   // file, a connection, a read the mode shuts — keeps the policy's own reason.
@@ -174,10 +175,18 @@ export function atSessionStart(config, role, event, { file } = {}) {
   // An expected refusal (Claude Code's plugin updater) is not the agent's to
   // stop trying, so it does not take one of the five lines.
   const w = file ? walls(config, role, { file, limit: 0, fresh: true }).filter((x) => !x.expected).slice(0, 5) : [];
-  if (w.length) {
+  // Outside the repository nobody owns anything, so there is no one to hand
+  // it to: under "hand it over", ~/.npm/_logs read as work for somebody else.
+  const outside = (x) => isAbsolute(x.target) || x.target.startsWith("~");
+  const mine = w.filter((x) => !outside(x)), out = w.filter(outside);
+  const wall = (x) => `- ${x.action} ${x.target} (${x.times}×) — ${x.owners?.length ? `belongs to ${x.owners.join(", ")}` : x.reason}`;
+  if (mine.length) {
     lines.push("Already denied more than once, and still denied — do not try again, hand it over:");
-    for (const x of w)
-      lines.push(`- ${x.action} ${x.target} (${x.times}×) — ${x.owners?.length ? `belongs to ${x.owners.join(", ")}` : x.reason}`);
+    for (const x of mine) lines.push(wall(x));
+  }
+  if (out.length) {
+    lines.push("Denied more than once outside the repository, where no role owns anything — nothing to hand over; leave it:");
+    for (const x of out) lines.push(`- ${x.action} ${x.target} (${x.times}×)`);
   }
   lines.push("A file outside that is somebody else's: say whose it is and hand it over, rather than working around it.");
   return { hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: lines.join("\n") } };

@@ -187,17 +187,26 @@ and `recordHandoff` to say a handoff was held, which the queue then shows as *ha
 
 The agent hears the same decision, at the moment it is denied: in the PreToolUse hook's
 reason, in the note after a tool call the kernel stopped, and from `seisin whose`. One sentence
-from `toAgent` in `src/handoff.js`, so the three cannot drift from the queue:
+from `toAgent` in `src/handoff.js`, so the three cannot drift from the queue. Every denied write
+ends with *"Do not put the change somewhere else instead (another path, a copy, /tmp)."*, left out
+of the rows below:
 
 | decision | the agent reads |
 |---|---|
 | route | `src/api/x.ts belongs to backend. It is not frontend's to change. It is handed to backend: hand it over rather than working around it.` |
+| route, in a chain | `test/a.ts belongs to qa. … It is handed to qa (handoff chain frontend → backend → qa, 2 of 4 deep): hand it over rather than working around it.` |
 | two owners | `src/shared/x.ts belongs to platform, infra. … With more than one owner, a person decides who takes it. Do not pick one, and do not work around it.` |
 | no owner | `docs/x.md has no owner. A person decides who takes it. Do not work around it.` |
 | owner takes no work | `.canary belongs to prepare. It is not web's to change. prepare does not take handed work, so a person decides who takes it. Do not work around it.` |
 | a key | `.secrets/db.txt is declared for backend, not frontend. Ask for what you need from it rather than reading the key.` |
-| cycle | `src/web/app.ts belongs to frontend. … It is not handed back: this work already came through frontend (handoff chain frontend → backend). A person decides how to split it.` |
+| cycle | `src/web/app.ts belongs to frontend. … It is not handed back to frontend: this work already came through frontend (handoff chain frontend → backend). A person decides how to split it.` |
 | depth | `… The handoff chain stops here, 5 of 4 deep. A person decides.` |
+
+The hook's denial, the only one of the three that files a request, then says so, and for whom. A
+route ends *"Already queued as a handoff to backend: a run of backend, or a person, picks it up —
+retrying or waiting will not move it."*; every other decision ends *"Already queued for a person
+to answer — …"*. Measured before, when every denial ended on a person: in a cycle the agent said
+the work was going to the role the chain had just come from.
 
 It informs and offers nothing to answer with: every role it names is one the policy named, and
 nothing the agent says back changes who takes the work. The chain behind a cycle reaches the

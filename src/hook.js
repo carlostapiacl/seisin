@@ -21,7 +21,7 @@ import { explain, normalize, privateOwner } from "./owners.js";
 import { append, logPath } from "./log.js";
 import { timesHit } from "./walls.js";
 import { record, requestsPath } from "./requests.js";
-import { decideHandoff, toAgent } from "./handoff.js";
+import { decideHandoff, toAgent, queuedLine, ELSEWHERE } from "./handoff.js";
 
 /** Tools whose input names a file directly. */
 const FILE_TOOLS = {
@@ -180,8 +180,10 @@ function kindOf(config, path) {
  * servers live elsewhere — and naming a tool the agent may not hold costs it a
  * turn to find out. An agent that does hold the tools discovers them the normal
  * way; that is what their descriptions are for.
+ *
+ * The words are handoff.js's queuedLine: a route ends on the role it goes to,
+ * everything else on a person.
  */
-const QUEUED = "Already queued for a person to answer — retrying or waiting will not move it.";
 
 /** 4 -> "fourth". Past a handful the numeral reads better than the word. */
 function ordinal(n) {
@@ -315,6 +317,9 @@ export function decide(config, role, event, { observe = false, now = append, ask
   const handoff = queued
     ? decideHandoff({ request: { role, action: denied.action, target: denied.target }, config, chain })
     : null;
+  // A denied write that nothing will ever grant is still a change not to
+  // make under another path; a denied read is not a change at all.
+  const elsewhere = denied.action === "write" ? ` ${ELSEWHERE}` : "";
   const again = times > 1
     ? ` You have been denied this ${times} times now; it is not going to work on the ${ordinal(times + 1)} try.`
     : "";
@@ -332,12 +337,12 @@ export function decide(config, role, event, { observe = false, now = append, ask
         // The sentence has to name a next step, not just a refusal. An agent
         // told "no" retries; an agent told whose it is asks, or moves on.
         denied.neverWrites
-          ? `${denied.reason}. Do not ask for it: nothing was queued, because the answer is already written down.` + again
+          ? `${denied.reason}. Do not ask for it: nothing was queued, because the answer is already written down.` + elsewhere + again
           : denied.gitMetadata || denied.protected || denied.privateTo
-          ? `${denied.reason}. Nothing was queued.` + again
+          ? `${denied.reason}. Nothing was queued.` + elsewhere + again
           : denied.mcp
           ? `${denied.reason}. Nothing was queued: which MCP servers a role may load is set in its mcp list, a policy change a person makes, not something they grant from the queue.` + again
-          : toAgent(handoff, { target: denied.target, role }) + again + " " + QUEUED,
+          : toAgent(handoff, { target: denied.target, role }) + again + " " + queuedLine(handoff),
     },
   };
 }
