@@ -46,7 +46,11 @@ const isDir = (p) => { try { return statSync(p).isDirectory(); } catch { return 
  * the run's own directory. `role.localBinding` skips the network probe and
  * says so: that role was granted every localhost port on purpose.
  */
-export async function runCanary({ srt, settingsFile, settings, env, cwd, runDir, runsRoot, role, granted, timeoutMs = 20_000 }) {
+export async function runCanary({ srt, wrap = null, settingsFile, settings, env, cwd, runDir, runsRoot, role, granted, timeoutMs = 20_000 }) {
+  // How the probe is started: under the run's sandbox, exactly as the agent
+  // will be (sandboxes/). `srt` alone is the runtime's own command line, kept
+  // for callers from before there was more than one sandbox.
+  const boxed = wrap ?? ((inner) => [srt, "--settings", settingsFile, "--", ...inner]);
   const t0 = Date.now();
   const nonce = randomBytes(8).toString("hex");
   const failed = [];
@@ -99,7 +103,8 @@ export async function runCanary({ srt, settingsFile, settings, env, cwd, runDir,
   let timedOut = false;
   try {
     const status = await new Promise((resolve) => {
-      const child = spawn(srt, ["--settings", settingsFile, "--", "/bin/sh", "-c", script], {
+      const [file, ...args] = boxed(["/bin/sh", "-c", script]);
+      const child = spawn(file, args, {
         cwd, env, stdio: ["ignore", "pipe", "pipe"],
       });
       const timer = setTimeout(() => { timedOut = true; try { child.kill("SIGKILL"); } catch {} }, timeoutMs);

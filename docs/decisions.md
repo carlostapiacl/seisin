@@ -788,9 +788,19 @@ poll. `/var/run/*` is dropped because every DNS lookup in the sandbox lands ther
 proxy (a domain not on the list) aren't logged: the `srt` CLI doesn't expose them. That's
 [#582](https://github.com/anthropics/sandbox-runtime/issues/582).
 
-## A `nono` backend: only where it enforces the policy exactly
+## A second sandbox: only where it enforces the policy exactly
 
-There is no backend selection yet; this records the rule a `nono` backend would be held to. The
+**Built 2026-10-13** as `[sandbox] provider` ([sandboxes.md](sandboxes.md)): `srt` and `tartaros`
+built in, and any other sandbox declared as a command that takes the settings file. Each role
+gets the first sandbox in the list that is installed and enforces every part of its settings;
+the others are passed over with the reason, `seisin check` shows the choice per role, and a
+single name means that sandbox or no run. The contract for a declared one is the settings file
+itself, in sandbox-runtime's schema, so `srt` meets it unchanged — the suite runs it that way —
+and the canary runs under whichever sandbox was chosen, so a sandbox that ignores the file
+starts nothing. tartaros is passed over for every generated role today: it cannot deny a path
+inside a writable one, nor re-open this run's directory inside the runs root.
+
+What follows is the rule as it was first written down, for `nono`. The
 backend is a capability choice, not a preference toggle. A role may use `nono` only when that
 backend can enforce every capability its policy declares and nothing more. Falling back is
 acceptable; silently widening the policy is not.

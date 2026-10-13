@@ -1,8 +1,9 @@
 # nono backend: the contract, before there is one
 
-seisin has no backend selection today: every role runs under
-`@anthropic-ai/sandbox-runtime`. This page is the contract a `nono` backend
-would have to meet before it could be offered, written down now so that the
+seisin chooses a sandbox per role since 2026-10-13 ([sandboxes.md](sandboxes.md)),
+and `nono` is not one of the built-in ones. It can be declared as a command
+once something takes seisin's settings file to `nono`'s profile; this page is
+the contract that translation would have to meet, written down so that the
 first implementation is held to it rather than the other way round.
 
 The rule it follows is the one in [decisions.md](decisions.md): the backend is
