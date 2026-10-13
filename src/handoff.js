@@ -274,9 +274,13 @@ export function nextStep(decision, role) {
       return d.reason === "ambiguous"
         ? "With more than one owner, a person decides who takes it. Do not pick one, and do not work around it."
         : "A person decides who takes it. Do not work around it.";
+    // Measured: told only "not handed back", an agent still told its user
+    // that the owner would make the change. It has to hear that nothing is
+    // asked of the owner, and what to say instead.
     case "cycle":
       return `It is not handed back to ${d.role}: this work already came through ${d.role} ` +
-        `(handoff chain ${(d.visited ?? []).join(" → ")}). A person decides how to split it. Do not work around it.`;
+        `(handoff chain ${(d.visited ?? []).join(" → ")}), so nothing is asked of ${d.role}. ` +
+        `A person decides how to split it. Tell whoever sent you that, not that ${d.role} will make the change. Do not work around it.`;
     case "depth":
       return `The handoff chain stops here, ${d.depth} of ${d.max} deep. A person decides. Do not work around it.`;
     case "resolved":

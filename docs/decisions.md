@@ -451,7 +451,9 @@ log, `log stream` drops messages before the predicate filters them, and prints o
 place: *"=== Messages dropped during live streaming"*, no count, no names. Measured on a real
 machine: a network filter's kernel extension at about 6,700 lines a second, and every denied
 write of a run missing from the log and the queue while the shell got its EPERM. Reproduced with
-eight processes writing to syslog: three runs, three denials each, none recorded.
+eight Python processes calling `syslog(3)` in a loop, about 2,000 messages a second: three runs,
+three denials each, none recorded. A shell loop piping into `logger` does not do it, even
+twenty-four of them; the system slows a writer that sends that much.
 
 So the run counts those lines and says so when it ends, and logs a `log-dropped` event. It does
 not know *which* denials were lost, so it says *may be missing* and stops there.

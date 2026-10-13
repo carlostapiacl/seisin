@@ -93,7 +93,7 @@ const COMMANDS = {
   // would make the command unusable within a week.
   check: async () => {
     const report = await (await import("./commands/check.js")).check(config(), argv);
-    return report.warnings.some((w) => w.kind === "cannot-be-enforced") || report.verify?.some((v) => !v.ok) ? 1 : 0;
+    return (await import("./commands/check.js")).checkStatus(report);
   },
   explain: async () => ((await import("./commands/explain.js")).explainCommand(config(), argv).allowed ? 0 : 1),
   scan: async () => ((await import("./commands/scan.js")).scanCommand(config(), argv).certain.length ? 1 : 0),

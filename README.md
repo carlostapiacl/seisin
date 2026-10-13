@@ -288,7 +288,7 @@ the commands compose in a script, a pre-commit hook or CI:
 | command | 0 | 1 | other |
 |---|---|---|---|
 | `run` | — | — | the command's own status; 86 if the canary proves the boundary does not hold; 127 if it is not on the role's PATH; 128+n when killed by signal n (130 for ctrl-c) |
-| `check` | the policy can be enforced (warnings included) | a role cannot be enforced as written, or `--verify` failed | |
+| `check` | the policy can be enforced (warnings included) | a role cannot be enforced as written, `--verify` failed, or `--system-log` measured messages dropped | |
 | `explain` | allowed | denied | |
 | `scan` | no certain credential | a certain credential outside the key dirs | |
 | `review` | no role denied repeatedly | a role denied repeatedly | |
@@ -975,8 +975,8 @@ the same kernel or workspace, and which one you want depends on what you are pro
 
 ## Status
 
-**1014 tests on macOS, 1012 passing and 2 platform skips** (`main` before 0.6.0); **1013 on
-Debian 12 under bubblewrap 0.8.0, 990 passing and 23 platform skips** (2026-10-13). On 2026-10-12, 91 of the suite's tests
+**1015 tests on macOS, 1013 passing and 2 platform skips** (`main` before 0.6.0); **1014 on
+Debian 12 under bubblewrap 0.8.0, 991 passing and 23 platform skips** (2026-10-13). On 2026-10-12, 91 of the suite's tests
 needed `@anthropic-ai/sandbox-runtime` installed — counted by running it with the runtime
 hidden — and run real commands through the real kernel; 26 of them are the core boundary file,
 `test/sandbox.test.js`, which the CI gate fails if it *skips*, because a green run that quietly

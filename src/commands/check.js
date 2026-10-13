@@ -41,6 +41,17 @@ async function systemLog() {
 const SYSTEM_LOG_SECONDS = 3;
 
 /**
+ * The exit status: 1 when a role cannot be enforced as written, or when what a
+ * flag asked for failed. `--system-log` is asked for like `--verify` and fails
+ * the same way — a log dropping messages now is a run that would lose denials
+ * now, and a CI step has only the status to go on.
+ */
+export function checkStatus(report) {
+  return report.warnings.some((w) => w.kind === "cannot-be-enforced") || report.verify?.some((v) => !v.ok) ||
+    report.systemLog?.dropped > 0 ? 1 : 0;
+}
+
+/**
  * `--verify`: each role's `verify` command, run inside that role's sandbox.
  *
  * Through `seisin run` itself and not a copy of its setup, so what passes here

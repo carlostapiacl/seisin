@@ -199,7 +199,7 @@ of the rows below:
 | no owner | `docs/x.md has no owner. A person decides who takes it. Do not work around it.` |
 | owner takes no work | `.canary belongs to prepare. It is not web's to change. prepare does not take handed work, so a person decides who takes it. Do not work around it.` |
 | a key | `.secrets/db.txt is declared for backend, not frontend. Ask for what you need from it rather than reading the key.` |
-| cycle | `src/web/app.ts belongs to frontend. … It is not handed back to frontend: this work already came through frontend (handoff chain frontend → backend). A person decides how to split it.` |
+| cycle | `src/web/app.ts belongs to frontend. … It is not handed back to frontend: this work already came through frontend (handoff chain frontend → backend), so nothing is asked of frontend. A person decides how to split it. Tell whoever sent you that, not that frontend will make the change.` |
 | depth | `… The handoff chain stops here, 5 of 4 deep. A person decides.` |
 
 The hook's denial, the only one of the three that files a request, then says so, and for whom. A
