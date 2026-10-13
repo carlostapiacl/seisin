@@ -263,7 +263,7 @@ test("a kernel watcher that cannot start has the whole shape run relies on", asy
   const w = watchDenials(() => {}, { platform: "darwin", spawnFn: () => { throw new Error("no log(1) here"); } });
   assert.equal(w.available, false);
   assert.doesNotThrow(() => w.attributeTo(123));
-  assert.deepEqual(await w.close({ drain: 50 }), { attributed: 0, foreign: 0, unattributed: 0 });
+  assert.deepEqual(await w.close({ drain: 50 }), { attributed: 0, foreign: 0, unattributed: 0, dropped: 0 });
 });
 
 /* ── P1-15: `ps` is not taken once per foreign denial ─────────────────── */

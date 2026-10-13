@@ -44,11 +44,30 @@
  */
 import { spawn, execFileSync } from "node:child_process";
 import { statSync } from "node:fs";
+import { basename } from "node:path";
 
 /** Only sandbox-runtime tags its violations this way. Everything else on the
  *  machine — Safari, mDNSResponder, Spotlight — is filtered out by the OS
  *  before a byte reaches us, which is why the predicate is not a grep. */
 const PREDICATE = 'eventMessage ENDSWITH "_SBX"';
+
+/**
+ * What `log stream` prints in place of the messages it could not keep up with.
+ *
+ * The one way this instrument loses a denial without anything else noticing:
+ * the kernel refuses, the agent sees EPERM, and the line never arrives. It
+ * happens when the unified log is flooded — measured, a network filter's
+ * kernel extension writing ~6,700 lines a second while it dropped two
+ * sessions' connections — and the predicate does not help, because the stream
+ * is dropped before it is filtered. The marker carries no count and no names:
+ * one line per batch lost, which is all there is to report.
+ */
+const DROPPED = /^=== Messages dropped during live streaming\b/gm;
+
+/** How many batches `log stream` says it dropped in this text. */
+export function droppedIn(text) {
+  return (String(text).match(DROPPED) ?? []).length;
+}
 
 /** `Sandbox: <proc>(<pid>) deny(<n>) <operation> <detail>` */
 const DENY = /Sandbox:\s+(\S+)\((\d+)\)\s+deny\(\d+\)\s+(\S+)\s+(.+?)\s*$/;
@@ -369,7 +388,7 @@ export function scopeOf(settings, root) {
  * logging less than it used to.
  */
 export function watchDenials(onDeny, { pid = null, argv = null, platform = process.platform, spawnFn = spawn, treeFn = processTree, now = () => performance.now() } = {}) {
-  const stats = { attributed: 0, foreign: 0, unattributed: 0 };
+  const stats = { attributed: 0, foreign: 0, unattributed: 0, dropped: 0 };
 
   /**
    * Unavailable is a watcher that does nothing, NOT a different shape.
@@ -561,6 +580,9 @@ export function watchDenials(onDeny, { pid = null, argv = null, platform = proce
     while ((cut = buf.indexOf("_SBX")) !== -1) {
       const chunk = buf.slice(0, cut + 4);
       buf = buf.slice(cut + 4);
+      // A marker never contains the tag, so it is whole in one chunk or still
+      // in `buf`, which close() counts.
+      stats.dropped += droppedIn(chunk);
       const d = parseChunk(chunk);
       if (d) d.seen = now();
       // Deduplicated here and not in consider(), because a held denial goes
@@ -569,7 +591,9 @@ export function watchDenials(onDeny, { pid = null, argv = null, platform = proce
       // pid — which, on a short command, is all of them.
       if (d && !isRepeat(d)) consider(d);
     }
-    if (buf.length > 64_000) buf = "";   // a stream we cannot parse is not a leak
+    // A stream we cannot parse is not a leak. A flooded one is mostly markers
+    // with no tag between them, so they are counted before they go.
+    if (buf.length > 64_000) { stats.dropped += droppedIn(buf); buf = ""; }
   });
   // A monitor that cannot run must never take the run down with it. Same rule
   // as append(): the instrument is allowed to fail, the agent is not.
@@ -606,11 +630,11 @@ export function watchDenials(onDeny, { pid = null, argv = null, platform = proce
      */
     close({ drain = 0 } = {}) {
       clearTimeout(recheck);
-      const stop = () => { try { child.kill("SIGTERM"); } catch { /* already gone */ } };
-      if (drain <= 0) { stop(); return Promise.resolve(stats); }
+      const stop = () => ended(child).then(() => { stats.dropped += droppedIn(buf); buf = ""; return stats; });
+      if (drain <= 0) return stop();
       return new Promise((resolve) => {
         let quiet = null;
-        const settle = () => { clearTimeout(quiet); clearTimeout(cap); stop(); resolve(stats); };
+        const settle = () => { clearTimeout(quiet); clearTimeout(cap); resolve(stop()); };
         const cap = setTimeout(settle, drain);
         const bump = () => { clearTimeout(quiet); quiet = setTimeout(settle, QUIET_MS); };
         child.stdout?.on("data", bump);
@@ -619,6 +643,28 @@ export function watchDenials(onDeny, { pid = null, argv = null, platform = proce
     },
   };
 }
+
+/**
+ * Stop a `log stream` and wait for what it was still holding.
+ *
+ * SIGINT, not SIGTERM. Writing to a pipe, `log` buffers its own notices — a
+ * denial's line arrives at once, but the "messages dropped" markers were buffered
+ * 8 KB at a time and came out together, measured twelve seconds after the flood
+ * began. SIGINT makes it flush them before it exits; SIGTERM threw them away
+ * (18 markers against 0 in the same flood). Bounded, so a stream that will not
+ * exit cannot hold up the end of a run.
+ */
+function ended(child, cap = END_MS) {
+  return new Promise((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) return resolve();
+    const timer = setTimeout(() => { try { child.kill("SIGKILL"); } catch {} resolve(); }, cap);
+    child.once("close", () => { clearTimeout(timer); resolve(); });
+    try { child.kill("SIGINT"); } catch { clearTimeout(timer); resolve(); }
+  });
+}
+
+/** How long a stopped `log stream` gets to flush and exit. */
+const END_MS = 1000;
 
 /**
  * How long the stream has to stay silent before a drain gives up on it.
@@ -660,3 +706,68 @@ const HELD_MAX = 500;
  * `asked 3×` mean anything.
  */
 const REPEAT_MS = 1000;
+
+/**
+ * Is the system log dropping messages right now, and who is writing the most?
+ *
+ * For `seisin check --system-log`. Two streams for `seconds`: one with the run's
+ * own predicate, counting the batches it loses — the number a run would have
+ * seen — and one unfiltered, counting messages by sender, because a flood
+ * comes from somebody and naming them is the only fix there is. A kernel
+ * message is named by its first word, which is the function that wrote it
+ * (`cfil_inp_log`): "kernel" alone names nothing.
+ *
+ * Reads the log and starts no sandbox. Not available off macOS, where denials
+ * are not read from a log at all.
+ */
+export function measureSystemLog({ seconds = 3, platform = process.platform, spawnFn = spawn } = {}) {
+  if (platform !== "darwin") return Promise.resolve({ available: false, reason: `no system log stream on ${platform}` });
+  const streams = [];
+  const start = (args) => {
+    const child = spawnFn("/usr/bin/log", ["stream", ...args], { stdio: ["ignore", "pipe", "ignore"] });
+    child.on("error", () => {});
+    streams.push(child);
+    return child;
+  };
+  return new Promise((resolve) => {
+    let dropped = 0, lines = 0, tail = "", rest = "";
+    const by = new Map();
+    let ours, all;
+    try {
+      ours = start(["--predicate", PREDICATE, "--style", "compact"]);
+      all = start(["--style", "ndjson"]);
+    } catch (e) {
+      for (const c of streams) try { c.kill("SIGTERM"); } catch {}
+      return resolve({ available: false, reason: `could not start the log stream: ${e.message}` });
+    }
+    ours.stdout?.on("data", (d) => {
+      const text = tail + d.toString();
+      const cut = text.lastIndexOf("\n");
+      dropped += droppedIn(text.slice(0, cut + 1));
+      tail = text.slice(cut + 1);
+    });
+    all.stdout?.on("data", (d) => {
+      const parts = (rest + d.toString()).split("\n");
+      rest = parts.pop();
+      for (const line of parts) {
+        if (!line.startsWith("{")) continue;
+        let e;
+        try { e = JSON.parse(line); } catch { continue; }
+        lines++;
+        const proc = basename(String(e.processImagePath ?? "?"));
+        const who = e.subsystem
+          ? `${proc} · ${e.subsystem}`
+          : proc === "kernel" ? `kernel · ${String(e.eventMessage ?? "").split(/[\s:]/)[0] || "?"}` : proc;
+        by.set(who, (by.get(who) ?? 0) + 1);
+      }
+      if (rest.length > 1_000_000) rest = "";
+    });
+    setTimeout(async () => {
+      await Promise.all(streams.map((c) => ended(c)));
+      dropped += droppedIn(tail);
+      const top = [...by].sort((a, b) => b[1] - a[1]).slice(0, 3)
+        .map(([who, n]) => ({ who, perSecond: Math.round(n / seconds) }));
+      resolve({ available: true, seconds, dropped, perSecond: Math.round(lines / seconds), top });
+    }, seconds * 1000);
+  });
+}

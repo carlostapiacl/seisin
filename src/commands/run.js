@@ -650,7 +650,17 @@ export async function run(config, argv) {
     // filtered out has nothing to contextualise, and `0 recorded, 1 outside the
     // policy's paths` is a line that answers a question nobody asked — the
     // counts exist to explain a filter, not to announce that one ran.
-    const { attributed } = denials.stats;
+    const { attributed, dropped } = denials.stats;
+    // The one loss the filter above does not explain: the system log could not
+    // keep up and threw lines away before seisin saw them. The boundary held;
+    // the record did not. Said every time, and written down, because a denial
+    // that never arrived files no request and nothing else would show it.
+    if (dropped) {
+      append(logPath(config.root), { event: "log-dropped", role, run: theRun.id.slice(0, 8), batches: dropped });
+      err(`${C.yellow}seisin: the system log dropped ${dropped} batch(es) of messages during this run: ` +
+          `kernel denials may be missing from the log and the queue. ` +
+          `\`seisin check --system-log\` says what is flooding it.${C.off}\n`);
+    }
     const { offPolicy, walks, expected, probes } = take.stats;
     const recorded = attributed - offPolicy - walks;
     if (recorded > 0)

@@ -28,10 +28,11 @@ export const COMMAND_HELP = {
       ["128+n", "killed by signal n (130 for ctrl-c)"], ["2", "seisin could not start it (usage, policy, runtime)"]],
   },
   check: {
-    usage: ["seisin check [role] [--verbose] [--verify] [--parallel]"],
+    usage: ["seisin check [role] [--verbose] [--verify] [--parallel] [--system-log]"],
     flags: [["--verbose", "also print the protected paths and each warning's explanation (the limits of every repo: seisin help limits)"],
       ["--verify", "run each role's verify command inside its sandbox (the one thing check executes)"],
-      ["--parallel", "experimental: with --verify, run role checks concurrently; shared resources may race"]],
+      ["--parallel", "experimental: with --verify, run role checks concurrently; shared resources may race"],
+      ["--system-log", "macOS: measure for 3 s whether the system log is dropping messages, and who writes the most"]],
     examples: ["seisin check", "seisin check frontend --verbose", "seisin check backend --verify", "seisin check --verify --parallel"],
     exits: [["0", "the policy can be enforced as written (warnings included)"], ["1", "a role cannot be enforced as written, or its verify failed"], ["2", "usage or policy error"]],
   },

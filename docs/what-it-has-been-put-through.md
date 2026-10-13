@@ -6,8 +6,8 @@
 
 ## The suite
 
-**1008 tests** in the macOS suite; 1006 passed and 2 platform tests skipped. Linux defines one
-fewer platform-specific test: 1007 total, 984 passed and 23 skipped (2026-10-13, Debian 12,
+**1014 tests** in the macOS suite; 1012 passed and 2 platform tests skipped. Linux defines one
+fewer platform-specific test: 1013 total, 990 passed and 23 skipped (2026-10-13, Debian 12,
 bubblewrap 0.8.0). CI is paused; this release is validated locally on macOS and Debian 12
 (bubblewrap 0.8.0). The [workflow](../.github/workflows/test.yml) runs macOS and Linux under
 bubblewrap on Node 18/20/22/24 for pull requests and pushes to `main`; its last green run was
@@ -105,7 +105,7 @@ what has not.
 
 | | macOS 15 · Seatbelt | Linux · bubblewrap |
 |---|---|---|
-| the suite | **1008 tests, 1006 passing and 2 skipped** (Linux-only) — local, `main` before 0.6.0 | **1007 tests, 984 passing and 23 skipped** — 2026-10-13, local, in Docker: Debian 12, bwrap 0.8.0, `--privileged` (bubblewrap mounts `/proc`) |
+| the suite | **1014 tests, 1012 passing and 2 skipped** (Linux-only) — local, `main` before 0.6.0 | **1013 tests, 990 passing and 23 skipped** — 2026-10-13, local, in Docker: Debian 12, bwrap 0.8.0, `--privileged` (bubblewrap mounts `/proc`) |
 | CI (paused) | last green run 2026-10-04, Node 18/20/22/24; CI failed then if the 26 sandbox tests skipped | `ubuntu-latest`, Node 18/20/22/24, same run |
 | `[runtime] isolate = "home"` (`= true`) | ✅ — and it did not start here at all until the 104-byte socket fix | ✅ — `tmpdir()` is `/tmp`, so the path never came close |
 | `[runtime] isolate = "credentials"` | ✅ — no role home, so the socket limit cannot reach it | ✅ |

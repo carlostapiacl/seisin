@@ -187,6 +187,10 @@ export function renderEntry(e) {
     const why = e.reasons?.length ? `  ${C.dim}${e.reasons.join("; ")}${C.off}` : "";
     return `  ${C.dim}${(e.at ?? "").slice(11, 19)}${C.off}  ${mark}  ${C.b}${e.role}${C.off}${why}\n`;
   }
+  if (e.event === "log-dropped") {
+    const mark = `${C.yellow}log dropped${C.off}`;
+    return `  ${C.dim}${(e.at ?? "").slice(11, 19)}${C.off}  ${mark}  ${C.b}${e.role}${C.off} ${C.dim}${e.batches} batch(es) of system log messages lost — kernel denials may be missing${C.off}\n`;
+  }
   if (e.event === "key") {
     const mark = e.ok ? `${C.green}key resolved${C.off}` : `${C.red}key failed${C.off}`;
     return `  ${C.dim}${(e.at ?? "").slice(11, 19)}${C.off}  ${mark}  ${C.b}${e.role}${C.off} ${safe(e.key)}  ${C.dim}${e.mode}${C.off}\n`;

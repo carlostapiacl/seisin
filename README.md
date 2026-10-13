@@ -267,6 +267,7 @@ internal; they may change without an API compatibility promise.
 ```bash
 seisin init                              # proposes a seisin.toml for this repo
 seisin check                             # print the map, run nothing
+seisin check --system-log                # macOS: is the system log dropping denials right now?
 seisin help limits                       # what seisin cannot do, in any repo
 seisin run frontend -- claude -p "…"     # run an agent as that role
 seisin explain frontend write src/api/x  # ask one question, exit 0 or 1
@@ -974,8 +975,8 @@ the same kernel or workspace, and which one you want depends on what you are pro
 
 ## Status
 
-**1008 tests on macOS, 1006 passing and 2 platform skips** (`main` before 0.6.0); **1007 on
-Debian 12 under bubblewrap 0.8.0, 984 passing and 23 platform skips** (2026-10-13). On 2026-10-12, 91 of the suite's tests
+**1014 tests on macOS, 1012 passing and 2 platform skips** (`main` before 0.6.0); **1013 on
+Debian 12 under bubblewrap 0.8.0, 990 passing and 23 platform skips** (2026-10-13). On 2026-10-12, 91 of the suite's tests
 needed `@anthropic-ai/sandbox-runtime` installed — counted by running it with the runtime
 hidden — and run real commands through the real kernel; 26 of them are the core boundary file,
 `test/sandbox.test.js`, which the CI gate fails if it *skips*, because a green run that quietly
