@@ -730,7 +730,21 @@ function readSandbox(table, path) {
       throw new Error(`${path}: [sandbox.providers.${name}] has no {policy} in its command, so the sandbox would never ` +
         `see the policy it is meant to enforce.\n  Put {policy} where the settings file goes: ` +
         `command = [${[...command, "{policy}"].map((c) => `"${c}"`).join(", ")}]`);
-    providers[name] = { name, command };
+    // Optional: asks the sandbox, before anything runs, whether it can hold a
+    // policy. Exit 0 is yes; anything else is no, and the first line it prints says why.
+    // Without it a declared sandbox is only ever found out by the canary, so a
+    // list like ["mybox", "srt"] would stop at exit 86 instead of moving on.
+    const check = own(own(declared, name), "check");
+    if (check !== undefined) {
+      if (!Array.isArray(check) || check.length === 0 || check.some((c) => typeof c !== "string" || c === ""))
+        throw new Error(`${path}: [sandbox.providers.${name}] check must be a command, as an array of strings:\n` +
+          `  check = ["mybox", "check", "--policy", "{policy}"]`);
+      if (!check.slice(1).some((c) => c.includes("{policy}")))
+        throw new Error(`${path}: [sandbox.providers.${name}] has no {policy} in its check, so it would answer ` +
+          `without seeing the policy it is asked about.\n  Put {policy} where the settings file goes: ` +
+          `check = [${[...check, "{policy}"].map((c) => `"${c}"`).join(", ")}]`);
+    }
+    providers[name] = { name, command, check: check ?? null };
   }
   const raw = own(table, "provider");
   if (raw === undefined)
@@ -813,7 +827,7 @@ const SHAPE = {
   scan: { ignore: true },
   protect: { instructions: true },
   notify: { url: true, url_file: true, format: true },
-  sandbox: { provider: true, providers: { "*": { command: true } } },
+  sandbox: { provider: true, providers: { "*": { command: true, check: true } } },
 };
 
 function checkShape(table, shape, prefix, path, lines) {

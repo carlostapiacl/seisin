@@ -9,11 +9,11 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, existsSync, chmodSync, mkdirSync } from "node:fs";
+import { writeFileSync, existsSync, chmodSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { loadConfig } from "../src/config.js";
-import { tartarosUnmet, tartarosArgv, portsOf } from "../src/sandboxes/tartaros.js";
+import { tartarosArgv } from "../src/sandboxes/tartaros.js";
 import { commandSandbox } from "../src/sandboxes/command.js";
 import { weigh, chooseSandbox, sandboxesOf, DEFAULT_SANDBOX } from "../src/sandboxes/index.js";
 import { runCanary } from "../src/canary.js";
@@ -53,6 +53,14 @@ test("a declared sandbox needs a command with {policy}, and cannot take a built-
   fails(`[sandbox.providers.box]\ncmd = ["x", "{policy}"]\n${ROLE}`, /"cmd" is not a setting/);
 });
 
+test("a declared sandbox may bring a check, which also has to see {policy}", () => {
+  const box = (check) => `[sandbox]\nprovider = "box"\n[sandbox.providers.box]\ncommand = ["box", "{policy}"]\n${check}\n${ROLE}`;
+  assert.equal(cfg(box("")).sandbox.providers.box.check, null);
+  assert.deepEqual(cfg(box('check = ["box", "check", "{policy}"]')).sandbox.providers.box.check, ["box", "check", "{policy}"]);
+  fails(box('check = ["box", "check"]'), /no \{policy\} in its check/);
+  fails(box('check = "box check {policy}"'), /check must be a command, as an array of strings/);
+});
+
 test("a declared sandbox gets the policy where {policy} is, and the command after", () => {
   const box = commandSandbox("box", ["box", "run", "--policy={policy}", "--"]);
   assert.deepEqual(box.wrap("/bin/box", "/run/settings.json", {}, ["sh", "-c", "x"]),
@@ -60,86 +68,112 @@ test("a declared sandbox gets the policy where {policy} is, and the command afte
   assert.deepEqual(box.unmet({}), []);
 });
 
-/* ── tartaros: what it can say, and what it cannot ─────────────────────── */
+/* ── tartaros, and any sandbox that answers for itself ────────────────── */
 
 const settings = ({ fs = {}, net = {} } = {}) => ({
   network: { allowedDomains: [], deniedDomains: [], allowUnixSockets: [], allowLocalBinding: false, ...net },
   filesystem: { denyRead: [], allowRead: [], allowWrite: [], denyWrite: [], ...fs },
 });
-const dirs = () => {
-  const d = scratch("seisin-tt-");
-  for (const s of ["repo/src", "repo/.git", "keys", "out"]) mkdirSync(join(d, s), { recursive: true });
-  return d;
+
+/**
+ * A stand-in `tartaros` on PATH, with tartaros's own shape of answer: `explain
+ * --settings <file>` exits 2 with a reason when the file asks for a domain, and
+ * `run … --settings <file> -- cmd` hands the file to srt, so a run under it is
+ * really held. It notes every file it was asked about.
+ */
+function fakeTartaros() {
+  const dir = scratch("seisin-fake-tt-");
+  const asked = join(dir, "asked");
+  writeFileSync(join(dir, "tartaros"), `#!/bin/sh
+verb="$1"; shift
+while [ "$1" != "--settings" ]; do shift; done
+file="$2"; shift 2
+echo "$file" >> "${asked}"
+if [ "$verb" = explain ]; then
+  if grep -q github.com "$file"; then
+    echo "tartaros: --settings: cannot guarantee per-domain egress on this backend; refusing to run (apply-fully-or-refuse)." >&2
+    exit 2
+  fi
+  echo "fine"; exit 0
+fi
+[ "$1" = "--" ] && shift
+exec "${resolveSrt() ?? "srt"}" --settings "$file" -- "$@"
+`);
+  chmodSync(join(dir, "tartaros"), 0o755);
+  return { dir, asked: () => (existsSync(asked) ? readFileSync(asked, "utf8").trim().split("\n") : []) };
+}
+const onPath = (dir, fn) => {
+  const was = process.env.PATH;
+  process.env.PATH = `${dir}:${was}`;
+  try { return fn(); } finally { process.env.PATH = was; }
 };
 
-test("tartaros holds a role of plain paths, loopback ports and nothing re-opened", () => {
-  const d = dirs();
-  const s = settings({
-    fs: { allowWrite: [join(d, "repo/src")], denyRead: [join(d, "keys")], denyWrite: [join(d, "repo/.git"), join(d, "out")] },
-    net: { allowedDomains: ["localhost:8001", "127.0.0.1:8001", "[::1]:8001"] },
+test("tartaros is handed the settings file as it is, the role as a label", () => {
+  assert.deepEqual(tartarosArgv("/bin/tartaros", "/run/settings.json", ["sh", "-c", "x"], { role: "dev" }),
+    ["/bin/tartaros", "run", "--role", "dev", "--settings", "/run/settings.json", "--", "sh", "-c", "x"]);
+  assert.deepEqual(tartarosArgv("t", "/f", ["sh"]), ["t", "run", "--settings", "/f", "--", "sh"]);
+});
+
+test("tartaros is asked, not second-guessed: what it refuses is passed over with its own reason", () => {
+  const tt = fakeTartaros();
+  const box = cfg(`[sandbox]\nprovider = ["tartaros", "srt"]\n${ROLE}`);
+  onPath(tt.dir, () => {
+    const { chosen, options } = weigh(box, settings({ net: { allowedDomains: ["github.com"] } }), { platform: "linux" });
+    assert.notEqual(chosen?.sandbox.name, "tartaros");
+    assert.match(options[0].unmet[0], /^tartaros says it cannot hold this policy: --settings: cannot guarantee per-domain egress/);
+    assert.equal(weigh(box, settings(), { platform: "linux" }).chosen.sandbox.name, "tartaros");
   });
-  assert.deepEqual(tartarosUnmet(s, { platform: "linux" }), []);
-  assert.deepEqual(tartarosArgv("/bin/tartaros", s, ["sh"], { role: "dev", platform: "linux" }), [
-    "/bin/tartaros", "run", "--role", "dev", "--write", join(d, "repo/src"), "--read-deny", join(d, "keys"),
-    "--port", "8001", "--deny-unix", "--", "sh"]);
-  // macOS: no --deny-unix there; the audit channel question is unmet's, not argv's.
-  assert.ok(!tartarosArgv("/bin/tartaros", s, ["sh"], { platform: "darwin" }).includes("--deny-unix"));
+  // Asked about a copy of the settings, which is gone once the answer is in.
+  const asked = tt.asked();
+  assert.equal(asked.length, 2);
+  for (const f of asked) assert.ok(!existsSync(f), `the settings copy ${f} was left behind`);
 });
 
-test("a writable root that does not exist is dropped, never passed on", () => {
-  const d = dirs();
-  const s = settings({ fs: { allowWrite: [join(d, "repo/src"), join(d, "nope")] } });
-  assert.deepEqual(tartarosUnmet(s, { platform: "linux" }), []);
-  assert.ok(!tartarosArgv("t", s, ["sh"]).includes(join(d, "nope")));
+test("a run's own settings file is the one asked about, when there is one", () => {
+  const tt = fakeTartaros();
+  const box = cfg(`[sandbox]\nprovider = "tartaros"\n${ROLE}`);
+  const file = join(scratch("seisin-sbx-file-"), "settings.json");
+  writeFileSync(file, JSON.stringify(settings()));
+  onPath(tt.dir, () => assert.equal(chooseSandbox(box, settings(), { platform: "linux", file }).sandbox.name, "tartaros"));
+  assert.deepEqual(tt.asked(), [file]);
 });
 
-test("tartaros is passed over for each thing it cannot enforce, with the thing named", () => {
-  const d = dirs();
-  const one = (part, platform = "linux") => {
-    const u = tartarosUnmet(settings(part), { platform });
-    assert.equal(u.length, 1, `expected one unmet part, got ${JSON.stringify(u)}`);
-    return u[0];
-  };
-  assert.match(one({ fs: { denyWrite: [join(d, "repo/**/.git/hooks/**")] } }), /path pattern .*not globs/);
-  assert.match(one({ fs: { allowWrite: [join(d, "repo")], denyWrite: [join(d, "repo/.git")] } }),
-    /write denied inside a writable path .*repo\/\.git in .*repo\)/);
-  assert.match(one({ fs: { denyRead: [join(d, "keys")], allowRead: [join(d, "keys/a.txt")] } }),
-    /read re-opened inside a denied path .*keys\/a\.txt in .*keys\)/);
-  assert.match(one({ net: { allowedDomains: ["github.com"] } }), /network by domain \(github\.com\)/);
-  assert.match(one({ net: { allowLocalBinding: true } }), /listening on localhost/);
-  assert.match(one({ net: { allowUnixSockets: ["/r/s.sock"] } }, "darwin"), /one unix socket/);
-  assert.deepEqual(tartarosUnmet(settings({ net: { allowUnixSockets: ["/r/s.sock"] } }), { platform: "linux" }), []);
-  assert.match(tartarosUnmet(settings(), { platform: "win32" })[0], /macOS and Linux, not win32/);
+test("tartaros not installed is passed over as missing, without asking anything", () => {
+  const box = cfg(`[sandbox]\nprovider = ["tartaros", "srt"]\n${ROLE}`);
+  const was = process.env.PATH;
+  process.env.PATH = "/nonexistent";
+  try {
+    const { options } = weigh(box, settings(), { platform: "linux" });
+    assert.match(options[0].missing, /tartaros not found on PATH/);
+    assert.deepEqual(options[0].unmet, []);
+  } finally { process.env.PATH = was; }
 });
 
-test("a denied write under /dev is unmet: tartaros grants /dev to every run", () => {
-  assert.match(tartarosUnmet(settings({ fs: { denyWrite: ["/dev/fd/9"] } }), { platform: "linux" })[0], /inside a writable path/);
-});
-
-test("loopback spellings are ports; anything else is a domain", () => {
-  assert.deepEqual(portsOf(["localhost:80", "127.0.0.1:80", "[::1]:443", "api.x.com", "localhost"]),
-    { ports: [80, 443], others: ["api.x.com", "localhost"] });
+test("a declared sandbox's check decides like tartaros's, and silence or a hang is a no", () => {
+  const dir = scratch("seisin-sbx-check-");
+  const script = (name, body) => { const f = join(dir, name); writeFileSync(f, `#!/bin/sh\n${body}\n`); chmodSync(f, 0o755); return f; };
+  const no = script("no", 'echo "no: no domains here" >&2; exit 1');
+  const mute = script("mute", "exit 3");
+  const yes = script("yes", 'test -s "$1"');
+  const unmet = (check) => commandSandbox("box", ["box", "{policy}"], [check, "{policy}"]).unmet({}, { file: join(dir, "no-such-file") });
+  assert.deepEqual(unmet(no), ["its check (" + no + ") says it cannot hold this policy: no domains here"]);
+  assert.match(unmet(mute)[0], /exited 3 without saying why/);
+  assert.match(unmet(yes)[0], /exited 1/, "a check on a file that is not there passed");
+  assert.match(unmet(join(dir, "absent"))[0], /ENOENT/);
+  assert.deepEqual(commandSandbox("box", ["box", "{policy}"]).unmet({}, {}), [], "no check, nothing to say");
+  const f = join(dir, "s.json"); writeFileSync(f, "{}");
+  assert.deepEqual(commandSandbox("box", ["box", "{policy}"], [yes, "{policy}"]).unmet({}, { file: f }), []);
 });
 
 /* ── the choice ────────────────────────────────────────────────────────── */
 
-test("each role gets the first sandbox that holds all of it; the others say why not", () => {
-  const box = cfg(`[sandbox]\nprovider = ["tartaros", "srt"]\n${ROLE}`);
-  const d = dirs();
-  const reopened = settings({ fs: { denyRead: [join(d, "keys")], allowRead: [join(d, "keys/a")] } });
-  const { chosen, options } = weigh(box, reopened, { platform: "linux", locate: false });
-  assert.equal(chosen.sandbox.name, "srt");
-  assert.match(options[0].unmet[0], /re-opened/);
-  const plain = settings({ fs: { allowWrite: [join(d, "repo/src")] } });
-  assert.equal(weigh(box, plain, { platform: "linux", locate: false }).chosen.sandbox.name, "tartaros");
-});
-
 test("one name means that one: a role it cannot hold is refused, not moved", () => {
+  const tt = fakeTartaros();
   const only = cfg(`[sandbox]\nprovider = "tartaros"\n${ROLE}`);
-  const r = chooseSandbox(only, settings({ net: { allowedDomains: ["github.com"] } }), { platform: "linux", role: "dev" });
-  // Found or not on this machine, it is refused: missing, or unable.
+  const r = onPath(tt.dir, () => chooseSandbox(only, settings({ net: { allowedDomains: ["github.com"] } }), { platform: "linux", role: "dev" }));
   assert.ok(r.error, "a role tartaros cannot hold ran anyway");
   assert.match(r.error.message, /no sandbox in \[sandbox\] provider can hold role dev/);
+  assert.match(r.error.message, /per-domain egress/);
   assert.match(r.error.message, /never used in its place/);
 });
 
@@ -181,6 +215,32 @@ test("a declared sandbox that ignores the policy starts nothing: the canary stop
   assert.equal(r.status, 86, r.stderr);
   assert.match(r.stderr, /failed its canary/);
   assert.ok(!existsSync(join(dir, "web/z")), "the agent ran under a sandbox that failed its canary");
+});
+
+test("a role runs under tartaros through its own --settings, and the territory holds", { skip: srtSkip() }, () => {
+  const tt = fakeTartaros();
+  const dir = repoWith("sbx-tt-", `[sandbox]\nprovider = "tartaros"\n[roles.dev]\nwrites = ["src/**"]\n`, ["src/", "web/"]);
+  const r = onPath(tt.dir, () => run(dir, "run", "dev", "--agent", "none", "--", "sh", "-c", "echo ok > src/a; echo no > web/b 2>/dev/null; true"));
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /dev runs under tartaros/);
+  assert.ok(existsSync(join(dir, "src/a")), "a write inside the territory did not go through");
+  assert.ok(!existsSync(join(dir, "web/b")), "a write outside the territory went through under tartaros");
+});
+
+test("a declared sandbox whose check says no falls back to the next, instead of stopping at the canary", { skip: srtSkip() }, () => {
+  const dir = repoWith("sbx-fallback-", "", ["src/", "web/"]);
+  const no = join(dir, "no.sh");
+  writeFileSync(no, '#!/bin/sh\necho "cannot do this one" >&2\nexit 1\n');
+  chmodSync(no, 0o755);
+  writeFileSync(join(dir, "seisin.toml"),
+    `[sandbox]\nprovider = ["mybox", "srt"]\n[sandbox.providers.mybox]\ncommand = ["/bin/sh", "-c", "exit 99", "{policy}"]\n` +
+    `check = ["${no}", "{policy}"]\n[roles.dev]\nwrites = ["src/**"]\n`);
+  const r = run(dir, "run", "dev", "--agent", "none", "--", "sh", "-c", "echo ok > src/a");
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(existsSync(join(dir, "src/a")));
+  const c = run(dir, "check");
+  assert.match(c.stdout, /dev: srt/);
+  assert.match(c.stdout, /mybox: its check .* says it cannot hold this policy: cannot do this one/);
 });
 
 test("runCanary takes the sandbox's own command line", { skip: srtSkip() }, async () => {
