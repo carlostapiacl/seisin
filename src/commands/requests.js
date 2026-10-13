@@ -108,7 +108,7 @@ function entryLines(r, n) {
       lines.push(`        ${C.dim}not asked again in ${r.stale.runs} runs of ${r.role} since — likely no longer needed${C.off}\n`);
     // Where it goes, decided now. A route is the expected case and reads as
     // information; anything that needs a person is said in yellow.
-    const note = describeHandoff(r.handoff, r.attempt);
+    const note = describeHandoff(r.handoff, r.attempt, r.chainStopped);
     if (note) lines.push(`        ${r.handoff?.type === "route" ? C.dim : C.yellow}${safe(note)}${C.off}\n`);
   }
   return lines;

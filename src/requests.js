@@ -138,6 +138,17 @@ export function withHandoffs(config, queue, revision = policyId(config)) {
     r.owners = r.handoff.owners ?? [];
     if (isKeyRequest(config, r)) r.declared = true;
   }
+  // Each request's chain is named by the request it started from. Where a
+  // later request in that chain stopped — a cycle, too deep, a person's call —
+  // the one it started from says so: seisin cannot know whether the role that
+  // took it finished, but it knows the chain did not end in a handoff.
+  const stoppedIn = new Map();
+  for (const q of queue) {
+    const id = q.chain?.id;
+    if (!id || id === q.key || !["cycle", "depth", "human"].includes(q.handoff?.type)) continue;
+    stoppedIn.set(id, [...(stoppedIn.get(id) ?? []), q.key]);
+  }
+  for (const r of queue) if (stoppedIn.has(r.key)) r.chainStopped = stoppedIn.get(r.key);
   return queue;
 }
 
@@ -168,6 +179,7 @@ export function queueData(queue) {
       wants: r.grant, ownedBy: r.owners, asked: r.times, lastAsked: r.last,
       handoff: r.handoff ?? null,
       ...(r.attempt ? { attempt: r.attempt } : {}),
+      ...(r.chainStopped ? { chainStopped: r.chainStopped } : {}),
       ...(r.stale ? { stale: `not asked again in ${r.stale.runs} runs of ${r.role} since` } : {}),
     })),
   };

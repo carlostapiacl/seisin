@@ -223,7 +223,7 @@ export function chainFromEnv(env = process.env) {
  * the agent can give back that would change who takes the work — the queue
  * decides that again, from the policy, whenever it is read.
  */
-export function toAgent(decision, { target, role }) {
+export function toAgent(decision, { target, role, key = null }) {
   const d = decision ?? {};
   const owners = d.owners ?? [];
   const whose = d.reason === "key"
@@ -233,7 +233,21 @@ export function toAgent(decision, { target, role }) {
       : `${target} has no owner.`;
   // A key or a read is not a change to put somewhere else.
   const write = d.reason !== "key" && d.reason !== "read" && d.type !== "resolved";
-  return `${whose} ${nextStep(d, role)}` + (write ? ` ${ELSEWHERE}` : "");
+  return `${whose} ${nextStep(d, role)}` + (write ? ` ${ELSEWHERE}` : "") + stopped(d, target, key);
+}
+
+/**
+ * Where a handoff chain stops, the words to pass on, given literally.
+ *
+ * Measured with real runs: told "not that frontend will make the change", an
+ * agent stopped saying frontend would make it and, in one run of two, told
+ * its user to go and coordinate with frontend instead. A negative instruction
+ * leaves the agent to compose the sentence; this one hands it over.
+ */
+function stopped(d, target, key) {
+  if (d.type !== "cycle" && d.type !== "depth") return "";
+  const waiting = key ? `the request ${key} is waiting in seisin requests` : "the request is waiting in seisin requests";
+  return ` Tell whoever sent you, in these words: "${target} was not written. A person has to decide who does it; ${waiting}."`;
 }
 
 /**
@@ -280,7 +294,7 @@ export function nextStep(decision, role) {
     case "cycle":
       return `It is not handed back to ${d.role}: this work already came through ${d.role} ` +
         `(handoff chain ${(d.visited ?? []).join(" → ")}), so nothing is asked of ${d.role}. ` +
-        `A person decides how to split it. Tell whoever sent you that, not that ${d.role} will make the change. Do not work around it.`;
+        "A person decides how to split it. Do not work around it.";
     case "depth":
       return `The handoff chain stops here, ${d.depth} of ${d.max} deep. A person decides. Do not work around it.`;
     case "resolved":
@@ -301,7 +315,16 @@ export function nextStep(decision, role) {
  * admission, which only whatever starts it knows. Every other outcome is the
  * policy's, recomputed now, and a recorded attempt cannot overrule it.
  */
-export function describeHandoff(decision, attempt = null) {
+export function describeHandoff(decision, attempt = null, chainStopped = null) {
+  const said = describeDecision(decision, attempt);
+  // A run took it and its chain then stopped further on: the request is still
+  // pending, and without this it read as handed and done.
+  return said && chainStopped?.length
+    ? `${said}; its handoff chain stopped at ${chainStopped.join(", ")}, which needs a person`
+    : said;
+}
+
+function describeDecision(decision, attempt) {
   const d = decision;
   if (!d) return "";
   if (d.type === "route" && attempt && attempt.role === d.role) {

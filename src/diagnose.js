@@ -34,6 +34,7 @@ import { explain } from "./owners.js";
 import { timesHit, walls } from "./walls.js";
 import { collapseSidecars } from "./render.js";
 import { decideHandoff, toAgent, ELSEWHERE } from "./handoff.js";
+import { keyOf } from "./requests.js";
 
 /** What a refused write or read looks like in a tool's output. A trigger to look, not a verdict. */
 export const DENIAL_SIGNS = /Operation not permitted|EPERM|EACCES|Permission denied|Read-only file system/i;
@@ -97,7 +98,8 @@ function sentence(config, role, file, e, chain = null) {
   // file, a connection, a read the mode shuts — keeps the policy's own reason.
   const handed = (action === "write" || e.kind === "key") && !v.gitMetadata && !v.protected && !v.privateTo;
   if (handed)
-    return toAgent(decideHandoff({ request: { role, action, target: e.target }, config, chain }), { target: e.target, role }) + again;
+    return toAgent(decideHandoff({ request: { role, action, target: e.target }, config, chain }),
+      { target: e.target, role, key: keyOf({ role, action, target: e.target }) }) + again;
   return `${e.target}: ${v.reason}.${again}`;
 }
 

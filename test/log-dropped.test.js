@@ -112,3 +112,10 @@ test("check --system-log fails the check when it measured a loss, so a CI step c
   assert.equal(checkStatus(report({ available: true, dropped: 57 })), 1);
   assert.equal(checkStatus(report({ available: false, reason: "no system log stream on linux" })), 0, "not measurable is not a loss");
 });
+
+test("check's help says --system-log fails when it measures a loss", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const { CLI } = await import("./_tmp.js");
+  const out = spawnSync(process.execPath, [CLI, "check", "--help"], { encoding: "utf8" });
+  assert.match(out.stdout + out.stderr, /--system-log.*exits 1 when it is/);
+});
