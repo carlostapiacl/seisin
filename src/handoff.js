@@ -249,9 +249,11 @@ function stopped(d, target, key) {
   const waiting = key ? `the request ${key} is waiting in seisin requests` : "the request is waiting in seisin requests";
   // Measured again with the literal words: passed on in three runs of three,
   // and then contradicted in two, by an agent adding who should do it or where
-  // else it could go. So the sentence ends on that, too.
-  return ` Tell whoever sent you, in these words: "${target} was not written. A person has to decide who does it; ${waiting}." ` +
-    "Say only that sentence about this file: do not add who should do it or where else it could go.";
+  // else it could go. So the sentence ends on that, too. Measured a third time:
+  // no run added either, but one added whose file it was, and one dropped the
+  // path from the front ("Not written. …"). So both are said as well.
+  return ` Tell whoever sent you, word for word and starting with the path: "${target} was not written. A person has to decide who does it; ${waiting}." ` +
+    "Say only that sentence about this file: do not add whose file it is, who should do it or where else it could go.";
 }
 
 /**

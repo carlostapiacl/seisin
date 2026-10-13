@@ -79,7 +79,7 @@ test("in a handoff chain, reaching back is a cycle and a long chain stops", () =
   const back = said(decide(config, "backend", write(dir, "src/web/app.ts"), { ...quiet, chain: CHAIN }));
   assert.match(back, /belongs to frontend\. It is not backend's to change\. It is not handed back to frontend: this work already came through frontend \(handoff chain frontend → backend\), so nothing is asked of frontend\. A person decides how to split it\./);
   // The words to pass on, literally: told what not to say, an agent in one run of two sent its user to frontend.
-  assert.match(back, /Tell whoever sent you, in these words: "src\/web\/app\.ts was not written\. A person has to decide who does it; the request backend:write:src\/web is waiting in seisin requests\." Say only that sentence about this file: do not add who should do it or where else it could go\./);
+  assert.match(back, /Tell whoever sent you, word for word and starting with the path: "src\/web\/app\.ts was not written\. A person has to decide who does it; the request backend:write:src\/web is waiting in seisin requests\." Say only that sentence about this file: do not add whose file it is, who should do it or where else it could go\./);
   const deep = said(decide(config, "backend", write(dir, "test/a.ts"), { ...quiet, chain: { id: "c", depth: 4, visited: ["a", "b", "c", "backend"] } }));
   assert.match(deep, /The handoff chain stops here, 5 of 4 deep\. A person decides/);
   // The same request outside any chain is an ordinary route.
@@ -118,7 +118,7 @@ test("a refused write says that putting it elsewhere is working around it; a ref
 
 test("a route gets no words to pass on: the role it goes to is the answer", () => {
   const { dir, config } = repo();
-  assert.doesNotMatch(said(decide(config, "frontend", write(dir, "src/api/x.ts"), quiet)), /in these words/);
+  assert.doesNotMatch(said(decide(config, "frontend", write(dir, "src/api/x.ts"), quiet)), /word for word/);
 });
 
 test("the request a chain started from says where the chain stopped", () => {

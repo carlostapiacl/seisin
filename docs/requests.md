@@ -203,8 +203,8 @@ of the rows below:
 | no owner | `docs/x.md has no owner. A person decides who takes it. Do not work around it.` |
 | owner takes no work | `.canary belongs to prepare. It is not web's to change. prepare does not take handed work, so a person decides who takes it. Do not work around it.` |
 | a key | `.secrets/db.txt is declared for backend, not frontend. Ask for what you need from it rather than reading the key.` |
-| cycle | `src/web/app.ts belongs to frontend. … It is not handed back to frontend: this work already came through frontend (handoff chain frontend → backend), so nothing is asked of frontend. A person decides how to split it. … Tell whoever sent you, in these words: "src/web/app.ts was not written. A person has to decide who does it; the request backend:write:src/web is waiting in seisin requests."` |
-| depth | `… The handoff chain stops here, 5 of 4 deep. A person decides. … Tell whoever sent you, in these words: "…"` |
+| cycle | `src/web/app.ts belongs to frontend. … It is not handed back to frontend: this work already came through frontend (handoff chain frontend → backend), so nothing is asked of frontend. A person decides how to split it. … Tell whoever sent you, word for word and starting with the path: "src/web/app.ts was not written. A person has to decide who does it; the request backend:write:src/web is waiting in seisin requests."` |
+| depth | `… The handoff chain stops here, 5 of 4 deep. A person decides. … Tell whoever sent you, word for word and starting with the path: "…"` |
 
 The hook's denial, the only one of the three that files a request, then says so, and for whom. A
 route ends *"Already queued as a handoff to backend: a run of backend, or a person, picks it up —
