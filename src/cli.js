@@ -41,7 +41,7 @@ ${C.b}seisin${C.off} — give each agent its own folders and its own keys
 
   seisin run <role> -- <command...>     run a command as that role
   seisin run <role> --observe -- <cmd>  open the repo and watch — the network stays shut
-  seisin check [role] [--verbose] [--verify] [--parallel]  --parallel is experimental; verify roles concurrently
+  seisin check [role] [--verbose] [--verify] [--parallel] [--system-log]  --parallel is experimental; --system-log measures log loss (macOS)
   seisin explain <role> read|write|mcp <path, key or server>
   seisin whose <path>                   who owns it — safe to call from inside the sandbox
   seisin scan [--all]                   find secrets outside the declared key dirs

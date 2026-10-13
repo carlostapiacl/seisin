@@ -444,6 +444,27 @@ lands inside the repo or inside a path the role's own settings named; everything
 else is counted and the count is printed when the run ends. Filtering that
 nobody can see is indistinguishable from an instrument that is not working.
 
+### A flooded log is a loss the run has to say
+
+The stream can lose a denial without anything else noticing. When something floods the unified
+log, `log stream` drops messages before the predicate filters them, and prints one line in their
+place: *"=== Messages dropped during live streaming"*, no count, no names. Measured on a real
+machine: a network filter's kernel extension at about 6,700 lines a second, and every denied
+write of a run missing from the log and the queue while the shell got its EPERM. Reproduced with
+eight processes writing to syslog: three runs, three denials each, none recorded.
+
+So the run counts those lines and says so when it ends, and logs a `log-dropped` event. It does
+not know *which* denials were lost, so it says *may be missing* and stops there.
+`seisin check --system-log` measures the same loss on demand and names the busiest writers —
+a kernel message by the function that wrote it (`cfil_inp_log`), because "kernel" names nothing.
+
+Two things learned measuring it. Writing to a pipe, `log` buffers the markers 8 KB at a time (a
+denial's line it writes at once): they arrived together twelve seconds into the flood, and
+SIGTERM threw them away — 18 markers against 0 in the same flood. The stream is stopped with
+SIGINT, which flushes them. And rejected: recovering the lost denials afterwards from
+`log show`. The system's stored copy of a denial lacks the `_SBX` tag that attributes it to a run,
+and for the flooded window it held no sandbox line at all.
+
 ### Linux gets a sentence, not a shim
 
 There is no equivalent stream to read. bubblewrap does not log denials; the

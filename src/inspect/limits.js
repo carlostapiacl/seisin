@@ -12,6 +12,17 @@
  * `inspect()` still returns them, so the MCP hands them out with the map.
  */
 export const LIMITS = [
+  ...(process.platform !== "darwin" ? [] : [{
+    kind: "kernel-denials-can-drop",
+    headline: "a flooded system log loses kernel denials before seisin reads them",
+    detail:
+      "the kernel's denials reach `seisin run` through `log stream`, and when something floods " +
+      "the unified log (thousands of lines a second) the stream drops messages before it filters " +
+      "them. The boundary holds; the denial files no request and is not in `seisin log`. A run that " +
+      "lost messages says so when it ends and logs `log-dropped`; `seisin check --system-log` " +
+      "measures it now and names who writes the most. The system's own copy (`log show`) does not " +
+      "help: it lacks the tag that ties a denial to its run.",
+  }]),
   ...(process.platform === "darwin" ? [] : [{
     kind: "kernel-denials-unreadable",
     headline: "denials by the kernel are not recorded on this platform",

@@ -97,6 +97,14 @@ in every mode and gives each run a temp directory of its own — the role's when
   other takes handed work, and otherwise to a person, with the reason `no-receiver` — *a person
   decides: prepare owns this and takes no handed work*. `seisin run <role> --handoff <id>` for
   such a role is refused.
+- **A run says when the system log lost messages, and `check --system-log` measures it
+  (macOS).** A flooded unified log (measured: a network filter's kernel extension at ~6,700
+  lines a second) dropped kernel denials before `seisin run` read them, so a denied write filed
+  no request and left nothing in `seisin log`. The run now counts the stream's *messages
+  dropped* markers, ends with *"the system log dropped N batch(es) of messages during this run:
+  kernel denials may be missing"*, and logs `{"event":"log-dropped","batches":N}`. `seisin check
+  --system-log` measures for 3 s and names the busiest writers. The stream is now stopped with
+  SIGINT: under SIGTERM `log` discarded the markers it still held. Listed in `seisin help limits`.
 - **A denied agent is told where the queued work goes, and that another path is no way
   round it.** The hook's denial ends *"Already queued as a handoff to backend: a run of backend,
   or a person, picks it up"* when the work routes to a role, and *"queued for a person"* only

@@ -3,6 +3,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { inspect } from "../inspect.js";
 import { renderReport, out, C } from "../render.js";
+import { measureSystemLog } from "../violations.js";
 
 export async function check(config, argv = []) {
   if (argv.includes("--parallel") && !argv.includes("--verify"))
@@ -11,8 +12,33 @@ export async function check(config, argv = []) {
   const report = inspect(config, role, config.path);
   out(renderReport(report, { verbose: argv.includes("--verbose") }));
   if (argv.includes("--verify")) report.verify = await verify(config, role, argv.includes("--parallel"));
+  if (argv.includes("--system-log")) report.systemLog = await systemLog();
   return report;
 }
+
+/**
+ * `--system-log`: is the log a run reads denials from dropping messages now?
+ *
+ * A flooded unified log loses lines before they are filtered, and a kernel
+ * denial lost there files nothing: the run says so afterwards, and this says
+ * it before, with who is writing the most — the only lead to a fix. A flag,
+ * because it takes seconds and `check` otherwise answers at once.
+ */
+async function systemLog() {
+  const m = await measureSystemLog({ seconds: SYSTEM_LOG_SECONDS });
+  if (!m.available) {
+    out(`\n${C.dim}system log: not measured — ${m.reason}${C.off}\n`);
+    return m;
+  }
+  const top = m.top.map((t) => `${t.who} ${t.perSecond}/s`).join(", ");
+  out(m.dropped
+    ? `\n${C.yellow}⚠ system log: ${m.dropped} batch(es) of messages dropped in ${m.seconds} s — kernel denials can go unrecorded now.${C.off}\n` +
+      `  ${m.perSecond} messages/s; most from ${top}. Stop or quiet the busiest writer, then measure again.\n`
+    : `\n${C.green}✓${C.off} system log: nothing dropped in ${m.seconds} s (${m.perSecond} messages/s; most from ${top})\n`);
+  return m;
+}
+
+const SYSTEM_LOG_SECONDS = 3;
 
 /**
  * `--verify`: each role's `verify` command, run inside that role's sandbox.
