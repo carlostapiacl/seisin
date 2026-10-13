@@ -39,6 +39,15 @@ moved, is in [docs/decisions.md](docs/decisions.md#the-060-renames-one-name-and-
 - **`docs/permission-requests.md` is now [`docs/requests.md`](docs/requests.md)**, away from Claude
   Code's `PermissionRequest`. *What to do:* update links.
 
+**New: the sandbox is a choice, `[sandbox] provider`.** `srt` (sandbox-runtime) stays the
+default and nothing changes without the table. `tartaros` is built in, and any other sandbox can
+be declared as a command that takes the run's settings file (`[sandbox.providers.<name>] command =
+["…", "{policy}", "--"]`). A list is an order of preference: each role gets the first sandbox that
+is installed and enforces every part of its settings, and one that would enforce less is passed
+over with the reason. `seisin check` shows the choice per role and exits 1 when a role has none;
+a single name means that sandbox or no run. The canary runs under the chosen sandbox, so one that
+ignores the policy starts nothing. See [docs/sandboxes.md](docs/sandboxes.md).
+
 **Security: a territory can no longer reopen a project's `.claude`.** Settings, hooks, skills
 and commands there are read or executed by Claude Code outside the sandbox, so their protection
 wins over `writes = [".claude"]`, `[".claude/**"]`, nested hook grants and `["**"]`.

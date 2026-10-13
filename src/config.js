@@ -654,6 +654,7 @@ export function loadConfig(path, text = readFileSync(path, "utf8")) {
     };
   }
   checkPrivateOverlap(out.roles, path);
+  out.sandbox = readSandbox(own(parsed, "sandbox"), path);
   out.notify = readNotify(own(parsed, "notify"), { path, root: out.root, keyDirs, roles: out.roles, own });
   return out;
 }
@@ -699,6 +700,56 @@ function readProviders(table, path) {
     out[name] = { name, command, mode: mode ?? null };
   }
   return out;
+}
+
+/** The sandboxes seisin ships (sandboxes/index.js). Named here too, so config.js imports no runtime code. */
+const BUILTIN_SANDBOXES = ["srt", "tartaros"];
+
+/**
+ * `[sandbox]`: which sandbox enforces the roles, and any declared by command.
+ *
+ * `provider` is one name or a list in order of preference; absent, it is
+ * `srt`, as it always was. A name is one seisin ships or one declared under
+ * `[sandbox.providers.<name>]` — an unknown one is refused here, never read as
+ * the default, because "the config asks for tartaros and the run used srt"
+ * without a word is the silent substitution sandboxes/index.js exists to stop.
+ */
+function readSandbox(table, path) {
+  if (table === undefined) return null;
+  const providers = Object.create(null);
+  const declared = own(table, "providers");
+  for (const name of declared === undefined ? [] : Object.keys(declared)) {
+    if (BUILTIN_SANDBOXES.includes(name))
+      throw new Error(`${path}: [sandbox.providers.${name}] — "${name}" is built in and cannot be redefined. ` +
+        `Give your provider another name.`);
+    const command = own(own(declared, name), "command");
+    if (!Array.isArray(command) || command.length === 0 || command.some((c) => typeof c !== "string" || c === ""))
+      throw new Error(`${path}: [sandbox.providers.${name}] needs a command, as an array of strings:\n` +
+        `  command = ["mybox", "run", "--policy", "{policy}", "--"]`);
+    if (!command.slice(1).some((c) => c.includes("{policy}")))
+      throw new Error(`${path}: [sandbox.providers.${name}] has no {policy} in its command, so the sandbox would never ` +
+        `see the policy it is meant to enforce.\n  Put {policy} where the settings file goes: ` +
+        `command = [${[...command, "{policy}"].map((c) => `"${c}"`).join(", ")}]`);
+    providers[name] = { name, command };
+  }
+  const raw = own(table, "provider");
+  if (raw === undefined)
+    return { provider: null, providers };
+  const names = typeof raw === "string" ? [raw] : raw;
+  if (!Array.isArray(names) || names.length === 0 || names.some((n) => typeof n !== "string"))
+    throw new Error(`${path}: sandbox.provider = ${JSON.stringify(raw)} — a name, or a list of names in order of preference: ` +
+      `provider = ["tartaros", "srt"]`);
+  for (const n of names) {
+    if (BUILTIN_SANDBOXES.includes(n) || providers[n]) continue;
+    const known = [...BUILTIN_SANDBOXES, ...Object.keys(providers)];
+    const near = closest(n, known);
+    throw new Error(`${path}: sandbox.provider names "${n}", which is not a sandbox seisin knows` +
+      `${near ? ` — did you mean "${near}"?` : "."}\n  Built in: ${BUILTIN_SANDBOXES.join(", ")}. ` +
+      `Any other is declared with a command: [sandbox.providers.${n}] command = ["…", "{policy}"].`);
+  }
+  if (new Set(names).size !== names.length)
+    throw new Error(`${path}: sandbox.provider lists a sandbox twice (${JSON.stringify(names)}).`);
+  return { provider: names, providers };
 }
 
 /**
@@ -762,6 +813,7 @@ const SHAPE = {
   scan: { ignore: true },
   protect: { instructions: true },
   notify: { url: true, url_file: true, format: true },
+  sandbox: { provider: true, providers: { "*": { command: true } } },
 };
 
 function checkShape(table, shape, prefix, path, lines) {

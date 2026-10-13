@@ -4,6 +4,11 @@ import { fileURLToPath } from "node:url";
 import { inspect } from "../inspect.js";
 import { renderReport, out, C } from "../render.js";
 import { measureSystemLog } from "../violations.js";
+import { join } from "node:path";
+import { settingsFor } from "../srt.js";
+import { weigh } from "../sandboxes/index.js";
+import { runsRoot } from "../rundir.js";
+import { channelName } from "../spool.js";
 
 export async function check(config, argv = []) {
   if (argv.includes("--parallel") && !argv.includes("--verify"))
@@ -11,6 +16,7 @@ export async function check(config, argv = []) {
   const role = argv.find((a) => !a.startsWith("-")) ?? null;
   const report = inspect(config, role, config.path);
   out(renderReport(report, { verbose: argv.includes("--verbose") }));
+  if (config.sandbox?.provider) report.sandboxes = sandboxes(config, role);
   if (argv.includes("--verify")) report.verify = await verify(config, role, argv.includes("--parallel"));
   if (argv.includes("--system-log")) report.systemLog = await systemLog();
   return report;
@@ -41,6 +47,36 @@ async function systemLog() {
 const SYSTEM_LOG_SECONDS = 3;
 
 /**
+ * `[sandbox] provider`: which sandbox each role would get, and why the others not.
+ *
+ * Said before anything starts, because the alternative is finding out at
+ * `seisin run` that a role cannot be held by the sandbox the config asked for.
+ * The settings are the ones a run would build, down to a channel in the runs
+ * root, so a sandbox that cannot re-open this run's directory is caught here
+ * too. Printed only when `[sandbox] provider` is set: without it every role
+ * runs under srt, as it always has, and there is nothing to choose.
+ */
+export function sandboxes(config, only = null, { platform = process.platform } = {}) {
+  const sock = join(runsRoot(), "check", channelName(platform));
+  const rows = [];
+  out(`\n${C.b}sandboxes${C.off} (${config.sandbox.provider.join(" → ")})\n`);
+  for (const r of Object.values(config.roles)) {
+    if (only && r.name !== only) continue;
+    let settings;
+    try { settings = settingsFor(config, r.name, sock); } catch (e) { rows.push({ role: r.name, chosen: null, error: e.message }); continue; }
+    const { chosen, options } = weigh(config, settings, { platform, role: r.name });
+    rows.push({ role: r.name, chosen: chosen?.sandbox.name ?? null, options: options.map((o) => ({ name: o.sandbox.name, missing: o.missing, unmet: o.unmet })) });
+    out(chosen ? `  ${C.green}✓${C.off} ${r.name}: ${chosen.sandbox.name}\n` : `  ${C.red}✗${C.off} ${r.name}: no sandbox can hold it\n`);
+    for (const o of options) {
+      if (o === chosen) break;
+      if (o.missing) out(`      ${o.sandbox.name}: ${o.missing}\n`);
+      else for (const u of o.unmet) out(`      ${o.sandbox.name}: ${u}\n`);
+    }
+  }
+  return rows;
+}
+
+/**
  * The exit status: 1 when a role cannot be enforced as written, or when what a
  * flag asked for failed. `--system-log` is asked for like `--verify` and fails
  * the same way — a log dropping messages now is a run that would lose denials
@@ -48,6 +84,7 @@ const SYSTEM_LOG_SECONDS = 3;
  */
 export function checkStatus(report) {
   return report.warnings.some((w) => w.kind === "cannot-be-enforced") || report.verify?.some((v) => !v.ok) ||
+    report.sandboxes?.some((s) => !s.chosen) ||
     report.systemLog?.dropped > 0 ? 1 : 0;
 }
 

@@ -757,6 +757,10 @@ page says *offline* and turns every write off until it answers again.
                                     explanation — never the boundary
 ```
 
+`sandbox-runtime` is the default enforcer, not the only one. `[sandbox] provider` picks another —
+`tartaros`, or any sandbox declared as a command — per role, and only where it enforces the whole
+policy: see [docs/sandboxes.md](docs/sandboxes.md).
+
 That split is deliberate, and it is why seisin is small. Because the kernel is the boundary, seisin never has to be airtight — it only has to be *legible*. A leaky explainer costs you a confusing log line. A leaky enforcer costs you the repo.
 
 Verified by the test suite, which runs real commands in a real sandbox:

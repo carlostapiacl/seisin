@@ -12,7 +12,6 @@ import { finished } from "node:stream/promises";
 import { constants as osConstants } from "node:os";
 import { mkdirSync, writeFileSync, existsSync, readFileSync, statSync } from "node:fs";
 import { join, dirname, delimiter, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { settingsFor, roleHome, loopbackVia, agentOf, AGENTS, AGENT_HOMES } from "../srt.js";
 import { buildEnv } from "../env.js";
 import { resolveKeys } from "../keys.js";
@@ -35,8 +34,8 @@ import { runCanary, CANARY_EXIT } from "../canary.js";
 import { append, logPath } from "../log.js";
 import { flagsOf } from "../help.js";
 import { WILD } from "../paths.js";
+import { chooseSandbox, DEFAULT_SANDBOX } from "../sandboxes/index.js";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
 
 /**
  * The ceiling on waiting for the kernel's last word when a run ends.
@@ -48,72 +47,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  */
 const DRAIN_MS = 250;
 
-/**
- * The runtime seisin depends on first, one on PATH second, and nothing third.
- *
- * "The one seisin depends on" is found the way Node finds a dependency — up
- * from this file, through every `node_modules` — not at one spelled-out path.
- * `<seisin>/node_modules/.bin/srt` is only where it lands in a checkout. In a
- * project that installs seisin as a dependency, npm hoists the runtime to the
- * project's own `node_modules`, and that path does not exist. Measured with
- * 0.5.0 packed and installed into a project: `npx seisin` still worked, because
- * npx puts the project's `.bin` on PATH; `./node_modules/.bin/seisin` and
- * `node node_modules/seisin/src/cli.js` did not — they said "not found", or,
- * with a global srt 0.0.75 installed, ran under THAT one instead of the 0.0.78
- * this version pins, with none of its fixes.
- *
- * There is deliberately no fallback to running unsandboxed. A permission tool
- * that quietly becomes a no-op when its enforcer is missing is worse than one
- * that refuses, because you keep trusting it.
- */
-export function resolveSrt({ from = HERE, path = process.env.PATH } = {}) {
-  const local = dependencySrt(from);
-  if (local) return local;
-
-  // Walk PATH rather than asking a shell. `spawnSync(..., { shell: true })`
-  // prints a deprecation warning on every single run — Node's DEP0190 — which
-  // is a line of noise in front of every user for the sake of finding one file.
-  // It is also the concatenation hazard the warning is about.
-  for (const dir of (path ?? "").split(delimiter)) {
-    if (!dir) continue;
-    const candidate = join(dir, "srt");
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
-const RUNTIME = "@anthropic-ai/sandbox-runtime";
-
-/**
- * The `srt` of the sandbox-runtime that resolves from `from`, or null.
- *
- * The `.bin/srt` npm linked beside the package when there is one — that is the
- * file npm made executable — and otherwise the package's own `bin` entry.
- * The package's `package.json` is found by walking up rather than through
- * `require.resolve`, which a package's `exports` map is free to refuse.
- */
-export function dependencySrt(from = HERE) {
-  let dir = from;
-  for (;;) {
-    const nm = join(dir, "node_modules");
-    const pkg = join(nm, RUNTIME, "package.json");
-    if (existsSync(pkg)) {
-      const linked = join(nm, ".bin", "srt");
-      if (existsSync(linked)) return linked;
-      try {
-        const bin = JSON.parse(readFileSync(pkg, "utf8")).bin;
-        const rel = typeof bin === "string" ? bin : bin?.srt;
-        if (rel) {
-          const target = join(nm, RUNTIME, rel);
-          if (existsSync(target)) return target;
-        }
-      } catch { /* an unreadable package.json is not a runtime */ }
-    }
-    const up = dirname(dir);
-    if (up === dir) return null;
-    dir = up;
-  }
-}
+// Moved with the rest of what is particular to sandbox-runtime (sandboxes/srt.js);
+// exported from here still, where callers and the tests have always found them.
+export { resolveSrt, dependencySrt, installHint } from "../sandboxes/srt.js";
 
 /**
  * Which agent this run is: `--agent <name>` when given, else read off the
@@ -277,8 +213,16 @@ export async function run(config, argv) {
       `path is capped near ${SOCKET_MAX}.\n  Run seisin with a shorter TMPDIR (TMPDIR=/tmp/<short> seisin run …).`);
   audit = await spool(take.fromHook, sockPath);
 
-  const srt = resolveSrt();
-  if (!srt) throw new Error(`sandbox runtime not found. ${installHint()}`);
+  /**
+   * The sandbox this role runs under: the first one `[sandbox] provider` names
+   * that is installed and enforces every part of these settings
+   * (sandboxes/index.js). None is an error that names what each one lacked —
+   * never a run under one that enforces less.
+   */
+  const box = chooseSandbox(config, settings, { role });
+  if (box.error) throw box.error;
+  const { sandbox, bin } = box;
+  const wrap = (inner) => sandbox.wrap(bin, file, settings, inner, { role });
 
   // The hook runs inside the child and has to know which role it is. These are
   // the only variables seisin injects, and none carries a secret.
@@ -501,7 +445,7 @@ export async function run(config, argv) {
    */
   const agentTmp = env.TMPDIR;
   const restoreTmp = [];
-  if (process.platform === "linux" && config.read === "territory") {
+  if (sandbox.name === "srt" && process.platform === "linux" && config.read === "territory") {
     const srtTmp = join(theRun.dir, "srt");
     mkdirSync(srtTmp, { recursive: true, mode: 0o700 });
     env.TMPDIR = srtTmp;
@@ -515,13 +459,14 @@ export async function run(config, argv) {
    * the log; there is no flag to skip it.
    */
   const probe = await runCanary({
-    srt, settingsFile: file, settings, env, cwd: process.cwd(),
+    wrap, settingsFile: file, settings, env, cwd: process.cwd(),
     runDir: theRun.dir, runsRoot: theRun.root, role: config.roles[role],
     granted: writePathsOf(config, config.roles[role], { observe, agent }),
   });
   if (!probe.ok) {
     append(logPath(config.root), {
       event: "canary", role, run: theRun.id.slice(0, 8), agent: agent ?? null, confined: false, reasons: probe.failed,
+      ...(sandbox.name === DEFAULT_SANDBOX ? {} : { sandbox: sandbox.name }),
     });
     err(`${C.red}seisin: ${role} was NOT started — the sandbox failed its canary:${C.off}\n` +
       probe.failed.map((f) => `  - ${f}\n`).join("") +
@@ -532,7 +477,11 @@ export async function run(config, argv) {
   }
   append(logPath(config.root), {
     event: "canary", role, run: theRun.id.slice(0, 8), agent: agent ?? null, confined: true, reasons: [],
+    ...(sandbox.name === DEFAULT_SANDBOX ? {} : { sandbox: sandbox.name }),
   });
+  // Said once, only when it is not the default: which sandbox holds this run
+  // is a fact a reader of the terminal would otherwise have to guess.
+  if (sandbox.name !== DEFAULT_SANDBOX) err(`${C.dim}seisin: ${role} runs under ${sandbox.name}${C.off}\n`);
   // Recorded once the receiver is confined and about to start, not before: a
   // run that failed its canary did not take the work.
   if (handed) {
@@ -542,7 +491,9 @@ export async function run(config, argv) {
   }
 
   const boxed = ["env", ...restoreTmp, `SEISIN_RUN_ID=${theRun.id}`, ...loopbackVia(config.roles[role], cmd)];
-  denials = watchDenials(take.fromKernel, { argv: boxed });
+  // The tag is sandbox-runtime's: under any other sandbox there is none to
+  // match, and attribution goes by the process tree alone (violations.js).
+  denials = watchDenials(take.fromKernel, { argv: sandbox.tagsDenials ? boxed : null });
 
   // Deliberately NOT announced here. On Linux this branch is taken every time,
   // so saying it per run puts a line the reader cannot act on in front of every
@@ -561,7 +512,8 @@ export async function run(config, argv) {
   const nested = nestedSandboxWarning(cmd);
   if (nested) err(`${C.yellow}seisin: ${nested}${C.off}\n`);
 
-  const child = spawn(srt, ["--settings", file, "--", ...boxed], {
+  const [runner, ...runnerArgs] = wrap(boxed);
+  const child = spawn(runner, runnerArgs, {
     stdio: outStream ? ["inherit", "pipe", "pipe"] : "inherit",
     env,
   });
@@ -789,21 +741,4 @@ function onPath(name, path) {
   if (!name) return false;
   if (name.includes("/")) return existsSync(name);
   return (path ?? "").split(delimiter).some((d) => d && existsSync(join(d, name)));
-}
-
-/**
- * How to put the runtime back, for the way this seisin was installed.
- *
- * It is a dependency, so it is missing only from a broken install — and the
- * fix differs: a project's own node_modules, a global install, or a checkout.
- * `npm i -g` was suggested to everyone, which for a project-local seisin
- * installs a second runtime somewhere seisin does not look first.
- */
-export function installHint(from = HERE) {
-  const at = from.split("/node_modules/seisin/")[0];
-  if (at === from) return `Install it in this checkout with: npm install (in ${dirname(dirname(from))})`;
-  // npm's global layout is <prefix>/lib/node_modules on unix, …/npm/node_modules on Windows.
-  if (/\/lib$/.test(at) || /[\\/]npm$/.test(at))
-    return "seisin is installed globally; reinstall it with: npm install -g seisin";
-  return `seisin is installed in ${at}; reinstall it there with: npm install seisin`;
 }
