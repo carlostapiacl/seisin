@@ -797,8 +797,10 @@ the others are passed over with the reason, `seisin check` shows the choice per 
 single name means that sandbox or no run. The contract for a declared one is the settings file
 itself, in sandbox-runtime's schema, so `srt` meets it unchanged — the suite runs it that way —
 and the canary runs under whichever sandbox was chosen, so a sandbox that ignores the file
-starts nothing. tartaros is passed over for every generated role today: it cannot deny a path
-inside a writable one, nor re-open this run's directory inside the runs root.
+starts nothing. The same day, tartaros learned to read the settings file itself
+(`--settings`), so seisin stopped translating to its flags and asks it instead (`tartaros
+explain --settings`); a declared sandbox can be asked the same way with `check`. A list of
+capabilities kept on seisin's side would be out of date the day the sandbox learns something.
 
 What follows is the rule as it was first written down, for `nono`. The
 backend is a capability choice, not a preference toggle. A role may use `nono` only when that

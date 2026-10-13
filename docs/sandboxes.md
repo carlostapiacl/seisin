@@ -5,7 +5,7 @@ seisin decides what each role may do; a sandbox enforces it. Three can do that:
 | sandbox | what it is | how seisin talks to it |
 |---|---|---|
 | `srt` (built in, the default) | `@anthropic-ai/sandbox-runtime`: Seatbelt on macOS, bubblewrap on Linux | the settings file, as is |
-| `tartaros` (built in) | Seatbelt on macOS; Landlock, seccomp and cgroups on Linux | the settings translated to its flags |
+| `tartaros` (built in) | Seatbelt on macOS; Landlock, seccomp and cgroups on Linux | the settings file, as is (`--settings`) |
 | any name you declare | a command of yours | the settings file, through the contract below |
 
 Without a `[sandbox]` table every role runs under `srt`, as it always has.
@@ -20,13 +20,15 @@ provider = ["tartaros", "srt"]
 `provider` is one name, or several in order of preference. Each role gets the
 **first one that is installed and enforces every part of that role's
 settings**. A sandbox that would enforce less is passed over, and the reason is
-recorded. A single name means exactly that sandbox: a role it cannot hold does
+recorded. Whether a sandbox can hold a role is the sandbox's own answer when it
+gives one (tartaros does, and a declared one can with `check`); seisin does
+not keep a list of its own of what each sandbox can do. A single name means exactly that sandbox: a role it cannot hold does
 not start, and the error names what was missing:
 
 ```
 seisin: no sandbox in [sandbox] provider can hold role backend as its policy is written, so it was not started:
   - tartaros cannot enforce all of it:
-      a write denied inside a writable path (/repo/.git in /repo): tartaros cannot deny a path inside one it lets the role write
+      tartaros says it cannot hold this policy: --settings: cannot guarantee a specific AF_UNIX socket …
 ```
 
 `seisin check` says which sandbox each role would get, and why the others were
@@ -40,28 +42,31 @@ Whichever sandbox is chosen, every run starts with the canary ([src/canary.js](.
 under that sandbox and the same settings. If the boundary does not hold, no
 agent starts (exit 86).
 
-## tartaros: what translates and what does not
+## tartaros
 
-| the settings ask for | under tartaros |
-|---|---|
-| writes inside the role's paths | `--write <path>`, per path that exists |
-| reads denied by path | `--read-deny <path>` |
-| loopback ports (`local_ports`) | `--port <n>` |
-| no network | the default |
-| no unix sockets (Linux) | `--deny-unix` |
-| a write denied **inside** a writable path (`.git`, `.claude`, `never_writes`, the agent's own files) | not expressible: passed over |
-| a read re-opened **inside** a denied path (this run's directory inside the runs root, a key inside its directory) | not expressible: passed over |
-| a path pattern (`**/.git/hooks/**`) | not expressible: passed over |
-| network by domain (`network = ["github.com"]`) | not expressible: passed over |
-| listening (`local_binding`) | not expressible: passed over |
-| one unix socket, the audit channel (macOS) | not expressible: passed over |
+seisin runs it as
 
-Today, every role seisin generates needs at least the first two "not
-expressible" rows: each run's directory is re-opened inside the runs root it
-denies. So tartaros is passed over for every role until it can say both. That
-is the rule working: running a role under a sandbox that would let it read
-other runs' policies and keys would be enforcing less than the policy says.
-`seisin check` lists exactly what is missing, role by role.
+```
+tartaros run --role <role> --settings <settings file> -- <the command>
+```
+
+and, before that, asks it about the same file:
+
+```
+tartaros explain --settings <settings file>
+```
+
+which reads the file through the same code as `run` and exits 2, with the
+reason, on a field it cannot guarantee. That reason is what `seisin check`
+and a refused run print. tartaros needs to be on PATH (`cargo build --release
+-p tartaros-cli`, then its `target/release`).
+
+What decides whether it can hold a role is tartaros, not this page: as it
+learns a field, roles that needed it start being given to it, with nothing to
+change in seisin. One field every run on macOS asks for today is a single unix
+socket, the hook's audit channel (`allowUnixSockets`); the canary also checks
+that the run's own settings file is not readable from inside, which a sandbox
+re-opening this run's directory has to keep denied.
 
 ## The contract for a sandbox of your own
 
@@ -81,6 +86,22 @@ mybox run --policy <settings file> -- <the command>
 
 `{policy}` may appear inside an argument (`--policy={policy}`). The command must
 contain it: a sandbox that never sees the policy cannot be enforcing it.
+
+Optionally, a command that answers before anything runs whether the sandbox
+can hold a policy:
+
+```toml
+[sandbox.providers.mybox]
+command = ["mybox", "run", "--policy", "{policy}", "--"]
+check = ["mybox", "check", "--policy", "{policy}"]
+```
+
+Exit 0 is yes. Anything else is no, and the first line it prints is the reason
+seisin shows; a check that cannot be run, or does not answer in 15 seconds, is
+a no too. With a check, a sandbox that says no is passed over like any other,
+so `provider = ["mybox", "srt"]` runs a role `mybox` cannot hold under `srt`.
+Without one, seisin only finds out at the canary, which stops the run (exit 86).
+The check is asked; it is not trusted: a yes still goes through the canary.
 
 What the sandbox takes on:
 

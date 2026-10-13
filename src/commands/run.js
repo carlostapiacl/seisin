@@ -219,7 +219,7 @@ export async function run(config, argv) {
    * (sandboxes/index.js). None is an error that names what each one lacked —
    * never a run under one that enforces less.
    */
-  const box = chooseSandbox(config, settings, { role });
+  const box = chooseSandbox(config, settings, { role, file });
   if (box.error) throw box.error;
   const { sandbox, bin } = box;
   const wrap = (inner) => sandbox.wrap(bin, file, settings, inner, { role });
