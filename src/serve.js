@@ -166,7 +166,7 @@ export function state(configPath, { since = null, snap = snapshot(configPath) } 
       ...r,
       // Said by the server in the same words as the CLI, so the page never
       // works out where a request goes on its own (handoff.js).
-      handoffNote: describeHandoff(r.handoff, r.attempt),
+      handoffNote: describeHandoff(r.handoff, r.attempt, r.chainStopped),
       ...(r.action === "write" && r.grant !== r.target ? { fileNote: fileOnlyNote(r.role, lastAgentOf(all, r.role)) } : {}),
     })),
     since,

@@ -179,7 +179,11 @@ seisin: backend took frontend:write:src/api — handoff chain frontend → backe
 
 Every request that run files belongs to the same **handoff chain**, so work that would go back
 to a role it came from, or more than four hops deep, stops in front of a person instead of
-bouncing. The request it took shows *a run of backend took it*. How many receivers may run at
+bouncing. The request it took shows *a run of backend took it*, and once a request in its chain
+has stopped, *its handoff chain stopped at backend:write:src/web, which needs a person* — the
+same ids in `chainStopped` in the JSON. seisin cannot know whether backend finished its part;
+it knows the chain did not end in a handoff, so the request stays pending until a person
+decides it. How many receivers may run at
 once is the caller's to decide: the package exports `decideHandoff` with `limits` and `load`,
 and `recordHandoff` to say a handoff was held, which the queue then shows as *handoff held*.
 
@@ -199,14 +203,18 @@ of the rows below:
 | no owner | `docs/x.md has no owner. A person decides who takes it. Do not work around it.` |
 | owner takes no work | `.canary belongs to prepare. It is not web's to change. prepare does not take handed work, so a person decides who takes it. Do not work around it.` |
 | a key | `.secrets/db.txt is declared for backend, not frontend. Ask for what you need from it rather than reading the key.` |
-| cycle | `src/web/app.ts belongs to frontend. … It is not handed back to frontend: this work already came through frontend (handoff chain frontend → backend), so nothing is asked of frontend. A person decides how to split it. Tell whoever sent you that, not that frontend will make the change.` |
-| depth | `… The handoff chain stops here, 5 of 4 deep. A person decides.` |
+| cycle | `src/web/app.ts belongs to frontend. … It is not handed back to frontend: this work already came through frontend (handoff chain frontend → backend), so nothing is asked of frontend. A person decides how to split it. … Tell whoever sent you, in these words: "src/web/app.ts was not written. A person has to decide who does it; the request backend:write:src/web is waiting in seisin requests."` |
+| depth | `… The handoff chain stops here, 5 of 4 deep. A person decides. … Tell whoever sent you, in these words: "…"` |
 
 The hook's denial, the only one of the three that files a request, then says so, and for whom. A
 route ends *"Already queued as a handoff to backend: a run of backend, or a person, picks it up —
 retrying or waiting will not move it."*; every other decision ends *"Already queued for a person
 to answer — …"*. Measured before, when every denial ended on a person: in a cycle the agent said
 the work was going to the role the chain had just come from.
+
+Where a chain stops, the agent is given the sentence to pass on, literally. Measured with real
+runs: told only what not to say, an agent stopped saying the owner would make the change and,
+in one run of two, told its user to coordinate with the owner instead.
 
 It informs and offers nothing to answer with: every role it names is one the policy named, and
 nothing the agent says back changes who takes the work. The chain behind a cycle reaches the

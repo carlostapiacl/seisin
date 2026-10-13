@@ -105,13 +105,13 @@ in every mode and gives each run a temp directory of its own — the role's when
   kernel denials may be missing"*, and logs `{"event":"log-dropped","batches":N}`. `seisin check
   --system-log` measures for 3 s and names the busiest writers. The stream is now stopped with
   SIGINT: under SIGTERM `log` discarded the markers it still held. `check --system-log` exits 1
-  when it measured a loss, like a failed `--verify`. Listed in `seisin help limits`.
+  when it measured a loss, like a failed `--verify` (and its help says so). Listed in `seisin help limits`.
 - **A denied agent is told where the queued work goes, and that another path is no way
   round it.** The hook's denial ends *"Already queued as a handoff to backend: a run of backend,
   or a person, picks it up"* when the work routes to a role, and *"queued for a person"* only
   otherwise. Every denied write adds *"Do not put the change somewhere else instead (another
   path, a copy, /tmp)."* A route inside a handoff chain names the chain and its depth, and a
-  cycle names the role it will not go back to, says nothing is asked of it, and tells the agent to say a person splits the work. At session start, walls outside the repository
+  cycle names the role it will not go back to and says nothing is asked of it; where a chain stops (a cycle, or too deep) the agent is given, literally, the sentence to pass on: *"src/web/app.ts was not written. A person has to decide who does it; the request backend:write:src/web is waiting in seisin requests."* The request a chain started from says where its chain stopped (`chainStopped`), instead of reading as handed and done. At session start, walls outside the repository
   are listed apart — *nothing to hand over; leave it* — instead of under "hand it over".
 - **`check` says what a repo inside scratch costs:** *every role can write the whole repo*, with
   the fix (move it, or set `[runtime] writes`). Measured against the scratch the policy really

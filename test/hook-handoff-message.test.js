@@ -16,7 +16,7 @@ import { decide } from "../src/hook.js";
 import { afterTool } from "../src/diagnose.js";
 import { logPath } from "../src/log.js";
 import { requestsPath, queueOf } from "../src/requests.js";
-import { decideHandoff, toAgent, chainFromEnv, CHAIN_ENV, ELSEWHERE } from "../src/handoff.js";
+import { decideHandoff, toAgent, describeHandoff, chainFromEnv, CHAIN_ENV, ELSEWHERE } from "../src/handoff.js";
 
 const POLICY =
   '[keys]\ndir = ".secrets"\n\n' +
@@ -77,7 +77,9 @@ test("a key is never handed over", () => {
 test("in a handoff chain, reaching back is a cycle and a long chain stops", () => {
   const { dir, config } = repo();
   const back = said(decide(config, "backend", write(dir, "src/web/app.ts"), { ...quiet, chain: CHAIN }));
-  assert.match(back, /belongs to frontend\. It is not backend's to change\. It is not handed back to frontend: this work already came through frontend \(handoff chain frontend → backend\), so nothing is asked of frontend\. A person decides how to split it\. Tell whoever sent you that, not that frontend will make the change/);
+  assert.match(back, /belongs to frontend\. It is not backend's to change\. It is not handed back to frontend: this work already came through frontend \(handoff chain frontend → backend\), so nothing is asked of frontend\. A person decides how to split it\./);
+  // The words to pass on, literally: told what not to say, an agent in one run of two sent its user to frontend.
+  assert.match(back, /Tell whoever sent you, in these words: "src\/web\/app\.ts was not written\. A person has to decide who does it; the request backend:write:src\/web is waiting in seisin requests\."/);
   const deep = said(decide(config, "backend", write(dir, "test/a.ts"), { ...quiet, chain: { id: "c", depth: 4, visited: ["a", "b", "c", "backend"] } }));
   assert.match(deep, /The handoff chain stops here, 5 of 4 deep\. A person decides/);
   // The same request outside any chain is an ordinary route.
@@ -112,6 +114,29 @@ test("a refused write says that putting it elsewhere is working around it; a ref
     assert.ok(said(decide(config, role, write(dir, rel), quiet)).includes(ELSEWHERE), rel);
   const key = { hook_event_name: "PreToolUse", tool_name: "Read", tool_input: { file_path: join(dir, ".secrets/db.txt") } };
   assert.ok(!said(decide(config, "frontend", key, quiet)).includes(ELSEWHERE));
+});
+
+test("a route gets no words to pass on: the role it goes to is the answer", () => {
+  const { dir, config } = repo();
+  assert.doesNotMatch(said(decide(config, "frontend", write(dir, "src/api/x.ts"), quiet)), /in these words/);
+});
+
+test("the request a chain started from says where the chain stopped", () => {
+  const { dir, config } = repo();
+  mkdirSync(join(dir, ".seisin"), { recursive: true });
+  const line = (o) => appendFileSync(requestsPath(dir), JSON.stringify({ at: new Date().toISOString(), ...o }) + "\n");
+  line({ kind: "asked", key: "frontend:write:src/api", role: "frontend", action: "write", target: "src/api/x.ts", owners: ["backend"] });
+  line({ kind: "handoff", key: "frontend:write:src/api", outcome: "route", role: "backend", depth: 1, chainId: "frontend:write:src/api" });
+  // The run of backend that took it was denied src/web, back in frontend's territory: a cycle.
+  line({ kind: "asked", key: "backend:write:src/web", role: "backend", action: "write", target: "src/web/app.ts", owners: ["frontend"], chain: CHAIN });
+  const q = queueOf(config);
+  const original = q.find((r) => r.key === "frontend:write:src/api");
+  assert.equal(q.find((r) => r.key === "backend:write:src/web").handoff.type, "cycle");
+  assert.deepEqual(original.chainStopped, ["backend:write:src/web"]);
+  assert.equal(describeHandoff(original.handoff, original.attempt, original.chainStopped),
+    "handed to backend — a run of backend took it; its handoff chain stopped at backend:write:src/web, which needs a person");
+  const out = spawnSync(process.execPath, [CLI, "requests"], { cwd: dir, encoding: "utf8" }).stdout.replace(/\x1b\[[0-9;]*m/g, "");
+  assert.match(out, /its handoff chain stopped at backend:write:src\/web, which needs a person/);
 });
 
 test("a denial that files no request keeps its own reason, with no handoff in it", () => {
