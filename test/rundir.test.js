@@ -32,7 +32,10 @@ before(() => {
  * longer than the 5 s this used to allow.
  */
 async function waitFor(file, ms = 30000) {
-  for (const end = Date.now() + ms; !existsSync(file) && Date.now() < end;)
+  // Until it has a line, not until it exists: `echo > file` creates it empty
+  // first, and a read in between got "".
+  const done = () => existsSync(file) && readFileSync(file, "utf8").endsWith("\n");
+  for (const end = Date.now() + ms; !done() && Date.now() < end;)
     await new Promise((r) => setTimeout(r, 50));
 }
 
@@ -43,16 +46,22 @@ test("a role cannot read another role's scratch key while it runs", { skip }, as
   // Measured before: b read a's key file (`cat …/keys/S` printed the value).
   const holder = spawn(process.execPath,
     [CLI, "run", "a", "--", "sh", "-c", 'echo "$S_FILE" > a/where; while [ ! -f a/done ]; do sleep 0.1; done'], { cwd: repo });
-  const where = join(repo, "a", "where");
-  await waitFor(where);
-  const path = readFileSync(where, "utf8").trim();
-  assert.ok(path.includes("/snr/"), path);
-  const r = as("b", `cat '${path}'`);
-  assert.notEqual(r.status, 0);
-  assert.doesNotMatch(r.stdout, /scratch-secret-value/);
+  const exited = new Promise((r) => holder.on("exit", r));
+  try {
+    const where = join(repo, "a", "where");
+    await waitFor(where);
+    const path = readFileSync(where, "utf8").trim();
+    assert.ok(path.includes("/snr/"), path);
+    const r = as("b", `cat '${path}'`);
+    assert.notEqual(r.status, 0);
+    assert.doesNotMatch(r.stdout, /scratch-secret-value/);
+  } finally {
+    // Released on a failure too: a holder left waiting kept the whole suite
+    // from ending.
+    writeFileSync(join(repo, "a", "done"), "");
+    await exited;
+  }
   // ...and its owner still reads it, or the deny would be blanket.
-  writeFileSync(join(repo, "a", "done"), "");
-  await new Promise((r) => holder.on("exit", r));
   assert.equal(as("a", 'test "$(cat "$S_FILE")" = scratch-secret-value').status, 0);
 });
 
