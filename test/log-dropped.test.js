@@ -12,6 +12,7 @@ import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import { droppedIn, watchDenials, measureSystemLog } from "../src/violations.js";
 import { renderEntry } from "../src/render.js";
+import { checkStatus } from "../src/commands/check.js";
 
 const MARKER = "=== Messages dropped during live streaming (use `log show` to see what they were)\n";
 const WRITE_DENY =
@@ -102,4 +103,12 @@ test("seisin log shows the loss as a line of its own", () => {
     .replace(/\x1b\[[0-9;]*m/g, "");
   assert.match(s, /05:27:11  log dropped  agent 52 batch\(es\) of system log messages lost — kernel denials may be missing/);
   assert.doesNotMatch(s, /undefined|allowed/);
+});
+
+test("check --system-log fails the check when it measured a loss, so a CI step can stop on it", () => {
+  const report = (systemLog) => ({ warnings: [], ...(systemLog && { systemLog }) });
+  assert.equal(checkStatus(report(null)), 0, "not asked");
+  assert.equal(checkStatus(report({ available: true, dropped: 0 })), 0);
+  assert.equal(checkStatus(report({ available: true, dropped: 57 })), 1);
+  assert.equal(checkStatus(report({ available: false, reason: "no system log stream on linux" })), 0, "not measurable is not a loss");
 });

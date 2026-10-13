@@ -77,7 +77,7 @@ test("a key is never handed over", () => {
 test("in a handoff chain, reaching back is a cycle and a long chain stops", () => {
   const { dir, config } = repo();
   const back = said(decide(config, "backend", write(dir, "src/web/app.ts"), { ...quiet, chain: CHAIN }));
-  assert.match(back, /belongs to frontend\. It is not backend's to change\. It is not handed back to frontend: this work already came through frontend \(handoff chain frontend → backend\)\. A person decides how to split it/);
+  assert.match(back, /belongs to frontend\. It is not backend's to change\. It is not handed back to frontend: this work already came through frontend \(handoff chain frontend → backend\), so nothing is asked of frontend\. A person decides how to split it\. Tell whoever sent you that, not that frontend will make the change/);
   const deep = said(decide(config, "backend", write(dir, "test/a.ts"), { ...quiet, chain: { id: "c", depth: 4, visited: ["a", "b", "c", "backend"] } }));
   assert.match(deep, /The handoff chain stops here, 5 of 4 deep\. A person decides/);
   // The same request outside any chain is an ordinary route.
