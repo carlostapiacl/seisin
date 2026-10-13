@@ -103,7 +103,10 @@ in every mode and gives each run a temp directory of its own — the role's when
   could go"* — passed on in three runs of three, it was then contradicted in two; with the ending,
   in none, though one run named the owner and one dropped the path. Where a chain stops, the
   agent is no longer told whose the file is or the chain it came along (with them, two runs of
-  three added the owner), and the denial ends on the sentence, without *"Already queued…"*. A
+  three added the owner), and the denial ends on the quoted sentence: what not to add is said
+  before it, and *"Already queued…"* not at all. The session-start map does the same in a handed
+  run: a wall where the chain stops is listed without its owner, and the map no longer asks the
+  agent to say whose a file is — measured, an agent took the owner from there. A
   repeated denial inside `seisin run` counts this run's tries (from its canary) and names earlier
   runs apart: *"It was denied 3 time(s) in earlier runs too; this run gets the same answer"*,
   instead of telling a fresh run about its fourth try.

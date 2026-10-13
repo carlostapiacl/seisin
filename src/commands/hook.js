@@ -46,7 +46,7 @@ export async function hook(stdin = process.stdin, env = process.env) {
     try { return await afterTool(config, role, event, { file: logPath(config.root), chain }); } catch { return null; }
   }
   if (event_ === "SessionStart") {
-    try { return atSessionStart(config, role, event, { file: logPath(config.root) }); } catch { return null; }
+    try { return atSessionStart(config, role, event, { file: logPath(config.root), chain }); } catch { return null; }
   }
   // Caught like the two halves above, and for a sharper reason: PreToolUse is
   // the one event where a crash is not silent. cli.js turns a throw into exit

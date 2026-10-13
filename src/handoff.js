@@ -262,10 +262,12 @@ function stopped(d, target, key) {
   // and then contradicted in two, by an agent adding who should do it or where
   // else it could go. So the sentence ends on that, too. Measured a third time:
   // no run added either, but one added whose file it was, and one dropped the
-  // path from the front ("Not written. …"). So both are said as well, and
-  // nothing comes after the sentence: the denial ends on it (hook.js).
-  return ` Tell whoever sent you, word for word and starting with the path: "${target} was not written. A person has to decide who does it; ${waiting}." ` +
-    "Say only that sentence about this file: do not add whose file it is, who should do it or where else it could go.";
+  // path from the front ("Not written. …"). So both are said as well. And
+  // nothing comes after the sentence: what not to add is said first, so the
+  // quote is the last thing the agent reads (hook.js ends the denial on it).
+  return " About this file, tell whoever sent you one sentence and add nothing to it: not whose file it is, " +
+    "who should do it or where else it could go. The sentence, word for word and starting with the path: " +
+    `"${target} was not written. A person has to decide who does it; ${waiting}."`;
 }
 
 /**
