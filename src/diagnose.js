@@ -33,7 +33,7 @@ import { readEntries } from "./log.js";
 import { explain } from "./owners.js";
 import { hitsOf, againWords, walls } from "./walls.js";
 import { collapseSidecars } from "./render.js";
-import { decideHandoff, toAgent, ELSEWHERE } from "./handoff.js";
+import { decideHandoff, toAgent, isStopped, ELSEWHERE } from "./handoff.js";
 import { keyOf } from "./requests.js";
 import { destinationOf } from "./intake.js";
 
@@ -173,7 +173,7 @@ export async function afterTool(config, role, event, { file, now = Date.now, wai
 }
 
 /** When a session starts, resumes or is compacted: the map, before the first wall. */
-export function atSessionStart(config, role, event, { file } = {}) {
+export function atSessionStart(config, role, event, { file, chain = null } = {}) {
   const r = config.roles[role];
   const writes = collapseSidecars(r.writesDeclared ?? r.writes);
   const lines = [
@@ -193,16 +193,31 @@ export function atSessionStart(config, role, event, { file } = {}) {
   // Outside the repository nobody owns anything, so there is no one to hand
   // it to: under "hand it over", ~/.npm/_logs read as work for somebody else.
   const outside = (x) => isAbsolute(x.target) || x.target.startsWith("~");
-  const mine = w.filter((x) => !outside(x)), out = w.filter(outside);
+  // Where this run's handoff chain stops, the wall names no owner: measured,
+  // an agent told the owner here repeated it after the sentence its denial
+  // told it to pass on alone.
+  const stops = (x) => isStopped(decideHandoff({ request: { role, action: x.action, target: x.target }, config, chain }));
+  const inRepo = w.filter((x) => !outside(x)), out = w.filter(outside);
+  const stopped = inRepo.filter(stops), mine = inRepo.filter((x) => !stops(x));
   const wall = (x) => `- ${x.action} ${x.target} (${x.times}×) — ${x.owners?.length ? `belongs to ${x.owners.join(", ")}` : x.reason}`;
   if (mine.length) {
     lines.push("Already denied more than once, and still denied — do not try again, hand it over:");
     for (const x of mine) lines.push(wall(x));
   }
+  if (stopped.length) {
+    lines.push("Already denied more than once, where this run's handoff chain stops — do not try again; a person decides, " +
+      "and the denial gives you the one sentence to pass on:");
+    for (const x of stopped) lines.push(`- ${x.action} ${x.target} (${x.times}×)`);
+  }
   if (out.length) {
     lines.push("Denied more than once outside the repository, where no role owns anything — nothing to hand over; leave it:");
     for (const x of out) lines.push(`- ${x.action} ${x.target} (${x.times}×)`);
   }
-  lines.push("A file outside that is somebody else's: say whose it is and hand it over, rather than working around it.");
+  // In a handed run a denial can be where the chain stops, and there the agent
+  // is to say one sentence and not whose the file is: the map cannot ask the
+  // opposite.
+  lines.push(chain?.visited?.length
+    ? "A file outside that is not yours to change: do not work around it. Where a denial gives you a sentence to pass on, pass on that sentence and nothing else about the file."
+    : "A file outside that is somebody else's: say whose it is and hand it over, rather than working around it.");
   return { hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: lines.join("\n") } };
 }

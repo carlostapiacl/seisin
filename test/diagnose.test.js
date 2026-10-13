@@ -103,6 +103,26 @@ test("session start hands the role its map and its walls", () => {
   assert.match(t, /write src\/api\/x\.ts \(3×\) — belongs to api/);
 });
 
+test("in a handed run, session start names no owner where the chain stops, and does not ask whose it is", () => {
+  const dir = repo('[roles.web]\nwrites = ["src/web/**"]\n\n[roles.api]\nwrites = ["src/api/**"]\n\n[roles.qa]\nwrites = ["test/**"]\n');
+  for (let i = 0; i < 2; i++) { kernelLine(dir, "api", "src/web/x.ts"); kernelLine(dir, "api", "test/a.ts"); }
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  const chain = { id: "c", depth: 1, visited: ["web", "api"] };
+  const t = atSessionStart(cfg, "api", { hook_event_name: "SessionStart", source: "startup" }, { file: logPath(dir), chain })
+    .hookSpecificOutput.additionalContext;
+  // web is back along the chain: no owner. qa is not: an ordinary wall, owner and all.
+  assert.match(t, /where this run's handoff chain stops — do not try again; a person decides, and the denial gives you the one sentence to pass on:\n- write src\/web\/x\.ts \(2×\)$/m);
+  assert.doesNotMatch(t, /belongs to web/);
+  assert.match(t, /write test\/a\.ts \(2×\) — belongs to qa/);
+  assert.doesNotMatch(t, /say whose it is/);
+  assert.match(t, /pass on that sentence and nothing else about the file/);
+  // Outside a chain, the same walls are both handed over, and the map asks whose.
+  const plain = atSessionStart(cfg, "api", { hook_event_name: "SessionStart", source: "startup" }, { file: logPath(dir) })
+    .hookSpecificOutput.additionalContext;
+  assert.match(plain, /write src\/web\/x\.ts \(2×\) — belongs to web/);
+  assert.match(plain, /say whose it is/);
+});
+
 test("session start does not ask to hand over a wall outside the repository", () => {
   const dir = repo('[roles.web]\nwrites = ["src/web/**"]\n');
   for (let i = 0; i < 3; i++) kernelLine(dir, "web", "/Users/someone/.npm/_logs/debug.log");

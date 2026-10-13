@@ -855,7 +855,9 @@ Already denied more than once, and still denied — do not try again, hand it ov
 - read ~/.npmrc (6×) — no role declares ~/.npmrc — add it under a [roles.<name>] keys list
 ```
 
-and, on request, as data from the MCP server's `seisin_walls`.
+and, on request, as data from the MCP server's `seisin_walls`. In a run handed along a chain, a
+wall where the chain stops is listed without its owner: a person decides it, and the agent is
+to pass on the one sentence its denial gives ([where a request goes](https://github.com/carlostapiacl/seisin/blob/main/docs/requests.md#where-a-request-goes)).
 
 **A wall is recomputed against the policy, not read out of the log.** If the role would be
 allowed today, it is not a wall — whatever happened yesterday. The obvious implementation is a

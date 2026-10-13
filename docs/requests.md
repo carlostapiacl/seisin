@@ -203,8 +203,8 @@ of the rows below:
 | no owner | `docs/x.md has no owner. A person decides who takes it. Do not work around it.` |
 | owner takes no work | `.canary belongs to prepare. It is not web's to change. prepare does not take handed work, so a person decides who takes it. Do not work around it.` |
 | a key | `.secrets/db.txt is declared for backend, not frontend. Ask for what you need from it rather than reading the key.` |
-| cycle | `src/web/app.ts is not backend's to change, and its handoff chain stops here: handing it on would send it back the way it came. A person decides. … Tell whoever sent you, word for word and starting with the path: "src/web/app.ts was not written. A person has to decide who does it; the request backend:write:src/web is waiting in seisin requests." Say only that sentence about this file: …` |
-| depth | `test/a.ts is not backend's to change, and its handoff chain stops here: 5 of 4 deep. A person decides. … Tell whoever sent you, word for word and starting with the path: "…" Say only that sentence about this file: …` |
+| cycle | `src/web/app.ts is not backend's to change, and its handoff chain stops here: handing it on would send it back the way it came. A person decides. … About this file, tell whoever sent you one sentence and add nothing to it: not whose file it is, who should do it or where else it could go. The sentence, word for word and starting with the path: "src/web/app.ts was not written. A person has to decide who does it; the request backend:write:src/web is waiting in seisin requests."` |
+| depth | `test/a.ts is not backend's to change, and its handoff chain stops here: 5 of 4 deep. A person decides. … About this file, tell whoever sent you one sentence … The sentence, word for word and starting with the path: "…"` |
 
 The hook's denial, the only one of the three that files a request, then says so, and for whom. A
 route ends *"Already queued as a handoff to backend: a run of backend, or a person, picks it up —
@@ -220,7 +220,13 @@ it: the sentence already says the request is waiting. Measured with real runs: t
 to say, an agent stopped saying the owner would make the change and, in one run of two, told its
 user to coordinate with the owner instead. Given the sentence, it passed it on; given it with the
 owner named before it, two runs of three added whose file it was. So a stopped chain names no
-owner and no chain to the agent; `seisin requests` and `seisin whose` still name both, to a person.
+owner and no chain to the agent, and what not to add comes before the quote, which ends the
+denial. `seisin requests` and `seisin whose` still name both, to a person.
+
+The map at session start follows it. In a handed run, a repeated wall where the chain stops is
+listed without its owner, under *"a person decides, and the denial gives you the one sentence to
+pass on"*, and the map's last line does not ask the agent to say whose a file is. Measured: with
+the owner on the map, an agent added it after the sentence anyway.
 
 "Word for word" is about the words. An agent that sets the path in bold or in backticks has passed
 the sentence on; one that drops the path, or adds to it, has not.
