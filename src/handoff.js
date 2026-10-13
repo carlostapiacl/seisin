@@ -223,8 +223,15 @@ export function chainFromEnv(env = process.env) {
  * the agent can give back that would change who takes the work — the queue
  * decides that again, from the policy, whenever it is read.
  */
-export function toAgent(decision, { target, role, key = null }) {
+export function toAgent(decision, { target, role, key = null, again = "" }) {
   const d = decision ?? {};
+  // Where a chain stops, the agent is not told whose the file is, or the chain
+  // it came along. Measured: with the owner in the message, two runs of three
+  // added whose file it was after the sentence they were told to say alone.
+  if (isStopped(d))
+    return `${target} is not ${role}'s to change, and its handoff chain stops here: ` +
+      (d.type === "cycle" ? "handing it on would send it back the way it came." : `${d.depth} of ${d.max} deep.`) +
+      ` A person decides. Do not work around it. ${ELSEWHERE}${again}` + stopped(d, target, key);
   const owners = d.owners ?? [];
   const whose = d.reason === "key"
     ? (owners.length ? `${target} is declared for ${owners.join(", ")}, not ${role}.` : `No role declares ${target}.`)
@@ -233,7 +240,12 @@ export function toAgent(decision, { target, role, key = null }) {
       : `${target} has no owner.`;
   // A key or a read is not a change to put somewhere else.
   const write = d.reason !== "key" && d.reason !== "read" && d.type !== "resolved";
-  return `${whose} ${nextStep(d, role)}` + (write ? ` ${ELSEWHERE}` : "") + stopped(d, target, key);
+  return `${whose} ${nextStep(d, role)}` + (write ? ` ${ELSEWHERE}` : "") + again;
+}
+
+/** A chain that stops: a cycle, or one too deep. Its denial ends on the sentence to pass on. */
+export function isStopped(decision) {
+  return decision?.type === "cycle" || decision?.type === "depth";
 }
 
 /**
@@ -245,13 +257,13 @@ export function toAgent(decision, { target, role, key = null }) {
  * leaves the agent to compose the sentence; this one hands it over.
  */
 function stopped(d, target, key) {
-  if (d.type !== "cycle" && d.type !== "depth") return "";
   const waiting = key ? `the request ${key} is waiting in seisin requests` : "the request is waiting in seisin requests";
   // Measured again with the literal words: passed on in three runs of three,
   // and then contradicted in two, by an agent adding who should do it or where
   // else it could go. So the sentence ends on that, too. Measured a third time:
   // no run added either, but one added whose file it was, and one dropped the
-  // path from the front ("Not written. …"). So both are said as well.
+  // path from the front ("Not written. …"). So both are said as well, and
+  // nothing comes after the sentence: the denial ends on it (hook.js).
   return ` Tell whoever sent you, word for word and starting with the path: "${target} was not written. A person has to decide who does it; ${waiting}." ` +
     "Say only that sentence about this file: do not add whose file it is, who should do it or where else it could go.";
 }

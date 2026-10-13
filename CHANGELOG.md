@@ -101,7 +101,9 @@ in every mode and gives each run a temp directory of its own — the role's when
   chain is now to be passed on *"word for word and starting with the path"*, and ends *"Say only
   that sentence about this file: do not add whose file it is, who should do it or where else it
   could go"* — passed on in three runs of three, it was then contradicted in two; with the ending,
-  in none, though one run named the owner and one dropped the path. A
+  in none, though one run named the owner and one dropped the path. Where a chain stops, the
+  agent is no longer told whose the file is or the chain it came along (with them, two runs of
+  three added the owner), and the denial ends on the sentence, without *"Already queued…"*. A
   repeated denial inside `seisin run` counts this run's tries (from its canary) and names earlier
   runs apart: *"It was denied 3 time(s) in earlier runs too; this run gets the same answer"*,
   instead of telling a fresh run about its fourth try.

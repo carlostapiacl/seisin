@@ -112,7 +112,7 @@ function sentence(config, role, file, e, chain = null, run = null) {
   const handed = (action === "write" || e.kind === "key") && !v.gitMetadata && !v.protected && !v.privateTo;
   if (handed)
     return toAgent(decideHandoff({ request: { role, action, target: e.target }, config, chain }),
-      { target: e.target, role, key: keyOf({ role, action, target: e.target }) }) + again;
+      { target: e.target, role, key: keyOf({ role, action, target: e.target }), again });
   return `${e.target}: ${v.reason}.${again}`;
 }
 
