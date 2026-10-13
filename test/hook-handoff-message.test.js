@@ -84,7 +84,7 @@ test("in a handoff chain, reaching back is a cycle and a long chain stops", () =
   assert.match(back, /seisin requests\."$/);
   // The words to pass on, literally: told what not to say, an agent in one run of two sent its user to frontend.
   // What not to add comes first, so the quote is the last thing the agent reads.
-  assert.match(back, /About this file, tell whoever sent you one sentence and add nothing to it: not whose file it is, who should do it or where else it could go\. The sentence, word for word and starting with the path: "src\/web\/app\.ts was not written\. A person has to decide who does it; the request backend:write:src\/web is waiting in seisin requests\."$/);
+  assert.match(back, /About this file, tell whoever sent you one sentence and add nothing to it: not whose file it is, who should do it or where else it could go\. The sentence, word for word and whole, even where your line already names the file: "Not written: src\/web\/app\.ts\. A person has to decide who does it; the request backend:write:src\/web is waiting in seisin requests\."$/);
   const deep = said(decide(config, "backend", write(dir, "test/a.ts"), { ...quiet, chain: { id: "c", depth: 4, visited: ["a", "b", "c", "backend"] } }));
   assert.match(deep, /its handoff chain stops here: 5 of 4 deep\. A person decides/);
   assert.doesNotMatch(deep, /belongs to|qa/);
