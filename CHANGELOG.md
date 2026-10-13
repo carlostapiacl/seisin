@@ -97,6 +97,18 @@ in every mode and gives each run a temp directory of its own — the role's when
   other takes handed work, and otherwise to a person, with the reason `no-receiver` — *a person
   decides: prepare owns this and takes no handed work*. `seisin run <role> --handoff <id>` for
   such a role is refused.
+- **The end of a denial, measured again with real runs.** The literal sentence for a stopped
+  chain now ends *"Say only that sentence about this file: do not add who should do it or where
+  else it could go"* — passed on in three runs of three, it was then contradicted in two. A
+  repeated denial inside `seisin run` counts this run's tries (from its canary) and names earlier
+  runs apart: *"It was denied 3 time(s) in earlier runs too; this run gets the same answer"*,
+  instead of telling a fresh run about its fourth try.
+- **An atomic save refused at its temporary file is about the file it was saving.** Claude
+  Code's Write writes `<file>.tmp.<pid>.<hex>` and renames it; refused there, nothing was queued
+  and the agent looked for a missing directory. Another role's file is now asked for like any
+  write (the log line carries `destination`); a file the role may write queues nothing — no grant
+  can name the temporary file — and the run ends saying which files were not saved. The note
+  after the failed call says the same, and to write the file with the shell.
 - **A run says when the system log lost messages, and `check --system-log` measures it
   (macOS).** A flooded unified log (measured: a network filter's kernel extension at ~6,700
   lines a second) dropped kernel denials before `seisin run` read them, so a denied write filed

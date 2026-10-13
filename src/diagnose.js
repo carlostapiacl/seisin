@@ -31,10 +31,11 @@
 import { isAbsolute } from "node:path";
 import { readEntries } from "./log.js";
 import { explain } from "./owners.js";
-import { timesHit, walls } from "./walls.js";
+import { hitsOf, againWords, walls } from "./walls.js";
 import { collapseSidecars } from "./render.js";
 import { decideHandoff, toAgent, ELSEWHERE } from "./handoff.js";
 import { keyOf } from "./requests.js";
+import { destinationOf } from "./intake.js";
 
 /** What a refused write or read looks like in a tool's output. A trigger to look, not a verdict. */
 export const DENIAL_SIGNS = /Operation not permitted|EPERM|EACCES|Permission denied|Read-only file system/i;
@@ -86,12 +87,24 @@ export function recentKernelDenials(file, role, sinceMs) {
 }
 
 /** The sentence for one refusal, in the words the PreToolUse hook uses. */
-function sentence(config, role, file, e, chain = null) {
+function sentence(config, role, file, e, chain = null, run = null) {
   const action = e.kind === "key" ? "read" : e.action === "read" || e.action === "connect" ? e.action : "write";
+  // An atomic save refused at its temporary file is about the file it was
+  // saving. Said about that file, or the agent goes looking for a missing
+  // directory (measured).
+  const destination = action === "write" ? destinationOf(e.target) : null;
+  if (destination) {
+    if (explain(config, role, "write", destination).allowed)
+      return `${destination} was not saved: it is ${role}'s to write, but the sandbox denied the temporary file ` +
+        `${e.target} that the save writes beside it, and no grant can name that file. Write ${destination} with the shell ` +
+        "instead (a redirect writes the file itself).";
+    e = { ...e, target: destination };
+  }
   const v = explain(config, role, action, e.target);
   if (v.allowed) return null;             // the policy moved since: nothing to say
-  const times = timesHit(file, role, action, e.target);
-  const again = times > 1 ? ` Refused ${times} times now; the next try ends the same way.` : "";
+  // Read after the refusal was logged, so the counts include it.
+  const { total: times, inRun } = hitsOf(file, role, action, e.target, run);
+  const again = againWords({ times, inRun });
   if (v.neverWrites) return `${v.reason}. Do not ask for it. ${ELSEWHERE}${again}`;
   // A write, or a key: the denials that become requests, worded from the same
   // handoff decision the hook and the queue use. Everything else — a protected
@@ -136,7 +149,7 @@ function evidenceOf(event) {
  * refusal, and a loaded machine can be slower than the hook. Only when the tool
  * reported a failure — see {@link evidenceOf}.
  */
-export async function afterTool(config, role, event, { file, now = Date.now, wait = [0, 100, 300], chain = null } = {}) {
+export async function afterTool(config, role, event, { file, now = Date.now, wait = [0, 100, 300], chain = null, run = process.env.SEISIN_RUN_ID ?? null } = {}) {
   const { text: evidence, failed } = evidenceOf(event);
   if (!DENIAL_SIGNS.test(evidence)) return null;
   // JSON escapes what the program printed; the signatures are written against the text.
@@ -147,7 +160,7 @@ export async function afterTool(config, role, event, { file, now = Date.now, wai
     found = recentKernelDenials(file, role, now() - WINDOW_MS);
     if (found.length) break;
   }
-  const lines = [...known, ...found.map((e) => sentence(config, role, file, e, chain)).filter(Boolean)].slice(0, MAX_NAMED);
+  const lines = [...known, ...found.map((e) => sentence(config, role, file, e, chain, run)).filter(Boolean)].slice(0, MAX_NAMED);
   if (!lines.length) return null;
   const total = known.length + found.length;
   const more = total > MAX_NAMED ? ` (and ${total - MAX_NAMED} more — \`seisin walls ${role}\`)` : "";

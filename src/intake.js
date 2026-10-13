@@ -60,7 +60,7 @@ export function intake({ config, role, runId, observe = false, settings, notify,
   const scope = scopeOf(settings, config.root);
   const keyDirs = (config.keyDirs ?? []).map((d) => (d.startsWith("/") ? d : join(config.root, d)));
   const connects = new Set();         // one line per refused target per run
-  const stats = { offPolicy: 0, walks: 0, expected: 0, probes: 0 };
+  const stats = { offPolicy: 0, walks: 0, expected: 0, probes: 0, atomic: [] };
 
   /**
    * A denial the caller asked for is recorded, and asked about by nobody.
@@ -263,6 +263,24 @@ export function intake({ config, role, runId, observe = false, settings, notify,
     if (rel !== d.path && !barred && !unaskable && !granted && !scratch && !asked)
       ask({ role, action: d.action, target: rel, owners: whose });
 
+    /**
+     * An atomic save's temporary file stands for the file it replaces.
+     *
+     * Not queued as itself (temporary(), below), and until now not at all —
+     * measured: Write was refused at `health.ts.tmp.<pid>`, nothing was queued,
+     * and the agent concluded the directory was missing. The question a person
+     * can answer is the destination: another role's file is asked for like any
+     * write; a file this role may write is the runtime refusing the temporary
+     * file beside it, which no grant can name, and the end of the run says so.
+     */
+    const destination = scratch && !asked ? destinationOf(rel) : null;
+    if (destination) {
+      const v = explain(config, role, "write", destination);
+      if (v.allowed) stats.atomic.push(destination);
+      else if (!v.neverWrites && !v.gitMetadata && v.protected == null && v.privateTo == null)
+        ask({ role, action: "write", target: destination, owners: ownersOf(config, destination) });
+    }
+
     log({
       role,
       tool: "kernel",
@@ -280,6 +298,8 @@ export function intake({ config, role, runId, observe = false, settings, notify,
       ...(verdict?.privateTo ? { privateTo: verdict.privateTo } : {}),
       // Why no request was queued for it: a temporary file is not territory.
       ...(scratch ? { nature: "temporary" } : {}),
+      // The file an atomic save was replacing, which is what was asked for.
+      ...(destination ? { destination } : {}),
       // Why no request was queued for it: the caller said it would be denied.
       ...(asked ? { expected: true } : {}),
     });
@@ -300,4 +320,14 @@ export function intake({ config, role, runId, observe = false, settings, notify,
  */
 function temporary(action, target) {
   return action === "write" && kindOf(target).kind === "temporary";
+}
+
+/**
+ * The file a write-then-rename was replacing, from its temporary file's name:
+ * `src/health.ts.tmp.48213.3fa9c1d2e0b4` → `src/health.ts`. Claude Code's form,
+ * and the general `<file>.tmp.<anything>`; null for any other temporary file.
+ */
+export function destinationOf(target) {
+  const m = /^(.+[^/])\.tmp\.[^/]+$/.exec(target);
+  return m ? m[1] : null;
 }

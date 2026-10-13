@@ -20,7 +20,7 @@ import { expectedOf } from "../src/kinds.js";
 import { walls, render, wasted } from "../src/walls.js";
 import { review } from "../src/review.js";
 import { parseSince, causesOf, describeWalls } from "../src/views.js";
-import { intake } from "../src/intake.js";
+import { intake, destinationOf } from "../src/intake.js";
 import { inspect } from "../src/inspect.js";
 import { renderReport } from "../src/render.js";
 import { loadConfig } from "../src/config.js";
@@ -208,12 +208,42 @@ test("a kernel denial on a temporary file is logged and queues no request", () =
   const take = intake({ config, role: "dev", runId: "r", settings });
   take.fromKernel({ action: "write", path: join(dir, "BACKLOG.md.tmp.32029.0123456789ab"), operation: "file-write-create" });
   take.fromKernel({ action: "write", path: join(dir, "web", "a.ts"), operation: "file-write-create" });
-  const queued = pending(requestsPath(dir)).map((r) => r.key);
-  assert.deepEqual(queued, ["dev:write:web"], "the temporary file asked for nothing; the control did");
+  const queued = pending(requestsPath(dir));
+  // Not the temporary file itself — its name changes every save — but the file the save was replacing.
+  assert.deepEqual(queued.map((r) => r.target).sort(), ["BACKLOG.md", "web/a.ts"]);
+  assert.ok(!queued.some((r) => r.target.includes(".tmp.")), "the temporary file is never the request");
   const lines = readFileSync(join(dir, ".seisin", "log.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
   const tmp = lines.find((l) => l.target.startsWith("BACKLOG.md.tmp."));
   assert.equal(tmp.verdict, "denied");
   assert.equal(tmp.nature, "temporary");
+  assert.equal(tmp.destination, "BACKLOG.md");
+});
+
+test("an atomic save refused beside another role's file asks for that file", () => {
+  const { dir, config } = repo(TOML);
+  const settings = { filesystem: { allowWrite: [], denyWrite: [], allowRead: [], denyRead: [] } };
+  const take = intake({ config, role: "dev", runId: "r", settings });
+  take.fromKernel({ action: "write", path: join(dir, "web", "health.ts.tmp.48213.3fa9c1d2e0b4"), operation: "file-write-create" });
+  const [r] = pending(requestsPath(dir));
+  assert.equal(r.target, "web/health.ts");
+  assert.deepEqual(r.owners, ["web"]);
+  assert.deepEqual(take.stats.atomic, []);
+});
+
+test("an atomic save refused beside this role's own file queues nothing and is counted for the end of the run", () => {
+  const { dir, config } = repo(TOML);
+  const settings = { filesystem: { allowWrite: [], denyWrite: [], allowRead: [], denyRead: [] } };
+  const take = intake({ config, role: "dev", runId: "r", settings });
+  take.fromKernel({ action: "write", path: join(dir, "src", "health.ts.tmp.48213.3fa9c1d2e0b4"), operation: "file-write-create" });
+  assert.deepEqual(pending(requestsPath(dir)), [], "nothing a grant could name");
+  assert.deepEqual(take.stats.atomic, ["src/health.ts"]);
+});
+
+test("destinationOf reads the file a write-then-rename was replacing", () => {
+  assert.equal(destinationOf("src/health.ts.tmp.48213.3fa9c1d2e0b4"), "src/health.ts");
+  assert.equal(destinationOf("BACKLOG.md.tmp.32029.0123456789ab"), "BACKLOG.md");
+  assert.equal(destinationOf("build/cache.tmp"), null);
+  assert.equal(destinationOf("tmp/x.ts"), null);
 });
 
 test("a request never grants the whole repository", () => {

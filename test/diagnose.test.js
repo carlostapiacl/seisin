@@ -52,7 +52,23 @@ test("a repeated refusal says how many times", async () => {
   for (let i = 0; i < 3; i++) kernelLine(dir, "web", "src/api/x.ts");
   const cfg = loadConfig(join(dir, "seisin.toml"));
   const out = await afterTool(cfg, "web", FAILED, { file: logPath(dir), wait: [0] });
-  assert.match(out.hookSpecificOutput.additionalContext, /Refused 3 times/);
+  assert.match(out.hookSpecificOutput.additionalContext, /You have been denied this 3 times now/);
+});
+
+test("inside a run, the count is this run's, and earlier runs are named as earlier", async () => {
+  const dir = repo();
+  for (let i = 0; i < 4; i++) kernelLine(dir, "web", "src/api/x.ts", 60_000);
+  // This run's canary, then its first refusal of the same path.
+  appendFileSync(logPath(dir), JSON.stringify({ at: new Date().toISOString(), event: "canary", role: "web", run: "abcd1234", confined: true }) + "\n");
+  kernelLine(dir, "web", "src/api/x.ts");
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  const say = async () => (await afterTool(cfg, "web", FAILED, { file: logPath(dir), wait: [0], run: "abcd1234-0000" }))
+    .hookSpecificOutput.additionalContext;
+  const first = await say();
+  assert.match(first, /It was denied 4 time\(s\) in earlier runs too; this run gets the same answer/);
+  assert.doesNotMatch(first, /5 times/);
+  kernelLine(dir, "web", "src/api/x.ts");
+  assert.match(await say(), /You have been denied this 2 times in this run \(and 4 in earlier runs\); it is not going to work on the third try/);
 });
 
 test("nothing to say: no denial in the output, or no refusal in the log, or an old one", async () => {
@@ -138,4 +154,17 @@ test("Chromium's Mach registration refusal is explained, with nothing in the log
   assert.match(text, /one\s+worker/);
   // Only that signature: another "Permission denied" with an empty log stays quiet.
   assert.equal(await afterTool(cfg, "web", FAILED, { file: logPath(dir), wait: [0] }), null);
+});
+
+test("a save refused at its temporary file is said about the file it was saving", async () => {
+  const dir = repo();
+  kernelLine(dir, "web", "src/web/health.ts.tmp.48213.3fa9c1d2e0b4");
+  kernelLine(dir, "web", "src/api/x.ts.tmp.48213.3fa9c1d2e0b4");
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  const text = (await afterTool(cfg, "web", FAILED, { file: logPath(dir), wait: [0] })).hookSpecificOutput.additionalContext;
+  // Its own file: nothing to ask for, and the shell writes it (measured: the agent went looking for a missing directory).
+  assert.match(text, /src\/web\/health\.ts was not saved: it is web's to write, but the sandbox denied the temporary file src\/web\/health\.ts\.tmp\.48213\.3fa9c1d2e0b4/);
+  assert.match(text, /Write src\/web\/health\.ts with the shell/);
+  // Another role's file: about that file, not about a temporary name nobody owns.
+  assert.match(text, /src\/api\/x\.ts belongs to api/);
 });

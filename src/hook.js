@@ -19,7 +19,7 @@
 import { toRepoRelative } from "./paths.js";
 import { explain, normalize, privateOwner } from "./owners.js";
 import { append, logPath } from "./log.js";
-import { timesHit } from "./walls.js";
+import { hitsOf, againWords } from "./walls.js";
 import { record, requestsPath, keyOf } from "./requests.js";
 import { decideHandoff, toAgent, queuedLine, ELSEWHERE } from "./handoff.js";
 
@@ -185,12 +185,6 @@ function kindOf(config, path) {
  * everything else on a person.
  */
 
-/** 4 -> "fourth". Past a handful the numeral reads better than the word. */
-function ordinal(n) {
-  const words = ["", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
-  return words[n] ?? `${n}th`;
-}
-
 /**
  * Decides and records one tool call.
  *
@@ -198,7 +192,7 @@ function ordinal(n) {
  * the same decisions and returns none of them, so a policy can be written from
  * what a real run did instead of from what someone imagined it would do.
  */
-export function decide(config, role, event, { observe = false, now = append, ask = record, chain = null } = {}) {
+export function decide(config, role, event, { observe = false, now = append, ask = record, chain = null, run = process.env.SEISIN_RUN_ID ?? null } = {}) {
   const targets = targetsOf(event.tool_name, event.tool_input);
   const file = logPath(config.root);
   const queue = requestsPath(config.root);
@@ -210,7 +204,7 @@ export function decide(config, role, event, { observe = false, now = append, ask
   // gets to it, so counting afterwards came out one behind there.
   let before = null;
   const priorOnce = (action, target) => {
-    if (before === null) before = timesHit(file, role, action, target);
+    if (before === null) before = hitsOf(file, role, action, target, run);
   };
 
   for (const t of targets) {
@@ -305,7 +299,8 @@ export function decide(config, role, event, { observe = false, now = append, ask
    * on the first — a counter that says "1×" on every first refusal is noise on
    * the turn where the sentence is already doing its job.
    */
-  const times = (before ?? 0) + 1;
+  const times = (before?.total ?? 0) + 1;
+  const inRun = before?.inRun == null ? null : before.inRun + 1;
 
   /**
    * Whose it is and where the work goes, as the queue will say it: decided by
@@ -320,9 +315,7 @@ export function decide(config, role, event, { observe = false, now = append, ask
   // A denied write that nothing will ever grant is still a change not to
   // make under another path; a denied read is not a change at all.
   const elsewhere = denied.action === "write" ? ` ${ELSEWHERE}` : "";
-  const again = times > 1
-    ? ` You have been denied this ${times} times now; it is not going to work on the ${ordinal(times + 1)} try.`
-    : "";
+  const again = againWords({ times, inRun });
 
   // The hook advises; it does not enforce. Returning `deny` here stops the call
   // early and — the part that matters — hands the agent a sentence it can act

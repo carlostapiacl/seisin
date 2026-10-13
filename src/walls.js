@@ -121,14 +121,56 @@ const TAIL_BYTES = 4 * 1024 * 1024;
  * call.
  */
 export function timesHit(file, role, action, target) {
+  return hitsOf(file, role, action, target).total;
+}
+
+/**
+ * The same count, and how much of it is this run's.
+ *
+ * Denial lines carry no run id; each run's canary does, and comes first. So
+ * `inRun` counts from the canary of `run` (SEISIN_RUN_ID) onwards, and is null
+ * when that canary is not in the tail — outside `seisin run`, or a run older
+ * than the tail. Measured: a fresh run told "denied 5 times now" about its
+ * first try read as a counter gone wrong; the five were from earlier runs.
+ */
+export function hitsOf(file, role, action, target, run = null) {
   // The line the tail cut lands in is dropped (readLines checks the byte before
   // the cut, so a cut on a boundary keeps it). Comparing the file's byte size
   // with the text's UTF-16 length used to decide that, and with any multibyte
   // character in the tail it kept the fragment of a line or dropped a whole one.
-  let n = 0;
-  for (const e of readEntries(file, { tail: TAIL_BYTES }))
-    if (e.role === role && e.verdict === "denied" && e.action === action && e.target === target) n++;
-  return n;
+  const id = run ? String(run).slice(0, 8) : null;
+  let total = 0, inRun = null;
+  for (const e of readEntries(file, { tail: TAIL_BYTES })) {
+    if (id && e.event === "canary" && e.role === role && e.run === id) inRun = 0;
+    if (e.role === role && e.verdict === "denied" && e.action === action && e.target === target) {
+      total++;
+      if (inRun !== null) inRun++;
+    }
+  }
+  return { total, inRun };
+}
+
+/**
+ * The sentence about having been denied this before, or "".
+ *
+ * `times` and `inRun` include the attempt being answered. Said about this run
+ * when the run is known, and earlier runs are named as earlier runs. Silent on
+ * a first time anywhere.
+ */
+export function againWords({ times, inRun = null }) {
+  if (inRun === null)
+    return times > 1 ? ` You have been denied this ${times} times now; it is not going to work on the ${ordinal(times + 1)} try.` : "";
+  const earlier = times - inRun;
+  if (inRun > 1)
+    return ` You have been denied this ${inRun} times in this run` + (earlier > 0 ? ` (and ${earlier} in earlier runs)` : "") +
+      `; it is not going to work on the ${ordinal(inRun + 1)} try.`;
+  return earlier > 0 ? ` It was denied ${earlier} time(s) in earlier runs too; this run gets the same answer.` : "";
+}
+
+/** 4 -> "fourth". Past a handful the numeral reads better than the word. */
+export function ordinal(n) {
+  const words = ["", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
+  return words[n] ?? `${n}th`;
 }
 
 /**
