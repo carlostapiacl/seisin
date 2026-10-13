@@ -98,8 +98,10 @@ in every mode and gives each run a temp directory of its own — the role's when
   decides: prepare owns this and takes no handed work*. `seisin run <role> --handoff <id>` for
   such a role is refused.
 - **The end of a denial, measured again with real runs.** The literal sentence for a stopped
-  chain now ends *"Say only that sentence about this file: do not add who should do it or where
-  else it could go"* — passed on in three runs of three, it was then contradicted in two. A
+  chain is now to be passed on *"word for word and starting with the path"*, and ends *"Say only
+  that sentence about this file: do not add whose file it is, who should do it or where else it
+  could go"* — passed on in three runs of three, it was then contradicted in two; with the ending,
+  in none, though one run named the owner and one dropped the path. A
   repeated denial inside `seisin run` counts this run's tries (from its canary) and names earlier
   runs apart: *"It was denied 3 time(s) in earlier runs too; this run gets the same answer"*,
   instead of telling a fresh run about its fourth try.
