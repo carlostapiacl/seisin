@@ -19,7 +19,7 @@
  *   check = ["mybox", "check", "--policy", "{policy}"]
  *
  * the provider says before anything runs whether it can hold a policy (exit 0)
- * or not (anything else, the first line it prints saying why), and one that
+ * or not (anything else, the last line it prints saying why), and one that
  * cannot is passed over like a built-in one. Without `check` there is nothing
  * to ask, and `unmet` has nothing to say.
  *
@@ -53,13 +53,16 @@ const withPolicy = (args, file) => args.map((a) => a.split(POLICY_PLACEHOLDER).j
 export function askCheck(argv, file, label) {
   const r = spawnSync(argv[0], withPolicy(argv.slice(1), file), { encoding: "utf8", timeout: CHECK_TIMEOUT_MS, stdio: ["ignore", "pipe", "pipe"] });
   if (r.status === 0) return [];
+  // The last line: what comes before it can be warnings about what it did hold
+  // (tartaros says which patterns its own set covers), and the no comes last.
   // Its own name off the front: "mybox: no domains" reads twice after "mybox says".
+  // stdout before stderr, so a report on stdout does not bury a refusal on stderr.
   const self = `${basename(argv[0])}:`;
-  const said = `${r.stderr ?? ""}\n${r.stdout ?? ""}`.split("\n").map((l) => l.trim()).filter(Boolean)
+  const said = `${r.stdout ?? ""}\n${r.stderr ?? ""}`.split("\n").map((l) => l.trim()).filter(Boolean)
     .map((l) => (l.startsWith(self) ? l.slice(self.length).trim() : l));
   const why = r.error?.code === "ETIMEDOUT" ? `it did not answer in ${CHECK_TIMEOUT_MS / 1000} s`
     : r.error ? r.error.message
-    : said.length ? said[0]
+    : said.length ? said.at(-1)
     : r.signal ? `it was killed by ${r.signal}` : `it exited ${r.status} without saying why`;
   return [`${label} says it cannot hold this policy: ${why}`];
 }

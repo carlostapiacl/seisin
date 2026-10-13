@@ -96,7 +96,7 @@ command = ["mybox", "run", "--policy", "{policy}", "--"]
 check = ["mybox", "check", "--policy", "{policy}"]
 ```
 
-Exit 0 is yes. Anything else is no, and the first line it prints is the reason
+Exit 0 is yes. Anything else is no, and the last line it prints is the reason
 seisin shows; a check that cannot be run, or does not answer in 15 seconds, is
 a no too. With a check, a sandbox that says no is passed over like any other,
 so `provider = ["mybox", "srt"]` runs a role `mybox` cannot hold under `srt`.

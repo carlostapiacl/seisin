@@ -731,7 +731,7 @@ function readSandbox(table, path) {
         `see the policy it is meant to enforce.\n  Put {policy} where the settings file goes: ` +
         `command = [${[...command, "{policy}"].map((c) => `"${c}"`).join(", ")}]`);
     // Optional: asks the sandbox, before anything runs, whether it can hold a
-    // policy. Exit 0 is yes; anything else is no, and the first line it prints says why.
+    // policy. Exit 0 is yes; anything else is no, and the last line it prints says why.
     // Without it a declared sandbox is only ever found out by the canary, so a
     // list like ["mybox", "srt"] would stop at exit 86 instead of moving on.
     const check = own(own(declared, name), "check");

@@ -154,10 +154,12 @@ test("a declared sandbox's check decides like tartaros's, and silence or a hang 
   const script = (name, body) => { const f = join(dir, name); writeFileSync(f, `#!/bin/sh\n${body}\n`); chmodSync(f, 0o755); return f; };
   const no = script("no", 'echo "no: no domains here" >&2; exit 1');
   const mute = script("mute", "exit 3");
+  const warns = script("warns", 'echo "warns: applying the built-in set for one pattern" >&2; echo "warns: cannot hold another, refusing" >&2; exit 2');
   const yes = script("yes", 'test -s "$1"');
   const unmet = (check) => commandSandbox("box", ["box", "{policy}"], [check, "{policy}"]).unmet({}, { file: join(dir, "no-such-file") });
   assert.deepEqual(unmet(no), ["its check (" + no + ") says it cannot hold this policy: no domains here"]);
   assert.match(unmet(mute)[0], /exited 3 without saying why/);
+  assert.match(unmet(warns)[0], /says it cannot hold this policy: cannot hold another, refusing$/, "a warning was shown instead of the refusal");
   assert.match(unmet(yes)[0], /exited 1/, "a check on a file that is not there passed");
   assert.match(unmet(join(dir, "absent"))[0], /ENOENT/);
   assert.deepEqual(commandSandbox("box", ["box", "{policy}"]).unmet({}, {}), [], "no check, nothing to say");
