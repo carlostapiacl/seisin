@@ -231,7 +231,31 @@ export function toAgent(decision, { target, role }) {
     : owners.length
       ? `${target} belongs to ${owners.join(", ")}. It is not ${role}'s to change.`
       : `${target} has no owner.`;
-  return `${whose} ${nextStep(d, role)}`;
+  // A key or a read is not a change to put somewhere else.
+  const write = d.reason !== "key" && d.reason !== "read" && d.type !== "resolved";
+  return `${whose} ${nextStep(d, role)}` + (write ? ` ${ELSEWHERE}` : "");
+}
+
+/**
+ * What "working around it" means, said once. Measured: an agent that would
+ * never retry the write still offered, twice, to leave the file in a folder of
+ * its own — the same change, under a path nobody reviews.
+ */
+export const ELSEWHERE = "Do not put the change somewhere else instead (another path, a copy, /tmp).";
+
+/**
+ * How the denial ends: that it is already queued, and for whom. Said apart
+ * from toAgent because only a denial that files a request may say it — the
+ * note after a failed call and `seisin whose` file nothing.
+ *
+ * A route ends on the role it goes to. Ending it on "a person", as every
+ * denial once did, told the agent two owners in one sentence, and with a
+ * handoff chain in it the agent repeated the wrong one.
+ */
+export function queuedLine(decision) {
+  return decision?.type === "route"
+    ? `Already queued as a handoff to ${decision.role}: a run of ${decision.role}, or a person, picks it up — retrying or waiting will not move it.`
+    : "Already queued for a person to answer — retrying or waiting will not move it.";
 }
 
 /** What to do about it, from the decision alone: the second half of toAgent, and `seisin whose`. */
@@ -239,7 +263,9 @@ export function nextStep(decision, role) {
   const d = decision ?? {};
   switch (d.type) {
     case "route":
-      return `It is handed to ${d.role}: hand it over rather than working around it.`;
+      return `It is handed to ${d.role}` +
+        (d.depth > 1 ? ` (handoff chain ${(d.visited ?? []).join(" → ")}, ${d.depth} of ${MAX_DEPTH} deep)` : "") +
+        ": hand it over rather than working around it.";
     case "human":
       if (d.reason === "key") return "Ask for what you need from it rather than reading the key.";
       if (d.reason === "no-receiver")
@@ -249,7 +275,7 @@ export function nextStep(decision, role) {
         ? "With more than one owner, a person decides who takes it. Do not pick one, and do not work around it."
         : "A person decides who takes it. Do not work around it.";
     case "cycle":
-      return `It is not handed back: this work already came through ${d.role} ` +
+      return `It is not handed back to ${d.role}: this work already came through ${d.role} ` +
         `(handoff chain ${(d.visited ?? []).join(" → ")}). A person decides how to split it. Do not work around it.`;
     case "depth":
       return `The handoff chain stops here, ${d.depth} of ${d.max} deep. A person decides. Do not work around it.`;

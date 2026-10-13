@@ -827,8 +827,9 @@ So a denial now carries its own history:
 
 ```
 deploy/x.yml belongs to infra. It is not dev's to change. It is handed to infra: hand it
-over rather than working around it. You have been denied this 3 times now; it is not going
-to work on the fourth try. Already queued for a person to answer…
+over rather than working around it. Do not put the change somewhere else instead (another
+path, a copy, /tmp). You have been denied this 3 times now; it is not going to work on the
+fourth try. Already queued as a handoff to infra…
 ```
 
 And the standing list is a command:
@@ -973,8 +974,8 @@ the same kernel or workspace, and which one you want depends on what you are pro
 
 ## Status
 
-**1004 tests on macOS, 1002 passing and 2 platform skips** (`main` before 0.6.0); **1003 on
-Debian 12 under bubblewrap 0.8.0, 980 passing and 23 platform skips** (2026-10-12). On 2026-10-12, 91 of the suite's tests
+**1008 tests on macOS, 1006 passing and 2 platform skips** (`main` before 0.6.0); **1007 on
+Debian 12 under bubblewrap 0.8.0, 984 passing and 23 platform skips** (2026-10-13). On 2026-10-12, 91 of the suite's tests
 needed `@anthropic-ai/sandbox-runtime` installed — counted by running it with the runtime
 hidden — and run real commands through the real kernel; 26 of them are the core boundary file,
 `test/sandbox.test.js`, which the CI gate fails if it *skips*, because a green run that quietly

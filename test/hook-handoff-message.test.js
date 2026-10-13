@@ -16,7 +16,7 @@ import { decide } from "../src/hook.js";
 import { afterTool } from "../src/diagnose.js";
 import { logPath } from "../src/log.js";
 import { requestsPath, queueOf } from "../src/requests.js";
-import { decideHandoff, toAgent, chainFromEnv, CHAIN_ENV } from "../src/handoff.js";
+import { decideHandoff, toAgent, chainFromEnv, CHAIN_ENV, ELSEWHERE } from "../src/handoff.js";
 
 const POLICY =
   '[keys]\ndir = ".secrets"\n\n' +
@@ -46,7 +46,10 @@ test("an owned path is handed to its owner", () => {
   const { dir, config } = repo();
   const s = said(decide(config, "frontend", write(dir, "src/api/x.ts"), quiet));
   assert.match(s, /^src\/api\/x\.ts belongs to backend\. It is not frontend's to change\. It is handed to backend: hand it over/);
-  assert.match(s, /Already queued for a person/);
+  // Ends on the role it goes to, not on "a person": two owners in one sentence
+  // is what an agent repeated wrong in a measured run.
+  assert.match(s, /Already queued as a handoff to backend: a run of backend, or a person, picks it up/);
+  assert.doesNotMatch(s, /for a person/);
 });
 
 test("two owners: a person decides, and the agent is told not to pick one", () => {
@@ -74,11 +77,41 @@ test("a key is never handed over", () => {
 test("in a handoff chain, reaching back is a cycle and a long chain stops", () => {
   const { dir, config } = repo();
   const back = said(decide(config, "backend", write(dir, "src/web/app.ts"), { ...quiet, chain: CHAIN }));
-  assert.match(back, /belongs to frontend\. It is not backend's to change\. It is not handed back: this work already came through frontend \(handoff chain frontend → backend\)\. A person decides how to split it/);
+  assert.match(back, /belongs to frontend\. It is not backend's to change\. It is not handed back to frontend: this work already came through frontend \(handoff chain frontend → backend\)\. A person decides how to split it/);
   const deep = said(decide(config, "backend", write(dir, "test/a.ts"), { ...quiet, chain: { id: "c", depth: 4, visited: ["a", "b", "c", "backend"] } }));
   assert.match(deep, /The handoff chain stops here, 5 of 4 deep\. A person decides/);
   // The same request outside any chain is an ordinary route.
   assert.match(said(decide(config, "backend", write(dir, "src/web/app.ts"), quiet)), /It is handed to frontend/);
+});
+
+test("a handed run's route names the chain it extends", () => {
+  const { dir, config } = repo();
+  const s = said(decide(config, "backend", write(dir, "test/a.ts"), { ...quiet, chain: CHAIN }));
+  assert.match(s, /It is handed to qa \(handoff chain frontend → backend → qa, 2 of 4 deep\): hand it over/);
+  // Outside a chain there is none to name.
+  assert.doesNotMatch(said(decide(config, "backend", write(dir, "test/a.ts"), quiet)), /handoff chain/);
+});
+
+test("only a route ends on a role; every other queued denial ends on a person", () => {
+  const { dir, config } = repo();
+  for (const [role, rel] of [["frontend", "src/shared/x.ts"], ["frontend", "docs/x.md"], ["backend", "src/web/app.ts"]]) {
+    const chain = rel === "src/web/app.ts" ? CHAIN : null;
+    const s = said(decide(config, role, write(dir, rel), { ...quiet, chain }));
+    assert.match(s, /Already queued for a person to answer/, rel);
+    assert.doesNotMatch(s, /queued as a handoff/, rel);
+  }
+});
+
+test("a refused write says that putting it elsewhere is working around it; a refused key does not", () => {
+  const { dir } = repo();
+  mkdirSync(join(dir, "test", "fixtures"), { recursive: true });
+  writeFileSync(join(dir, "test", "fixtures", "a.json"), "{}\n");
+  const config = loadConfig(join(dir, "seisin.toml"));
+  // Measured: an agent that never retried still offered to leave the file in a folder of its own.
+  for (const [role, rel] of [["frontend", "src/api/x.ts"], ["frontend", "src/shared/x.ts"], ["frontend", "docs/x.md"], ["qa", "test/fixtures/a.json"]])
+    assert.ok(said(decide(config, role, write(dir, rel), quiet)).includes(ELSEWHERE), rel);
+  const key = { hook_event_name: "PreToolUse", tool_name: "Read", tool_input: { file_path: join(dir, ".secrets/db.txt") } };
+  assert.ok(!said(decide(config, "frontend", key, quiet)).includes(ELSEWHERE));
 });
 
 test("a denial that files no request keeps its own reason, with no handoff in it", () => {
@@ -114,7 +147,7 @@ test("the real hook words a cycle from the run's chain, and the request it files
     env: { ...process.env, SEISIN_ROLE: "backend", SEISIN_CONFIG: join(dir, "seisin.toml"), [CHAIN_ENV]: JSON.stringify(CHAIN) },
   });
   assert.equal(r.status, 0, r.stderr);
-  assert.match(said(JSON.parse(r.stdout)), /It is not handed back: this work already came through frontend/);
+  assert.match(said(JSON.parse(r.stdout)), /It is not handed back to frontend: this work already came through frontend/);
   // The words came from the variable; the record did not. Only the parent of
   // a `--handoff` run writes a chain into the queue (intake.js).
   const line = JSON.parse(readFileSync(requestsPath(dir), "utf8").trim());

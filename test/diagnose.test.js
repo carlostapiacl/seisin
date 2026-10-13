@@ -87,6 +87,16 @@ test("session start hands the role its map and its walls", () => {
   assert.match(t, /write src\/api\/x\.ts \(3×\) — belongs to api/);
 });
 
+test("session start does not ask to hand over a wall outside the repository", () => {
+  const dir = repo('[roles.web]\nwrites = ["src/web/**"]\n');
+  for (let i = 0; i < 3; i++) kernelLine(dir, "web", "/Users/someone/.npm/_logs/debug.log");
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  const t = atSessionStart(cfg, "web", { hook_event_name: "SessionStart", source: "startup" }, { file: logPath(dir) })
+    .hookSpecificOutput.additionalContext;
+  assert.match(t, /outside the repository, where no role owns anything — nothing to hand over; leave it:\n- write \/Users\/someone\/\.npm\/_logs\/debug\.log \(3×\)/);
+  assert.doesNotMatch(t, /still denied — do not try again, hand it over/);
+});
+
 test("wire adds every event, and an old PreToolUse-only wiring is not 'already wired'", () => {
   const dir = repo();
   mkdirSync(join(dir, ".claude"), { recursive: true });

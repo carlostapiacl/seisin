@@ -97,6 +97,13 @@ in every mode and gives each run a temp directory of its own — the role's when
   other takes handed work, and otherwise to a person, with the reason `no-receiver` — *a person
   decides: prepare owns this and takes no handed work*. `seisin run <role> --handoff <id>` for
   such a role is refused.
+- **A denied agent is told where the queued work goes, and that another path is no way
+  round it.** The hook's denial ends *"Already queued as a handoff to backend: a run of backend,
+  or a person, picks it up"* when the work routes to a role, and *"queued for a person"* only
+  otherwise. Every denied write adds *"Do not put the change somewhere else instead (another
+  path, a copy, /tmp)."* A route inside a handoff chain names the chain and its depth, and a
+  cycle names the role it will not go back to. At session start, walls outside the repository
+  are listed apart — *nothing to hand over; leave it* — instead of under "hand it over".
 - **`check` says what a repo inside scratch costs:** *every role can write the whole repo*, with
   the fix (move it, or set `[runtime] writes`). Measured against the scratch the policy really
   gives — `[runtime] writes` when set, none under `isolate = "home"`, which used to be warned

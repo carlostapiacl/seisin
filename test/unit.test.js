@@ -1761,7 +1761,7 @@ test("a refusal tells the agent the request is already queued", () => {
   const out = decide(cfgHook(), "frontend",
     { tool_name: "Write", tool_input: { file_path: "/repo/src/api/orders.ts" } },
     { now() {}, ask() {} });
-  assert.match(out.hookSpecificOutput.permissionDecisionReason, /queued for a person/);
+  assert.match(out.hookSpecificOutput.permissionDecisionReason, /Already queued as a handoff to backend/);
 });
 
 test("the refusal closes the retry loop and the wait, in both branches", () => {

@@ -317,7 +317,10 @@ A denial already files a request — and until now it did so silently,
 so nothing inside the sandbox knew anything was pending. An agent could not tell the
 person who sent it that the work was waiting on a grant rather than simply
 impossible. The sentence now ends with *"Already queued for a person to answer —
-retrying or waiting will not move it."*
+retrying or waiting will not move it."* — or, when the handoff decision routes the work to a
+role, *"Already queued as a handoff to backend: a run of backend, or a person, picks it up — …"*.
+Ending a route on "a person" named two receivers in one sentence; measured in a real run, an
+agent in a handoff chain then told its user the work was going to the wrong one.
 
 Both halves earn their place. **Retrying**, because the queue deduplicates: a
 second attempt at the same grant raises a counter and produces nothing new.
