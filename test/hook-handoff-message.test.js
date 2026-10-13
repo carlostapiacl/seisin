@@ -77,11 +77,17 @@ test("a key is never handed over", () => {
 test("in a handoff chain, reaching back is a cycle and a long chain stops", () => {
   const { dir, config } = repo();
   const back = said(decide(config, "backend", write(dir, "src/web/app.ts"), { ...quiet, chain: CHAIN }));
-  assert.match(back, /belongs to frontend\. It is not backend's to change\. It is not handed back to frontend: this work already came through frontend \(handoff chain frontend → backend\), so nothing is asked of frontend\. A person decides how to split it\./);
+  assert.match(back, /^src\/web\/app\.ts is not backend's to change, and its handoff chain stops here: handing it on would send it back the way it came\. A person decides\./);
+  // Not told whose it is, nor the chain: told the owner, two runs of three added it after the sentence.
+  assert.doesNotMatch(back, /frontend/);
+  // And nothing after the sentence: it is the last thing the agent reads.
+  assert.match(back, /where else it could go\.$/);
   // The words to pass on, literally: told what not to say, an agent in one run of two sent its user to frontend.
   assert.match(back, /Tell whoever sent you, word for word and starting with the path: "src\/web\/app\.ts was not written\. A person has to decide who does it; the request backend:write:src\/web is waiting in seisin requests\." Say only that sentence about this file: do not add whose file it is, who should do it or where else it could go\./);
   const deep = said(decide(config, "backend", write(dir, "test/a.ts"), { ...quiet, chain: { id: "c", depth: 4, visited: ["a", "b", "c", "backend"] } }));
-  assert.match(deep, /The handoff chain stops here, 5 of 4 deep\. A person decides/);
+  assert.match(deep, /its handoff chain stops here: 5 of 4 deep\. A person decides/);
+  assert.doesNotMatch(deep, /belongs to|qa/);
+  assert.match(deep, /where else it could go\.$/);
   // The same request outside any chain is an ordinary route.
   assert.match(said(decide(config, "backend", write(dir, "src/web/app.ts"), quiet)), /It is handed to frontend/);
 });
@@ -96,9 +102,9 @@ test("a handed run's route names the chain it extends", () => {
 
 test("only a route ends on a role; every other queued denial ends on a person", () => {
   const { dir, config } = repo();
-  for (const [role, rel] of [["frontend", "src/shared/x.ts"], ["frontend", "docs/x.md"], ["backend", "src/web/app.ts"]]) {
-    const chain = rel === "src/web/app.ts" ? CHAIN : null;
-    const s = said(decide(config, role, write(dir, rel), { ...quiet, chain }));
+  // A stopped chain ends on the sentence to pass on instead (above).
+  for (const [role, rel] of [["frontend", "src/shared/x.ts"], ["frontend", "docs/x.md"]]) {
+    const s = said(decide(config, role, write(dir, rel), quiet));
     assert.match(s, /Already queued for a person to answer/, rel);
     assert.doesNotMatch(s, /queued as a handoff/, rel);
   }
@@ -172,7 +178,7 @@ test("the real hook words a cycle from the run's chain, and the request it files
     env: { ...process.env, SEISIN_ROLE: "backend", SEISIN_CONFIG: join(dir, "seisin.toml"), [CHAIN_ENV]: JSON.stringify(CHAIN) },
   });
   assert.equal(r.status, 0, r.stderr);
-  assert.match(said(JSON.parse(r.stdout)), /It is not handed back to frontend: this work already came through frontend/);
+  assert.match(said(JSON.parse(r.stdout)), /handoff chain stops here: handing it on would send it back the way it came/);
   // The words came from the variable; the record did not. Only the parent of
   // a `--handoff` run writes a chain into the queue (intake.js).
   const line = JSON.parse(readFileSync(requestsPath(dir), "utf8").trim());
@@ -201,7 +207,7 @@ test("after a failed command, the kernel's denial is worded from the same decisi
   const ev = { hook_event_name: "PostToolUseFailure", tool_name: "Bash", error: "sh: Operation not permitted" };
   const text = (await afterTool(config, "backend", ev, { file: logPath(dir), wait: [0], chain: CHAIN })).hookSpecificOutput.additionalContext;
   assert.match(text, /src\/shared\/x\.ts belongs to platform, infra\. It is not backend's to change\. With more than one owner, a person decides/);
-  assert.match(text, /src\/web\/app\.ts belongs to frontend\. It is not backend's to change\. It is not handed back/);
+  assert.match(text, /src\/web\/app\.ts is not backend's to change, and its handoff chain stops here/);
 });
 
 test("seisin whose, asked from inside a run, says where the work goes", () => {

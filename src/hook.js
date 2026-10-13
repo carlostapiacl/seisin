@@ -21,7 +21,7 @@ import { explain, normalize, privateOwner } from "./owners.js";
 import { append, logPath } from "./log.js";
 import { hitsOf, againWords } from "./walls.js";
 import { record, requestsPath, keyOf } from "./requests.js";
-import { decideHandoff, toAgent, queuedLine, ELSEWHERE } from "./handoff.js";
+import { decideHandoff, toAgent, queuedLine, isStopped, ELSEWHERE } from "./handoff.js";
 
 /** Tools whose input names a file directly. */
 const FILE_TOOLS = {
@@ -335,8 +335,10 @@ export function decide(config, role, event, { observe = false, now = append, ask
           ? `${denied.reason}. Nothing was queued.` + elsewhere + again
           : denied.mcp
           ? `${denied.reason}. Nothing was queued: which MCP servers a role may load is set in its mcp list, a policy change a person makes, not something they grant from the queue.` + again
-          : toAgent(handoff, { target: denied.target, role, key: keyOf({ role, action: denied.action, target: denied.target }) }) +
-            again + " " + queuedLine(handoff),
+          : toAgent(handoff, { target: denied.target, role, key: keyOf({ role, action: denied.action, target: denied.target }), again }) +
+            // Where a chain stops, the sentence to pass on already says the
+            // request is waiting, and is the last thing the agent reads.
+            (isStopped(handoff) ? "" : " " + queuedLine(handoff)),
     },
   };
 }
