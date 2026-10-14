@@ -79,6 +79,8 @@ export function recentKernelDenials(file, role, sinceMs) {
   const seen = new Map();
   for (const e of readEntries(file, { tail: TAIL_BYTES }).reverse()) {
     if (e.role !== role || e.verdict !== "denied" || e.source !== "kernel") continue;
+    // A system service is not a path the agent can act on, and the sentence below is about paths.
+    if (e.kind === "system") continue;
     if (!e.at || e.at < since || !e.target) continue;
     const k = `${e.action}\u0000${e.target}`;
     if (!seen.has(k)) seen.set(k, e);

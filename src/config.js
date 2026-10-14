@@ -14,6 +14,7 @@ import { resolve, dirname, join } from "node:path";
 import { CONFIG_NAME } from "./layout.js";
 import { parseKey, MODES, checkNames, BUILTIN, unknownMode } from "./keys.js";
 import { readNotify } from "./notify.js";
+import { BROWSERS } from "./browsers.js";
 
 export { CONFIG_NAME } from "./layout.js";
 
@@ -519,6 +520,7 @@ export function loadConfig(path, text = readFileSync(path, "utf8")) {
     if (handoff !== undefined && typeof handoff !== "boolean")
       throw new Error(`${path}: roles.${name}.handoff must be true or false, not ${JSON.stringify(handoff)}`);
     const localPorts = readLocalPorts(own(r, "local_ports"), `${path}: roles.${name}.local_ports`);
+    const browsers = readBrowsers(own(r, "browsers"), `${path}: roles.${name}.browsers`);
     const mcp = readMcp(own(r, "mcp"), `${path}: roles.${name}.mcp`);
     const controlFiles = readControlFiles(own(r, "control_files"), `${path}: roles.${name}.control_files`);
     const reads = readReadList(own(r, "reads"), `${path}: roles.${name}.reads`);
@@ -595,6 +597,12 @@ export function loadConfig(path, text = readFileSync(path, "utf8")) {
        * go through the proxy, which HTTP clients do and a MySQL driver does not.
        */
       localPorts,
+      /**
+       * The headless browsers this role may start (browsers.js): the Mach
+       * services each needs, by name, and nothing else. `[]` unless the role
+       * says so — every other role keeps the profile as it was.
+       */
+      browsers,
       /**
        * The MCP servers this role may load, by name, or null when the policy
        * does not say. `[]` is "none". seisin declares this and does not
@@ -891,7 +899,7 @@ function readBoolean(value, where) {
 }
 
 /** The keys a `[roles.<name>]` table can hold. Anything else is reported by `check`. */
-export const ROLE_KEYS = ["writes", "private", "keys", "key_mode", "env", "network", "never_writes", "local_binding", "local_ports", "mcp", "trustd", "control_files", "reads", "toolchain", "verify", "handoff"];
+export const ROLE_KEYS = ["writes", "private", "keys", "key_mode", "env", "network", "never_writes", "local_binding", "local_ports", "browsers", "mcp", "trustd", "control_files", "reads", "toolchain", "verify", "handoff"];
 
 /**
  * `control_files`: which families of control files a role may edit. Refused at
@@ -948,6 +956,23 @@ function readMcp(value, where) {
     if (!out.includes(n)) out.push(n);
   }
   return out;
+}
+
+/**
+ * `browsers`, refused rather than guessed: a name seisin has no preset for
+ * would read as a grant that was made, and grant nothing.
+ */
+function readBrowsers(value, where) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.some((v) => typeof v !== "string"))
+    throw new Error(`${where} is a list of browser names, for example browsers = ["chromium"].`);
+  for (const b of value)
+    if (!Object.hasOwn(BROWSERS, b)) {
+      const near = closest(b, Object.keys(BROWSERS));
+      throw new Error(`${where}: "${b}" is not a browser seisin has a preset for${near ? ` — did you mean "${near}"?` : ""} ` +
+        `Known: ${Object.keys(BROWSERS).join(", ")}.`);
+    }
+  return [...new Set(value)];
 }
 
 /**

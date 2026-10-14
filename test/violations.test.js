@@ -50,8 +50,13 @@ test("the OS collapsing repeats does not become a second denial", () => {
   assert.equal(parseChunk(DUPLICATE), null);
 });
 
-test("a denial that is not about a file is not a territory question", () => {
-  assert.equal(parseChunk(MACH_LOOKUP), null);
+test("a denial that is not about a file is not a territory question: it is a system service, by name", () => {
+  // Dropped until a refused mach-register turned out to be the whole of a
+  // browser's crash, with nothing in the log to say so (browsers.test.js).
+  const d = parseChunk(MACH_LOOKUP);
+  assert.equal(d.action, "system");
+  assert.equal(d.operation, "mach-lookup");
+  assert.equal(d.path, "com.apple.contactsd.persistence");
 });
 
 test("a path that is not absolute is dropped rather than guessed at", () => {
@@ -59,14 +64,18 @@ test("a path that is not absolute is dropped rather than guessed at", () => {
   assert.equal(parseChunk(relative), null);
 });
 
-test("operations map onto the three verbs the log speaks", () => {
+test("operations map onto the verbs the log speaks", () => {
   assert.equal(actionOf("file-write-create"), "write");
   assert.equal(actionOf("file-write-unlink"), "write");
   assert.equal(actionOf("file-read-data"), "read");
   // Since local_ports: a refused dial is recorded (narrowly — see local-ports.test.js).
   assert.equal(actionOf("network-outbound"), "connect");
-  assert.equal(actionOf("mach-lookup"), null);
-  assert.equal(actionOf("sysctl-read"), null);
+  // Since browsers: the rest are system services, recorded once per run by name.
+  assert.equal(actionOf("mach-lookup"), "system");
+  assert.equal(actionOf("mach-register"), "system");
+  assert.equal(actionOf("sysctl-read"), "system");
+  // A stat() of a denied path stays dropped: a directory walk, not a reach (see actionOf).
+  assert.equal(actionOf("file-read-metadata"), null);
 });
 
 /* ── attribution ──────────────────────────────────────────────────────── */
