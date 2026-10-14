@@ -33,7 +33,7 @@ export const DEFAULT_SANDBOX = "srt";
 /** The sandboxes the config names, in its order, as provider objects. */
 export function sandboxesOf(config) {
   const names = config.sandbox?.provider ?? [DEFAULT_SANDBOX];
-  return names.map((n) => BUILTIN_SANDBOXES[n] ?? commandSandbox(n, config.sandbox.providers[n].command, config.sandbox.providers[n].check));
+  return names.map((n) => BUILTIN_SANDBOXES[n] ?? commandSandbox(n, config.sandbox.providers[n].command, config.sandbox.providers[n].check, { tagsDenials: config.sandbox.providers[n].tagsDenials }));
 }
 
 /**
@@ -59,8 +59,10 @@ export function weigh(config, settings, { platform = process.platform, role = nu
     const options = list.map((sandbox) => {
       const bin = locate ? sandbox.locate() : "(not looked up)";
       const asked = sandbox.asksFile && locate && bin;
-      const unmet = sandbox.asksFile && !asked ? [] : sandbox.unmet(settings, { platform, role, bin, file: asked ? fileFor() : null });
-      return { sandbox, bin, unmet, missing: bin ? null : sandbox.missing() };
+      const ctx = { platform, role, bin, file: asked ? fileFor() : null };
+      const { unmet, warnings } = sandbox.asksFile && !asked ? { unmet: [], warnings: [] }
+        : sandbox.assess ? sandbox.assess(settings, ctx) : { unmet: sandbox.unmet(settings, ctx), warnings: [] };
+      return { sandbox, bin, unmet, warnings, missing: bin ? null : sandbox.missing() };
     });
     const chosen = options.find((o) => o.bin && o.unmet.length === 0) ?? null;
     return { chosen, options };

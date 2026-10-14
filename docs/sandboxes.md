@@ -63,10 +63,13 @@ and a refused run print. tartaros needs to be on PATH (`cargo build --release
 
 What decides whether it can hold a role is tartaros, not this page: as it
 learns a field, roles that needed it start being given to it, with nothing to
-change in seisin. One field every run on macOS asks for today is a single unix
-socket, the hook's audit channel (`allowUnixSockets`); the canary also checks
-that the run's own settings file is not readable from inside, which a sandbox
-re-opening this run's directory has to keep denied.
+change in seisin. What `explain` prints as `warning:` while saying yes,
+`seisin check` shows under the role — on Linux without mount privileges, for
+one, that a role given a whole repo cannot create new entries at its root.
+
+tartaros tags every Seatbelt denial the way sandbox-runtime does, so on macOS
+the kernel's refusals under it are recorded and attributed exactly as under
+`srt`.
 
 ## The contract for a sandbox of your own
 
@@ -128,8 +131,21 @@ command = ["srt", "--settings", "{policy}", "--"]
 The test suite runs exactly that, and runs a "sandbox" that ignores the file to
 check that the canary stops it before anything of the agent's starts.
 
-What seisin cannot do through a declared command: read the kernel's denials
-with the sandbox's own attribution. On macOS they are still attributed by
-process tree, so a denial is recorded when the refused process is still alive
-when its line arrives, and missed otherwise. Under `srt` the runtime's tag
-covers that gap.
+**The kernel's refusals, on macOS.** seisin reads them from the system log,
+filtered by the tag sandbox-runtime adds to every Seatbelt denial
+(`(with message "CMD64_<base64 of the command>_END__<suffix>_SBX")`, the
+command being the first 100 characters of what follows `--`, as a shell line,
+and the suffix nine `[a-z0-9]` drawn once per sandbox process). A sandbox that
+adds the same tag says so:
+
+```toml
+[sandbox.providers.mybox]
+command = ["mybox", "run", "--policy", "{policy}", "--"]
+tags_denials = true
+```
+
+and its refusals are recorded like `srt`'s. One that does not still holds the
+boundary, but none of its refusals reach the log: the filter drops them before
+seisin sees them. `seisin run` and `seisin check` say so for such a sandbox,
+rather than leave a log that looks like nothing was refused. On Linux there is
+no stream to read under any sandbox.

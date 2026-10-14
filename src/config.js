@@ -744,7 +744,12 @@ function readSandbox(table, path) {
           `without seeing the policy it is asked about.\n  Put {policy} where the settings file goes: ` +
           `check = [${[...check, "{policy}"].map((c) => `"${c}"`).join(", ")}]`);
     }
-    providers[name] = { name, command, check: check ?? null };
+    // Declared, because it cannot be detected: its Seatbelt denials carry
+    // sandbox-runtime's tag, so the kernel's refusals under it can be recorded.
+    const tags = own(own(declared, name), "tags_denials");
+    if (tags !== undefined && typeof tags !== "boolean")
+      throw new Error(`${path}: [sandbox.providers.${name}] tags_denials is true or false, not ${JSON.stringify(tags)}.`);
+    providers[name] = { name, command, check: check ?? null, tagsDenials: tags ?? false };
   }
   const raw = own(table, "provider");
   if (raw === undefined)
@@ -827,7 +832,7 @@ const SHAPE = {
   scan: { ignore: true },
   protect: { instructions: true },
   notify: { url: true, url_file: true, format: true },
-  sandbox: { provider: true, providers: { "*": { command: true, check: true } } },
+  sandbox: { provider: true, providers: { "*": { command: true, check: true, tags_denials: true } } },
 };
 
 function checkShape(table, shape, prefix, path, lines) {

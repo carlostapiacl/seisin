@@ -65,8 +65,14 @@ export function sandboxes(config, only = null, { platform = process.platform } =
     let settings;
     try { settings = settingsFor(config, r.name, sock); } catch (e) { rows.push({ role: r.name, chosen: null, error: e.message }); continue; }
     const { chosen, options } = weigh(config, settings, { platform, role: r.name });
-    rows.push({ role: r.name, chosen: chosen?.sandbox.name ?? null, options: options.map((o) => ({ name: o.sandbox.name, missing: o.missing, unmet: o.unmet })) });
+    rows.push({ role: r.name, chosen: chosen?.sandbox.name ?? null,
+      options: options.map((o) => ({ name: o.sandbox.name, missing: o.missing, unmet: o.unmet, warnings: o.warnings })) });
     out(chosen ? `  ${C.green}✓${C.off} ${r.name}: ${chosen.sandbox.name}\n` : `  ${C.red}✗${C.off} ${r.name}: no sandbox can hold it\n`);
+    // Held, but not the way the role may expect: the sandbox's own words.
+    for (const w of chosen?.warnings ?? []) out(`      ${C.yellow}⚠ ${chosen.sandbox.name}: ${w}${C.off}\n`);
+    // Recorded nowhere otherwise: a run under it would still be held, and say nothing of what it refused.
+    if (chosen && !chosen.sandbox.tagsDenials && platform === "darwin")
+      out(`      ${C.yellow}⚠ ${chosen.sandbox.name} does not tag its denials, so the kernel's refusals under it are not recorded${C.off}\n`);
     for (const o of options) {
       if (o === chosen) break;
       if (o.missing) out(`      ${o.sandbox.name}: ${o.missing}\n`);

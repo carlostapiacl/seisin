@@ -45,36 +45,49 @@ const CHECK_TIMEOUT_MS = 15000;
 const withPolicy = (args, file) => args.map((a) => a.split(POLICY_PLACEHOLDER).join(file));
 
 /**
- * Runs a sandbox's own pre-check on the settings file. `[]` when it answered
- * yes; otherwise one sentence, its own reason when it gave one. A check that
- * cannot answer (not found, killed, timed out) is a no: an answer that never
- * came is not a pass.
+ * Runs a sandbox's own pre-check on the settings file.
+ *
+ * `unmet` is `[]` when it answered yes; otherwise one sentence, its own reason
+ * when it gave one. A check that cannot answer (not found, killed, timed out)
+ * is a no: an answer that never came is not a pass. `warnings` are the lines
+ * it printed that start with `warning:`, yes or no — what it holds, but not the
+ * way the role might expect (tartaros on Linux, a repo root it cannot let the
+ * role create entries in) — for `seisin check` to show.
  */
-export function askCheck(argv, file, label) {
+export function assessCheck(argv, file, label) {
   const r = spawnSync(argv[0], withPolicy(argv.slice(1), file), { encoding: "utf8", timeout: CHECK_TIMEOUT_MS, stdio: ["ignore", "pipe", "pipe"] });
-  if (r.status === 0) return [];
-  // The last line: what comes before it can be warnings about what it did hold
-  // (tartaros says which patterns its own set covers), and the no comes last.
   // Its own name off the front: "mybox: no domains" reads twice after "mybox says".
   // stdout before stderr, so a report on stdout does not bury a refusal on stderr.
   const self = `${basename(argv[0])}:`;
   const said = `${r.stdout ?? ""}\n${r.stderr ?? ""}`.split("\n").map((l) => l.trim()).filter(Boolean)
     .map((l) => (l.startsWith(self) ? l.slice(self.length).trim() : l));
+  const warnings = said.filter((l) => /^warning:/i.test(l)).map((l) => l.replace(/^warning:\s*/i, ""));
+  if (r.status === 0) return { unmet: [], warnings };
+  // The last line: what comes before it can be warnings about what it did hold
+  // (tartaros says which patterns its own set covers), and the no comes last.
   const why = r.error?.code === "ETIMEDOUT" ? `it did not answer in ${CHECK_TIMEOUT_MS / 1000} s`
     : r.error ? r.error.message
     : said.length ? said.at(-1)
     : r.signal ? `it was killed by ${r.signal}` : `it exited ${r.status} without saying why`;
-  return [`${label} says it cannot hold this policy: ${why}`];
+  return { unmet: [`${label} says it cannot hold this policy: ${why}`], warnings };
 }
 
-export function commandSandbox(name, command, check = null) {
+/** Only the answer: `[]` for yes, the reason for no. */
+export const askCheck = (argv, file, label) => assessCheck(argv, file, label).unmet;
+
+export function commandSandbox(name, command, check = null, { tagsDenials = false } = {}) {
+  const assess = (_settings, { file } = {}) => (check ? assessCheck(check, file, `its check (${check[0]})`) : { unmet: [], warnings: [] });
   return {
     name,
     locate: () => onPath(command[0]),
     missing: () => `${command[0]} (the command of [sandbox.providers.${name}]) was not found${command[0].includes("/") ? "" : " on PATH"}.`,
     asksFile: Boolean(check),
-    unmet: (_settings, { file } = {}) => (check ? askCheck(check, file, `its check (${check[0]})`) : []),
+    assess,
+    unmet: (settings, ctx) => assess(settings, ctx).unmet,
     wrap: (bin, file, _settings, inner) => [bin, ...withPolicy(command.slice(1), file), ...inner],
-    tagsDenials: false,
+    // Declared, not detected: `tags_denials = true` says its Seatbelt denials
+    // carry sandbox-runtime's tag (docs/sandboxes.md). Without it, on macOS,
+    // none of the kernel's refusals under it reach the log.
+    tagsDenials,
   };
 }

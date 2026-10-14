@@ -16,7 +16,7 @@
  */
 import { existsSync } from "node:fs";
 import { join, delimiter } from "node:path";
-import { askCheck } from "./command.js";
+import { assessCheck } from "./command.js";
 
 /** `tartaros` on PATH, or null. */
 export function resolveTartaros(path = process.env.PATH) {
@@ -33,18 +33,24 @@ export function tartarosArgv(bin, file, inner, { role = null } = {}) {
   return [bin, "run", ...(role ? ["--role", role] : []), "--settings", file, "--", ...inner];
 }
 
-/** What tartaros says it cannot hold of this file, or `[]`. Only asked of a binary that was found. */
-export function tartarosUnmet(bin, file, { platform = process.platform } = {}) {
-  if (platform !== "darwin" && platform !== "linux") return [`tartaros runs on macOS and Linux, not ${platform}`];
-  return askCheck([bin, "explain", "--settings", "{policy}"], file, "tartaros");
+/** What tartaros says of this file: what it cannot hold, and its warnings. Only asked of a binary that was found. */
+export function tartarosAssess(bin, file, { platform = process.platform } = {}) {
+  if (platform !== "darwin" && platform !== "linux") return { unmet: [`tartaros runs on macOS and Linux, not ${platform}`], warnings: [] };
+  return assessCheck([bin, "explain", "--settings", "{policy}"], file, "tartaros");
 }
+
+export const tartarosUnmet = (bin, file, ctx) => tartarosAssess(bin, file, ctx).unmet;
 
 export const tartaros = {
   name: "tartaros",
   locate: () => resolveTartaros(),
   missing: () => "tartaros not found on PATH. Build it (cargo build --release -p tartaros-cli) and put its target directory on PATH.",
   asksFile: true,
+  assess: (_settings, { bin, file, platform } = {}) => tartarosAssess(bin, file, { platform }),
   unmet: (_settings, { bin, file, platform } = {}) => tartarosUnmet(bin, file, { platform }),
   wrap: (bin, file, _settings, inner, ctx) => tartarosArgv(bin, file, inner, ctx),
-  tagsDenials: false,
+  // Every deny in its Seatbelt profile carries sandbox-runtime's tag
+  // (`CMD64_<command>_END_<suffix>_SBX`), so violations.js attributes them
+  // exactly as it does srt's. Measured 2026-10-13 with tartaros ad85515.
+  tagsDenials: true,
 };
