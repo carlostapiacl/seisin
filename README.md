@@ -443,10 +443,10 @@ const browser = await chromium.launch({ proxy: {
 
 Passing `HTTP_PROXY` as `server` alone does not work: Playwright gives Chromium the address
 without the credentials and the proxy answers `407`. The token is the run's own, so the traffic
-stays tied to the run. `@playwright/mcp` does not run inside the sandbox yet: besides the same
-proxy gap in `--proxy-server`, it always publishes the browser on a unix socket of its own,
-which the sandbox denies. [docs/browsers.md](docs/browsers.md) has the measurements, and what
-Chrome and Chrome for Testing still lack.
+stays tied to the run. `@playwright/mcp` runs under `[sandbox] provider = "tartaros"`, which
+gives the role a temp directory of its own for the unix socket the server always opens; under
+srt it does not yet. [docs/browsers.md](docs/browsers.md) has the measurements, the MCP config,
+and what Chrome and Chrome for Testing still lack.
 
 Some files are not code but still make something happen outside the sandbox, and no territory
 reaches them: git hooks and config, a project's `.claude/`, `.mcp.json`, `.envrc`. Two softer
