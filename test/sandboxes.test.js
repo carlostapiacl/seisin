@@ -120,8 +120,8 @@ const onPath = (dir, fn) => {
 
 test("tartaros is handed the settings file as it is, the role as a label", () => {
   assert.deepEqual(tartarosArgv("/bin/tartaros", "/run/settings.json", ["sh", "-c", "x"], { role: "dev" }),
-    ["/bin/tartaros", "run", "--role", "dev", "--settings", "/run/settings.json", "--", "sh", "-c", "x"]);
-  assert.deepEqual(tartarosArgv("t", "/f", ["sh"]), ["t", "run", "--settings", "/f", "--", "sh"]);
+    ["/bin/tartaros", "run", "--role", "dev", "--inherit-env", "--settings", "/run/settings.json", "--", "sh", "-c", "x"]);
+  assert.deepEqual(tartarosArgv("t", "/f", ["sh"]), ["t", "run", "--inherit-env", "--settings", "/f", "--", "sh"]);
 });
 
 test("tartaros is asked, not second-guessed: what it refuses is passed over with its own reason", () => {

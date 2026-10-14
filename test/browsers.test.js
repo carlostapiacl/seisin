@@ -25,7 +25,7 @@ import { machOf, browserFor, BROWSERS } from "../src/browsers.js";
 import { withRules } from "../src/sandboxes/mach-profile.js";
 import { srt, withMachPreload, resolveSrt } from "../src/sandboxes/srt.js";
 import { weigh, settingsOf } from "../src/sandboxes/index.js";
-import { tartaros, tartarosSettings } from "../src/sandboxes/tartaros.js";
+import { tartaros, tartarosSettings, resolveTartaros } from "../src/sandboxes/tartaros.js";
 import { parseChunk } from "../src/violations.js";
 import { intake } from "../src/intake.js";
 import { pending, requestsPath } from "../src/requests.js";
@@ -123,8 +123,9 @@ test("tartaros is handed the register names in its own field, and only when ther
 
 test("a browser role runs under tartaros with a private TMPDIR, the only place its sockets may be", () => {
   assert.deepEqual(tartaros.wrap("/bin/tartaros", "/r/s.json", {}, ["sh"], { role: "agent", machRegister: [PREFIX] }),
-    ["/bin/tartaros", "run", "--role", "agent", "--private-tmp", "--settings", "/r/s.json", "--", "sh"]);
-  assert.ok(!tartaros.wrap("/bin/tartaros", "/r/s.json", {}, ["sh"], { role: "agent" }).includes("--private-tmp"));
+    ["/bin/tartaros", "run", "--role", "agent", "--inherit-env", "--browser", "--private-tmp", "--settings", "/r/s.json", "--", "sh"]);
+  const plain = tartaros.wrap("/bin/tartaros", "/r/s.json", {}, ["sh"], { role: "agent" });
+  assert.ok(!plain.includes("--private-tmp") && !plain.includes("--browser"));
 });
 
 test("tartaros is asked about the file it would be handed, with the field in it", () => {
@@ -212,13 +213,13 @@ const { chromium } = require(${JSON.stringify(pw)});
 })().catch((e) => { console.log("FAIL", e.message.split("\\n")[0]); process.exit(2); });
 `;
 
-function browserRepo(role) {
+function browserRepo(role, sandbox = "") {
   const dir = repoWith("browsers-", "", ["src/"]);
   const home = join(dir, "home");
   mkdirSync(home);
   writeFileSync(join(dir, "probe.cjs"), PROBE(PW));
   writeFileSync(join(dir, "seisin.toml"),
-    `[runtime]\nwrites = [${JSON.stringify(home)}]\n[network]\nallow = ["example.com"]\n` +
+    `${sandbox}[runtime]\nwrites = [${JSON.stringify(home)}]\n[network]\nallow = ["example.com"]\n` +
     `[roles.agent]\nwrites = ["src/**"]\nenv = ["HOME", "PATH", "TMPDIR", "URL", "PLAYWRIGHT_BROWSERS_PATH", "SEISIN_TEST_CHROMIUM"]\n${role}\n`);
   const run = (url) => {
     const env = { ...process.env, HOME: home, URL: url, PLAYWRIGHT_BROWSERS_PATH: BROWSERS_PATH, NO_COLOR: "1" };
@@ -254,3 +255,13 @@ test("without the opt-in Chromium is still denied, and the log and the run say w
   assert.match(r.stderr, /Add browsers = \["chromium"\] to \[roles\.agent\]/);
 });
 
+test("under tartaros too: the same role navigates, and an off-list host does not", {
+  skip: browserSkip || (resolveTartaros() ? false : "tartaros not on PATH"),
+}, () => {
+  const { run } = browserRepo('browsers = ["chromium"]', '[sandbox]\nprovider = "tartaros"\n');
+  const ok = run("https://example.com");
+  assert.match(ok.stderr, /agent runs under tartaros/, ok.stderr);
+  assert.match(ok.stdout, /GOTO 200 Example Domain/, ok.stdout + ok.stderr);
+  const off = run("https://www.iana.org");
+  assert.match(off.stdout, /FAIL .*ERR_TUNNEL_CONNECTION_FAILED/, off.stdout + off.stderr);
+});

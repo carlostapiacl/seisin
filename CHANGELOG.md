@@ -46,10 +46,12 @@ its children make of it. The preset grants those two, by that prefix, per role a
 else; the lookup through the runtime's `allowMachLookup`, the register rule through a preload
 that appends it to the runtime's profile and fails closed (exit 86) if the profile is not
 shaped as expected. tartaros takes the names as `network.allowMachRegister`, written only into
-the file it is handed; any other sandbox is passed over for such a role. Playwright needs the
+the file it is handed, and runs such a role with `--browser --private-tmp`; under tartaros
+`@playwright/mcp` runs too. Any other sandbox is passed over for such a role. tartaros is now
+always run with `--inherit-env`: seisin hands it the role's environment already built, and
+tartaros's own scrub dropped the hook's socket, the role's name and env-mode keys. Playwright needs the
 proxy credentials apart from `HTTP_PROXY` (the proxy answers `407` without them); see
-[docs/browsers.md](docs/browsers.md). `@playwright/mcp`, Chrome and Chrome for Testing are not
-covered yet.
+[docs/browsers.md](docs/browsers.md). Chrome and Chrome for Testing are not covered yet.
 
 **New: kernel denials that are not about a file are recorded.** A Mach service, a `sysctl`:
 by operation and name, once per run each, never as a request. A denied `mach-register` of a
