@@ -61,9 +61,19 @@ builds its command another way, the preload throws, the runtime does not run
 the command, and the canary reports a sandbox that did not start (exit 86). A
 role that asked for a browser gets no browser; it never gets less sandbox.
 
-A sandbox other than `srt` ([sandboxes.md](sandboxes.md)) is not handed the
-register rule, so for a role with `browsers` it is passed over with that
-reason.
+tartaros ([sandboxes.md](sandboxes.md)) takes the names in its own settings
+field, `network.allowMachRegister`, with the same trailing `*` for a prefix, and
+turns them into the same `global-name-prefix` rule. seisin writes that field
+only into the file a tartaros run is handed — srt's schema is strict and never
+sees it. Any other sandbox is given the names neither way, so for a role with
+`browsers` it is passed over with that reason.
+
+A tartaros run of such a role is also started with `--browser` — the shared
+memory, IOKit classes and sysctls a headless Chromium dies without, the same
+ones srt's profile allows every process — and `--private-tmp`, a TMPDIR of the
+run's own and the only place the role may open a unix socket. Measured with
+tartaros f7edae1: the probe loads `example.com` (`200`), a host off the list
+fails, and `@playwright/mcp` runs (below).
 
 ## The proxy
 
@@ -86,14 +96,39 @@ const browser = await chromium.launch({ proxy: {
 With that the page loads (`200`). With `{ server: process.env.HTTP_PROXY }`
 the navigation times out.
 
+## `@playwright/mcp` (under tartaros)
+
+```toml
+[sandbox]
+provider = "tartaros"
+```
+
+Two things in its `--config` file, written from the run's environment when the
+role starts, since the proxy address is the run's own:
+
+```js
+const u = new URL(process.env.HTTP_PROXY);
+const config = { browser: { launchOptions: {
+  chromiumSandbox: false,
+  proxy: { server: `${u.protocol}//${u.host}`,
+    ...(u.username && { username: decodeURIComponent(u.username), password: decodeURIComponent(u.password) }) },
+} } };
+```
+
+`chromiumSandbox: false` because Chromium's renderer applies a Seatbelt
+sandbox of its own, and macOS does not let a sandboxed process start another
+(`forbidden-sandbox-reinit`): the renderer crashes on the first page. The
+outer sandbox is the one that confines it. Playwright's own `launch()` already
+passes `--no-sandbox`; the MCP server does not. tartaros's proxy carries no
+credentials in the URL, hence the condition.
+
 ## What is not covered yet
 
-- **`@playwright/mcp`.** Its `--proxy-server` has the same gap as above, which
-  a `--config` file with `browser.launchOptions.proxy` would answer; but it also
-  always publishes the browser on a unix socket of its own (version 0.0.83:
-  `$TMPDIR/pw-<hash>/browser/<id>.sock`), and the sandbox denies the listen.
-  Granting it needs a socket directory of the run's own, never the whole
-  temp directory, which holds other runs' audit sockets.
+- **`@playwright/mcp` under srt.** It always publishes the browser on a unix
+  socket of its own (version 0.0.83: `$TMPDIR/pw-<hash>/browser/<id>.sock`),
+  and srt can only be given a socket path, not a directory of the run's own:
+  the temp directory holds other runs' audit sockets. Under tartaros it runs
+  (`--private-tmp`), as below.
 - **Chrome and Chrome for Testing.** Their rendezvous prefixes are their own
   bundle ids (`com.google.Chrome.`, `com.google.chrome.for.testing.`), and they
   also open a unix socket for their process singleton, which is denied. Not
