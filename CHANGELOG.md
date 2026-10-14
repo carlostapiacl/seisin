@@ -43,7 +43,10 @@ moved, is in [docs/decisions.md](docs/decisions.md#the-060-renames-one-name-and-
 default and nothing changes without the table. `tartaros` is built in (it reads the settings file
 itself, and seisin asks it beforehand whether it can hold a role), and any other sandbox can be
 declared as a command that takes the run's settings file (`[sandbox.providers.<name>] command =
-["…", "{policy}", "--"]`), with an optional `check` command that answers the same question. A list is an order of preference: each role gets the first sandbox that
+["…", "{policy}", "--"]`), with an optional `check` command that answers the same question, and
+`tags_denials = true` when its Seatbelt denials carry sandbox-runtime's tag (otherwise its
+refusals are not recorded on macOS, and `run` and `check` say so). Warnings the sandbox prints
+while saying yes are shown by `seisin check` under the role. A list is an order of preference: each role gets the first sandbox that
 is installed and enforces every part of its settings, and one that would enforce less is passed
 over with the reason. `seisin check` shows the choice per role and exits 1 when a role has none;
 a single name means that sandbox or no run. The canary runs under the chosen sandbox, so one that

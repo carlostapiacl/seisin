@@ -13,8 +13,8 @@ import { writeFileSync, existsSync, chmodSync, mkdirSync, readFileSync } from "n
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { loadConfig } from "../src/config.js";
-import { tartarosArgv } from "../src/sandboxes/tartaros.js";
-import { commandSandbox } from "../src/sandboxes/command.js";
+import { tartarosArgv, tartaros } from "../src/sandboxes/tartaros.js";
+import { commandSandbox, assessCheck } from "../src/sandboxes/command.js";
 import { weigh, chooseSandbox, sandboxesOf, DEFAULT_SANDBOX } from "../src/sandboxes/index.js";
 import { runCanary } from "../src/canary.js";
 import { resolveSrt } from "../src/commands/run.js";
@@ -66,6 +66,16 @@ test("a declared sandbox gets the policy where {policy} is, and the command afte
   assert.deepEqual(box.wrap("/bin/box", "/run/settings.json", {}, ["sh", "-c", "x"]),
     ["/bin/box", "run", "--policy=/run/settings.json", "--", "sh", "-c", "x"]);
   assert.deepEqual(box.unmet({}), []);
+});
+
+test("whether a declared sandbox tags its denials is declared, and false unless it says so", () => {
+  const box = (extra) => `[sandbox]\nprovider = "box"\n[sandbox.providers.box]\ncommand = ["box", "{policy}"]\n${extra}\n${ROLE}`;
+  assert.equal(cfg(box("")).sandbox.providers.box.tagsDenials, false);
+  assert.equal(cfg(box("tags_denials = true")).sandbox.providers.box.tagsDenials, true);
+  assert.equal(sandboxesOf(cfg(box("tags_denials = true")))[0].tagsDenials, true);
+  fails(box('tags_denials = "yes"'), /tags_denials is true or false/);
+  // tartaros tags them (measured with ad85515), so its refusals are recorded like srt's.
+  assert.equal(tartaros.tagsDenials, true);
 });
 
 /* ── tartaros, and any sandbox that answers for itself ────────────────── */
@@ -167,6 +177,16 @@ test("a declared sandbox's check decides like tartaros's, and silence or a hang 
   assert.deepEqual(commandSandbox("box", ["box", "{policy}"], [yes, "{policy}"]).unmet({}, { file: f }), []);
 });
 
+test("a yes can carry warnings, and so can a no; only lines that say warning: count", () => {
+  const dir = scratch("seisin-sbx-warn-");
+  const f = join(dir, "warn"); writeFileSync(f, '#!/bin/sh\necho "warn: warning: new entries cannot be created directly in /r"\necho "warn: covered by the built-in set" >&2\nexit ${CODE:-0}\n'); chmodSync(f, 0o755);
+  const yes = assessCheck([f, "{policy}"], "/p", "warn");
+  assert.deepEqual(yes, { unmet: [], warnings: ["new entries cannot be created directly in /r"] });
+  const box = cfg(`[sandbox]\nprovider = "box"\n[sandbox.providers.box]\ncommand = ["${f}", "{policy}"]\ncheck = ["${f}", "{policy}"]\n${ROLE}`);
+  const { chosen } = weigh(box, settings(), { platform: "linux" });
+  assert.deepEqual(chosen.warnings, ["new entries cannot be created directly in /r"]);
+});
+
 /* ── the choice ────────────────────────────────────────────────────────── */
 
 test("one name means that one: a role it cannot hold is refused, not moved", () => {
@@ -201,8 +221,21 @@ test("srt declared as a command is a sandbox like any other: the territory holds
   const r = run(dir, "run", "dev", "--agent", "none", "--", "sh", "-c", "echo ok > src/a; echo no > web/b 2>/dev/null; true");
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stderr, /dev runs under viacommand/);
+  // srt tags its denials, but declared without saying so, seisin cannot know it: said, not assumed.
+  if (process.platform === "darwin") assert.match(r.stderr, /viacommand does not tag its denials/);
   assert.ok(existsSync(join(dir, "src/a")), "a write inside the territory did not go through");
   assert.ok(!existsSync(join(dir, "web/b")), "a write outside the territory went through under a declared sandbox");
+});
+
+test("a declared sandbox that tags its denials has them recorded, and is not warned about", { skip: srtSkip() || (process.platform !== "darwin" && "macOS only: no denial stream elsewhere") }, () => {
+  const dir = repoWith("sbx-tagged-",
+    `[sandbox]\nprovider = "viacommand"\n[sandbox.providers.viacommand]\ncommand = ["${resolveSrt()}", "--settings", "{policy}", "--"]\n` +
+    'tags_denials = true\n[roles.dev]\nwrites = ["src/**"]\n', ["src/", "web/"]);
+  const r = run(dir, "run", "dev", "--agent", "none", "--", "sh", "-c", "echo no > web/b; sleep 1; true");
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stderr, /does not tag its denials/);
+  const log = readFileSync(join(dir, ".seisin", "log.jsonl"), "utf8");
+  assert.match(log, /"source":"kernel","action":"write","kind":"file","target":"web\/b","verdict":"denied"/);
 });
 
 test("a declared sandbox that ignores the policy starts nothing: the canary stops it", { skip: srtSkip() }, () => {

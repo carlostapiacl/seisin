@@ -482,6 +482,10 @@ export async function run(config, argv) {
   // Said once, only when it is not the default: which sandbox holds this run
   // is a fact a reader of the terminal would otherwise have to guess.
   if (sandbox.name !== DEFAULT_SANDBOX) err(`${C.dim}seisin: ${role} runs under ${sandbox.name}${C.off}\n`);
+  // Said at the start, not discovered from a log that stayed empty.
+  if (!sandbox.tagsDenials && process.platform === "darwin")
+    err(`${C.yellow}seisin: ${sandbox.name} does not tag its denials, so the kernel's refusals in this run are not recorded ` +
+      `(tags_denials in docs/sandboxes.md)${C.off}\n`);
   // Recorded once the receiver is confined and about to start, not before: a
   // run that failed its canary did not take the work.
   if (handed) {
