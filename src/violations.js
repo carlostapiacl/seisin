@@ -103,8 +103,24 @@ export function actionOf(operation) {
   if (operation.startsWith("file-write")) return "write";
   if (operation === "file-read-data") return "read";
   if (operation === "network-outbound") return "connect";
+  if (SYSTEM.test(operation)) return "system";
   return null;
 }
+
+/**
+ * The operations that are neither a file nor a connection — `mach-register`,
+ * `mach-lookup`, `sysctl-read`, `iokit-open`… — and that used to be dropped.
+ *
+ * They were dropped as the sandbox doing its job against the machine, and most
+ * of them are: a browser asks for the window server and carries on. But one of
+ * them was the whole failure of a headless Chromium — a refused
+ * `mach-register` that killed the browser at start — and from seisin's record
+ * there was no way to know: five file reads in the log, and a crash. So they
+ * are recorded now, by operation and name, once per run each (intake.js), and
+ * never as a request: there is no territory to hand them to. What grants one
+ * is a preset like `browsers`, not `seisin grant`.
+ */
+const SYSTEM = /^(mach|sysctl|iokit|ipc|signal|process|system|user-preference|darwin|nvram|lsopen|appleevent)-/;
 
 /**
  * The target of a refused connection, or null when it is not one worth a line.
@@ -159,6 +175,13 @@ export function parseChunk(chunk) {
     const target = connectTarget(deny.detail);
     if (!target) return null;
     return { ...deny, action, path: target, suffix: tag?.suffix ?? null, command: tag?.command ?? null };
+  }
+  // The name as the kernel gave it ("com.apple.tsm.portname (per-pid)"); an
+  // operation with no name is not a line anyone can act on.
+  if (action === "system") {
+    const name = deny.detail.trim();
+    if (!name) return null;
+    return { ...deny, action, path: name, suffix: tag?.suffix ?? null, command: tag?.command ?? null };
   }
   // Only an absolute path is a territory question. A relative or malformed
   // detail means the line was not what it looked like; dropping beats guessing.

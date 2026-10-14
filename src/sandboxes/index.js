@@ -24,6 +24,7 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { srt } from "./srt.js";
+import { machOf } from "../browsers.js";
 import { tartaros } from "./tartaros.js";
 import { commandSandbox } from "./command.js";
 
@@ -62,7 +63,14 @@ export function weigh(config, settings, { platform = process.platform, role = nu
       const ctx = { platform, role, bin, file: asked ? fileFor() : null };
       const { unmet, warnings } = sandbox.asksFile && !asked ? { unmet: [], warnings: [] }
         : sandbox.assess ? sandbox.assess(settings, ctx) : { unmet: sandbox.unmet(settings, ctx), warnings: [] };
-      return { sandbox, bin, unmet, warnings, missing: bin ? null : sandbox.missing() };
+      // `browsers`: a Mach service to register is not in the settings file
+      // (sandbox-runtime's schema has no field for it), so only a sandbox seisin
+      // can hand it to some other way holds it — srt, through srt-mach.mjs.
+      const register = role ? machOf(config.roles?.[role]).register : [];
+      const browser = register.length && !sandbox.machRegister
+        ? [`a Mach service to register (${register.join(", ")}, for browsers): ${sandbox.name} is not given it, only srt is`]
+        : [];
+      return { sandbox, bin, unmet: [...unmet, ...browser], warnings, missing: bin ? null : sandbox.missing() };
     });
     const chosen = options.find((o) => o.bin && o.unmet.length === 0) ?? null;
     return { chosen, options };

@@ -35,6 +35,8 @@ import { append, logPath } from "../log.js";
 import { flagsOf } from "../help.js";
 import { WILD } from "../paths.js";
 import { chooseSandbox, DEFAULT_SANDBOX } from "../sandboxes/index.js";
+import { machOf } from "../browsers.js";
+import { MACH_FILE } from "../sandboxes/mach-profile.js";
 
 
 /**
@@ -222,7 +224,12 @@ export async function run(config, argv) {
   const box = chooseSandbox(config, settings, { role, file });
   if (box.error) throw box.error;
   const { sandbox, bin } = box;
-  const wrap = (inner) => sandbox.wrap(bin, file, settings, inner, { role });
+  // `browsers`: the Mach names to register, which srt's settings have no field
+  // for. Beside the settings, where srt-mach.mjs looks for them.
+  const { register: machRegister } = machOf(config.roles[role]);
+  if (machRegister.length)
+    writeFileSync(join(dirname(file), MACH_FILE), JSON.stringify({ register: machRegister }), { mode: 0o600 });
+  const wrap = (inner) => sandbox.wrap(bin, file, settings, inner, { role, machRegister });
 
   // The hook runs inside the child and has to know which role it is. These are
   // the only variables seisin injects, and none carries a secret.
@@ -617,7 +624,12 @@ export async function run(config, argv) {
           `kernel denials may be missing from the log and the queue. ` +
           `\`seisin check --system-log\` says what is flooding it.${C.off}\n`);
     }
-    const { offPolicy, walks, expected, probes, atomic } = take.stats;
+    const { offPolicy, walks, expected, probes, atomic, browsers } = take.stats;
+    // A browser that died at start on its Mach rendezvous: the crash the agent
+    // saw does not say why, and this is the line that does.
+    for (const b of browsers)
+      err(`${C.yellow}seisin: ${role} started ${b} and the sandbox denied the Mach service it registers at start, so it ` +
+        `exited. Add browsers = ["${b}"] to [roles.${role}] in seisin.toml (docs/browsers.md).${C.off}\n`);
     // A save refused at its temporary file, beside a file this role may write:
     // the file was not saved, and nothing was queued because there is nothing
     // to grant (the temporary name changes every time). Said whether or not

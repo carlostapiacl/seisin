@@ -78,7 +78,7 @@ function findings(config, entries, minDenials) {
     if (e.verdict !== "denied" || !e.target) continue;
     // The caller's own probe (`seisin run --expect-denied`): denied on purpose.
     if (e.expected === true) continue;
-    const dir = e.action === "read" || e.action === "connect" ? e.target : dirOf(e.target);
+    const dir = e.action === "read" || e.action === "connect" || e.kind === "system" ? e.target : dirOf(e.target);
     const expected = expectedOf(e.target);
     const key = `${e.role} ${e.action} ${dir}${expected ? " expected" : ""}`;
     const seen = stopped.get(key) ?? {
@@ -88,7 +88,7 @@ function findings(config, entries, minDenials) {
       // Carried by the log from both writers — the hook sets it from the config
       // and so does the parent for a kernel denial. Recomputing it from the path
       // here would be a second opinion on a settled question.
-      kind: e.kind === "key" || e.kind === "network" ? e.kind : "file",
+      kind: e.kind === "key" || e.kind === "network" || e.kind === "system" ? e.kind : "file",
     };
     seen.times++;
     stopped.set(key, seen);
@@ -102,7 +102,8 @@ function findings(config, entries, minDenials) {
   // correctly. Repeated on every start, and not a policy that is wrong — so it
   // is said apart and never counts as friction, which is what exits 1.
   const expected = repeated.filter((f) => f.expected);
-  const friction = repeated.filter((f) => !f.expected && f.kind !== "key" && f.kind !== "network");
+  // A system service is once per run (intake.js) and never grantable: not friction.
+  const friction = repeated.filter((f) => !f.expected && f.kind !== "key" && f.kind !== "network" && f.kind !== "system");
   const guarded = repeated.filter((f) => f.kind === "key");
   // Ports and sockets: repeated, and not a thing `grant` can answer.
   const connects = repeated.filter((f) => f.kind === "network");

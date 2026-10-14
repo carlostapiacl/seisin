@@ -25,6 +25,7 @@ import { realAncestor } from "./paths.js";
 import { denyFor } from "./surface.js";
 import { runsRootOf, SETTINGS_NAME, TMP_NAME } from "./rundir.js";
 import { FIFO_SUFFIX } from "./spool.js";
+import { machOf } from "./browsers.js";
 import { territoryReads, outlastAllows, dataRoots, keptFor } from "./territory.js";
 import {
   SOCKET_MAX, isLink, realOrSelf, expand, homeFits, roleHome, roleHomeRoot,
@@ -431,6 +432,10 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
       // Per role, `local_binding = true`. Off by default: listening is a
       // capability, and most roles never need it.
       allowLocalBinding: role.localBinding === true,
+      // `browsers = ["chromium"]`: the Mach services the browser's own
+      // processes look up to find each other, by prefix (browsers.js). The
+      // register half has no field here; srt-mach.mjs adds it.
+      ...(machOf(role).lookup.length ? { allowMachLookup: machOf(role).lookup.map((p) => `${p}*`) } : {}),
     },
     filesystem: {
       denyRead: spelt,

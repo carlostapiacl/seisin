@@ -6,7 +6,7 @@
  * settings file, so it enforces all of them by construction and `unmet` is
  * always empty. What a run hands it is the file and the command, nothing else.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -96,6 +96,23 @@ export function installHint(from = HERE) {
   return `seisin is installed in ${at}; reinstall it there with: npm install seisin`;
 }
 
+const MACH_PRELOAD = join(HERE, "srt-mach.mjs");
+
+/**
+ * srt with srt-mach.mjs loaded into it, for a role whose browsers register a
+ * Mach service. Run by this node, so the preload is in the process: the runtime
+ * is a node script, and one that is not (a binary on PATH) cannot take it —
+ * refused here rather than run without the rule the role asked for, which
+ * would start the browser just to watch it die.
+ */
+export function withMachPreload(bin, file, inner) {
+  const cli = realpathSync(bin);
+  if (!/\.(c|m)?js$/.test(cli))
+    throw new Error(`the sandbox runtime at ${bin} is not a node script, so the browser's Mach rule cannot be added to it ` +
+      `(browsers in seisin.toml). Use the runtime seisin installs with it.`);
+  return [process.execPath, "--import", MACH_PRELOAD, cli, "--settings", file, "--", ...inner];
+}
+
 export const srt = {
   name: "srt",
   locate: () => resolveSrt(),
@@ -104,7 +121,10 @@ export const srt = {
   // `--` before the command, and it is not cosmetic. Without it the runtime's
   // own argument parser reaches into what the agent was invoked with and eats
   // anything resembling one of its flags: `claude --settings`, `claude -c`.
-  wrap: (bin, file, _settings, inner) => [bin, "--settings", file, "--", ...inner],
+  wrap: (bin, file, _settings, inner, { machRegister = [] } = {}) =>
+    machRegister.length ? withMachPreload(bin, file, inner) : [bin, "--settings", file, "--", ...inner],
+  // Takes the `browsers` Mach rule, through srt-mach.mjs.
+  machRegister: true,
   // Each Seatbelt denial carries this runtime's tag with the wrapped command,
   // which is how violations.js tells this run's denials from another's.
   tagsDenials: true,
