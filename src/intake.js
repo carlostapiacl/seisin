@@ -23,6 +23,7 @@
  * the signal handling — 180 lines of policy arithmetic inside the launcher.
  */
 import { join } from "node:path";
+import { browserFor } from "./browsers.js";
 import { toRepoRelative, samePath } from "./paths.js";
 import { explain, ownersOf, keyHolders, inKeyDir, privateOwner } from "./owners.js";
 import { append, logPath } from "./log.js";
@@ -60,7 +61,8 @@ export function intake({ config, role, runId, observe = false, settings, notify,
   const scope = scopeOf(settings, config.root);
   const keyDirs = (config.keyDirs ?? []).map((d) => (d.startsWith("/") ? d : join(config.root, d)));
   const connects = new Set();         // one line per refused target per run
-  const stats = { offPolicy: 0, walks: 0, expected: 0, probes: 0, atomic: [] };
+  const systems = new Set();          // one line per operation and service per run
+  const stats = { offPolicy: 0, walks: 0, expected: 0, probes: 0, atomic: [], browsers: [] };
 
   /**
    * A denial the caller asked for is recorded, and asked about by nobody.
@@ -205,6 +207,30 @@ export function intake({ config, role, runId, observe = false, settings, notify,
      * is not a territory anyone owns, so there is nobody to hand it to — the
      * sentence says what the policy would have to change instead.
      */
+    /**
+     * A refused Mach service, sysctl or the like: logged by operation and name,
+     * never queued — see SYSTEM in violations.js.
+     *
+     * Once per operation and name per run, and a trailing pid is folded into
+     * the name for that count: a browser whose children cannot find its
+     * rendezvous service ask for it a thousand times in forty seconds, each
+     * under the parent's pid, and the second line says nothing the first did not.
+     */
+    if (d.action === "system") {
+      const key = `${d.operation} ${d.path.replace(/\.\d+$/, ".<pid>")}`;
+      if (systems.has(key)) return;
+      systems.add(key);
+      // The one that kills a browser at start, and that a preset answers: named
+      // at the end of the run, because the agent saw only a crash.
+      const preset = d.operation === "mach-register" ? browserFor(d.path) : null;
+      if (preset && !stats.browsers.includes(preset)) stats.browsers.push(preset);
+      log({
+        role, tool: "kernel", source: "kernel",
+        action: d.operation, kind: "system", target: d.path.slice(0, 1000), verdict: "denied",
+        owners: [], reason: d.operation,
+      });
+      return;
+    }
     if (d.action === "connect") {
       if (connects.has(d.path)) return;
       connects.add(d.path);

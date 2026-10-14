@@ -317,6 +317,8 @@ export function standing(config, entry) {
   const target = entry.target;
   if (entry.kind === "network")
     return { kind: "outside", owners: [], why: "a port or a socket, which no role owns" };
+  if (entry.kind === "system")
+    return { kind: "outside", owners: [], why: "a system service, which no role owns" };
   if (entry.kind === "key")
     return { kind: "outside", owners: [], why: "a key directory, closed on purpose" };
   const guard = protectedBy(config, target);
