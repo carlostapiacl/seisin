@@ -68,7 +68,7 @@ change in seisin. What `explain` prints as `warning:` while saying yes,
 one, that a role given a whole repo cannot create new entries at its root.
 
 tartaros tags every Seatbelt denial the way sandbox-runtime does, so on macOS
-the kernel's refusals under it are recorded and attributed exactly as under
+the kernel's denials under it are recorded and attributed exactly as under
 `srt`.
 
 ## The contract for a sandbox of your own
@@ -131,7 +131,7 @@ command = ["srt", "--settings", "{policy}", "--"]
 The test suite runs exactly that, and runs a "sandbox" that ignores the file to
 check that the canary stops it before anything of the agent's starts.
 
-**The kernel's refusals, on macOS.** seisin reads them from the system log,
+**The kernel's denials, on macOS.** seisin reads them from the system log,
 filtered by the tag sandbox-runtime adds to every Seatbelt denial
 (`(with message "CMD64_<base64 of the command>_END__<suffix>_SBX")`, the
 command being the first 100 characters of what follows `--`, as a shell line,
@@ -144,8 +144,8 @@ command = ["mybox", "run", "--policy", "{policy}", "--"]
 tags_denials = true
 ```
 
-and its refusals are recorded like `srt`'s. One that does not still holds the
-boundary, but none of its refusals reach the log: the filter drops them before
+and its denials are recorded like `srt`'s. One that does not still holds the
+boundary, but none of its denials reach the log: the filter drops them before
 seisin sees them. `seisin run` and `seisin check` say so for such a sandbox,
 rather than leave a log that looks like nothing was refused. On Linux there is
 no stream to read under any sandbox.

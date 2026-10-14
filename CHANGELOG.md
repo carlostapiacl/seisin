@@ -45,10 +45,10 @@ itself, and seisin asks it beforehand whether it can hold a role), and any other
 declared as a command that takes the run's settings file (`[sandbox.providers.<name>] command =
 ["…", "{policy}", "--"]`), with an optional `check` command that answers the same question, and
 `tags_denials = true` when its Seatbelt denials carry sandbox-runtime's tag (otherwise its
-refusals are not recorded on macOS, and `run` and `check` say so). Warnings the sandbox prints
-while saying yes are shown by `seisin check` under the role. A list is an order of preference: each role gets the first sandbox that
-is installed and enforces every part of its settings, and one that would enforce less is passed
-over with the reason. `seisin check` shows the choice per role and exits 1 when a role has none;
+denials are not recorded on macOS, and `run` and `check` say so). Warnings the sandbox prints
+while saying yes are shown by `seisin check` under the role. A list is an order of preference:
+each role gets the first sandbox that is installed and enforces every part of its settings, and
+one that would enforce less is passed over with the reason. `seisin check` shows the choice per role and exits 1 when a role has none;
 a single name means that sandbox or no run. The canary runs under the chosen sandbox, so one that
 ignores the policy starts nothing. See [docs/sandboxes.md](docs/sandboxes.md).
 

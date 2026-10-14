@@ -72,7 +72,7 @@ export function sandboxes(config, only = null, { platform = process.platform } =
     for (const w of chosen?.warnings ?? []) out(`      ${C.yellow}⚠ ${chosen.sandbox.name}: ${w}${C.off}\n`);
     // Recorded nowhere otherwise: a run under it would still be held, and say nothing of what it refused.
     if (chosen && !chosen.sandbox.tagsDenials && platform === "darwin")
-      out(`      ${C.yellow}⚠ ${chosen.sandbox.name} does not tag its denials, so the kernel's refusals under it are not recorded${C.off}\n`);
+      out(`      ${C.yellow}⚠ ${chosen.sandbox.name} does not tag its denials, so none of the kernel's denials under it are recorded${C.off}\n`);
     for (const o of options) {
       if (o === chosen) break;
       if (o.missing) out(`      ${o.sandbox.name}: ${o.missing}\n`);
