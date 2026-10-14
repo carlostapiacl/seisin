@@ -61,9 +61,21 @@ builds its command another way, the preload throws, the runtime does not run
 the command, and the canary reports a sandbox that did not start (exit 86). A
 role that asked for a browser gets no browser; it never gets less sandbox.
 
-A sandbox other than `srt` ([sandboxes.md](sandboxes.md)) is not handed the
-register rule, so for a role with `browsers` it is passed over with that
-reason.
+tartaros ([sandboxes.md](sandboxes.md)) takes the names in its own settings
+field, `network.allowMachRegister`, with the same trailing `*` for a prefix, and
+turns them into the same `global-name-prefix` rule. seisin writes that field
+only into the file a tartaros run is handed — srt's schema is strict and never
+sees it. Any other sandbox is given the names neither way, so for a role with
+`browsers` it is passed over with that reason.
+
+Measured under tartaros 99b0117: the register rule holds (no rendezvous
+FATAL), but Chromium then exits on a segmentation fault, with the kernel
+denying what srt's profile allows — `ipc-posix-shm-read-data` of
+`apple.cfprefs.*` and `apple.shm.notification_center`, `sysctl-read
+kern.proc.pid.<pid>`, `iokit-open-user-client RootDomainUserClient`. Until
+tartaros allows those, a browser role is better served by srt:
+`provider = ["tartaros", "srt"]` does not fall back on its own here, because
+the sandbox accepts the policy and the browser dies after.
 
 ## The proxy
 

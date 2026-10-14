@@ -34,7 +34,7 @@ import { runCanary, CANARY_EXIT } from "../canary.js";
 import { append, logPath } from "../log.js";
 import { flagsOf } from "../help.js";
 import { WILD } from "../paths.js";
-import { chooseSandbox, DEFAULT_SANDBOX } from "../sandboxes/index.js";
+import { chooseSandbox, settingsOf, DEFAULT_SANDBOX } from "../sandboxes/index.js";
 import { machOf } from "../browsers.js";
 import { MACH_FILE } from "../sandboxes/mach-profile.js";
 
@@ -198,7 +198,22 @@ export async function run(config, argv) {
   let runTmp = [process.env.CLAUDE_CODE_TMPDIR,
     isolatedHome ? join(roleHome(config, role), "tmp") : process.env.TMPDIR].find(writable);
   if (!runTmp) runTmp = theRun.tmp();
-  const settings = settingsFor(config, role, sockPath, observe, { agent, program, tmp: runTmp, forRun: true });
+  const generated = settingsFor(config, role, sockPath, observe, { agent, program, tmp: runTmp, forRun: true });
+
+  /**
+   * The sandbox this role runs under: the first one `[sandbox] provider` names
+   * that is installed and enforces every part of these settings
+   * (sandboxes/index.js). None is an error that names what each one lacked —
+   * never a run under one that enforces less. Chosen before the settings are
+   * written, because the file is the chosen sandbox's version of them
+   * (settingsOf: tartaros takes a browser's Mach names in a field of its own).
+   */
+  // `browsers`: the Mach names to register (browsers.js).
+  const { register: machRegister } = machOf(config.roles[role]);
+  const box = chooseSandbox(config, generated, { role });
+  if (box.error) throw box.error;
+  const { sandbox, bin } = box;
+  const settings = settingsOf(sandbox, generated, { machRegister });
   // Per run, never per role: `.seisin/<role>.json` was one file for every run
   // of that role, and two at once wrote each other's socket path into it.
   const file = theRun.writeSettings(settings);
@@ -215,19 +230,9 @@ export async function run(config, argv) {
       `path is capped near ${SOCKET_MAX}.\n  Run seisin with a shorter TMPDIR (TMPDIR=/tmp/<short> seisin run …).`);
   audit = await spool(take.fromHook, sockPath);
 
-  /**
-   * The sandbox this role runs under: the first one `[sandbox] provider` names
-   * that is installed and enforces every part of these settings
-   * (sandboxes/index.js). None is an error that names what each one lacked —
-   * never a run under one that enforces less.
-   */
-  const box = chooseSandbox(config, settings, { role, file });
-  if (box.error) throw box.error;
-  const { sandbox, bin } = box;
-  // `browsers`: the Mach names to register, which srt's settings have no field
-  // for. Beside the settings, where srt-mach.mjs looks for them.
-  const { register: machRegister } = machOf(config.roles[role]);
-  if (machRegister.length)
+  // srt's settings have no field for the Mach names to register: beside them,
+  // where srt-mach.mjs looks for them.
+  if (machRegister.length && sandbox.name === "srt")
     writeFileSync(join(dirname(file), MACH_FILE), JSON.stringify({ register: machRegister }), { mode: 0o600 });
   const wrap = (inner) => sandbox.wrap(bin, file, settings, inner, { role, machRegister });
 
