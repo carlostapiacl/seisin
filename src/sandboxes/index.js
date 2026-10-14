@@ -48,27 +48,31 @@ export function sandboxesOf(config) {
  */
 export function weigh(config, settings, { platform = process.platform, role = null, locate = true, file = null } = {}) {
   const list = sandboxesOf(config);
+  const register = role ? machOf(config.roles?.[role]).register : [];
   let scratch = null;
-  const fileFor = () => {
-    if (file) return file;
+  let copies = 0;
+  // The file a sandbox is asked about is the one it would be handed: the run's
+  // own when it takes the settings as they are, otherwise its own version of them.
+  const fileFor = (own) => {
+    if (file && own === settings) return file;
     scratch ??= mkdtempSync(join(tmpdir(), "seisin-weigh-"));
-    const f = join(scratch, "settings.json");
-    writeFileSync(f, JSON.stringify(settings, null, 2), { mode: 0o600 });
+    const f = join(scratch, `settings-${copies++}.json`);
+    writeFileSync(f, JSON.stringify(own, null, 2), { mode: 0o600 });
     return f;
   };
   try {
     const options = list.map((sandbox) => {
       const bin = locate ? sandbox.locate() : "(not looked up)";
+      const own = settingsOf(sandbox, settings, { machRegister: register });
       const asked = sandbox.asksFile && locate && bin;
-      const ctx = { platform, role, bin, file: asked ? fileFor() : null };
+      const ctx = { platform, role, bin, file: asked ? fileFor(own) : null };
       const { unmet, warnings } = sandbox.asksFile && !asked ? { unmet: [], warnings: [] }
-        : sandbox.assess ? sandbox.assess(settings, ctx) : { unmet: sandbox.unmet(settings, ctx), warnings: [] };
-      // `browsers`: a Mach service to register is not in the settings file
-      // (sandbox-runtime's schema has no field for it), so only a sandbox seisin
-      // can hand it to some other way holds it — srt, through srt-mach.mjs.
-      const register = role ? machOf(config.roles?.[role]).register : [];
+        : sandbox.assess ? sandbox.assess(own, ctx) : { unmet: sandbox.unmet(own, ctx), warnings: [] };
+      // `browsers`: a Mach service to register. srt's schema has no field for it
+      // (srt-mach.mjs adds it); tartaros takes it as network.allowMachRegister
+      // (adapt). A sandbox that is given it neither way cannot hold the role.
       const browser = register.length && !sandbox.machRegister
-        ? [`a Mach service to register (${register.join(", ")}, for browsers): ${sandbox.name} is not given it, only srt is`]
+        ? [`a Mach service to register (${register.join(", ")}, for browsers): ${sandbox.name} is not given it, only srt and tartaros are`]
         : [];
       return { sandbox, bin, unmet: [...unmet, ...browser], warnings, missing: bin ? null : sandbox.missing() };
     });
@@ -77,6 +81,15 @@ export function weigh(config, settings, { platform = process.platform, role = nu
   } finally {
     if (scratch) rmSync(scratch, { recursive: true, force: true });
   }
+}
+
+/**
+ * The settings as this sandbox is handed them: as generated, or with what it
+ * takes in its own field (tartaros: network.allowMachRegister). The same
+ * object when nothing changes, so a caller can tell.
+ */
+export function settingsOf(sandbox, settings, ctx) {
+  return sandbox.adapt ? sandbox.adapt(settings, ctx) : settings;
 }
 
 /** The sandbox and binary for one run, or an Error that says why each was passed over. */

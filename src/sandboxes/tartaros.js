@@ -29,8 +29,11 @@ export function resolveTartaros(path = process.env.PATH) {
 }
 
 /** The command line for one run: the settings as they are, the role as a label. */
-export function tartarosArgv(bin, file, inner, { role = null } = {}) {
-  return [bin, "run", ...(role ? ["--role", role] : []), "--settings", file, "--", ...inner];
+export function tartarosArgv(bin, file, inner, { role = null, machRegister = [] } = {}) {
+  // A browser role gets a run-private TMPDIR, the only place it may open a
+  // unix socket (tartaros bcb0c69): where @playwright/mcp publishes its browser.
+  const browser = machRegister.length ? ["--private-tmp"] : [];
+  return [bin, "run", ...(role ? ["--role", role] : []), ...browser, "--settings", file, "--", ...inner];
 }
 
 /** What tartaros says of this file: what it cannot hold, and its warnings. Only asked of a binary that was found. */
@@ -41,11 +44,24 @@ export function tartarosAssess(bin, file, { platform = process.platform } = {}) 
 
 export const tartarosUnmet = (bin, file, ctx) => tartarosAssess(bin, file, ctx).unmet;
 
+/**
+ * `browsers`: tartaros takes the Mach names to register in its settings, as
+ * network.allowMachRegister with sandbox-runtime's trailing `*` for a prefix
+ * (tartaros 99b0117). Only when there is one: an unchanged role is handed the
+ * same file as before, and srt, whose schema is strict, never sees the field.
+ */
+export function tartarosSettings(settings, { machRegister = [] } = {}) {
+  if (!machRegister.length) return settings;
+  return { ...settings, network: { ...settings.network, allowMachRegister: machRegister.map((p) => `${p}*`) } };
+}
+
 export const tartaros = {
   name: "tartaros",
   locate: () => resolveTartaros(),
   missing: () => "tartaros not found on PATH. Build it (cargo build --release -p tartaros-cli) and put its target directory on PATH.",
   asksFile: true,
+  adapt: tartarosSettings,
+  machRegister: true,
   assess: (_settings, { bin, file, platform } = {}) => tartarosAssess(bin, file, { platform }),
   unmet: (_settings, { bin, file, platform } = {}) => tartarosUnmet(bin, file, { platform }),
   wrap: (bin, file, _settings, inner, ctx) => tartarosArgv(bin, file, inner, ctx),

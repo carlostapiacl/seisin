@@ -45,7 +45,8 @@ exited at start: the kernel denied the Mach service its browser process register
 its children make of it. The preset grants those two, by that prefix, per role and nothing
 else; the lookup through the runtime's `allowMachLookup`, the register rule through a preload
 that appends it to the runtime's profile and fails closed (exit 86) if the profile is not
-shaped as expected. Other sandboxes are passed over for such a role. Playwright needs the
+shaped as expected. tartaros takes the names as `network.allowMachRegister`, written only into
+the file it is handed; any other sandbox is passed over for such a role. Playwright needs the
 proxy credentials apart from `HTTP_PROXY` (the proxy answers `407` without them); see
 [docs/browsers.md](docs/browsers.md). `@playwright/mcp`, Chrome and Chrome for Testing are not
 covered yet.

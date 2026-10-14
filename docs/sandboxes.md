@@ -50,6 +50,9 @@ seisin runs it as
 tartaros run --role <role> --settings <settings file> -- <the command>
 ```
 
+with `--private-tmp` added for a role with `browsers` ([browsers.md](browsers.md)):
+a TMPDIR of the run's own, the only place that role may open a unix socket.
+
 and, before that, asks it about the same file:
 
 ```

@@ -14,7 +14,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, readFileSync, mkdirSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { spawnSync } from "node:child_process";
@@ -24,7 +24,8 @@ import { settingsFor } from "../src/srt.js";
 import { machOf, browserFor, BROWSERS } from "../src/browsers.js";
 import { withRules } from "../src/sandboxes/mach-profile.js";
 import { srt, withMachPreload, resolveSrt } from "../src/sandboxes/srt.js";
-import { weigh } from "../src/sandboxes/index.js";
+import { weigh, settingsOf } from "../src/sandboxes/index.js";
+import { tartaros, tartarosSettings } from "../src/sandboxes/tartaros.js";
 import { parseChunk } from "../src/violations.js";
 import { intake } from "../src/intake.js";
 import { pending, requestsPath } from "../src/requests.js";
@@ -102,10 +103,45 @@ test("a sandbox other than srt is passed over for a role with browsers, and says
     '[roles.agent]\nwrites = ["src/**"]\nbrowsers = ["chromium"]\n[roles.plain]\nwrites = ["web/**"]\n');
   const config = loadConfig(join(dir, "seisin.toml"));
   const { options } = weigh(config, settingsFor(config, "agent"), { role: "agent", locate: false });
-  assert.match(options[0].unmet.join("\n"), /a Mach service to register \(org\.chromium.*for browsers\): mybox is not given it, only srt is/);
+  assert.match(options[0].unmet.join("\n"), /a Mach service to register \(org\.chromium.*for browsers\): mybox is not given it, only srt and tartaros are/);
   assert.deepEqual(options[1].unmet, []);
   // A role without browsers is not affected.
   assert.deepEqual(weigh(config, settingsFor(config, "plain"), { role: "plain", locate: false }).options[0].unmet, []);
+});
+
+test("tartaros is handed the register names in its own field, and only when there are any", () => {
+  const config = cfg('browsers = ["chromium"]');
+  const base = settingsFor(config, "agent");
+  const own = tartarosSettings(base, { machRegister: [PREFIX] });
+  assert.deepEqual(own.network.allowMachRegister, [`${PREFIX}*`]);
+  assert.equal(base.network.allowMachRegister, undefined, "the generated settings were changed in place");
+  assert.equal(tartarosSettings(base, { machRegister: [] }), base, "a role without browsers got a different file");
+  assert.equal(tartaros.machRegister, true);
+  // srt's schema is strict: it is never handed the field.
+  assert.equal(settingsOf(srt, base, { machRegister: [PREFIX] }), base);
+});
+
+test("a browser role runs under tartaros with a private TMPDIR, the only place its sockets may be", () => {
+  assert.deepEqual(tartaros.wrap("/bin/tartaros", "/r/s.json", {}, ["sh"], { role: "agent", machRegister: [PREFIX] }),
+    ["/bin/tartaros", "run", "--role", "agent", "--private-tmp", "--settings", "/r/s.json", "--", "sh"]);
+  assert.ok(!tartaros.wrap("/bin/tartaros", "/r/s.json", {}, ["sh"], { role: "agent" }).includes("--private-tmp"));
+});
+
+test("tartaros is asked about the file it would be handed, with the field in it", () => {
+  const dir = scratch("seisin-browsers-tt-");
+  const bin = join(dir, "tartaros");
+  const seen = join(dir, "seen.json");
+  writeFileSync(bin, `#!/bin/sh\nwhile [ "$1" != "--settings" ]; do shift; done\ncp "$2" ${JSON.stringify(seen)}\nexit 0\n`);
+  chmodSync(bin, 0o755);
+  writeFileSync(join(dir, "seisin.toml"), '[sandbox]\nprovider = "tartaros"\n[roles.agent]\nwrites = ["src/**"]\nbrowsers = ["chromium"]\n');
+  const config = loadConfig(join(dir, "seisin.toml"));
+  const was = process.env.PATH;
+  process.env.PATH = `${dir}:${was}`;
+  try {
+    const { chosen } = weigh(config, settingsFor(config, "agent"), { role: "agent", platform: "darwin" });
+    assert.equal(chosen?.sandbox.name, "tartaros");
+  } finally { process.env.PATH = was; }
+  assert.deepEqual(JSON.parse(readFileSync(seen, "utf8")).network.allowMachRegister, [`${PREFIX}*`]);
 });
 
 /* ── the record ────────────────────────────────────────────────────────── */
