@@ -39,6 +39,21 @@ moved, is in [docs/decisions.md](docs/decisions.md#the-060-renames-one-name-and-
 - **`docs/permission-requests.md` is now [`docs/requests.md`](docs/requests.md)**, away from Claude
   Code's `PermissionRequest`. *What to do:* update links.
 
+**New: `browsers = ["chromium"]`, a headless Chromium inside the sandbox on macOS.** Chromium
+exited at start: the kernel denied the Mach service its browser process registers
+(`org.chromium.Chromium.MachPortRendezvousServer.<pid>`) and, once that is allowed, the lookup
+its children make of it. The preset grants those two, by that prefix, per role and nothing
+else; the lookup through the runtime's `allowMachLookup`, the register rule through a preload
+that appends it to the runtime's profile and fails closed (exit 86) if the profile is not
+shaped as expected. Other sandboxes are passed over for such a role. Playwright needs the
+proxy credentials apart from `HTTP_PROXY` (the proxy answers `407` without them); see
+[docs/browsers.md](docs/browsers.md). `@playwright/mcp`, Chrome and Chrome for Testing are not
+covered yet.
+
+**New: kernel denials that are not about a file are recorded.** A Mach service, a `sysctl`:
+by operation and name, once per run each, never as a request. A denied `mach-register` of a
+browser with a preset ends the run with the line to add.
+
 **New: the sandbox is a choice, `[sandbox] provider`.** `srt` (sandbox-runtime) stays the
 default and nothing changes without the table. `tartaros` is built in (it reads the settings file
 itself, and seisin asks it beforehand whether it can hold a role), and any other sandbox can be

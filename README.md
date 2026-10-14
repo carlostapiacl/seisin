@@ -415,15 +415,38 @@ If a role only needs to *reach* a local service, name the ports instead:
 `local_ports = [8001, 8081]`. The role reaches those and nothing else on localhost, on macOS
 and Linux. The sandbox's proxy enforces the list, so the client has to use the proxy. curl,
 Node's `fetch` and Python's `urllib` do. A database driver or a raw socket don't, and are
-denied. For Chromium, pass Playwright's `proxy` option from `HTTP_PROXY`; on macOS it also
-needs `--single-process` to start. A listed port is open to anything that speaks `CONNECT`, not
-just HTTP, so list the service, not the protocol.
+denied. For a headless browser, see `browsers` below. A listed port is open to anything that
+speaks `CONNECT`, not just HTTP, so list the service, not the protocol.
 
 `mcp = ["playwright"]` lists the MCP servers a role may load; `mcp = []` means none, and no
 key means the policy doesn't say. seisin declares this and `explain` answers it
 (`seisin explain qa mcp tradingview`), but the servers are started by the agent's CLI, so the
 launcher has to apply it. With Claude Code: `--mcp-config` holding only those servers, plus
 `--strict-mcp-config`.
+
+A role that drives a headless Chromium — Playwright, `@playwright/mcp` — needs
+`browsers = ["chromium"]` on macOS. Without it the browser exits as it starts: its first act
+is to register a Mach service (`org.chromium.Chromium.MachPortRendezvousServer.<pid>`) that its
+own child processes look up, and the sandbox denies both. The preset allows exactly those two,
+by that prefix, and nothing else; every other role keeps the profile it had. The network is
+still `[network] allow`, through the sandbox's proxy, which takes credentials Playwright has to
+be handed apart from the URL:
+
+```js
+const u = new URL(process.env.HTTP_PROXY);   // http://<user>:<token>@localhost:<port>
+const browser = await chromium.launch({ proxy: {
+  server: `${u.protocol}//${u.host}`,
+  username: decodeURIComponent(u.username),
+  password: decodeURIComponent(u.password),
+} });
+```
+
+Passing `HTTP_PROXY` as `server` alone does not work: Playwright gives Chromium the address
+without the credentials and the proxy answers `407`. The token is the run's own, so the traffic
+stays tied to the run. `@playwright/mcp` does not run inside the sandbox yet: besides the same
+proxy gap in `--proxy-server`, it always publishes the browser on a unix socket of its own,
+which the sandbox denies. [docs/browsers.md](docs/browsers.md) has the measurements, and what
+Chrome and Chrome for Testing still lack.
 
 Some files are not code but still make something happen outside the sandbox, and no territory
 reaches them: git hooks and config, a project's `.claude/`, `.mcp.json`, `.envrc`. Two softer
@@ -455,6 +478,12 @@ Denied connections are logged too: `connect tcp:<port>` (the kernel gives the po
 host) or the socket path, once per target per run. `seisin walls` says whether the port is
 missing from `local_ports`, listed but dialled directly, or a socket. No request is filed: a
 port isn't anyone's territory. macOS only.
+
+So are the denials that are neither a file nor a connection: a Mach service, a `sysctl`, as
+`mach-register org.chromium.Chromium.MachPortRendezvousServer.7354`, once per operation and
+name per run, and never as a request. Most are the sandbox doing its job and the program
+carrying on; one of them is how a browser dies at start, and `seisin run` names the preset
+that answers it. macOS only.
 
 `seisin init` will propose this from whatever your repo already says: `.claude/agents/`, then `CODEOWNERS` (one role per owner, with all of that owner's paths), then one role per top-level folder that holds code. It declares `[keys] dir` when `.secrets/`, `secrets/` or `.keys/` is there, and adds `.seisin/` to an existing `.gitignore`. It **proposes** — a generated policy you did not read is not a policy — and a second `init` changes nothing without `--force`, which keeps the old one as `seisin.toml.bak`.
 

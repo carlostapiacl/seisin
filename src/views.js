@@ -244,7 +244,7 @@ export function causesOf(cfg, entries, { ask = explain, limit = 12 } = {}) {
 }
 
 /** What a log line was about. Lines from before the field existed are files. */
-const ABOUT = ["file", "key", "network", "tool"];
+const ABOUT = ["file", "key", "network", "system", "tool"];
 function aboutOf(kind) {
   return ABOUT.includes(kind) ? kind : "file";
 }
