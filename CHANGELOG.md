@@ -367,6 +367,14 @@ repository). What it needs and what changed is in [docs/agents.md](docs/agents.m
   reference; the keychain recipe says that `security -w` answers in hexadecimal for a value with a
   newline, tab or non-ASCII character, and how to store such a value instead.
 
+**Runtime: bumped to `@anthropic-ai/sandbox-runtime` 0.0.79** (from 0.0.78). A path entry may
+now be marked `{ "path": …, "literal": true }`, and an entry holding `*`, `?`, `[` or `]` is also
+read as the path it names when that path exists. seisin still writes plain strings, so the
+bracketed spelling of a deny kept shut around its allows (`.secret[s]`) matches what it did
+before unless a file is literally named `.secret[s]`. The runtime's new `credentials` block is
+not used. Full suite green on macOS (1061: 1055 pass, 6 skip) and Linux in Docker (1060: 1032
+pass, 28 skip).
+
 ## 0.5.0 — 2026-09-30
 
 **Breaking for a policy whose roles edit editor settings.** A role that writes a project's
