@@ -153,13 +153,18 @@ test("the provider can carry the default, and the role overrides it", () => {
   rmSync(b.dir, { recursive: true, force: true });
 });
 
-test("inject is refused by name, and the refusal says what it would cost", () => {
-  // Not "not supported": the mode where the agent never sees the value is the
-  // one people will reach for, and it is not free. Refused rather than
-  // half-available, with the price in the message and not in a doc.
+test("inject runs on Linux and is refused elsewhere, with the reason in the message", () => {
+  // inject is the mode where the agent never sees the value; it is Linux-only
+  // for now. On Linux modeOf returns it (the host check lives in injectKeysOf);
+  // off Linux it is refused, and the message points at the upstream fix rather
+  // than reading as "not supported".
   const { cfg, dir } = cfgWith('keys = ["keychain://t"]\nkey_mode = "inject"');
-  assert.throws(() => modeOf(cfg, cfg.roles.frontend, cfg.roles.frontend.keyEntries[0]),
-    /not implemented[\s\S]*TLS[\s\S]*MITM/);
+  const call = () => modeOf(cfg, cfg.roles.frontend, cfg.roles.frontend.keyEntries[0]);
+  if (process.platform === "linux") {
+    assert.equal(call(), "inject");
+  } else {
+    assert.throws(call, /not available on .* yet[\s\S]*593/);
+  }
   rmSync(dir, { recursive: true, force: true });
 });
 
