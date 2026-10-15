@@ -11,14 +11,7 @@
  * price printed next to the thing it buys.
  */
 import { injectKeysOf } from "../keys.js";
-
-/** srt's domain rule, the sliver seisin needs. See srt.js `coversHost`. */
-function covers(pattern, host) {
-  const p = String(pattern).toLowerCase(), h = host.toLowerCase();
-  if (p === "*") return true;
-  if (p.startsWith("*.")) return h.endsWith("." + p.slice(2));
-  return h === p;
-}
+import { coversHost as covers } from "../srt.js";
 
 export function injectWarnings(config, roles) {
   const out = [];

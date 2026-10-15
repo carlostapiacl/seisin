@@ -489,9 +489,18 @@ export function unknownMode(where, setting, mode) {
  * because the two available answers differ in what the agent can walk away
  * with, and picking one for somebody is picking how much a leak costs them.
  */
+/**
+ * The delivery mode a role declares for an entry — the role's `key_mode` first,
+ * else the provider's `mode`, else null. The precedence rule (role over
+ * provider) lives here so {@link modeOf} and {@link injectKeysOf} cannot drift.
+ */
+function declaredMode(config, role, entry) {
+  return role.keyMode ?? config.keyProviders?.[entry.scheme]?.mode ?? null;
+}
+
 export function modeOf(config, role, entry) {
   const provider = config.keyProviders?.[entry.scheme];
-  const mode = role.keyMode ?? provider?.mode ?? null;
+  const mode = declaredMode(config, role, entry);
   if (mode === null) {
     // A built-in scheme has no `[keys.providers.…]` table to put a default in —
     // declaring one is refused, because a scheme cannot mean two things. So
@@ -543,7 +552,7 @@ function injectGate(role) {
  */
 export function injectKeysOf(config, role) {
   const refs = entriesOf(role).filter((e) => e.kind === "ref");
-  const inject = refs.filter((e) => (role.keyMode ?? config.keyProviders?.[e.scheme]?.mode ?? null) === "inject");
+  const inject = refs.filter((e) => declaredMode(config, role, e) === "inject");
   const hosts = role.injectHosts ?? {};
   const out = inject.map((entry) => {
     const h = hosts[entry.name];
