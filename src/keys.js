@@ -29,9 +29,9 @@
  * improvement over a plaintext file — the secret stops living on disk, the
  * policy holds a reviewable reference instead of a path, and every resolution
  * is logged without its value (`event: "key"`, see commands/run.js) — but it is not "the agent never sees it". That
- * is `inject`, it costs terminating the role's TLS with a CA of your own, and
- * it is not built. `modeOf` refuses it by name rather than letting it read as
- * available.
+ * is `inject`, which costs terminating the role's TLS with a CA of your own and
+ * is Linux-only for now (see `injectGate` and `injectKeysOf` below); off Linux
+ * `modeOf` holds it, with the reason in the message.
  *
  * ## Why the value is never written down
  *
@@ -507,16 +507,61 @@ export function modeOf(config, role, entry) {
       `  "env" passes the value as ${entry.name}; "run-file" writes it to a file in the ` +
       `run's private directory, grants that one path, and removes it when the run ends.`);
   }
-  if (mode === "inject")
-    throw new Error(
-      `roles.${role.name}: key_mode = "inject" is not implemented.\n` +
-      `  It is the one mode where the agent never sees the value, and it is not free: the ` +
-      `runtime only masks a credential when the role's TLS is terminated with a CA of ` +
-      `seisin's own — MITM over all of that role's traffic, not just the host holding the ` +
-      `secret. It is refused rather than half-available.\n` +
-      `  Use "env" or "run-file" today. See https://github.com/carlostapiacl/seisin/blob/main/docs/decisions.md.`);
+  if (mode === "inject") injectGate(role);
   if (!MODES.includes(mode)) throw unknownMode(`roles.${role.name}:`, "key_mode", mode);
   return mode;
+}
+
+/**
+ * `inject` is the mode where the agent never sees the value: the runtime hands
+ * the sandbox a sentinel and substitutes the real value on egress to the
+ * credential's declared hosts. It is Linux-only in this version — masked
+ * delivery is validated on the Linux backend; the macOS path is not enabled
+ * yet and is tracked upstream, where the fit for it is a credential computed
+ * per run rather than read from the environment
+ * (anthropics/sandbox-runtime#593). Until that lands, macOS `inject` is held
+ * rather than offered, with the alternatives in the message.
+ */
+function injectGate(role) {
+  if (process.platform === "linux") return;
+  throw new Error(
+    `roles.${role.name}: key_mode = "inject" is not available on ${process.platform} yet.\n` +
+    `  It is Linux-only for now; masked injection on macOS is tracked upstream ` +
+    `(anthropics/sandbox-runtime#593) and enables once that lands.\n` +
+    `  Use "env" or "run-file" here, or run this role on Linux. ` +
+    `See https://github.com/carlostapiacl/seisin/blob/main/docs/decisions.md.`);
+}
+
+/**
+ * The role's `inject` keys as `{ entry, name, hosts }`, the single source both
+ * the settings (srt.js) and `check` read. Throws when the policy is internally
+ * inconsistent — an inject key with no `inject_hosts` entry, or an
+ * `inject_hosts` entry naming a key that is not injected — because either one
+ * is a masked credential that silently injects nowhere, or a host list that
+ * guards nothing. Platform is NOT checked here: this answers "what does the
+ * policy say", and {@link injectGate} answers "can we run it here".
+ */
+export function injectKeysOf(config, role) {
+  const refs = entriesOf(role).filter((e) => e.kind === "ref");
+  const inject = refs.filter((e) => (role.keyMode ?? config.keyProviders?.[e.scheme]?.mode ?? null) === "inject");
+  const hosts = role.injectHosts ?? {};
+  const out = inject.map((entry) => {
+    const h = hosts[entry.name];
+    if (!h)
+      throw new Error(
+        `roles.${role.name}: key "${entry.raw}" is injected but has no hosts.\n` +
+        `  A masked credential needs the host its token authenticates to:\n` +
+        `    [roles.${role.name}.inject_hosts]\n    ${entry.name} = ["api.example.com"]`);
+    return { entry, name: entry.name, hosts: h };
+  });
+  const named = new Set(out.map((c) => c.name));
+  for (const name of Object.keys(hosts))
+    if (!named.has(name))
+      throw new Error(
+        `roles.${role.name}.inject_hosts.${name}: no injected key delivers ${name}.\n` +
+        `  inject_hosts names the hosts a masked credential may reach; ${name} is not one. ` +
+        `Add a key that delivers it with key_mode = "inject", or remove the entry.`);
+  return out;
 }
 
 /**

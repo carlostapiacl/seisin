@@ -164,7 +164,37 @@ parent executes them, so a role that could rewrite one would decide what runs ou
 |---|---|
 | **`mode = "env"`** | resolved and passed as a variable |
 | **`mode = "run-file"`** | written to a file in the **run directory** (private to the run), removed when the run ends. The file holds the value exactly as the provider printed it, or for `file://` exactly the file's bytes — trailing newline included, which an ssh key needs. The path arrives **both** as `NETLIFY_TOKEN` and as `NETLIFY_TOKEN_FILE` — `_FILE` is the Docker-secrets convention, while `KUBECONFIG` and `GOOGLE_APPLICATION_CREDENTIALS` already expect a path in the plain name. Neither holds the value Called `scratch` before 0.6.0, when the file still sat in shared scratch; a policy that says `scratch` is refused with the line to change |
-| **`mode = "inject"`** | the agent never sees the value — **not implemented**, and refused by name rather than left looking available. It needs the runtime's credential masking, which does not load without terminating that role's TLS with a CA of seisin's own. That is MITM over all of the role's traffic, and it is a decision to take deliberately |
+| **`mode = "inject"`** | the agent never sees the value — it gets a sentinel, and the runtime substitutes the real token on egress to the hosts you declare. **Linux-only for now** (see below), and it is not free: masking does not load without terminating that role's TLS with a CA of seisin's own — MITM over the injected hosts, which `check` prices and names. Declare the hosts per credential: |
+
+```toml
+[roles.deploy]
+network  = ["api.github.com"]
+key_mode = "inject"
+keys     = ["GH_TOKEN=op://vault/gh/token"]
+
+[roles.deploy.inject_hosts]
+GH_TOKEN = ["api.github.com"]     # exact hosts, one list per credential
+```
+
+Each injected credential needs a host and each host needs a credential, or the policy is
+refused — a masked token that injects nowhere, or a host list guarding nothing, is a
+mistake, not a default. TLS is terminated **only** for the injected hosts; every other
+allowed domain is left alone. A wildcard allow (`*.github.com`) that covers an injected
+host is terminated whole — the runtime cannot intercept one host out of a wildcard — and
+`check` says so.
+
+**What inject does and does not close.** It stops the agent from reading the token directly
+and from sending it to any host you did not declare. It does **not** stop *reflection*: if an
+injected host stores what the agent sends and returns it later — an issue, a gist, a comment,
+a note — the agent can post the sentinel, let the host keep the real value, and read it back.
+Use a least-scope token. `check` prints this per credential.
+
+**Why Linux-only.** Masked delivery is validated on the Linux backend; the macOS path is not
+enabled yet. It is tracked upstream, where the fit for it is a credential computed per run
+rather than read from the environment
+([sandbox-runtime#593](https://github.com/anthropics/sandbox-runtime/pull/593)); inject enables
+on macOS once that lands. Until then, inject on macOS is held — the message says so and points
+at `"env"`/`"run-file"` or running the role on Linux.
 
 There is **no default mode**. A reference with none declared anywhere is an error, because
 the answers differ in what the agent can walk away with and picking one for you is picking
@@ -230,7 +260,7 @@ else. Both are refused when the config loads, as is one name claimed by two keys
 **And what it does not do, in the same breath:** this resolves the secret **at rest**, not
 in the agent's context. The value still reaches the process and the agent can still read it.
 The secret stops living on your disk and the policy holds a reference you can review — a
-strict improvement — but "the agent never sees it" is `inject`, and `inject` is not built.
+strict improvement — but "the agent never sees it" is `inject` (above), which is Linux-only for now.
 
 ### A database is four files, and you declare it once
 

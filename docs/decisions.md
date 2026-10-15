@@ -1219,6 +1219,19 @@ role is refused before the id is looked up: no decision can route there.
   every role unless `isolate` is on — see the section above. Whoever weighs
   these should weigh them together.
 
+  **Done, Linux-only, with the price shown rather than buried.** `key_mode =
+  "inject"` ships for the env-var form: `inject_hosts` declares per credential
+  where the real value may go, seisin emits `credentials.envVars` with
+  `mode: "mask"` and terminates TLS only for those hosts (`check` names the
+  interception, the wildcards it drags in whole, and the reflection masking does
+  not close). It is **Linux-only** for now — masked delivery is validated on the
+  Linux backend, and the macOS path is not enabled yet. The fit for macOS is
+  tracked upstream as a credential computed per run rather than read from the
+  environment ([sandbox-runtime#593](https://github.com/anthropics/sandbox-runtime/pull/593));
+  inject enables there once it lands. Off Linux, `modeOf` holds the mode with the
+  alternatives in the message rather than emitting a capability it is not ready
+  to stand behind.
+
 ## No second config format, for anybody
 
 seisin reads one file with one shape. The pull to add a second is constant and always
