@@ -533,11 +533,12 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
  * A domain pattern covers a host — srt's rule, narrowed to what seisin needs.
  * `*` covers all; `*.base` covers any `x.base`; otherwise an exact, case-folded
  * match. Mirrors `matchesDomainPattern` in the runtime's domain-pattern.js;
- * kept here rather than imported because seisin generates settings and does not
- * embed the library. Inject hosts are exact (config.js rejects a wildcard), so
+ * written here rather than imported because seisin generates settings and does
+ * not embed the library, and exported so `inspect/inject.js` shares the one
+ * rule. Inject hosts are exact (config.js rejects a wildcard), so
  * this is only ever asked "does this allowedDomains pattern cover this host".
  */
-function coversHost(pattern, host) {
+export function coversHost(pattern, host) {
   const p = String(pattern).toLowerCase(), h = host.toLowerCase();
   if (p === "*") return true;
   if (p.startsWith("*.")) return h.endsWith("." + p.slice(2));
