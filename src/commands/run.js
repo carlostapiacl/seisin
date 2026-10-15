@@ -292,6 +292,18 @@ export async function run(config, argv) {
   if (resolved.some((r) => r.mode === "run-file")) mkdirSync(runFileKeys, { recursive: true, mode: 0o700 });
   for (const { entry, mode, value } of resolved) {
     if (mode === "env") { env[entry.name] = value; continue; }
+    /**
+     * `inject`: the real value goes into the environment of `srt` — not the
+     * agent's. The settings this run already generated declare it under
+     * `credentials.envVars` with `mode: "mask"`, so the runtime reads the real
+     * value from its own environment, hands the sandboxed child a sentinel, and
+     * substitutes the real value back only on egress to the credential's hosts.
+     * `srt` runs outside the sandbox, and the sandboxed child gets the sentinel.
+     * This mode is Linux-only for now — see injectGate in keys.js. The value is
+     * still masked on stdout/stderr below, so a sentinel the agent reflects into
+     * its own output is covered too.
+     */
+    if (mode === "inject") { env[entry.name] = value; continue; }
     // `run-file`: the value lands in the per-run directory this process already
     // makes for the spool and already removes on exit, so its lifetime is the
     // run's by construction rather than by a cleanup somebody has to remember.

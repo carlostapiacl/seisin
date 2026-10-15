@@ -39,6 +39,19 @@ moved, is in [docs/decisions.md](docs/decisions.md#the-060-renames-one-name-and-
 - **`docs/permission-requests.md` is now [`docs/requests.md`](docs/requests.md)**, away from Claude
   Code's `PermissionRequest`. *What to do:* update links.
 
+**New: `key_mode = "inject"`, where the agent never sees the value (Linux).** A masked
+credential: the sandbox gets a sentinel (`fake_value_…`) and the runtime substitutes the real
+token on egress to the hosts you declare per credential, under `[roles.<r>.inject_hosts]`. seisin
+emits `credentials.envVars` with `mode: "mask"` and terminates TLS only for those hosts — every
+other allowed domain is left alone; a wildcard allow that covers an inject host is terminated
+whole, and `seisin check` names it. `check` also prints what inject does not close: the token is
+still recoverable if an inject host stores what the agent sends and returns it (an issue, a gist,
+a note), so use a least-scope token. **Linux-only for now** — masked delivery is validated on the
+Linux backend; the macOS path is not enabled yet and is tracked upstream
+([sandbox-runtime#593](https://github.com/anthropics/sandbox-runtime/pull/593)), with the mode
+held off Linux and the alternatives in the message. Each injected credential needs a host and
+each host a credential, or the policy is refused. See [docs/keys.md](docs/keys.md).
+
 **New: `browsers = ["chromium"]`, a headless Chromium inside the sandbox on macOS.** Chromium
 exited at start: the kernel denied the Mach service its browser process registers
 (`org.chromium.Chromium.MachPortRendezvousServer.<pid>`) and, once that is allowed, the lookup

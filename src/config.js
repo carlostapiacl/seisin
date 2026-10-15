@@ -397,13 +397,14 @@ export function loadConfig(path, text = readFileSync(path, "utf8")) {
    * bench died on it, and the surviving three were the model names with no dots
    * in them.
    *
-   * There is no ambiguity to preserve here — a nested table under [roles] has
-   * no meaning in this tool — so it is an error, and it names both what was
-   * written and what it became.
+   * There is almost no ambiguity to preserve here — a nested table under
+   * [roles] has one meaning in this tool, `inject_hosts`, and any other is an
+   * error that names both what was written and what it became.
    */
   for (const name of Object.keys(roles)) {
     const r = own(roles, name);
-    const nested = Object.keys(r ?? {}).filter((k) => r[k] && typeof r[k] === "object" && !Array.isArray(r[k]));
+    const nested = Object.keys(r ?? {})
+      .filter((k) => k !== "inject_hosts" && r[k] && typeof r[k] === "object" && !Array.isArray(r[k]));
     if (nested.length)
       throw new Error(
         `${path}: [roles.${name}.${nested[0]}] — a dot separates keys in TOML, so this ` +
@@ -509,6 +510,7 @@ export function loadConfig(path, text = readFileSync(path, "utf8")) {
     const keyMode = own(r, "key_mode");
     if (keyMode !== undefined && !MODES.includes(keyMode))
       throw unknownMode(`${path}: roles.${name}:`, "key_mode", keyMode);
+    const injectHosts = readInjectHosts(own(r, "inject_hosts"), `${path}: roles.${name}.inject_hosts`);
     const neverWrites = readNeverWrites(own(r, "never_writes"), `${path}: roles.${name}.never_writes`);
     const localBinding = own(r, "local_binding");
     const trustd = own(r, "trustd");
@@ -557,6 +559,7 @@ export function loadConfig(path, text = readFileSync(path, "utf8")) {
       keys,
       keyEntries,
       keyMode: keyMode ?? null,
+      injectHosts,
       env: asArray(own(r, "env"), `roles.${name}.env`),
       network: own(r, "network") === undefined ? null : asArray(own(r, "network"), `roles.${name}.network`),
       /**
@@ -899,7 +902,7 @@ function readBoolean(value, where) {
 }
 
 /** The keys a `[roles.<name>]` table can hold. Anything else is reported by `check`. */
-export const ROLE_KEYS = ["writes", "private", "keys", "key_mode", "env", "network", "never_writes", "local_binding", "local_ports", "browsers", "mcp", "trustd", "control_files", "reads", "toolchain", "verify", "handoff"];
+export const ROLE_KEYS = ["writes", "private", "keys", "key_mode", "inject_hosts", "env", "network", "never_writes", "local_binding", "local_ports", "browsers", "mcp", "trustd", "control_files", "reads", "toolchain", "verify", "handoff"];
 
 /**
  * `control_files`: which families of control files a role may edit. Refused at
@@ -993,6 +996,45 @@ function readLocalPorts(value, where) {
       throw new Error(`${where}: ${JSON.stringify(v)} is not a port. Write numbers from 1 to 65535, ` +
         `for example local_ports = [8001, 8081].`);
     if (!out.includes(n)) out.push(n);
+  }
+  return out;
+}
+
+/**
+ * `inject_hosts`: for `key_mode = "inject"`, the hosts each masked credential
+ * is substituted into, keyed by the delivered variable name.
+ *
+ *   [roles.frontend.inject_hosts]
+ *   GH_TOKEN = ["api.github.com"]
+ *
+ * One list per credential and not one for the role, because the runtime gates
+ * substitution per credential: credential A's real value reaches only A's
+ * hosts, never B's. A host is an exact name — no wildcard — so `check` can say
+ * precisely which traffic is intercepted; the match against a wider wildcard in
+ * `allowedDomains` is computed later (srt.js), where the terminated set is.
+ */
+function readInjectHosts(value, where) {
+  if (value === undefined) return null;
+  if (typeof value !== "object" || Array.isArray(value))
+    throw new Error(`${where}: inject_hosts is a table of VAR = ["host", …], ` +
+      `for example [roles.x.inject_hosts] GH_TOKEN = ["api.github.com"].`);
+  const out = {};
+  for (const [name, hosts] of Object.entries(value)) {
+    const list = asArray(hosts, `${where}.${name}`);
+    if (list.length === 0)
+      throw new Error(`${where}.${name}: a masked credential with no host injects nowhere. ` +
+        `List the host its token authenticates to, like ["api.github.com"].`);
+    for (const h of list) {
+      if (typeof h !== "string" || h.trim() === "")
+        throw new Error(`${where}.${name}: every host is a non-empty string`);
+      if (h.includes("*"))
+        throw new Error(`${where}.${name}: "${h}" is a wildcard. An inject host is an exact name, ` +
+          `so check can say which traffic is intercepted. A wildcard in allowedDomains still ` +
+          `covers it; that is reported, not declared here.`);
+      if (/^https?:\/\//.test(h) || h.includes("/"))
+        throw new Error(`${where}.${name}: "${h}" is not a host. Write the bare domain, like "api.github.com".`);
+    }
+    out[name] = [...new Set(list)];
   }
   return out;
 }

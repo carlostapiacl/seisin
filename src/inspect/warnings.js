@@ -8,6 +8,7 @@ import { relativePathWarnings, scratchWarnings, hookWarnings } from "./machine.j
 import { modelEndpointWarnings } from "./network.js";
 import { layoutWarnings } from "./layout.js";
 import { envWarnings, keyFloorWarnings } from "./keys.js";
+import { injectWarnings } from "./inject.js";
 
 /** Every way this policy does not hold, each with what to do about it. */
 export function warningsFor(config, roles, shared = sharedPaths(config, roles), { scoped = false } = {}) {
@@ -46,6 +47,8 @@ export function warningsFor(config, roles, shared = sharedPaths(config, roles), 
   warnings.push(...layoutWarnings(config, roles, scoped));
 
   warnings.push(...envWarnings(roles));
+
+  warnings.push(...injectWarnings(config, roles));
 
   warnings.push(...keyFloorWarnings(config));
 

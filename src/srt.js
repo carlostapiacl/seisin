@@ -19,7 +19,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { STATE_DIR, CONFIG_NAME } from "./layout.js";
-import { entriesOf } from "./keys.js";
+import { entriesOf, injectKeysOf } from "./keys.js";
 import { enforcedNeverWrites } from "./owners.js";
 import { realAncestor } from "./paths.js";
 import { denyFor } from "./surface.js";
@@ -416,16 +416,27 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
   const spelt = config.read === "territory" && process.platform === "darwin"
     ? outlastAllows(denyRead, allowRead, realAncestor) : denyRead;
 
+  const allowedDomains = role.localPorts?.length
+    ? [...(role.network ?? config.allowedDomains ?? []), ...localPortDomains(role.localPorts)]
+    : role.network ?? config.allowedDomains;
+  const { credentials, tlsTerminate } = injectSettings(config, role, allowedDomains);
+
   return {
     network: {
       // `local_ports` rides the same allowlist as the domains: the runtime's
       // proxy is the one place that sees the destination PORT. See loopbackVia.
       // Without ports the value is passed through untouched, `undefined` included: that
       // is how a config with no network list has always read, and a spread would throw.
-      allowedDomains: role.localPorts?.length
-        ? [...(role.network ?? config.allowedDomains ?? []), ...localPortDomains(role.localPorts)]
-        : role.network ?? config.allowedDomains,
+      allowedDomains,
       deniedDomains: [],
+      /**
+       * `inject` keys terminate TLS, because substituting a header needs reading
+       * it. Only the hosts that carry a masked credential are terminated; every
+       * other allowed domain is excluded, so the MITM is as narrow as the policy
+       * lets it be. A wildcard allow that covers an inject host is terminated
+       * whole — srt cannot terminate one host out of `*.x` — and `check` says so.
+       */
+      ...(tlsTerminate ? { tlsTerminate } : {}),
       // Exactly one socket: the parent's audit spool, when there is a parent.
       // Granted by path, not by turning unix sockets on.
       allowUnixSockets: spool && !isFifo ? [spool] : [],
@@ -507,7 +518,61 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
      * and off by default, so the answer is written next to the role that needs it.
      */
     ...(role.trustd === true ? { enableWeakerNetworkIsolation: true } : {}),
+    /**
+     * Masked credentials: the real value reaches the runtime's own environment
+     * (run.js), never the sandbox, which sees `fake_value_…`. `mode: "mask"`
+     * and the per-credential `injectHosts` are all that is emitted — no
+     * `extract`, `decode`, files or SigV4, and never `allowPlaintextInject`,
+     * which over HTTPS carries the sentinel and so is deny with extra steps.
+     */
+    ...(credentials ? { credentials } : {}),
   };
+}
+
+/**
+ * A domain pattern covers a host — srt's rule, narrowed to what seisin needs.
+ * `*` covers all; `*.base` covers any `x.base`; otherwise an exact, case-folded
+ * match. Mirrors `matchesDomainPattern` in the runtime's domain-pattern.js;
+ * written here rather than imported because seisin generates settings and does
+ * not embed the library, and exported so `inspect/inject.js` shares the one
+ * rule. Inject hosts are exact (config.js rejects a wildcard), so
+ * this is only ever asked "does this allowedDomains pattern cover this host".
+ */
+export function coversHost(pattern, host) {
+  const p = String(pattern).toLowerCase(), h = host.toLowerCase();
+  if (p === "*") return true;
+  if (p.startsWith("*.")) return h.endsWith("." + p.slice(2));
+  return h === p;
+}
+
+/**
+ * The `credentials` block and `tlsTerminate.excludeDomains` for a role's
+ * `inject` keys, or `{}` when it has none. One `envVars` entry per credential,
+ * `mode: "mask"` with its own `injectHosts`; TLS is terminated only for the
+ * domains that carry one, every other allowed domain excluded. Throws when an
+ * inject host is not reachable through the role's `allowedDomains` — a masked
+ * credential aimed at a host the role cannot connect to is a policy mistake,
+ * not a thing to emit silently.
+ */
+export function injectSettings(config, role, allowedDomains) {
+  const inject = injectKeysOf(config, role);
+  if (inject.length === 0) return {};
+  const allowed = allowedDomains ?? [];
+  for (const c of inject)
+    for (const h of c.hosts)
+      if (!allowed.some((p) => coversHost(p, h)))
+        throw new Error(
+          `roles.${role.name}: inject host ${h} (for ${c.name}) is not reachable.\n` +
+          `  A masked credential is substituted only on egress to its host, and this role's ` +
+          `network does not allow ${h}. Add it: [roles.${role.name}] network = ["${h}", …], ` +
+          `or correct the host in inject_hosts.`);
+  const credentials = {
+    envVars: inject.map((c) => ({ name: c.name, mode: "mask", injectHosts: c.hosts })),
+  };
+  // Terminate a domain only if it carries an inject host; exclude the rest.
+  const targets = inject.flatMap((c) => c.hosts);
+  const excludeDomains = allowed.filter((d) => !targets.some((h) => coversHost(d, h)));
+  return { credentials, tlsTerminate: { excludeDomains } };
 }
 
 /**
