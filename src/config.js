@@ -11,6 +11,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
+import { isIP } from "node:net";
 import { CONFIG_NAME } from "./layout.js";
 import { parseKey, MODES, checkNames, BUILTIN, unknownMode } from "./keys.js";
 import { readNotify } from "./notify.js";
@@ -448,6 +449,13 @@ export function loadConfig(path, text = readFileSync(path, "utf8")) {
     // Through asArray like every other list: `allow = "github.com"` was kept as
     // a string, and a string iterated is its characters.
     allowedDomains: asArray(own(own(parsed, "network"), "allow"), "network.allow"),
+    // `[network] deny_addresses` — where an allowed name may not lead. An allowed
+    // domain whose DNS somebody else controls can be pointed at a host on your
+    // LAN; the runtime denies loopback, link-local and metadata addresses by
+    // itself and leaves private ranges to the policy, because an intranet name
+    // is a legitimate thing to allow. Checked here, with the line, rather than
+    // by the sandbox at start.
+    deniedAddresses: readAddresses(own(own(parsed, "network"), "deny_addresses"), `${path}: network.deny_addresses`),
     runtimeWrites: runtimeWrites === undefined ? undefined : asArray(runtimeWrites, "runtime.writes"),
     // `[runtime] isolate` — how much of your home a role stops reaching. See
     // srt.js for what each level emits, and readIsolate() below for why there
@@ -838,7 +846,7 @@ export function withSidecars(paths) {
 const SHAPE = {
   roles: null,                            // validated where roles are read
   keys: { dir: true, providers: { "*": { command: true, mode: true } } },
-  network: { allow: true },
+  network: { allow: true, deny_addresses: true },
   runtime: { writes: true, isolate: true, redact: true, read: true },
   scan: { ignore: true },
   protect: { instructions: true },
@@ -1125,6 +1133,23 @@ function assertNotAbsolute(list, where) {
       throw new Error(`${where}: every entry must be a non-empty string`);
     if (g.startsWith("/"))
       throw new Error(`${where}: "${g}" is absolute. Territories are relative to the repo root.`);
+  }
+  return list;
+}
+
+/**
+ * An IP address or a CIDR range: `10.0.0.0/8`, `192.168.1.10`, `fc00::/7`
+ * (IPv6 without brackets). Anything else is refused with what was written.
+ */
+function readAddresses(value, where) {
+  const list = asArray(value, where);
+  for (const v of list) {
+    const [addr, prefix, extra] = v.split("/");
+    const family = isIP(addr);
+    const max = family === 6 ? 128 : 32;
+    const okPrefix = prefix === undefined || (/^\d+$/.test(prefix) && Number(prefix) <= max);
+    if (!family || !okPrefix || extra !== undefined)
+      throw new Error(`${where}: "${v}" is not an IP address or a CIDR range (e.g. "10.0.0.0/8", "fc00::/7")`);
   }
   return list;
 }
