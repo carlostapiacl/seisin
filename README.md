@@ -162,8 +162,8 @@ A rule is a string comparison against a command someone might not spell that way
 
 ## What it is for, and what it is not for
 
-> **It turns an agent's mistake into a contained mistake. It does not turn a hostile
-> agent into a harmless one.**
+> **It turns an agent's mistake into a contained mistake. Against a hostile agent, the
+> guarantee is the one of the sandbox you run it under.**
 >
 > Two outside reviews, plus three follow-ups, have gone through it looking for ways past the boundary.
 > [What they found and what remains open](https://github.com/carlostapiacl/seisin/blob/main/docs/what-it-has-been-put-through.md) lists all of them — what was
@@ -178,28 +178,33 @@ denies, and it does not care how the command was spelled — verified against a 
 process, an absolute path, a symlink, a `python -c`, and a shell redirect the agent fell
 back to when its own file API was denied.
 
-**It is not built to hold against an agent that is trying.** Measured, in this repo's own
-fixtures:
+**Against an agent that is trying, the line is drawn by the sandbox.** seisin writes the
+policy and checks that the sandbox can hold it; [the sandbox you choose](https://github.com/carlostapiacl/seisin/blob/main/docs/sandboxes.md)
+enforces it. Some limits are the policy's and hold under any sandbox, measured in this repo's
+own fixtures:
 
 | | |
 |---|---|
 | with the default read mode (`read = "all"`) it can read everything except the declared key directories — **including `~/.ssh`, `~/.aws`, `~/.npmrc` and `~/.config`** | by design — an agent that cannot read the repo cannot work. `read = "territory"` closes those homes (as does `[runtime] isolate = "credentials"`); `seisin scan` finds secrets stored elsewhere |
-| it can write anything inside its own territory | including staging an exfiltration, or destroying its own uncommitted work with `rm` |
+| it can write anything inside its own territory | including staging an exfiltration |
 | `base64` defeats the redaction | only the literal value is masked, and only on stdout and stderr |
-| an allowed domain is an allowed channel | if the agent's own API is reachable, so is everything that goes through it |
+| an allowed domain is an allowed channel | if the agent's own API is reachable, so is everything that goes through it. [`[network] deny_addresses`](#configure) keeps an allowed name from resolving into your LAN |
 | the hook is text-based and evadable | on purpose — what escapes it goes **past the hook, not past the kernel**: the kernel still denies. On macOS it is no longer unexplained either, because [the kernel's own denials are recorded](#seeing-what-happened); on Linux it is. Either way, attribution is not a control |
 
-And three things that outweigh all of the above:
+Others are the sandbox's, and differ between the two built in:
 
-1. **It is young and has one author.** The first public release was September 2026, and the
-   implementation is still moving quickly. "Secure" is not a word earned by size or test count.
-2. **The enforcement is someone else's beta.** `sandbox-runtime` describes itself as a
-   research preview with an evolving API. A hole there is a hole here.
-3. **Two platforms tested, by one person, on one machine each.**
+| | `srt` (the default) | `tartaros` |
+|---|---|---|
+| a process the agent leaves running | **macOS:** it outlives the run, whether it double-forks, ignores signals under `nohup` or calls `setsid` (measured 2026-10-16). **Linux:** the PID namespace ends with the run (read from its source) | **macOS:** the run's process group is killed; one that calls `setsid` outlives it (measured 2026-10-16). **Linux:** the run's cgroup is killed whole (read from its source) |
+| deleting inside the territory | write includes delete; the ask is upstream as [issue #545](https://github.com/anthropics/sandbox-runtime/issues/545) | not measured here |
+| `[network] deny_addresses` | enforced | not yet: a role that has it runs under `srt`, and `check` says why |
+| what it is | Anthropic's, described by its authors as a research preview | by the author of seisin, alpha |
 
-For several of your own agents, on your own machine, getting in each other's way — that is
-what this is for, and it is a great deal better than nothing. For putting an agent you do
-not control in front of data you care about, it is not.
+`seisin check` says which sandbox each role gets before anything runs.
+
+For several of your own agents, on your own machine, getting in each other's way, this is
+what it is for. For an agent you do not control, choose the sandbox for that threat: seisin
+will not make its guarantee stronger than it is.
 
 ## Install
 
@@ -207,7 +212,7 @@ not control in front of data you care about, it is not.
 npm install -g seisin
 ```
 
-That pulls in [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropics/sandbox-runtime), which does the enforcing: Seatbelt on macOS, bubblewrap on Linux. No containers, no VMs, no daemon. seisin has **no other dependencies**.
+That pulls in [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropics/sandbox-runtime), the default sandbox: Seatbelt on macOS, bubblewrap on Linux. No containers, no VMs, no daemon. seisin has **no other dependencies**. [tartaros](https://github.com/carlostapiacl/tartaros), or a sandbox of your own, can enforce instead ([docs/sandboxes.md](https://github.com/carlostapiacl/seisin/blob/main/docs/sandboxes.md)).
 
 **On Linux you also need three system packages** — the runtime refuses to start without
 them rather than running unconfined, which is the right failure and an unhelpful message:
@@ -320,6 +325,17 @@ keys   = ["netlify-token.txt"]
 writes   = ["src/api/**", "migrations/**"]
 keys     = ["database-url.txt", "sentry-dsn.txt"]
 network  = ["api.stripe.com"]   # this role only — it replaces [network] rather than adding
+```
+
+An allowed name is only as safe as its DNS: one whose records somebody else controls can be
+pointed at a host on your network. The sandbox already denies loopback, link-local and
+cloud-metadata addresses. Private ranges are left to you, because allowing an intranet name is
+legitimate; to close them, list them:
+
+```toml
+[network]
+allow          = ["github.com", "*.github.com"]
+deny_addresses = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "fc00::/7"]
 ```
 
 `[runtime] read = "all"` is the default. The opt-in `"territory"` mode keeps homes,
@@ -762,7 +778,7 @@ page says *offline* and turns every write off until it answers again.
 |---|---|---|
 | your agent's `allow`/`deny` rules | match the command string before it runs | yes — `/bin/rm`, a heredoc, a child process |
 | **seisin** | decides what to ask for, and names the owner | it doesn't enforce, it explains |
-| **sandbox-runtime → Seatbelt / bubblewrap** | the OS denies the syscall | no |
+| **the sandbox → Seatbelt / bubblewrap / Landlock** | the OS denies the syscall | no |
 
 ```
    Write tool · Bash `rm -rf` · /bin/rm · python -c "open(…)" · a grandchild
@@ -928,7 +944,7 @@ writable: each run gets a temp directory of its own instead.
 
 ## What it is not
 
-- **Not a sandbox.** [`sandbox-runtime`](https://github.com/anthropics/sandbox-runtime) is the sandbox, and it is Anthropic's. seisin writes its settings and explains its denials.
+- **Not a sandbox.** The sandbox is the one you choose: [`sandbox-runtime`](https://github.com/anthropics/sandbox-runtime) by default, or [tartaros](https://github.com/carlostapiacl/tartaros). seisin writes its settings, checks that it can hold them and explains its denials.
 - **Not an orchestrator.** It does not run your agents, schedule them, or merge their work. It runs one command as one role.
 - **Not a secret manager.** It scopes *reads* of files you already have. Where those files come from is your problem.
 - **Not what a single agent needs first.** If only one agent ever touches the repo,
@@ -1036,7 +1052,7 @@ already done:
 | | |
 |---|---|
 | **Windows** | the runtime has a backend. seisin has never been pointed at it, and no CI runner covers it |
-| **Deleting inside your own territory** | not covered, and not coverable here — the ask is upstream as [issue #545](https://github.com/anthropics/sandbox-runtime/issues/545), open and unanswered since 2026-09-13, [with the measurement behind it](https://github.com/carlostapiacl/seisin/blob/main/docs/upstream/denyUnlink.md) and [a demo](https://github.com/carlostapiacl/seisin/tree/main/docs/demo/) |
+| **Deleting inside your own territory** | the sandbox's to enforce, and `srt` cannot: write includes delete. The ask is upstream as [issue #545](https://github.com/anthropics/sandbox-runtime/issues/545), open and unanswered since 2026-09-13, [with the measurement behind it](https://github.com/carlostapiacl/seisin/blob/main/docs/upstream/denyUnlink.md) and [a demo](https://github.com/carlostapiacl/seisin/tree/main/docs/demo/) |
 | **`init` heuristics** | it reads `.claude/agents/`, then `CODEOWNERS`, then the top-level folders that hold code. Every other convention is a guess nobody has made yet |
 | **SSH inside a run (macOS)** | on macOS the `ProxyCommand` the runtime sets can't authenticate to its own proxy, so `git` over SSH fails at the handshake (on Linux the runtime routes it through an authenticated proxy — read from its source, not measured here). Fix upstream: [PR #516](https://github.com/anthropics/sandbox-runtime/pull/516). Use an HTTPS remote |
 | **A browser inside a role (macOS)** | Chromium only starts with `--single-process`, which is unstable with several browsers. Fix upstream: [PR #598](https://github.com/anthropics/sandbox-runtime/pull/598). [Measurement](https://github.com/carlostapiacl/seisin/blob/main/docs/upstream/mach-register.md) |

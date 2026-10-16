@@ -429,6 +429,10 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
       // is how a config with no network list has always read, and a spread would throw.
       allowedDomains,
       deniedDomains: [],
+      // `[network] deny_addresses`: what an allowed name may not resolve to, on
+      // top of the runtime's own loopback / link-local / metadata set. Left out
+      // when empty, so a policy without it emits the settings it always did.
+      ...(config.deniedAddresses?.length ? { deniedResolvedAddresses: config.deniedAddresses } : {}),
       /**
        * `inject` keys terminate TLS, because substituting a header needs reading
        * it. Only the hosts that carry a masked credential are terminated; every
