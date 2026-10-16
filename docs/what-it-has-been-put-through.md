@@ -389,23 +389,28 @@ declared key, writes inside its territory, and is denied outside it.
 - **Windows.** The runtime has a backend. seisin has never been pointed at it.
 - **No fuzzing.** The parser has a property test over a fixed corpus, which is
   not the same thing.
-- **Processes an agent leaves running.** A command that double-forks or uses
-  `nohup`/`setsid` outlives the run: it stays confined (its territory does not
-  widen), but nothing is watching it any more, and if it was started under a
-  wider grant it keeps that profile after the grant is narrowed. If `seisin run`
-  itself is `SIGKILL`ed, the runtime and the agent are reparented to init and
-  keep running, confined but unaudited. seisin does not yet kill the process
-  group on exit; until it does, treat a run as done only once its children are.
+- **Processes an agent leaves running.** Whether a command that double-forks, uses
+  `nohup` or calls `setsid` outlives the run is the sandbox's answer, not seisin's.
+  Measured on macOS on 2026-10-16: under `srt` all three outlive it, confined (their
+  territory does not widen) but no longer watched; under `tartaros` the run's process group
+  is killed and only the `setsid` one survives. On Linux `srt` runs the agent in a PID
+  namespace that ends with the run, and `tartaros` kills the run's cgroup whole (both read
+  from source, not measured here). One started under a wider grant keeps that profile after
+  the grant is narrowed. If `seisin run` itself is `SIGKILL`ed, what happens to the agent is
+  again the sandbox's: `tartaros` on Linux dies with its parent; `srt` keeps running,
+  confined but unaudited.
 - **`explain` on the wrong platform's spelling.** On a case-insensitive or
   NFC/NFD-normalising disk the kernel matches a path that `explain` spells
   differently, so `explain` can be stricter than the boundary (never looser).
   The safe direction, but a mismatch: read `check` for what the kernel is given.
 - **A network deny by resolved address.** The runtime denies loopback, link-local
   and cloud-metadata IPs by default, so an allowed domain cannot be rebound to
-  the metadata endpoint. It does not deny private-LAN ranges (RFC1918) by
-  default, and seisin does not add them, so an allowed domain whose DNS an
-  attacker controls could still reach a host on your LAN. An allowed domain sees
-  every port, too — the allow list is per host, not per port.
+  the metadata endpoint. Private-LAN ranges (RFC1918, CGNAT, ULA) are not denied
+  unless the policy says so: `[network] deny_addresses` (2026-10-16) passes them to
+  the runtime, which then denies an allowed name that resolves into them. Without
+  it, an allowed domain whose DNS an attacker controls could still reach a host on
+  your LAN. An allowed domain sees every port, too — the allow list is per host,
+  not per port.
 - **A hard link made from outside the sandbox.** Ownership is by path, and the kernel
   enforces it by path, so two names for one inode are two territories' worth of
   access to the same bytes. A role cannot *create* a hard link that crosses its
