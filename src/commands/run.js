@@ -14,6 +14,7 @@ import { mkdirSync, writeFileSync, existsSync, readFileSync, statSync } from "no
 import { join, dirname, delimiter, resolve } from "node:path";
 import { settingsFor, roleHome, loopbackVia, agentOf, AGENTS, AGENT_HOMES } from "../srt.js";
 import { buildEnv } from "../env.js";
+import { traceFields } from "../trace.js";
 import { resolveKeys } from "../keys.js";
 import { nestedSandboxWarning } from "../nested.js";
 import { spool, SOCK_ENV, FIFO_SUFFIX } from "../spool.js";
@@ -220,7 +221,10 @@ export async function run(config, argv) {
 
   // What arrives from the hook and from the kernel, checked against the policy
   // this run started with and written with the run's id on it. See intake.js.
-  const take = intake({ config, role, runId: theRun.id, observe, settings, notify, chain: handed?.chain ?? null, expectDenied });
+  // The launcher's W3C trace, read from the parent's environment once: every line
+  // this run writes carries it, so the log joins the launcher's trace (trace.js).
+  const trace = traceFields(process.env);
+  const take = intake({ config, role, runId: theRun.id, observe, settings, notify, chain: handed?.chain ?? null, expectDenied, trace });
   // The channel is a unix socket on macOS, and a socket path is capped. Past
   // the cap the listen dies on `EINVAL` and a path, which says nothing about
   // TMPDIR — the one thing that decides how long it is.
@@ -285,7 +289,7 @@ export async function run(config, argv) {
       // The variable's name and the provider, never the reference: a reference
       // can carry what it points at (a provider that echoes it, a path that
       // names the secret), and the log is read by more people than the policy.
-      event: "key", role, run: theRun.id.slice(0, 8), key: entry.name, provider: entry.scheme, mode, ok,
+      event: "key", role, run: theRun.id.slice(0, 8), ...trace, key: entry.name, provider: entry.scheme, mode, ok,
     }),
   });
   const runFileKeys = theRun.keys;
@@ -489,7 +493,7 @@ export async function run(config, argv) {
   });
   if (!probe.ok) {
     append(logPath(config.root), {
-      event: "canary", role, run: theRun.id.slice(0, 8), agent: agent ?? null, confined: false, reasons: probe.failed,
+      event: "canary", role, run: theRun.id.slice(0, 8), ...trace, agent: agent ?? null, confined: false, reasons: probe.failed,
       ...(sandbox.name === DEFAULT_SANDBOX ? {} : { sandbox: sandbox.name }),
     });
     err(`${C.red}seisin: ${role} was NOT started — the sandbox failed its canary:${C.off}\n` +
@@ -500,7 +504,7 @@ export async function run(config, argv) {
     process.exit(CANARY_EXIT);
   }
   append(logPath(config.root), {
-    event: "canary", role, run: theRun.id.slice(0, 8), agent: agent ?? null, confined: true, reasons: [],
+    event: "canary", role, run: theRun.id.slice(0, 8), ...trace, agent: agent ?? null, confined: true, reasons: [],
     ...(sandbox.name === DEFAULT_SANDBOX ? {} : { sandbox: sandbox.name }),
   });
   // Said once, only when it is not the default: which sandbox holds this run
@@ -636,7 +640,7 @@ export async function run(config, argv) {
     // the record did not. Said every time, and written down, because a denial
     // that never arrived files no request and nothing else would show it.
     if (dropped) {
-      append(logPath(config.root), { event: "log-dropped", role, run: theRun.id.slice(0, 8), batches: dropped });
+      append(logPath(config.root), { event: "log-dropped", role, run: theRun.id.slice(0, 8), ...trace, batches: dropped });
       err(`${C.yellow}seisin: the system log dropped ${dropped} batch(es) of messages during this run: ` +
           `kernel denials may be missing from the log and the queue. ` +
           `\`seisin check --system-log\` says what is flooding it.${C.off}\n`);
