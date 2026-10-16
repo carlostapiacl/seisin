@@ -10,6 +10,16 @@ changed rather than failing on the old spelling.
 
 ## Unreleased (0.6.0)
 
+- **`[network] deny_addresses`: keep an allowed domain out of your LAN.** IP addresses or CIDR
+  ranges an allowed name may not resolve to, on top of the loopback, link-local and metadata
+  addresses the runtime already denies. Passed to `srt` as `network.deniedResolvedAddresses`; a
+  value that is not an address or a range does not load, with its line. *What to do:* nothing
+  unless your agents reach allowed domains from a network with hosts you care about; then add
+  the private ranges (README, Configure).
+- **The limits are said per sandbox.** What a process the agent leaves running does, and whether
+  deleting inside the territory can be denied, depend on the sandbox a role runs under, and the
+  README now says which, measured where it could be.
+
 **Breaking:** every run now starts with a mandatory canary. A machine or policy where 0.5.0
 started despite a boundary that did not hold now stops with exit 86. Wrapper commands that hide
 Claude Code must name it with `--agent claude`, so its home and sign-in are handled as Claude's.
