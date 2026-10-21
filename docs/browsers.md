@@ -75,6 +75,20 @@ run's own and the only place the role may open a unix socket. Measured with
 tartaros f7edae1: the probe loads `example.com` (`200`), a host off the list
 fails, and `@playwright/mcp` runs (below).
 
+It takes tartaros 0.1.0-alpha.5 or later. alpha.4 took `allowMachLookup` as
+the whole list rather than as additions to its own, so a role with `browsers`
+lost every other lookup, the keychain among them; and it made the private
+TMPDIR as `tartaros-tmp-<pid>-<ns>` inside the TMPDIR it was started with.
+`@playwright/mcp` opens its browser's socket there,
+`pw-<hash>/browser/<16 hex>.sock`, capped at 103 bytes: under a Mac's
+`/var/folders/…/T` the directory alone came to 107, and the server answered
+every call with `Socket directory path is too long`. alpha.5 makes it as
+`/private/tmp/tartaros-<uid>/tt-XXXXXX` wherever it is started, and the
+keychain answers in a role with `browsers` as in one without (measured with
+@playwright/mcp 0.0.83). A launcher that sets the agent's TMPDIR itself,
+inside the sandbox, takes it out of the one place the role may open a socket:
+the server fails with `listen EPERM`.
+
 ## The proxy
 
 Inside the sandbox `HTTP_PROXY` is `http://<user>:<token>@localhost:<port>`.
