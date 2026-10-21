@@ -29,6 +29,9 @@ export const BASE = [
   "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME",
   "TERM", "TERM_PROGRAM", "COLORTERM", "LANG", "LC_ALL", "LC_CTYPE", "TZ",
   "SSL_CERT_FILE", "SSL_CERT_DIR", "NODE_EXTRA_CA_CERTS",
+  // The launcher's W3C trace context: ids that join the agent's own telemetry to
+  // the launcher's trace (trace.js). By the spec they are not secrets.
+  "TRACEPARENT", "TRACESTATE",
 ];
 
 /**

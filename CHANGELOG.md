@@ -82,6 +82,13 @@ left no room for the socket `@playwright/mcp` opens in its private TMPDIR.
 by operation and name, once per run each, never as a request. A denied `mach-register` of a
 browser with a preset ends the run with the line to add.
 
+**New: a run joins its launcher's trace.** When the launcher sets a W3C `TRACEPARENT`, every
+line of that run's log carries its `trace_id` and `span_id`, so the log joins the launcher's
+trace, and whatever else observed the same run, in any OpenTelemetry tool. It is read by the
+parent, in the same stamp as the run id, so a line from inside the sandbox cannot claim another
+trace. A malformed value is ignored. `TRACEPARENT` and `TRACESTATE` also reach the agent: they
+are ids, not secrets.
+
 **New: the sandbox is a choice, `[sandbox] provider`.** `srt` (sandbox-runtime) stays the
 default and nothing changes without the table. `tartaros` is built in (it reads the settings file
 itself, and seisin asks it beforehand whether it can hold a role), and any other sandbox can be
