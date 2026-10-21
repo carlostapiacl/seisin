@@ -522,7 +522,7 @@ export async function run(config, argv) {
         `${handed.chain.depth} of ${MAX_DEPTH}${C.off}\n`);
   }
 
-  const boxed = ["env", ...restoreTmp, `SEISIN_RUN_ID=${theRun.id}`, ...loopbackVia(config.roles[role], cmd)];
+  const boxed = ["env", ...restoreTmp, `SEISIN_RUN_ID=${theRun.id}`, ...loopbackVia(config.roles[role], cmd, sandbox.name)];
   // The tag is sandbox-runtime's: under any other sandbox there is none to
   // match, and attribution goes by the process tree alone (violations.js).
   denials = watchDenials(take.fromKernel, { argv: sandbox.tagsDenials ? boxed : null });
