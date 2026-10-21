@@ -9,8 +9,10 @@
  *
  *   tartaros explain --settings <file>
  *
- * reads the same file through the same code as `run` and exits 2, with the
- * reason, on a field it cannot guarantee. That answer is what `unmet` returns,
+ * reads the same file through the same code as `run` and exits 78, with the
+ * reason, on a field it cannot guarantee (2 before 0.1.0-alpha.6, which keeps
+ * 2 for a bad command line). seisin takes any exit but 0 as that no, so the
+ * code is not read. That answer is what `unmet` returns,
  * so a role tartaros cannot hold is passed over before it starts (or `seisin
  * check` says so), and the canary still checks every run that it can.
  */
