@@ -21,6 +21,11 @@ import { territoryWarnings } from "./read-territory.js";
  * Silent when `never_writes` is absent. Absent is valid; a check that asks for
  * the setting would turn an optional subtraction into a required migration.
  */
+const onlyTartaros = (config) => {
+  const names = config?.sandbox?.provider ?? [];
+  return names.length > 0 && names.every((n) => n === "tartaros");
+};
+
 export function roleKeyWarnings(roles, config = null) {
   const warnings = [];
   for (const r of roles) {
@@ -86,8 +91,9 @@ export function roleKeyWarnings(roles, config = null) {
     // The port list lives in the runtime's proxy, not in the kernel: a client
     // that dials 127.0.0.1:N itself is refused even on a listed port. Said on
     // every check, because the clients people list ports for — databases,
-    // caches — are mostly that kind. See docs/decisions.md.
-    else if (r.localPorts?.length)
+    // caches — are mostly that kind. See docs/decisions.md. Not under tartaros
+    // alone: its profile holds the port list, and a direct dial reaches a listed port.
+    else if (r.localPorts?.length && !onlyTartaros(config))
       warnings.push({
         kind: "local-ports-proxy-only",
         headline: `${r.name}: local_ports ${r.localPorts.join(", ")} reaches only clients that use HTTP_PROXY`,

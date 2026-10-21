@@ -16,6 +16,7 @@ import { loadConfig } from "../src/config.js";
 import { settingsFor, loopbackVia, localPortDomains, NO_PROXY_WITHOUT_LOOPBACK } from "../src/srt.js";
 import { inspect } from "../src/inspect.js";
 import { renderReport } from "../src/render.js";
+import { resolveTartaros } from "../src/sandboxes/tartaros.js";
 
 const require_ = createRequire(import.meta.url);
 
@@ -60,6 +61,13 @@ test("loopback goes through the proxy only for a role that names ports", () => {
     ["env", `NO_PROXY=${NO_PROXY_WITHOUT_LOOPBACK}`, `no_proxy=${NO_PROXY_WITHOUT_LOOPBACK}`, "claude", "-p"]);
 });
 
+test("under tartaros loopback is left to it: it holds the port list itself", () => {
+  const cfg = load(TWO);
+  assert.deepEqual(loopbackVia(cfg.roles.e2e, ["claude", "-p"], "tartaros"), ["claude", "-p"]);
+  assert.deepEqual(loopbackVia(cfg.roles.e2e, ["claude", "-p"], "srt"),
+    ["env", `NO_PROXY=${NO_PROXY_WITHOUT_LOOPBACK}`, `no_proxy=${NO_PROXY_WITHOUT_LOOPBACK}`, "claude", "-p"]);
+});
+
 // Read from the installed package; without it there is nothing to keep in step with.
 const pinned = (() => { try { return require_.resolve("@anthropic-ai/sandbox-runtime/package.json"); } catch { return null; } })();
 
@@ -92,6 +100,44 @@ test("check says local_ports reaches only clients that use the proxy, and how to
   // Where local_binding already opens every port, the moot warning says it instead.
   const both = inspect(load('[roles.e2e]\nwrites = ["app/**"]\nlocal_ports = [8001]\nlocal_binding = true\n')).warnings;
   assert.equal(both.some((x) => x.kind === "local-ports-proxy-only"), process.platform !== "darwin");
+});
+
+test("under tartaros alone the proxy-only warning is not said: its profile holds the ports", () => {
+  const w = (provider) => inspect(load(`[sandbox]\nprovider = ${provider}\n\n[roles.e2e]\nwrites = ["app/**"]\nlocal_ports = [8001]\n`))
+    .warnings.some((x) => x.kind === "local-ports-proxy-only");
+  assert.equal(w('"tartaros"'), false);
+  assert.equal(w('["tartaros", "srt"]'), true, "srt may be the one that runs it");
+});
+
+const tartarosBin = resolveTartaros();
+const tartarosSkip = process.platform !== "darwin" ? "measured on macOS"
+  : tartarosBin ? false : "tartaros is not on PATH";
+
+test("under tartaros a listed port takes a POST, directly, and the next port is still refused", { skip: tartarosSkip }, async (t) => {
+  // Its egress broker, made to carry loopback as a forward proxy, never passed
+  // the body on (0.1.0-alpha.7): curl got no answer and Claude Code retried
+  // until ECONNRESET. Under tartaros loopback stays off the proxy; the profile
+  // holds the port list. A domain on the list keeps the broker running.
+  const servers = await Promise.all([0, 1].map(() => new Promise((ok) => {
+    const s = createServer((q, r) => { let b = ""; q.on("data", (d) => (b += d)); q.on("end", () => r.end(`got ${b}`)); })
+      .listen(0, "127.0.0.1", () => ok(s));
+  })));
+  t.after(() => servers.forEach((s) => s.close()));
+  const [listed, other] = servers.map((s) => s.address().port);
+  const dir = repoWith(`[sandbox]\nprovider = "tartaros"\n\n[roles.e2e]\nwrites = ["app/**"]\n` +
+    `network = ["example.com"]\nlocal_ports = [${listed}]\n`);
+  const script =
+    'post() { o=$(curl -s --max-time 8 -X POST -H content-type:application/json -d \'{"x":1}\' "http://127.0.0.1:$1/" 2>/dev/null);' +
+    ' echo "$1 ${o:-refused}"; };' +
+    ` post ${listed}; post ${other}`;
+  const out = await new Promise((ok) => {
+    let o = "";
+    const p = spawn(process.execPath, [CLI, "run", "e2e", "--", "sh", "-c", script], { cwd: dir });
+    p.stdout.on("data", (d) => (o += d));
+    p.on("close", () => ok(o));
+  });
+  assert.match(out, new RegExp(`${listed} got \\{"x":1\\}`), out);
+  assert.match(out, new RegExp(`${other} refused`), `an unlisted port answered: ${out}`);
 });
 
 const skip = srtSkip();
