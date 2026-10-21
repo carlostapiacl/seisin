@@ -87,7 +87,7 @@ const settings = ({ fs = {}, net = {} } = {}) => ({
 
 /**
  * A stand-in `tartaros` on PATH, with tartaros's own shape of answer: `explain
- * --settings <file>` exits 2 with a reason when the file asks for a domain, and
+ * --settings <file>` exits 78 with a reason when the file asks for a domain, and
  * `run … --settings <file> -- cmd` hands the file to srt, so a run under it is
  * really held. It notes every file it was asked about.
  */
@@ -102,7 +102,7 @@ echo "$file" >> "${asked}"
 if [ "$verb" = explain ]; then
   if grep -q github.com "$file"; then
     echo "tartaros: --settings: cannot guarantee per-domain egress on this backend; refusing to run (apply-fully-or-refuse)." >&2
-    exit 2
+    exit 78
   fi
   echo "fine"; exit 0
 fi
