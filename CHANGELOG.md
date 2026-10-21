@@ -65,6 +65,8 @@ always run with `--inherit-env`: seisin hands it the role's environment already 
 tartaros's own scrub dropped the hook's socket, the role's name and env-mode keys. Playwright needs the
 proxy credentials apart from `HTTP_PROXY` (the proxy answers `407` without them); see
 [docs/browsers.md](docs/browsers.md). Chrome and Chrome for Testing are not covered yet.
+Under tartaros it takes 0.1.0-alpha.5 or later: alpha.4 broke the keychain in such a role and
+left no room for the socket `@playwright/mcp` opens in its private TMPDIR.
 
 **New: kernel denials that are not about a file are recorded.** A Mach service, a `sysctl`:
 by operation and name, once per run each, never as a request. A denied `mach-register` of a
