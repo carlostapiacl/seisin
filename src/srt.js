@@ -82,7 +82,7 @@ export const NO_PROXY_WITHOUT_LOOPBACK = "169.254.0.0/16,10.0.0.0/8,172.16.0.0/1
 
 /**
  * The command a role runs, with loopback routed through the proxy when it
- * has `local_ports`.
+ * has `local_ports` and the sandbox is sandbox-runtime.
  *
  * An `env` in front and not a variable in the environment seisin passes: the
  * runtime sets NO_PROXY itself, after seisin's environment, so the only place
@@ -91,8 +91,13 @@ export const NO_PROXY_WITHOUT_LOOPBACK = "169.254.0.0/16,10.0.0.0/8,172.16.0.0/1
  * to be pointed at the proxy, or the port needs `local_binding`, which opens
  * every port.
  */
-export function loopbackVia(role, cmd) {
-  if (!role?.localPorts?.length) return cmd;
+export function loopbackVia(role, cmd, sandbox = "srt") {
+  // tartaros holds the port list in the kernel's profile itself: a listed port
+  // is reached directly, any other refused, and its own NO_PROXY already exempts
+  // loopback. Its egress broker, made to carry loopback as a forward proxy, cut
+  // POST bodies (measured on 0.1.0-alpha.7: curl got no answer, and Claude Code
+  // retried until ECONNRESET), so under it the route is left as it sets it.
+  if (!role?.localPorts?.length || sandbox === "tartaros") return cmd;
   return ["env", `NO_PROXY=${NO_PROXY_WITHOUT_LOOPBACK}`, `no_proxy=${NO_PROXY_WITHOUT_LOOPBACK}`, ...cmd];
 }
 

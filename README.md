@@ -429,9 +429,10 @@ the decoy is allowed by that policy, not evidence that confinement failed.
 
 If a role only needs to *reach* a local service, name the ports instead:
 `local_ports = [8001, 8081]`. The role reaches those and nothing else on localhost, on macOS
-and Linux. The sandbox's proxy enforces the list, so the client has to use the proxy. curl,
-Node's `fetch` and Python's `urllib` do. A database driver or a raw socket don't, and are
-denied. For a headless browser, see `browsers` below. A listed port is open to anything that
+and Linux. Under srt the sandbox's proxy enforces the list, so the client has to use the proxy.
+curl, Node's `fetch` and Python's `urllib` do. A database driver or a raw socket don't, and are
+denied. Under tartaros the kernel profile holds the list itself, so any client reaches a listed
+port directly, and loopback stays off its proxy. For a headless browser, see `browsers` below. A listed port is open to anything that
 speaks `CONNECT`, not just HTTP, so list the service, not the protocol.
 
 `mcp = ["playwright"]` lists the MCP servers a role may load; `mcp = []` means none, and no

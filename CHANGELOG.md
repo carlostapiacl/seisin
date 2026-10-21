@@ -10,6 +10,15 @@ changed rather than failing on the old spelling.
 
 ## Unreleased (0.6.0)
 
+**Fixed: under tartaros, a role with `local_ports` and `network` reaches its ports directly.**
+seisin took loopback out of `NO_PROXY` for every such role, so under tartaros it went through
+tartaros's egress broker, which as a forward proxy never passed a POST body on (0.1.0-alpha.7):
+curl got no answer, and Claude Code retried until `ECONNRESET`, against an MCP server or a model
+proxy on a listed port. tartaros holds the port list in its kernel profile and exempts loopback
+in its own `NO_PROXY`, so under it seisin now leaves the route alone: a listed port answers, any
+other is still refused. Under srt nothing changes. `seisin check` no longer says a role's
+`local_ports` reaches only clients that use `HTTP_PROXY` when tartaros is the only provider.
+
 - **`[network] deny_addresses`: keep an allowed domain out of your LAN.** IP addresses or CIDR
   ranges an allowed name may not resolve to, on top of the loopback, link-local and metadata
   addresses the runtime already denies. Passed to `srt` as `network.deniedResolvedAddresses`; a
