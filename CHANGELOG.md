@@ -390,6 +390,17 @@ before unless a file is literally named `.secret[s]`. The runtime's new `credent
 not used. Full suite green on macOS (1061: 1055 pass, 6 skip) and Linux in Docker (1060: 1032
 pass, 28 skip).
 
+**Runtime: bumped to `@anthropic-ai/sandbox-runtime` 0.0.81** (from 0.0.79). What reaches a
+seisin role: on Linux a sandboxed command can no longer create a user or mount namespace of its
+own, so Chromium's own namespace sandbox, rootless podman or a nested bubblewrap stop working
+inside a role (seisin does not set `allowNestedUserNamespaces`); a `denyWrite` now wins over an
+`allowWrite` beneath it on Linux, as it already did on macOS; and a `credentials.files` entry wins
+over read and write grants. git over SSH works through the proxy on macOS. Node's built-in HTTP
+clients use the proxy by themselves (`NODE_USE_ENV_PROXY`), which seisin already set. The rest of
+0.0.81 is Windows, which seisin does not run on. Full suite green on macOS (1076: 1070 pass,
+6 skip; `browsers` end to end with Playwright 16/16) and Linux in Docker (1075: 1047 pass,
+28 skip).
+
 ## 0.5.0 — 2026-09-30
 
 **Breaking for a policy whose roles edit editor settings.** A role that writes a project's
