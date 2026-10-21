@@ -717,7 +717,9 @@ $ seisin log
 `[kernel]` marks a line the kernel reported; the others came from the hook.
 
 One append-only JSONL under `.seisin/`, and that is the whole storage design — no daemon, no
-database, and `watch` is a tail.
+database, and `watch` is a tail. A run started with a W3C `TRACEPARENT` (a launcher's trace)
+stamps its `trace_id` and `span_id` on every line, so the log joins that trace in any
+OpenTelemetry tool.
 
 Each line carries the hash of the one before it, and the first time a chained line is written
 the start of the chain is recorded beside the log (`log.jsonl.genesis`). `seisin log verify`
