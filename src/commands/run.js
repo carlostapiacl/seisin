@@ -17,7 +17,7 @@ import { buildEnv } from "../env.js";
 import { resolveKeys } from "../keys.js";
 import { nestedSandboxWarning } from "../nested.js";
 import { spool, SOCK_ENV, FIFO_SUFFIX } from "../spool.js";
-import { openRun } from "../rundir.js";
+import { openRun, browserTmpRoot } from "../rundir.js";
 import { secretsOf, redactor } from "../redact.js";
 import { C, err } from "../render.js";
 import { pending, requestsPath, queueOf, recordHandoff } from "../requests.js";
@@ -475,6 +475,15 @@ export async function run(config, argv) {
     env.TMPDIR = srtTmp;
     restoreTmp.push(...(agentTmp ? [`TMPDIR=${agentTmp}`] : ["-u", "TMPDIR"]));
   }
+  /**
+   * macOS, a browser role under tartaros: tartaros is started with a short
+   * TMPDIR, because its private one (`--private-tmp`, the only place the role
+   * may open a unix socket) is made inside it, and under `/var/folders/…/T`
+   * there was no room left for the browser's socket (rundir.js). The role
+   * still gets tartaros's private directory as its TMPDIR, not this one.
+   */
+  if (sandbox.name === "tartaros" && machRegister.length && process.platform === "darwin")
+    env.TMPDIR = browserTmpRoot();
 
   /**
    * The canary, before anything of the agent's starts — and before the kernel

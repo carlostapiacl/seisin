@@ -44,8 +44,8 @@ export const SETTINGS_NAME = "settings.json";
  * dir sits behind /var → /private/var. Refused rather than used when it is not
  * a directory of this user's with nobody else's bits on it: it holds keys.
  */
-export function runsRoot(base = tmpdir(), name = RUNS_NAME) {
-  const root = join(realOrSelf(base), name);
+export function runsRoot(base = tmpdir(), name = RUNS_NAME, { real = true } = {}) {
+  const root = join(real ? realOrSelf(base) : base, name);
   try { mkdirSync(root, { mode: 0o700 }); } catch (e) { if (e.code !== "EEXIST") throw e; }
   const st = lstatSync(root);
   const mine = typeof process.getuid !== "function" || st.uid === process.getuid();
@@ -56,6 +56,20 @@ export function runsRoot(base = tmpdir(), name = RUNS_NAME) {
   if (st.mode & 0o077) chmodSync(root, 0o700);
   return root;
 }
+
+/**
+ * What a browser role's sandbox makes its private TMPDIR under, on macOS:
+ * `/tmp/snb-<uid>`, checked as the runs root is.
+ *
+ * tartaros puts `--private-tmp` inside the TMPDIR it is started with, as
+ * `tartaros-tmp-<pid>-<ns>`, and that is where @playwright/mcp opens its
+ * browser's socket, `pw-<hash>/browser/<16 hex>.sock`, capped at 103 bytes.
+ * Under a Mac's `/var/folders/…/T` the directory alone came to 107 (measured
+ * 2026-10-21, tartaros 0.1.0-alpha.4, @playwright/mcp 0.0.83) and the browser
+ * never started. Not resolved to /private/tmp: the path is only ever a
+ * string to fit, and tartaros scopes the socket to it either way (measured).
+ */
+export const browserTmpRoot = (uid = process.getuid()) => runsRoot("/tmp", `snb-${uid}`, { real: false });
 
 /**
  * Removes the directories of runs whose process is gone.

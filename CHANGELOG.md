@@ -65,6 +65,9 @@ always run with `--inherit-env`: seisin hands it the role's environment already 
 tartaros's own scrub dropped the hook's socket, the role's name and env-mode keys. Playwright needs the
 proxy credentials apart from `HTTP_PROXY` (the proxy answers `407` without them); see
 [docs/browsers.md](docs/browsers.md). Chrome and Chrome for Testing are not covered yet.
+On macOS such a role's tartaros is started with `TMPDIR=/tmp/snb-<uid>`: its private TMPDIR is
+made inside that one, and under `/var/folders/…/T` there was no room left for the socket
+`@playwright/mcp` opens there (`Socket directory path is too long`).
 
 **New: kernel denials that are not about a file are recorded.** A Mach service, a `sysctl`:
 by operation and name, once per run each, never as a request. A denied `mach-register` of a

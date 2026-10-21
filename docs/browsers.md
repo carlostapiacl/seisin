@@ -75,6 +75,17 @@ run's own and the only place the role may open a unix socket. Measured with
 tartaros f7edae1: the probe loads `example.com` (`200`), a host off the list
 fails, and `@playwright/mcp` runs (below).
 
+tartaros makes that private TMPDIR inside the TMPDIR it is started with, as
+`tartaros-tmp-<pid>-<ns>`, and `@playwright/mcp` opens its browser's socket
+there, `pw-<hash>/browser/<16 hex>.sock`, capped at 103 bytes. Under a Mac's
+`/var/folders/…/T` the directory alone came to 107 and the server answered
+every call with `Socket directory path is too long` (tartaros 0.1.0-alpha.4,
+@playwright/mcp 0.0.83). So seisin starts such a role's tartaros with
+`TMPDIR=/tmp/snb-<uid>`, a directory of this user's, checked like the runs
+root; the socket then comes to about 94 bytes. A launcher that sets the
+agent's TMPDIR itself, inside the sandbox, takes it out of the one place the
+role may open a socket: the server fails with `listen EPERM`.
+
 ## The proxy
 
 Inside the sandbox `HTTP_PROXY` is `http://<user>:<token>@localhost:<port>`.

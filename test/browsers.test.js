@@ -265,3 +265,32 @@ test("under tartaros too: the same role navigates, and an off-list host does not
   const off = run("https://www.iana.org");
   assert.match(off.stdout, /FAIL .*ERR_TUNNEL_CONNECTION_FAILED/, off.stdout + off.stderr);
 });
+
+/**
+ * Where @playwright/mcp opens its browser's socket, `$TMPDIR/pw-<hash>/browser/<16 hex>.sock`,
+ * at the length it has: under the private TMPDIR tartaros made inside a Mac's `/var/folders/…/T`
+ * that path did not fit (rundir.js). Needs no Playwright, only tartaros.
+ */
+const SOCK = `
+const net = require("node:net"), fs = require("node:fs"), path = require("node:path");
+const dir = path.join(process.env.TMPDIR, "pw-0123abcd", "browser");
+fs.mkdirSync(dir, { recursive: true });
+const p = path.join(dir, "0123456789abcdef.sock");
+const s = net.createServer().listen(p, () => { console.log("BOUND", Buffer.byteLength(p), process.env.TMPDIR); s.close(); });
+s.on("error", (e) => { console.log("FAIL", e.code, Buffer.byteLength(p)); process.exit(2); });
+`;
+
+test("under tartaros a browser role's private TMPDIR leaves room for the browser's socket", {
+  skip: process.platform !== "darwin" ? "macOS only" : resolveTartaros() ? false : "tartaros not on PATH",
+}, () => {
+  const dir = repoWith("browsers-sock-", "", ["src/"]);
+  writeFileSync(join(dir, "sock.cjs"), SOCK);
+  writeFileSync(join(dir, "seisin.toml"),
+    `[sandbox]\nprovider = "tartaros"\n[roles.agent]\nwrites = ["src/**"]\nbrowsers = ["chromium"]\n`);
+  const env = { ...process.env, NO_COLOR: "1" };
+  delete env.SEISIN_ROLE; delete env.SEISIN_CONFIG;
+  const r = spawnSync(process.execPath, [CLI, "run", "agent", "--agent", "none", "--", process.execPath, "sock.cjs"],
+    { cwd: dir, env, encoding: "utf8", timeout: 60_000 });
+  assert.match(r.stdout, /BOUND \d+ \/tmp\/snb-\d+\/tartaros-tmp-/, r.stdout + r.stderr);
+  assert.equal(r.status, 0, r.stderr);
+});
