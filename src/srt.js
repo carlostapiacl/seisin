@@ -27,6 +27,7 @@ import { runsRootOf, SETTINGS_NAME, TMP_NAME } from "./rundir.js";
 import { FIFO_SUFFIX } from "./spool.js";
 import { machOf } from "./browsers.js";
 import { territoryReads, outlastAllows, dataRoots, keptFor } from "./territory.js";
+import { seccompDir } from "./sandboxes/srt.js";
 import {
   SOCKET_MAX, isLink, realOrSelf, expand, homeFits, roleHome, roleHomeRoot,
   CREDENTIAL_HOMES, toWritePath, writePathsOf, otherAgentsCredentials,
@@ -412,7 +413,10 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
   if (config.read === "territory") {
     const reopened = allowRead.map(realOrSelf);
     const inReopened = (p) => { const r = realAncestor(p); return reopened.some((a) => r === a || r.startsWith(a + "/")); };
-    const keep = keptFor(config, role, { observe, agent, program }).filter((p) => !inReopened(p));
+    // On Linux the runtime's apply-seccomp runs inside: see seccompDir.
+    const seccomp = process.platform === "linux" ? seccompDir() : null;
+    const keep = [...keptFor(config, role, { observe, agent, program }), ...(seccomp ? [seccomp] : [])]
+      .filter((p) => !inReopened(p));
     const { deny, allow } = territoryReads(dataRoots(), keep, { writes: allowWrite, denied: [...denyRead] });
     denyRead.push(...deny);
     allowRead.push(...allow);

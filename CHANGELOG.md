@@ -8,26 +8,7 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
-## Unreleased (0.6.0)
-
-**Fixed: under tartaros, a role with `local_ports` and `network` reaches its ports directly.**
-seisin took loopback out of `NO_PROXY` for every such role, so under tartaros it went through
-tartaros's egress broker, which as a forward proxy never passed a POST body on (0.1.0-alpha.7):
-curl got no answer, and Claude Code retried until `ECONNRESET`, against an MCP server or a model
-proxy on a listed port. tartaros holds the port list in its kernel profile and exempts loopback
-in its own `NO_PROXY`, so under it seisin now leaves the route alone: a listed port answers, any
-other is still refused. Under srt nothing changes. `seisin check` no longer says a role's
-`local_ports` reaches only clients that use `HTTP_PROXY` when tartaros is the only provider.
-
-- **`[network] deny_addresses`: keep an allowed domain out of your LAN.** IP addresses or CIDR
-  ranges an allowed name may not resolve to, on top of the loopback, link-local and metadata
-  addresses the runtime already denies. Passed to `srt` as `network.deniedResolvedAddresses`; a
-  value that is not an address or a range does not load, with its line. *What to do:* nothing
-  unless your agents reach allowed domains from a network with hosts you care about; then add
-  the private ranges (README, Configure).
-- **The limits are said per sandbox.** What a process the agent leaves running does, and whether
-  deleting inside the territory can be denied, depend on the sandbox a role runs under, and the
-  README now says which, measured where it could be.
+## 0.6.0 — 2026-10-23
 
 **Breaking:** every run now starts with a mandatory canary. A machine or policy where 0.5.0
 started despite a boundary that did not hold now stops with exit 86. Wrapper commands that hide
@@ -110,6 +91,33 @@ each role gets the first sandbox that is installed and enforces every part of it
 one that would enforce less is passed over with the reason. `seisin check` shows the choice per role and exits 1 when a role has none;
 a single name means that sandbox or no run. The canary runs under the chosen sandbox, so one that
 ignores the policy starts nothing. See [docs/sandboxes.md](docs/sandboxes.md).
+
+**Fixed: on Linux, `read = "territory"` with seisin installed under a home directory started
+nothing.** The runtime runs its `apply-seccomp` inside the sandbox, from wherever the package is
+installed; with seisin under nvm, a user npm prefix or a CI checkout in `/home`, the territory
+shut that directory and every run stopped before the canary with `apply-seccomp: No such file or
+directory`. The runtime's `vendor/seccomp` is now kept readable in that mode, found from the
+`srt` that actually runs. Measured on `ubuntu-latest` and in Debian 12 with the checkout in
+`/root`.
+
+**Fixed: under tartaros, a role with `local_ports` and `network` reaches its ports directly.**
+seisin took loopback out of `NO_PROXY` for every such role, so under tartaros it went through
+tartaros's egress broker, which as a forward proxy never passed a POST body on (0.1.0-alpha.7):
+curl got no answer, and Claude Code retried until `ECONNRESET`, against an MCP server or a model
+proxy on a listed port. tartaros holds the port list in its kernel profile and exempts loopback
+in its own `NO_PROXY`, so under it seisin now leaves the route alone: a listed port answers, any
+other is still refused. Under srt nothing changes. `seisin check` no longer says a role's
+`local_ports` reaches only clients that use `HTTP_PROXY` when tartaros is the only provider.
+
+- **`[network] deny_addresses`: keep an allowed domain out of your LAN.** IP addresses or CIDR
+  ranges an allowed name may not resolve to, on top of the loopback, link-local and metadata
+  addresses the runtime already denies. Passed to `srt` as `network.deniedResolvedAddresses`; a
+  value that is not an address or a range does not load, with its line. *What to do:* nothing
+  unless your agents reach allowed domains from a network with hosts you care about; then add
+  the private ranges (README, Configure).
+- **The limits are said per sandbox.** What a process the agent leaves running does, and whether
+  deleting inside the territory can be denied, depend on the sandbox a role runs under, and the
+  README now says which, measured where it could be.
 
 **Security: a territory can no longer reopen a project's `.claude`.** Settings, hooks, skills
 and commands there are read or executed by Claude Code outside the sandbox, so their protection

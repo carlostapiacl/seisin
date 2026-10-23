@@ -1,6 +1,6 @@
 # seisin
 
-[![CI: paused · validated locally](https://img.shields.io/badge/CI-paused%20%C2%B7%20validated%20locally-222)](https://github.com/carlostapiacl/seisin/blob/main/docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run)
+[![test](https://github.com/carlostapiacl/seisin/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/carlostapiacl/seisin/actions/workflows/test.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/carlostapiacl/seisin/badge)](https://scorecard.dev/viewer/?uri=github.com/carlostapiacl/seisin)
 [![npm](https://img.shields.io/npm/v/seisin?color=222)](https://www.npmjs.com/package/seisin)
 [![license](https://img.shields.io/badge/license-MIT-222)](https://github.com/carlostapiacl/seisin/blob/main/LICENSE)
@@ -257,13 +257,14 @@ console.log(explain(config, "frontend", "write", "src/api/server.js"));
 ```
 
 The stable surface covers policy loading (`findConfig`, `loadConfig`,
-`parseToml`), ownership and explanations (`covers`, `ownersOf`, `keyHolders`,
-`explain`, `explainFileRead`, `readTarget`), resolved sandbox settings
-(`settingsFor`), key references (`parseKey`, `defaultName`, `entriesOf`,
-`MODES`), inspection and scanning (`inspect`, `sharedPaths`, `scan`),
-activity and requests (`readLog`, `logPath`, `observed`, `pendingRequests`,
-`requestsPath`, `grantFor`, `generalise`), walls (`walls`, `wasted`), and hook
-decisions (`targetsOf`, `decide`).
+`parseToml`) and where it lives (`CONFIG_NAME`, `STATE_DIR`, `LOG_NAME`), ownership and
+explanations (`covers`, `ownersOf`, `keyHolders`, `explain`, `explainFileRead`, `readTarget`),
+resolved sandbox settings (`settingsFor`), key references (`parseKey`, `defaultName`,
+`entriesOf`, `MODES`), inspection and scanning (`inspect`, `sharedPaths`, `scan`), activity
+and requests (`readLog`, `logPath`, `observed`, `pendingRequests`, `requestQueue`,
+`requestsPath`, `grantFor`, `generalise`), handoffs (`decideHandoff`, `MAX_DEPTH`,
+`recordHandoff`), walls (`walls`, `wasted`), and hook decisions (`targetsOf`, `decide`).
+Granting is not in it: a grant is a person's, through the CLI or the console.
 Sandbox tuning constants, environment construction and output masking remain
 internal; they may change without an API compatibility promise.
 
@@ -303,8 +304,8 @@ the commands compose in a script, a pre-commit hook or CI:
 | `whose`, `grant`, `decline`, `log`, `init`, `wire`, `ui`, `watch`, `mcp` | done | — | |
 | `hook` | always | — | |
 
-Every command exits **2** on a usage error — an unknown command, flag, role or action — and when
-there is no `seisin.toml` here or above.
+Every command exits **2** on a usage error — an unknown command, flag, role or action — and every
+command that reads the policy exits 2 when there is no `seisin.toml` here or above.
 
 ## Configure
 
@@ -462,7 +463,7 @@ Passing `HTTP_PROXY` as `server` alone does not work: Playwright gives Chromium 
 without the credentials and the proxy answers `407`. The token is the run's own, so the traffic
 stays tied to the run. `@playwright/mcp` runs under `[sandbox] provider = "tartaros"`, which
 gives the role a temp directory of its own for the unix socket the server always opens; under
-srt it does not yet. [docs/browsers.md](docs/browsers.md) has the measurements, the MCP config,
+srt it does not yet. [docs/browsers.md](https://github.com/carlostapiacl/seisin/blob/main/docs/browsers.md) has the measurements, the MCP config,
 and what Chrome and Chrome for Testing still lack.
 
 Some files are not code but still make something happen outside the sandbox, and no territory
@@ -750,7 +751,7 @@ happens — which is how an *allowed* action gets recorded at all — and it is 
 evadable, on purpose. The **kernel** reports what it actually denied, and is not fooled by
 anything. What escapes the hook goes unexplained, never unenforced.
 
-![the console: requests waiting on a person, a grant that needs a reason and a second click for another role's path, the line it wrote, the denials grouped by path with the kind of each unowned one, the walls each role keeps hitting, the roles, and a control-files change shown before it is saved](https://github.com/carlostapiacl/seisin/blob/main/docs/img/console.gif)
+![the console: requests waiting on a person, a grant that needs a reason and a second click for another role's path, the line it wrote, the denials grouped by path with the kind of each unowned one, the walls each role keeps hitting, the roles, and a control-files change shown before it is saved](https://raw.githubusercontent.com/carlostapiacl/seisin/main/docs/img/console.gif)
 
 It opens on what needs a decision, not on the policy. Four numbers sit on top — waiting on
 you, denied, the **top cause**, and calls **spent retrying** walls — each a link to the page
@@ -807,7 +808,7 @@ page says *offline* and turns every write off until it answers again.
 
 `sandbox-runtime` is the default enforcer, not the only one. `[sandbox] provider` picks another —
 `tartaros`, or any sandbox declared as a command — per role, and only where it enforces the whole
-policy: see [docs/sandboxes.md](docs/sandboxes.md).
+policy: see [docs/sandboxes.md](https://github.com/carlostapiacl/seisin/blob/main/docs/sandboxes.md).
 
 That split is deliberate, and it is why seisin is small. Because the kernel is the boundary, seisin never has to be airtight — it only has to be *legible*. A leaky explainer costs you a confusing log line. A leaky enforcer costs you the repo.
 
@@ -851,6 +852,12 @@ keys = ["netlify-token.txt",                       # a file the role may read
 A **provider** is a command with a `{ref}` placeholder, so adding 1Password, Bitwarden or
 `sops` is TOML and not code. `file://` ships built in. The parent resolves, never the
 confined process. Nothing degrades: a provider that fails stops the run.
+
+A key reaches the role as a variable (`key_mode = "env"`), as a file in the run's private
+directory (`"run-file"`), or, on Linux, not at all: with `"inject"` the agent holds a
+placeholder and the sandbox swaps in the real value only on the way to the hosts you list for
+it. That costs terminating TLS to those hosts, which `seisin check` names, and a host that
+stores what it is sent can still hand the value back — use a least-scope token.
 
 **[Key directories, references, providers, delivery modes and nine recipes →](https://github.com/carlostapiacl/seisin/blob/main/docs/keys.md)**
 
@@ -982,8 +989,8 @@ files, the same keys, no answer to *whose is it*. That question is not about
 isolation strength at all — it is about ownership, and it is the one thing an
 operating system cannot know for you.
 
-Which is also why this is thin. Enforcement is
-[`@anthropic-ai/sandbox-runtime`](https://github.com/anthropics/sandbox-runtime)
+Which is also why this is thin. Enforcement is the sandbox — by default
+[`@anthropic-ai/sandbox-runtime`](https://github.com/anthropics/sandbox-runtime) —
 asking the kernel; seisin is the layer that decides what to ask for and says
 whose file it was when the answer is no. The two compose — put seisin inside a
 container if you want both, and the roles still hold.
@@ -1029,8 +1036,9 @@ the same kernel or workspace, and which one you want depends on what you are pro
 
 ## Status
 
-**1024 tests on macOS, 1022 passing and 2 platform skips** (`main` before 0.6.0); **1023 on
-Debian 12 under bubblewrap 0.8.0, 1000 passing and 23 platform skips** (2026-10-13). On 2026-10-12, 91 of the suite's tests
+**1089 tests on macOS, 1082 passing and 7 platform skips** (0.6.0, 2026-10-23, local); in CI the
+same day, on `ubuntu-latest` **1088, 1059 passing and 29 platform skips**, and on macOS 1089,
+1079 passing and 10 skips, Node 18/20/22/24, with the 26 core boundary tests skipping none. On 2026-10-12, 91 of the suite's tests
 needed `@anthropic-ai/sandbox-runtime` installed — counted by running it with the runtime
 hidden — and run real commands through the real kernel; 26 of them are the core boundary file,
 `test/sandbox.test.js`, which the CI gate fails if it *skips*, because a green run that quietly
@@ -1039,8 +1047,8 @@ when there were eighteen of them, they skipped on Linux for a day, behind a runt
 install and missed the bundled one, and hid a defect that broke `seisin run` on that platform
 entirely.
 
-CI is paused; this release is validated locally on macOS and Debian 12 (bubblewrap 0.8.0). The
-last green CI run — macOS and `ubuntu-latest`, Node 18/20/22/24 — was on 2026-10-04.
+A release is published only from CI, after the full suite passes on macOS and `ubuntu-latest`,
+Node 18/20/22/24 (`publish.yml`), with npm provenance.
 Historically: 811 tests on macOS 15, 809 passing and 2 skipped, on 2026-09-30.
 [Which claim was measured where](https://github.com/carlostapiacl/seisin/blob/main/docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),
 and [what running agents behind it cost the people using it](https://github.com/carlostapiacl/seisin/blob/main/docs/field-notes.md).
@@ -1058,7 +1066,7 @@ already done:
 | **Deleting inside your own territory** | the sandbox's to enforce, and `srt` cannot: write includes delete. The ask is upstream as [issue #545](https://github.com/anthropics/sandbox-runtime/issues/545), open and unanswered since 2026-09-13, [with the measurement behind it](https://github.com/carlostapiacl/seisin/blob/main/docs/upstream/denyUnlink.md) and [a demo](https://github.com/carlostapiacl/seisin/tree/main/docs/demo/) |
 | **`init` heuristics** | it reads `.claude/agents/`, then `CODEOWNERS`, then the top-level folders that hold code. Every other convention is a guess nobody has made yet |
 | **SSH inside a run (macOS)** | on macOS the `ProxyCommand` the runtime sets can't authenticate to its own proxy, so `git` over SSH fails at the handshake (on Linux the runtime routes it through an authenticated proxy — read from its source, not measured here). Fix upstream: [PR #516](https://github.com/anthropics/sandbox-runtime/pull/516). Use an HTTPS remote |
-| **A browser inside a role (macOS)** | Chromium only starts with `--single-process`, which is unstable with several browsers. Fix upstream: [PR #598](https://github.com/anthropics/sandbox-runtime/pull/598). [Measurement](https://github.com/carlostapiacl/seisin/blob/main/docs/upstream/mach-register.md) |
+| **A browser inside a role (macOS)** | headless Chromium runs with `browsers = ["chromium"]`. Not covered yet: Chrome and Chrome for Testing, and `@playwright/mcp` under srt (it runs under tartaros). [docs/browsers.md](https://github.com/carlostapiacl/seisin/blob/main/docs/browsers.md#what-is-not-covered-yet) |
 
 Every word above has one meaning, listed in [the glossary](https://github.com/carlostapiacl/seisin/blob/main/docs/glossary.md) — the boundary
 **denies**, a person **grants** or **declines**, seisin **refuses** a config it cannot enforce. A tool whose

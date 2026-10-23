@@ -128,8 +128,9 @@ hook's message. *Elsewhere:* the sandbox runtime's `denyRead` plus `denyWrite` [
 role but the owner.
 
 **`local_ports`** — the localhost ports a role may reach, and the only ones: `local_ports =
-[8001, 8081]`. The sandbox's proxy enforces the list, so a client that does not use the proxy (a
-database driver, a raw socket) is denied. *Next to:* `local_binding = true` is for a role
+[8001, 8081]`. Under srt the sandbox's proxy enforces the list, so a client that does not use the proxy (a
+database driver, a raw socket) is denied; under tartaros the kernel profile does, and a client
+reaches a listed port directly. *Next to:* `local_binding = true` is for a role
 that listens, and on macOS it also reaches every port on localhost; `local_ports` is the narrow
 form for a role that only needs to reach one. A port is not anyone's territory, so a denial on one
 files no request. *Not:* allowed ports, port allowlist. *Where:* `[roles.<name>]`, `seisin check`,
@@ -164,11 +165,11 @@ store [28] — is the same idea. ⚠ NVIDIA OpenShell uses **provider** for the 
 itself [13]; if you come from there, our provider is the fetcher, not the credential.
 
 **key mode** — how a role receives the value of a reference: `env` (an environment variable) or
-`run-file` (a file in the **run directory**, removed when the run ends). `inject` is reserved and
-refused until it can be built. *Not:* `scratch`, its name until 0.6.0 — the file left scratch on
+`run-file` (a file in the **run directory**, removed when the run ends) or `inject` (the agent gets a
+sentinel and the runtime substitutes the real value on egress to declared hosts; Linux-only for now). *Not:* `scratch`, its name until 0.6.0 — the file left scratch on
 2026-09-23, and a policy that still says it is refused with the line to change. *Where:*
 `key_mode`, `[keys.providers.*] mode`. *Elsewhere:* Claude
-Code's credential **mask** [1] is what `inject` would be.
+Code's credential **mask** [1] is what `inject` is.
 
 **protected** — a path no role writes even inside its territory, because something outside the
 sandbox acts on it: git hooks and config, a project's `.claude/` and `.codex/`, `.mcp.json`, `.envrc`,
