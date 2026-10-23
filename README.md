@@ -303,8 +303,8 @@ the commands compose in a script, a pre-commit hook or CI:
 | `whose`, `grant`, `decline`, `log`, `init`, `wire`, `ui`, `watch`, `mcp` | done | — | |
 | `hook` | always | — | |
 
-Every command exits **2** on a usage error — an unknown command, flag, role or action — and when
-there is no `seisin.toml` here or above.
+Every command exits **2** on a usage error — an unknown command, flag, role or action — and every
+command that reads the policy exits 2 when there is no `seisin.toml` here or above.
 
 ## Configure
 
@@ -1029,7 +1029,7 @@ the same kernel or workspace, and which one you want depends on what you are pro
 
 ## Status
 
-**1024 tests on macOS, 1022 passing and 2 platform skips** (`main` before 0.6.0); **1023 on
+**1087 tests on macOS, 1081 passing and 6 platform skips** (0.6.0, 2026-10-22); **1023 on
 Debian 12 under bubblewrap 0.8.0, 1000 passing and 23 platform skips** (2026-10-13). On 2026-10-12, 91 of the suite's tests
 needed `@anthropic-ai/sandbox-runtime` installed — counted by running it with the runtime
 hidden — and run real commands through the real kernel; 26 of them are the core boundary file,
@@ -1039,8 +1039,8 @@ when there were eighteen of them, they skipped on Linux for a day, behind a runt
 install and missed the bundled one, and hid a defect that broke `seisin run` on that platform
 entirely.
 
-CI is paused; this release is validated locally on macOS and Debian 12 (bubblewrap 0.8.0). The
-last green CI run — macOS and `ubuntu-latest`, Node 18/20/22/24 — was on 2026-10-04.
+A release is published only from CI, after the full suite passes on macOS and `ubuntu-latest`,
+Node 18/20/22/24 (`publish.yml`), with npm provenance.
 Historically: 811 tests on macOS 15, 809 passing and 2 skipped, on 2026-09-30.
 [Which claim was measured where](https://github.com/carlostapiacl/seisin/blob/main/docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),
 and [what running agents behind it cost the people using it](https://github.com/carlostapiacl/seisin/blob/main/docs/field-notes.md).
@@ -1058,7 +1058,7 @@ already done:
 | **Deleting inside your own territory** | the sandbox's to enforce, and `srt` cannot: write includes delete. The ask is upstream as [issue #545](https://github.com/anthropics/sandbox-runtime/issues/545), open and unanswered since 2026-09-13, [with the measurement behind it](https://github.com/carlostapiacl/seisin/blob/main/docs/upstream/denyUnlink.md) and [a demo](https://github.com/carlostapiacl/seisin/tree/main/docs/demo/) |
 | **`init` heuristics** | it reads `.claude/agents/`, then `CODEOWNERS`, then the top-level folders that hold code. Every other convention is a guess nobody has made yet |
 | **SSH inside a run (macOS)** | on macOS the `ProxyCommand` the runtime sets can't authenticate to its own proxy, so `git` over SSH fails at the handshake (on Linux the runtime routes it through an authenticated proxy — read from its source, not measured here). Fix upstream: [PR #516](https://github.com/anthropics/sandbox-runtime/pull/516). Use an HTTPS remote |
-| **A browser inside a role (macOS)** | Chromium only starts with `--single-process`, which is unstable with several browsers. Fix upstream: [PR #598](https://github.com/anthropics/sandbox-runtime/pull/598). [Measurement](https://github.com/carlostapiacl/seisin/blob/main/docs/upstream/mach-register.md) |
+| **A browser inside a role (macOS)** | headless Chromium runs with `browsers = ["chromium"]`. Not covered yet: Chrome and Chrome for Testing, and `@playwright/mcp` under srt (it runs under tartaros). [docs/browsers.md](https://github.com/carlostapiacl/seisin/blob/main/docs/browsers.md#what-is-not-covered-yet) |
 
 Every word above has one meaning, listed in [the glossary](https://github.com/carlostapiacl/seisin/blob/main/docs/glossary.md) — the boundary
 **denies**, a person **grants** or **declines**, seisin **refuses** a config it cannot enforce. A tool whose

@@ -47,10 +47,11 @@ agent starts (exit 86).
 seisin runs it as
 
 ```
-tartaros run --role <role> --settings <settings file> -- <the command>
+tartaros run --role <role> --inherit-env --settings <settings file> -- <the command>
 ```
 
-with `--private-tmp` added for a role with `browsers` ([browsers.md](browsers.md)):
+`--inherit-env` because the environment seisin hands it is already the role's own, and
+`--browser --private-tmp` added for a role with `browsers` ([browsers.md](browsers.md)):
 a TMPDIR of the run's own, the only place that role may open a unix socket.
 
 and, before that, asks it about the same file:
@@ -59,7 +60,7 @@ and, before that, asks it about the same file:
 tartaros explain --settings <settings file>
 ```
 
-which reads the file through the same code as `run` and exits 2, with the
+which reads the file through the same code as `run` and exits non-zero (78 since 0.1.0-alpha.6), with the
 reason, on a field it cannot guarantee. That reason is what `seisin check`
 and a refused run print. tartaros needs to be on PATH (`cargo build --release
 -p tartaros-cli`, then its `target/release`).
