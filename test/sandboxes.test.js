@@ -9,7 +9,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, existsSync, chmodSync, mkdirSync, readFileSync } from "node:fs";
+import { writeFileSync, existsSync, chmodSync, mkdirSync, readFileSync, rmSync, symlinkSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { loadConfig } from "../src/config.js";
@@ -17,6 +17,8 @@ import { tartarosArgv, tartaros } from "../src/sandboxes/tartaros.js";
 import { commandSandbox, assessCheck } from "../src/sandboxes/command.js";
 import { weigh, chooseSandbox, sandboxesOf, DEFAULT_SANDBOX } from "../src/sandboxes/index.js";
 import { runCanary } from "../src/canary.js";
+import { seccompDir } from "../src/sandboxes/srt.js";
+import { settingsFor } from "../src/srt.js";
 import { resolveSrt } from "../src/commands/run.js";
 import { scratch, repoWith, srtSkip, CLI } from "./_tmp.js";
 
@@ -290,4 +292,29 @@ test("runCanary takes the sandbox's own command line", { skip: srtSkip() }, asyn
   assert.equal(r.ok, false);
   assert.ok(r.failed.some((f) => /write outside the territory went through/.test(f)), r.failed.join("\n"));
   assert.ok(r.failed.some((f) => /planted secret was readable/.test(f)), r.failed.join("\n"));
+});
+
+test("seccompDir: from the srt that runs, through its links, to the runtime's vendor/seccomp", () => {
+  const dir = scratch("seccomp-");
+  const pkg = join(dir, "lib", "node_modules", "@anthropic-ai", "sandbox-runtime");
+  mkdirSync(join(pkg, "dist"), { recursive: true });
+  mkdirSync(join(pkg, "vendor", "seccomp", "x64"), { recursive: true });
+  writeFileSync(join(pkg, "package.json"), JSON.stringify({ name: "@anthropic-ai/sandbox-runtime" }));
+  writeFileSync(join(pkg, "dist", "cli.js"), "");
+  mkdirSync(join(dir, "bin"));
+  symlinkSync(join(pkg, "dist", "cli.js"), join(dir, "bin", "srt"));
+  assert.equal(seccompDir(join(dir, "bin", "srt")), realpathSync(join(pkg, "vendor", "seccomp")));
+  // A package with no vendor directory, or an srt that is not the runtime's: nothing to keep.
+  rmSync(join(pkg, "vendor"), { recursive: true });
+  assert.equal(seccompDir(join(dir, "bin", "srt")), null);
+  assert.equal(seccompDir(null), null);
+});
+
+test("on Linux, read = \"territory\" keeps the runtime's apply-seccomp readable", { skip: process.platform !== "linux" || srtSkip() }, () => {
+  const root = repoWith("seccomp-territory-", `[runtime]\nread = "territory"\nwrites = []\n\n[roles.dev]\nwrites = ["src/**"]\n`);
+  const fs = settingsFor(loadConfig(join(root, "seisin.toml")), "dev").filesystem;
+  const seccomp = seccompDir();
+  assert.ok(seccomp, "the runtime that runs has a vendor/seccomp");
+  const shut = fs.denyRead.some((d) => seccomp.startsWith(d + "/")) && !fs.allowRead.some((a) => seccomp === a || seccomp.startsWith(a + "/"));
+  assert.ok(!shut, `${seccomp} is shut by ${JSON.stringify(fs.denyRead)}`);
 });
