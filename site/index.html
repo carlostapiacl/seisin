@@ -439,7 +439,7 @@ control_files = [<span class="s">"ide"</span>]  <span class="c"># its own .vscod
         <ul class="plain">
           <li><b>OS-enforced write territories.</b> Seatbelt or bubblewrap applies the boundary.</li>
           <li><b>Declared secret isolation.</b> Roles read only the keys assigned to them.</li>
-          <li><b>Per-role network policy.</b> Egress follows the runtime’s proxy allow list.</li>
+          <li><b>Per-role network policy.</b> Egress follows each role’s allow list, enforced by the sandbox.</li>
           <li><b>Control files closed.</b> What acts outside the sandbox the moment it changes — git hooks, <code>.claude/</code>, <code>.mcp.json</code> — is denied to every role, and so are editor settings unless the policy hands them to one.</li>
           <li><b>A tamper-evident log.</b> Each line carries the hash of the one before, the chain’s start is recorded, and <code>seisin log verify</code> says when either was changed.</li>
           <li><b>Ownership, and handoffs to a person.</b> A denial names who owns the path; agents cannot grant themselves anything.</li>
@@ -448,7 +448,7 @@ control_files = [<span class="s">"ide"</span>]  <span class="c"># its own .vscod
       <div>
         <h3>What it does not promise</h3>
         <ul class="plain">
-          <li><b>Not a sandbox.</b> It configures <code>@anthropic-ai/sandbox-runtime</code>; the OS does the enforcing.</li>
+          <li><b>Not a sandbox.</b> It configures one — <code>@anthropic-ai/sandbox-runtime</code> by default, tartaros, or one you declare; the OS does the enforcing.</li>
           <li><b>Not hostile-agent containment.</b> An allowed domain is still an allowed exfiltration channel, and while tampering with the log is closed, a hostile agent can still add lines to its own history.</li>
           <li><b>Not complete secret discovery.</b> A secret outside declared key directories remains readable — with the default <code>read = "all"</code> that includes <code>~/.ssh</code>, <code>~/.aws</code> and <code>~/.npmrc</code>; <code>read = "territory"</code> closes those homes. <code>seisin scan</code> helps find the rest.</li>
           <li><b>Not an orchestrator.</b> It does not schedule agents or decide who does the work. Windows is not yet tested.</li>

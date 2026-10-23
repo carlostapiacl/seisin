@@ -6,12 +6,11 @@
 
 ## The suite
 
-**1024 tests** in the macOS suite; 1022 passed and 2 platform tests skipped. Linux defines one
-fewer platform-specific test: 1023 total, 1000 passed and 23 skipped (2026-10-13, Debian 12,
-bubblewrap 0.8.0). CI is paused; this release is validated locally on macOS and Debian 12
-(bubblewrap 0.8.0). The [workflow](../.github/workflows/test.yml) runs macOS and Linux under
-bubblewrap on Node 18/20/22/24 for pull requests and pushes to `main`; its last green run was
-on 2026-10-04. Historical full-suite measurements remain dated below; the
+**1087 tests** in the macOS suite; 1081 passed and 6 platform tests skipped (0.6.0, local,
+2026-10-22). On Linux, the last local count: 1023 total, 1000 passed and 23 skipped (2026-10-13,
+Debian 12, bubblewrap 0.8.0). The [workflow](../.github/workflows/test.yml) runs macOS and Linux
+under bubblewrap on Node 18/20/22/24 for pull requests and pushes to `main`, and a release is
+published only after it passes ([publish.yml](../.github/workflows/publish.yml)). Historical full-suite measurements remain dated below; the
 [2026-10-02 review](reviews/2026-10-02.md) and its
 [follow-up](reviews/2026-10-02-followup.md) record portable validation and its limits.
 
@@ -105,7 +104,7 @@ what has not.
 
 | | macOS 15 · Seatbelt | Linux · bubblewrap |
 |---|---|---|
-| the suite | **1024 tests, 1022 passing and 2 skipped** (Linux-only) — local, `main` before 0.6.0 | **1023 tests, 1000 passing and 23 skipped** — 2026-10-13, local, in Docker: Debian 12, bwrap 0.8.0, `--privileged` (bubblewrap mounts `/proc`) |
+| the suite | **1087 tests, 1081 passing and 6 skipped** (platform) — local, 0.6.0, 2026-10-22 | **1023 tests, 1000 passing and 23 skipped** — 2026-10-13, local, in Docker: Debian 12, bwrap 0.8.0, `--privileged` (bubblewrap mounts `/proc`) |
 | CI (paused) | last green run 2026-10-04, Node 18/20/22/24; CI failed then if the 26 sandbox tests skipped | `ubuntu-latest`, Node 18/20/22/24, same run |
 | `[runtime] isolate = "home"` (`= true`) | ✅ — and it did not start here at all until the 104-byte socket fix | ✅ — `tmpdir()` is `/tmp`, so the path never came close |
 | `[runtime] isolate = "credentials"` | ✅ — no role home, so the socket limit cannot reach it | ✅ |
@@ -140,7 +139,7 @@ Four findings, all four real, all four reproduced before being fixed.
 | **Policy ≠ enforcement** | `ownersOf` read `src/*` as one level; the kernel got `src`, the whole subtree. `seisin explain` said *denied* and the write landed | patterns the kernel cannot express exactly are **refused**, not widened. There is no exact translation to find later: a sandbox grants prefixes and "one level down" is not a prefix |
 | **The audit trail was writable by what it audits** | `.seisin/` was in every role's allowWrite, so the log and queue could be truncated, rewritten or forged | the directory left the territory. The hook sends lines to the parent over a unix socket granted by path; the parent holds the file |
 | **Paths were not canonical** | `src/web/../api/orders.ts` is backend's file and matched frontend's `src/web/**`. The kernel still denied — but `whose` named the wrong owner and the log said `allowed` for a write that was about to fail | resolved before anyone decides anything. Above the root owns nothing |
-| **The README contradicted itself on Linux** | one section said the suite passed on Debian 12, another said it had never run there | CI ran it on both platforms at every push from then on — last green run 2026-10-04. CI is paused now, and the suite runs locally on both |
+| **The README contradicted itself on Linux** | one section said the suite passed on Debian 12, another said it had never run there | CI ran it on both platforms at every push from then on — last green run 2026-10-04. A release is published only after it passes on both |
 
 ### Review 2 — security, file by file
 

@@ -41,7 +41,7 @@ arguments does not read TMPDIR (it asks the system for the user's temp directory
 from somewhere to grant one extra path silently drops the seven defaults it did not mention. Start from the
 list above and append.
 
-Two things follow, and both are the kind of thing you want to hear from the tool rather than
+Three things follow, and all are the kind of thing you want to hear from the tool rather than
 discover:
 
 - **Scratch is shared.** Every role can write it, so two agents can reach each other's temp

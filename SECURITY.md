@@ -82,7 +82,7 @@ you have, report it here and it gets routed.
 
 `npm audit` reports this high-severity `node-forge` advisory through the pinned sandbox
 runtime. The vulnerable operation is RSA PKCS#1 v1.5 signature verification accepting a malformed
-certificate structure. In runtime 0.0.78 the forge paths seisin reaches generate and sign the
+certificate structure. In runtime 0.0.78 (the analysis; the pin is now 0.0.81, not re-checked) the forge paths seisin reaches generate and sign the
 temporary MITM CA and leaf certificates, or parse a configured CA and compare its RSA modulus to
 the supplied private key; they do not call forge's certificate-signature verification. The
 advisory therefore does not appear reachable through seisin's current use, but remains an
