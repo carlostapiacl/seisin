@@ -7,8 +7,9 @@
 ## The suite
 
 **1089 tests** in the macOS suite; 1082 passed and 7 platform tests skipped (0.6.0, local,
-2026-10-23). On Linux, the last local count: 1023 total, 1000 passed and 23 skipped (2026-10-13,
-Debian 12, bubblewrap 0.8.0). The [workflow](../.github/workflows/test.yml) runs macOS and Linux
+2026-10-23). In CI the same day: `ubuntu-latest` 1088, 1059 passed and 29 skipped; macOS 1089, 1079
+passed and 10 skipped; Node 18/20/22/24. Before that, Linux locally: 1023, 1000 passed and 23
+skipped (2026-10-13, Debian 12, bubblewrap 0.8.0). The [workflow](../.github/workflows/test.yml) runs macOS and Linux
 under bubblewrap on Node 18/20/22/24 for pull requests and pushes to `main`, and a release is
 published only after it passes ([publish.yml](../.github/workflows/publish.yml)). Historical full-suite measurements remain dated below; the
 [2026-10-02 review](reviews/2026-10-02.md) and its
