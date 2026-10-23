@@ -1085,6 +1085,8 @@ A deed says who owns land. **Seisin** is the older idea underneath: who is actua
 That is the question this tool answers. Not *may this be written* — the kernel settles that — but
 *whose is it*, which is the one that tells an agent what to do next.
 
+I write up what I measure running agents behind it at [carlostapia.cl](https://carlostapia.cl/notes/).
+
 ## License
 
 MIT
