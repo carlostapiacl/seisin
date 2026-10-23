@@ -8,7 +8,7 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
-## 0.6.0 — 2026-10-22
+## 0.6.0 — 2026-10-23
 
 **Breaking:** every run now starts with a mandatory canary. A machine or policy where 0.5.0
 started despite a boundary that did not hold now stops with exit 86. Wrapper commands that hide
@@ -91,6 +91,14 @@ each role gets the first sandbox that is installed and enforces every part of it
 one that would enforce less is passed over with the reason. `seisin check` shows the choice per role and exits 1 when a role has none;
 a single name means that sandbox or no run. The canary runs under the chosen sandbox, so one that
 ignores the policy starts nothing. See [docs/sandboxes.md](docs/sandboxes.md).
+
+**Fixed: on Linux, `read = "territory"` with seisin installed under a home directory started
+nothing.** The runtime runs its `apply-seccomp` inside the sandbox, from wherever the package is
+installed; with seisin under nvm, a user npm prefix or a CI checkout in `/home`, the territory
+shut that directory and every run stopped before the canary with `apply-seccomp: No such file or
+directory`. The runtime's `vendor/seccomp` is now kept readable in that mode, found from the
+`srt` that actually runs. Measured on `ubuntu-latest` and in Debian 12 with the checkout in
+`/root`.
 
 **Fixed: under tartaros, a role with `local_ports` and `network` reaches its ports directly.**
 seisin took loopback out of `NO_PROXY` for every such role, so under tartaros it went through
