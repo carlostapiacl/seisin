@@ -80,6 +80,38 @@ export function dependencySrt(from = HERE) {
 }
 
 /**
+ * The directory of the runtime's own `apply-seccomp`, or null.
+ *
+ * On Linux the runtime runs that binary INSIDE the sandbox, from wherever the
+ * package is installed, before the command. With `read = "territory"` a home
+ * directory is shut, and seisin installed under it — nvm, a user npm prefix,
+ * a CI checkout in /home/runner — left the binary unmountable: every run died
+ * with `apply-seccomp: No such file or directory` before the canary (measured
+ * on ubuntu-latest and in Debian with the checkout in /root, srt 0.0.81).
+ * Found from the srt that runs (its real path, up to the package), so a
+ * global srt keeps its own.
+ */
+export function seccompDir(bin = resolveSrt()) {
+  if (!bin) return null;
+  let dir;
+  try { dir = dirname(realpathSync(bin)); } catch { return null; }
+  for (;;) {
+    const pkg = join(dir, "package.json");
+    if (existsSync(pkg)) {
+      try {
+        if (JSON.parse(readFileSync(pkg, "utf8")).name === RUNTIME) {
+          const vendor = join(dir, "vendor", "seccomp");
+          return existsSync(vendor) ? vendor : null;
+        }
+      } catch { /* not the runtime's */ }
+    }
+    const up = dirname(dir);
+    if (up === dir) return null;
+    dir = up;
+  }
+}
+
+/**
  * How to put the runtime back, for the way this seisin was installed.
  *
  * It is a dependency, so it is missing only from a broken install — and the

@@ -26,7 +26,10 @@ function deniedIn(log) {
   if (!existsSync(log)) return [];
   return readFileSync(log, "utf8").split("\n").filter(Boolean)
     .flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } })
-    .filter((e) => e.verdict === "denied");
+    // File denials only. A system one (`sysctl-read kern.iossupportversion`, on
+    // GitHub's macOS runners, once per run) is the run's own and says nothing
+    // about which run wrote where.
+    .filter((e) => e.verdict === "denied" && e.kind !== "system");
 }
 
 test("a denial is logged once, against the run that caused it", { skip }, async () => {
