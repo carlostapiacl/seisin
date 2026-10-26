@@ -338,6 +338,21 @@ test("runCanary takes the sandbox's own command line", { skip: srtSkip() }, asyn
   assert.ok(r.failed.some((f) => /planted secret was readable/.test(f)), r.failed.join("\n"));
 });
 
+test("runCanary: tartaros refusing a value another process exposes is said as that, not as a broken boundary", async () => {
+  const d = scratch("seisin-sbx-exposed-");
+  mkdirSync(join(d, "runs", "r"), { recursive: true });
+  const said = "tartaros: secret exposed: the value of GH_TOKEN in pid 4242 (/opt/node/bin/node), whose arguments or environment the agent can read\n" +
+    "tartaros: refusing to run. Give the value to tartaros's environment only, or pass --allow-exposed-secrets\n";
+  const r = await runCanary({
+    wrap: () => ["/bin/sh", "-c", `printf '%s' "$0" >&2; exit 78`, said], settingsFile: join(d, "settings.json"), settings: settings(),
+    env: { PATH: process.env.PATH }, cwd: d, runDir: join(d, "runs", "r"), runsRoot: join(d, "runs"),
+    role: { localBinding: true }, granted: [],
+  });
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.exposed, [{ name: "GH_TOKEN", pid: 4242, proc: "/opt/node/bin/node" }]);
+  assert.deepEqual(r.failed, ["GH_TOKEN's real value is readable in pid 4242 (/opt/node/bin/node)"]);
+});
+
 test("seccompDir: from the srt that runs, through its links, to the runtime's vendor/seccomp", () => {
   const dir = scratch("seccomp-");
   const pkg = join(dir, "lib", "node_modules", "@anthropic-ai", "sandbox-runtime");
