@@ -10,6 +10,30 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+For a launcher that runs agents in worktrees it throws away (found reviewing how wapentake
+runs seisin):
+
+- **`--policy <file>` and `--state-dir <dir>`, on every command, and `run --run-id <id>`.**
+  The policy is read from the file and rooted at the working directory; the log and the
+  request queue go to the state directory; the run is named with the launcher's id. A
+  launcher writes each run straight into the shape `seisin ui --runs` reads, and nothing of
+  seisin's lands in the worktree. *What to do:* nothing, unless you launch runs; then see
+  docs/runs.md.
+- **A policy can be JSON** (`--policy x.json`, or `seisin.json` in a run folder), for a
+  launcher that generates it: a value can hold a quote. Read as strictly as the TOML (a key
+  written twice is refused); `grant` does not edit it.
+- **`seisin check --json`**: seisin's version and capabilities, the sandbox each role gets
+  with its path and version, the warnings. A launcher stops parsing `--help` and `--version`.
+- **`seisin ui --runs` says when a run's record is incomplete**: the system log dropped
+  kernel messages during it, so some denials may be missing.
+- **macOS housekeeping is expected, not a wall**: the shared memory and preferences every
+  framework reaches for at start (notification center, cfprefs, two compatibility sysctls).
+  Under `read = "territory"`, `~/.CFUserTextEncoding` is readable: every process reads it at
+  start, and it holds a text-encoding code. Together they were most of one launcher's
+  denials.
+- **Vite's bundled config (`*.timestamp-<n>-<hash>.mjs`) is a temporary file**: it files no
+  request.
+
 ## 0.6.3 — 2026-10-26
 
 `key_mode = "inject"` on macOS, under tartaros 0.1.0-alpha.16.

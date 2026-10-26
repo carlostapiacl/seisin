@@ -12,14 +12,15 @@ import { LIMITS } from "./inspect/limits.js";
 
 export const COMMAND_HELP = {
   run: {
-    usage: ["seisin run <role> [--observe] [--debug-env] [--agent <name>] [--handoff <id>] [--expect-denied <path>]... -- <command...>"],
-    values: ["--agent", "--handoff", "--expect-denied"],
+    usage: ["seisin run <role> [--observe] [--debug-env] [--agent <name>] [--handoff <id>] [--expect-denied <path>]... [--run-id <id>] -- <command...>"],
+    values: ["--agent", "--handoff", "--expect-denied", "--run-id"],
     flags: [
       ["--observe", "open the repo for this run and record what the agent writes; keys and network stay shut"],
       ["--debug-env", "print the environment variables the role does not get"],
       ["--agent <name>", "claude, codex or none: which agent the command runs, when seisin cannot tell from it (a wrapper script). Its home is the run's scratch; the other agents' sign-in is closed"],
       ["--handoff <id>", "this run takes a pending request handed to this role, and starts only if the policy routes that request here. Its own requests join the handoff chain"],
       ["--expect-denied <path>", "a path the caller will probe and expects to be denied (its own canary). That exact path is logged as expected and files no request; repeatable. Any other path is asked as usual"],
+      ["--run-id <id>", "the launcher's own id for this run, used in the log instead of a random one, so an orchestrator's records and seisin's join on it"],
     ],
     notes: ["Everything after -- is the command's own, flags included: `-- claude --settings x.json` goes to claude."],
     examples: ['seisin run frontend -- claude', 'seisin run backend --observe -- claude -p "…"'],
@@ -28,11 +29,12 @@ export const COMMAND_HELP = {
       ["128+n", "killed by signal n (130 for ctrl-c)"], ["2", "seisin could not start it (usage, policy, runtime)"]],
   },
   check: {
-    usage: ["seisin check [role] [--verbose] [--verify] [--parallel] [--system-log]"],
+    usage: ["seisin check [role] [--verbose] [--verify] [--parallel] [--system-log] [--json]"],
     flags: [["--verbose", "also print the protected paths and each warning's explanation (the limits of every repo: seisin help limits)"],
       ["--verify", "run each role's verify command inside its sandbox (the one thing check executes)"],
       ["--parallel", "experimental: with --verify, run role checks concurrently; shared resources may race"],
-      ["--system-log", "macOS: measure for 3 s whether the system log is dropping messages, and who writes the most; exits 1 when it is"]],
+      ["--system-log", "macOS: measure for 3 s whether the system log is dropping messages, and who writes the most; exits 1 when it is"],
+      ["--json", "the same answer for a program: seisin's version and capabilities, the sandbox each role gets (path and version), the warnings"]],
     examples: ["seisin check", "seisin check frontend --verbose", "seisin check backend --verify", "seisin check --verify --parallel"],
     exits: [["0", "the policy can be enforced as written (warnings included)"], ["1", "a role cannot be enforced as written, or its verify failed"], ["2", "usage or policy error"]],
   },

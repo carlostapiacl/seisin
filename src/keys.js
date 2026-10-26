@@ -375,7 +375,7 @@ export function readFileRef(entry, root = ".", { exact = false } = {}) {
 export const RESERVED_ENV = new Set([
   // The last is handoff.js's CHAIN_ENV, spelled out: handoff.js reaches this
   // module through owners.js, and importing it back would be a cycle.
-  "SEISIN_ROLE", "SEISIN_CONFIG", SOCK_ENV, "SEISIN_HANDOFF_CHAIN",
+  "SEISIN_ROLE", "SEISIN_CONFIG", "SEISIN_ROOT", "SEISIN_STATE_DIR", SOCK_ENV, "SEISIN_HANDOFF_CHAIN",
   ...BASE, ...Object.keys(DEFAULTS),
 ]);
 
