@@ -10,6 +10,16 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+## 0.6.3 — 2026-10-26
+
+`key_mode = "inject"` on macOS, under tartaros 0.1.0-alpha.16.
+
+- **tartaros is 0.1.0-alpha.16.** It masks `inject` credentials (Linux and macOS), reads
+  `tlsTerminate` under `network` as seisin writes it, and refuses a run (exit 78) when another
+  process exposes the real value in its environment, which on macOS no sandbox can hide from the
+  agent. seisin says that refusal as itself: the variable and the process, not a canary that failed
+  (exit 86 still: nothing started). *What to do:* on macOS, keep an injected token out of
+  `export`ed shells.
 - **`key_mode = "inject"` on macOS, under tartaros.** Whether a sandbox can mask is now the
   sandbox's to say: srt masks on Linux (macOS is still upstream, sandbox-runtime#593), tartaros
   masks on Linux and macOS from 0.1.0-alpha.16, and `check` says when a macOS provider list has

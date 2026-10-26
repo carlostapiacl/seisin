@@ -198,6 +198,10 @@ is never handed the role.
 - **tartaros** masks on Linux and macOS, from 0.1.0-alpha.16: its broker terminates TLS toward
   the injected hosts and keeps the run's secrets out of its own exec environment. So on macOS,
   `inject` needs `[sandbox] provider = ["tartaros", "srt"]` (or `"tartaros"`); `check` says so.
+  On macOS no sandbox hides another process's environment from the agent (unless the binary is
+  Apple's own), so tartaros refuses the run (exit 78, naming the variable and the process) when
+  another process holds the real value: usually a shell that `export`ed the token, whose
+  children (an editor, a `node` server) keep it. Keep the token in the provider only.
 - **A sandbox of your own** is never handed an `inject` role: seisin cannot know it masks.
 
 There is **no default mode**. A reference with none declared anywhere is an error, because
