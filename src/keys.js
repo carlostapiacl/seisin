@@ -30,8 +30,8 @@
  * policy holds a reviewable reference instead of a path, and every resolution
  * is logged without its value (`event: "key"`, see commands/run.js) — but it is not "the agent never sees it". That
  * is `inject`, which costs terminating the role's TLS with a CA of your own and
- * is Linux-only for now (see `injectGate` and `injectKeysOf` below); off Linux
- * `modeOf` holds it, with the reason in the message.
+ * needs a sandbox that masks credentials: srt on Linux, tartaros on Linux and
+ * macOS (see `injectGate` below, and `masks` on each sandbox).
  *
  * ## Why the value is never written down
  *
@@ -522,23 +522,22 @@ export function modeOf(config, role, entry) {
 }
 
 /**
- * `inject` is the mode where the agent never sees the value: the runtime hands
- * the sandbox a sentinel and substitutes the real value on egress to the
- * credential's declared hosts. It is Linux-only in this version — masked
- * delivery is validated on the Linux backend; the macOS path is not enabled
- * yet and is tracked upstream, where the fit for it is a credential computed
- * per run rather than read from the environment
- * (anthropics/sandbox-runtime#593). Until that lands, macOS `inject` is held
- * rather than offered, with the alternatives in the message.
+ * `inject` is the mode where the agent never sees the value: the sandbox hands
+ * the agent a sentinel and substitutes the real value on egress to the
+ * credential's declared hosts. Which sandbox can do that is the sandbox's to
+ * say (`masks` in sandboxes/): srt on Linux, tartaros on Linux and macOS
+ * (srt's macOS path is tracked upstream, anthropics/sandbox-runtime#593). A
+ * sandbox that does not mask is never handed the role, because the real value
+ * is in the environment it is started with. Here only the platforms where no
+ * sandbox masks are refused outright.
  */
 function injectGate(role) {
-  if (process.platform === "linux") return;
+  if (process.platform === "linux" || process.platform === "darwin") return;
   throw new Error(
-    `roles.${role.name}: key_mode = "inject" is not available on ${process.platform} yet.\n` +
-    `  It is Linux-only for now; masked injection on macOS is tracked upstream ` +
-    `(anthropics/sandbox-runtime#593) and enables once that lands.\n` +
-    `  Use "env" or "run-file" here, or run this role on Linux. ` +
-    `See https://github.com/carlostapiacl/seisin/blob/main/docs/decisions.md.`);
+    `roles.${role.name}: key_mode = "inject" is not available on ${process.platform}.\n` +
+    `  No sandbox seisin runs here masks credentials: srt does on Linux, tartaros on Linux and macOS.\n` +
+    `  Use "env" or "run-file" here, or run this role on Linux or macOS. ` +
+    `See https://github.com/carlostapiacl/seisin/blob/main/docs/keys.md.`);
 }
 
 /**

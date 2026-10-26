@@ -855,7 +855,7 @@ A **provider** is a command with a `{ref}` placeholder, so adding 1Password, Bit
 confined process. Nothing degrades: a provider that fails stops the run.
 
 A key reaches the role as a variable (`key_mode = "env"`), as a file in the run's private
-directory (`"run-file"`), or, on Linux, not at all: with `"inject"` the agent holds a
+directory (`"run-file"`), or not at all (on Linux, and on macOS under tartaros): with `"inject"` the agent holds a
 placeholder and the sandbox swaps in the real value only on the way to the hosts you list for
 it. That costs terminating TLS to those hosts, which `seisin check` names, and a host that
 stores what it is sent can still hand the value back — use a least-scope token.
@@ -1037,7 +1037,7 @@ the same kernel or workspace, and which one you want depends on what you are pro
 
 ## Status
 
-**1101 tests on macOS, 1094 passing and 7 platform skips** (0.6.2, 2026-10-26, local); in CI the
+**1102 tests on macOS, 1095 passing and 7 platform skips** (after 0.6.2, 2026-10-26, local); in CI the
 same day, on `ubuntu-latest` **1100, 1071 passing and 29 platform skips**, and on macOS 1101,
 1092 passing and 9 skips, Node 18/20/22/24, with the 26 core boundary tests skipping none. On 2026-10-12, 91 of the suite's tests
 needed `@anthropic-ai/sandbox-runtime` installed — counted by running it with the runtime

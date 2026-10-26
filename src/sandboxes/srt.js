@@ -150,6 +150,9 @@ export const srt = {
   locate: () => resolveSrt(),
   missing: () => `sandbox runtime not found. ${installHint()}`,
   unmet: () => [],
+  // Masked credentials: on Linux; on macOS not yet (anthropics/sandbox-runtime#593).
+  masks: (platform) => platform === "linux" ? null
+    : `masked credentials (key_mode = "inject") on ${platform}: sandbox-runtime does not mask them there yet (anthropics/sandbox-runtime#593); tartaros does`,
   // `--` before the command, and it is not cosmetic. Without it the runtime's
   // own argument parser reaches into what the agent was invoked with and eats
   // anything resembling one of its flags: `claude --settings`, `claude -c`.

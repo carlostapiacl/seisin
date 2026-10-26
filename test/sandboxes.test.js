@@ -362,3 +362,18 @@ test("on Linux, read = \"territory\" keeps the runtime's apply-seccomp readable"
   const shut = fs.denyRead.some((d) => seccomp.startsWith(d + "/")) && !fs.allowRead.some((a) => seccomp === a || seccomp.startsWith(a + "/"));
   assert.ok(!shut, `${seccomp} is shut by ${JSON.stringify(fs.denyRead)}`);
 });
+
+test("inject: only a sandbox that masks is handed the role — srt on Linux, tartaros (it answers), never one of your own", () => {
+  const masked = { ...settings({ net: { allowedDomains: ["api.github.com"] } }),
+    credentials: { envVars: [{ name: "GH_TOKEN", mode: "mask", injectHosts: ["api.github.com"] }] }, tlsTerminate: { excludeDomains: [] } };
+  const srtOn = (platform) => weigh(cfg(`[sandbox]\nprovider = "srt"\n${ROLE}`), masked, { platform, locate: false }).options[0].unmet;
+  assert.deepEqual(srtOn("linux").filter((u) => /masked/.test(u)), [], "srt masks on Linux");
+  assert.match(srtOn("darwin")[0], /masked credentials .* on darwin: sandbox-runtime does not mask them there yet .*593.*tartaros does/);
+  const mine = weigh(cfg(`[sandbox]\nprovider = "mybox"\n[sandbox.providers.mybox]\ncommand = ["/bin/sh", "-c", "exit 0", "{policy}"]\n${ROLE}`),
+    masked, { platform: "linux", locate: false }).options[0].unmet;
+  assert.match(mine[0], /mybox is not known to mask them, and it would start with the real value/);
+  const tt = weigh(cfg(`[sandbox]\nprovider = "tartaros"\n${ROLE}`), masked, { platform: "darwin", locate: false }).options[0].unmet;
+  assert.deepEqual(tt.filter((u) => /masked credentials/.test(u)), [], "tartaros is asked, not second-guessed");
+  // Without credentials, nothing changes for anyone.
+  assert.deepEqual(weigh(cfg(`[sandbox]\nprovider = "srt"\n${ROLE}`), settings(), { platform: "darwin", locate: false }).options[0].unmet, []);
+});

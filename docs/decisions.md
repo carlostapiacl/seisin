@@ -1231,6 +1231,13 @@ role is refused before the id is looked up: no decision can route there.
   inject enables there once it lands. Off Linux, `modeOf` holds the mode with the
   alternatives in the message rather than emitting a capability it is not ready
   to stand behind.
+- **Update (2026-10-26): the sandbox says whether it masks.** The platform gate
+  moved from `modeOf` to each sandbox (`masks`): srt on Linux, tartaros on Linux
+  and macOS (its broker terminates TLS toward the injected hosts, from
+  0.1.0-alpha.16), and never a sandbox declared as a command, which would start
+  with the real value in its environment. That last one closes a gap the old
+  gate hid: on Linux, a role with `inject` could be handed to a sandbox of the
+  user's own. `modeOf` now refuses only where no sandbox masks.
 
 ## No second config format, for anybody
 
