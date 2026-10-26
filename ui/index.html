@@ -645,7 +645,7 @@ table.runs tr.sys td{color:var(--dim)}
     <section data-view="requests" hidden>
       <div class="box" id="requests">
         <header>
-          <h2>Pending decisions</h2>
+          <h2 id="req-h">Pending decisions</h2>
           <span class="note" id="req-note">granting edits seisin.toml · here or in the terminal, never through MCP</span>
           <span class="bulk" id="bulk" hidden>
             <input id="why-all" placeholder="reason, for all of them (required)" aria-label="Reason for declining all">
@@ -714,7 +714,7 @@ table.runs tr.sys td{color:var(--dim)}
     <div class="foot">
       <b id="foot-mode">Preview.</b> <span id="foot-text">Opened as a file, this page edits an example policy in memory and
       shows what would be generated. Nothing is saved; run <b>seisin ui</b> in a repository to see yours.</span><br>
-      The JSON matches <b>@anthropic-ai/sandbox-runtime 0.0.78</b>, whose schema the test suite exercises against the real binary.
+      The JSON is <b>@anthropic-ai/sandbox-runtime</b>'s settings schema, which the test suite exercises against the real binary.
     </div>
   </main>
 </div>
@@ -1748,7 +1748,8 @@ table.runs tr.sys td{color:var(--dim)}
     }
 
     set("k-wait", waiting ? "live" : "calm", waiting,
-        waiting ? (waiting === 1 ? "decision" : "decisions") : "nothing to decide");
+        READONLY ? (waiting ? (waiting === 1 ? "request, asked for elsewhere" : "requests, asked for elsewhere") : "nothing asked for")
+          : waiting ? (waiting === 1 ? "decision" : "decisions") : "nothing to decide");
     set("k-open", off ? "alarm" : "calm", off,
         off ? (off === 1 ? "role running unconfined" : "roles running unconfined") : "every role confined");
     set("k-ref", f.total ? "live" : "calm", f.total.toLocaleString(),
@@ -2341,6 +2342,13 @@ table.runs tr.sys td{color:var(--dim)}
     document.getElementById("kill").hidden = true;
     // And so does the card that counts what the button would do: live it could only say 0.
     document.getElementById("k-open").style.display = "none";
+    // Read only nothing waits on the person here: what the run asked for is asked for where it was launched.
+    if (READONLY) {
+      var nav = document.getElementById("nav-req");
+      nav.childNodes[1].textContent = "Asked for";
+      document.querySelector("#k-wait h2").textContent = "asked for";
+      document.getElementById("req-h").textContent = "What this run asked for";
+    }
     document.getElementById("toml-note").textContent = READONLY ? "this run's policy, as its launcher archived it" : "the file on disk, as it stands";
     document.getElementById("foot-mode").textContent = READONLY ? "Live, read only." : "Live.";
     document.getElementById("foot-text").innerHTML = READONLY
@@ -2533,7 +2541,7 @@ table.runs tr.sys td{color:var(--dim)}
       policy:     {view:"roles",    title:"Roles",
                    sub:"Each role's territory — the folders it may write — and the keys it may read. " +
                        (LIVE ? "Read-only here: the policy is seisin.toml." : "In this example you can edit them; nothing is saved.")},
-      requests:   {view:"requests", title:"Waiting on you",
+      requests:   {view:"requests", title: READONLY ? "Asked for" : "Waiting on you",
                    sub: READONLY
                      ? "Requests: access this run asked for and did not have. Read only: they are asked for where the run was launched."
                      : "Requests: access an agent asked for and cannot have. Granting one adds a line to seisin.toml."},

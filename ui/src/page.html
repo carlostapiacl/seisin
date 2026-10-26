@@ -191,7 +191,7 @@
     <section data-view="requests" hidden>
       <div class="box" id="requests">
         <header>
-          <h2>Pending decisions</h2>
+          <h2 id="req-h">Pending decisions</h2>
           <span class="note" id="req-note">granting edits seisin.toml · here or in the terminal, never through MCP</span>
           <span class="bulk" id="bulk" hidden>
             <input id="why-all" placeholder="reason, for all of them (required)" aria-label="Reason for declining all">
@@ -260,7 +260,7 @@
     <div class="foot">
       <b id="foot-mode">Preview.</b> <span id="foot-text">Opened as a file, this page edits an example policy in memory and
       shows what would be generated. Nothing is saved; run <b>seisin ui</b> in a repository to see yours.</span><br>
-      The JSON matches <b>@anthropic-ai/sandbox-runtime 0.0.78</b>, whose schema the test suite exercises against the real binary.
+      The JSON is <b>@anthropic-ai/sandbox-runtime</b>'s settings schema, which the test suite exercises against the real binary.
     </div>
   </main>
 </div>

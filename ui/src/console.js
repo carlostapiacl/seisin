@@ -1026,7 +1026,8 @@
     }
 
     set("k-wait", waiting ? "live" : "calm", waiting,
-        waiting ? (waiting === 1 ? "decision" : "decisions") : "nothing to decide");
+        READONLY ? (waiting ? (waiting === 1 ? "request, asked for elsewhere" : "requests, asked for elsewhere") : "nothing asked for")
+          : waiting ? (waiting === 1 ? "decision" : "decisions") : "nothing to decide");
     set("k-open", off ? "alarm" : "calm", off,
         off ? (off === 1 ? "role running unconfined" : "roles running unconfined") : "every role confined");
     set("k-ref", f.total ? "live" : "calm", f.total.toLocaleString(),
@@ -1619,6 +1620,13 @@
     document.getElementById("kill").hidden = true;
     // And so does the card that counts what the button would do: live it could only say 0.
     document.getElementById("k-open").style.display = "none";
+    // Read only nothing waits on the person here: what the run asked for is asked for where it was launched.
+    if (READONLY) {
+      var nav = document.getElementById("nav-req");
+      nav.childNodes[1].textContent = "Asked for";
+      document.querySelector("#k-wait h2").textContent = "asked for";
+      document.getElementById("req-h").textContent = "What this run asked for";
+    }
     document.getElementById("toml-note").textContent = READONLY ? "this run's policy, as its launcher archived it" : "the file on disk, as it stands";
     document.getElementById("foot-mode").textContent = READONLY ? "Live, read only." : "Live.";
     document.getElementById("foot-text").innerHTML = READONLY
@@ -1811,7 +1819,7 @@
       policy:     {view:"roles",    title:"Roles",
                    sub:"Each role's territory — the folders it may write — and the keys it may read. " +
                        (LIVE ? "Read-only here: the policy is seisin.toml." : "In this example you can edit them; nothing is saved.")},
-      requests:   {view:"requests", title:"Waiting on you",
+      requests:   {view:"requests", title: READONLY ? "Asked for" : "Waiting on you",
                    sub: READONLY
                      ? "Requests: access this run asked for and did not have. Read only: they are asked for where the run was launched."
                      : "Requests: access an agent asked for and cannot have. Granting one adds a line to seisin.toml."},
