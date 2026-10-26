@@ -1,6 +1,6 @@
 {
   "name": "seisin",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "A permission layer for AI coding agents: role-scoped folders and keys, enforced by the OS, and when it denies something it tells you whose file it was.",
   "keywords": [
     "ai-agents",
@@ -43,6 +43,9 @@
   },
   "dependencies": {
     "@anthropic-ai/sandbox-runtime": "0.0.81"
+  },
+  "optionalDependencies": {
+    "@carlostapiacl/tartaros": "0.1.0-alpha.14"
   },
   "scripts": {
     "test": "node --test test/*.test.js",

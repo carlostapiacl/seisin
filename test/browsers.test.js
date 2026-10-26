@@ -136,12 +136,13 @@ test("tartaros is asked about the file it would be handed, with the field in it"
   chmodSync(bin, 0o755);
   writeFileSync(join(dir, "seisin.toml"), '[sandbox]\nprovider = "tartaros"\n[roles.agent]\nwrites = ["src/**"]\nbrowsers = ["chromium"]\n');
   const config = loadConfig(join(dir, "seisin.toml"));
-  const was = process.env.PATH;
-  process.env.PATH = `${dir}:${was}`;
+  // This stand-in, not the pinned package a checkout has installed.
+  const locate = tartaros.locate;
+  tartaros.locate = () => resolveTartaros({ from: dir, path: dir });
   try {
     const { chosen } = weigh(config, settingsFor(config, "agent"), { role: "agent", platform: "darwin" });
     assert.equal(chosen?.sandbox.name, "tartaros");
-  } finally { process.env.PATH = was; }
+  } finally { tartaros.locate = locate; }
   assert.deepEqual(JSON.parse(readFileSync(seen, "utf8")).network.allowMachRegister, [`${PREFIX}*`]);
 });
 
