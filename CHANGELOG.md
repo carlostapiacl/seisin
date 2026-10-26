@@ -8,8 +8,14 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
-## Unreleased
+## 0.6.2 — 2026-10-26
 
+A read-only console over many runs, and tartaros 0.1.0-alpha.15.
+
+- **tartaros is 0.1.0-alpha.15.** On Linux its `explain` now warns exactly when a writable root
+  cannot take new entries, and it no longer falls back to its Landlock carve for a denied path
+  outside every writable root; its broker's TLS crates are past six RustSec advisories.
+  *What to do:* nothing.
 - **`seisin ui --runs <dir>`: a read-only console over a directory of runs.** For a launcher
   that writes a policy per run and throws the worktree away: it archives each run's
   `seisin.toml`, `.seisin/` and a `run.json` into one folder per run, and this lists them all.
