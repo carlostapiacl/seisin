@@ -27,8 +27,8 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { randomBytes } from "node:crypto";
-import { writeFileSync, readFileSync, rmSync, existsSync, statSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { writeFileSync, readFileSync, rmSync, existsSync, statSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 
 /** Where sandbox-runtime's shared temp directory is on this host. */
 const SHARED_TMP_DIR = "/tmp/claude";
@@ -65,7 +65,16 @@ export async function runCanary({ srt, wrap = null, settingsFile, settings, env,
   // appearing and vanishing in a watched tree restarts a dev server.
   const candidates = (granted ?? settings.filesystem.allowWrite ?? []).filter((p) => isDir(p));
   const writable = candidates.find((p) => !(cwd && (p === cwd || p.startsWith(cwd + "/") || cwd.startsWith(p + "/")))) ?? candidates[0];
-  const inside = writable ? join(writable, `.seisin-canary-${nonce}`) : null;
+  // Written into a directory made for it, not beside what is already there:
+  // where tartaros on Linux falls back to its Landlock carve (no mount
+  // namespace, or a denied path that does not exist yet), a root with a deny
+  // below it (`/tmp/claude`, under `/tmp`) is granted only through its
+  // subdirectories, so a new entry at that root is refused although the
+  // policy grants it (ubuntu-latest, tartaros 0.1.0-alpha.14: the control at
+  // /tmp's root failed; `explain` says so as a warning). A directory that
+  // exists when the sandbox starts is one of them.
+  const insideDir = writable ? join(writable, `.seisin-canary-${nonce}`) : null;
+  const inside = insideDir ? join(insideDir, "in") : null;
   // The runtime's shared temp directory (srt.js, SHARED_TMP): granted by the
   // runtime to every sandbox, taken back by seisin. Probed where it exists;
   // where it does not, there is nothing beside which to write.
@@ -73,6 +82,8 @@ export async function runCanary({ srt, wrap = null, settingsFile, settings, env,
   const policy = settingsFile;
 
   writeFileSync(secret, `SECRET-${nonce}\n`, { mode: 0o600 });
+  // seisin makes it, outside the sandbox; one it cannot make fails the control below.
+  if (insideDir) try { mkdirSync(insideDir, { mode: 0o700 }); } catch {}
 
   let server = null;
   let port = null;
@@ -133,7 +144,7 @@ export async function runCanary({ srt, wrap = null, settingsFile, settings, env,
   if (inside) {
     let wrote = false;
     try { wrote = readFileSync(inside, "utf8").trim() === `IN-${nonce}`; } catch {}
-    if (!wrote) failed.push(`a write the role is granted did not go through (${dirname(inside)}) — the positive control`);
+    if (!wrote) failed.push(`a write the role is granted did not go through (${writable}) — the positive control`);
   }
   if (port) {
     // The probe has to say it ran. Silence is not "unreachable": a node the
@@ -144,6 +155,6 @@ export async function runCanary({ srt, wrap = null, settingsFile, settings, env,
     if (output.includes(`NET-${nonce}`)) failed.push(`a loopback port outside the policy was reachable (127.0.0.1:${port})`);
   }
 
-  for (const p of [secret, outside, inside, shared]) if (p) try { rmSync(p, { force: true }); } catch {}
+  for (const p of [secret, outside, insideDir, shared]) if (p) try { rmSync(p, { force: true, recursive: p === insideDir }); } catch {}
   return { ok: failed.length === 0, failed, ms: Date.now() - t0 };
 }

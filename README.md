@@ -212,7 +212,7 @@ will not make its guarantee stronger than it is.
 npm install -g seisin
 ```
 
-That pulls in [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropics/sandbox-runtime), the default sandbox: Seatbelt on macOS, bubblewrap on Linux. No containers, no VMs, no daemon. seisin has **no other dependencies**. [tartaros](https://github.com/carlostapiacl/tartaros), or a sandbox of your own, can enforce instead ([docs/sandboxes.md](https://github.com/carlostapiacl/seisin/blob/main/docs/sandboxes.md)).
+That pulls in [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropics/sandbox-runtime), the default sandbox: Seatbelt on macOS, bubblewrap on Linux. No containers, no VMs, no daemon. Its one other dependency is optional: [tartaros](https://github.com/carlostapiacl/tartaros), prebuilt for macOS and Linux, which can enforce instead — as can a sandbox of your own ([docs/sandboxes.md](https://github.com/carlostapiacl/seisin/blob/main/docs/sandboxes.md)).
 
 **On Linux you also need three system packages** — the runtime refuses to start without
 them rather than running unconfined, which is the right failure and an unhelpful message:
@@ -1036,9 +1036,9 @@ the same kernel or workspace, and which one you want depends on what you are pro
 
 ## Status
 
-**1089 tests on macOS, 1082 passing and 7 platform skips** (0.6.0, 2026-10-23, local); in CI the
-same day, on `ubuntu-latest` **1088, 1059 passing and 29 platform skips**, and on macOS 1089,
-1079 passing and 10 skips, Node 18/20/22/24, with the 26 core boundary tests skipping none. On 2026-10-12, 91 of the suite's tests
+**1090 tests on macOS, 1083 passing and 7 platform skips** (0.6.1, 2026-10-26, local); in CI the
+same day, on `ubuntu-latest` **1089, 1060 passing and 29 platform skips**, and on macOS 1090,
+1081 passing and 9 skips, Node 18/20/22/24, with the 26 core boundary tests skipping none. On 2026-10-12, 91 of the suite's tests
 needed `@anthropic-ai/sandbox-runtime` installed — counted by running it with the runtime
 hidden — and run real commands through the real kernel; 26 of them are the core boundary file,
 `test/sandbox.test.js`, which the CI gate fails if it *skips*, because a green run that quietly
