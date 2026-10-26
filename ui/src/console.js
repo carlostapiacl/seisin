@@ -581,7 +581,7 @@
       aria: "instruction files, for every role",
       click: function(){ propose({ protect: !prot }, "ctl-sw-protect", "instructions", "pw"); }
     }));
-    if (!r) { drawPreview(); return; }
+    if (!r) { drawPreview(); if (READONLY) document.querySelectorAll("#pw button").forEach(function(b){ b.disabled = true; }); return; }
     ["ide", "instructions"].forEach(function(f){
       var mine = (r.controlFiles || []).indexOf(f) !== -1;
       var idle = f === "instructions" && !prot;
@@ -603,6 +603,9 @@
       }));
     });
     drawPreview();
+    if (READONLY) document.querySelectorAll("#pw button, #ctl button").forEach(function(b){
+      b.disabled = true; b.title = "read only: this run's policy was lent by its launcher";
+    });
   }
 
   async function callControls(body){
@@ -1023,7 +1026,8 @@
     }
 
     set("k-wait", waiting ? "live" : "calm", waiting,
-        waiting ? (waiting === 1 ? "decision" : "decisions") : "nothing to decide");
+        READONLY ? (waiting ? (waiting === 1 ? "request, asked for elsewhere" : "requests, asked for elsewhere") : "nothing asked for")
+          : waiting ? (waiting === 1 ? "decision" : "decisions") : "nothing to decide");
     set("k-open", off ? "alarm" : "calm", off,
         off ? (off === 1 ? "role running unconfined" : "roles running unconfined") : "every role confined");
     set("k-ref", f.total ? "live" : "calm", f.total.toLocaleString(),
@@ -1095,6 +1099,12 @@
     return narrowable(r) && f && f.checked ? { scope: "file", grant: r.target } : { scope: "folder", grant: r.grant };
   }
 
+  /** Read only, where a request goes instead: the launcher that lent the run its territory. */
+  function askedWhere(){
+    var who = RUNINFO && RUNINFO.launcher;
+    return who ? "Not granted here — ask for it in <b>" + esc(who) + "</b>:" : "Not granted here — ask for it where the run was launched:";
+  }
+
   function drawReqs(){
     var host = document.getElementById("reqs");
     pill("req-pin", REQS.length, REQS.length === 1 ? "request" : "requests");
@@ -1112,17 +1122,19 @@
       return '<div class="req' + (r.stale ? ' stale' : '') + '">' +
         '<div class="who">' +
           "<div><b>" + esc(r.role) + "</b> wants to " + esc(r.action) + ' <span class="path">' + esc(r.target) + "</span></div>" +
-          scopeOf(r) + handoffOf(r) + scopeChoice(r, i) +
+          scopeOf(r) + handoffOf(r) + (READONLY ? "" : scopeChoice(r, i)) +
           '<div class="sub"><span class="asked">' + times + "</span>" +
             (w.text ? ' · last <span title="' + escA(w.title) + '">' + esc(w.text) + "</span>" : "") + stale + "</div>" +
           '<div class="err" id="err-' + i + '" role="alert" hidden></div>' +
         "</div>" +
-        '<div class="act">' +
+        (READONLY
+          ? '<div class="act ro-ask">' + askedWhere() + ' <code>' + esc(r.grant) + "</code></div>"
+          : '<div class="act">' +
           '<input id="why-' + i + '" placeholder="reason (required)" aria-label="Reason for ' +
             escA(r.role) + '’s request" aria-describedby="err-' + i + '">' +
           '<button class="btn primary" data-n="' + i + '" data-k="' + escA(r.key) + '" data-d="granted" type="button" data-write>Grant</button>' +
           '<button class="btn" data-n="' + i + '" data-k="' + escA(r.key) + '" data-d="declined" type="button" data-write>Decline</button>' +
-        "</div>" +
+        "</div>") +
       "</div>";
     }).join("");
 
@@ -1165,7 +1177,7 @@
     var bulk = document.getElementById("bulk");
     var btn = document.getElementById("decline-all");
     var why = document.getElementById("why-all");
-    bulk.hidden = REQS.length < 2;
+    bulk.hidden = REQS.length < 2 || READONLY;
     btn.disabled = false;
     var rest = "Decline all (" + REQS.length + ")";
     disarm(btn, rest);
@@ -1315,15 +1327,29 @@
    * server, and it is moved into this tab's storage and wiped from the address
    * bar and the history entry at once.
    */
+  /**
+   * Over a directory of runs, the run that is open: `&run=<id>` in the link a
+   * launcher hands out (beside the token, in the fragment), kept in the query
+   * once the fragment is wiped, so a reload stays on it.
+   */
+  var RUN = (function(){
+    var h = /(?:^#|&)run=([A-Za-z0-9][A-Za-z0-9._-]{0,127})(?:&|$)/.exec(location.hash || "");
+    var q = new URLSearchParams(location.search).get("run");
+    var id = h ? h[1] : q;
+    return id && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id) ? id : null;
+  })();
   var TOKEN = (function(){
     var m = /(?:^#|&)t=([a-f0-9]+)/.exec(location.hash || "");
     try {
       if (m) { sessionStorage.setItem("seisin-token", m[1]); }
       var t = m ? m[1] : (sessionStorage.getItem("seisin-token") || "");
-      if (m) history.replaceState(null, "", location.pathname + location.search);
+      if (m) history.replaceState(null, "", location.pathname + (RUN ? "?run=" + encodeURIComponent(RUN) : location.search));
       return t;
     } catch (_) { return m ? m[1] : ""; }
   })();
+  /** "policy" — one seisin.toml, the console as it always was — or "runs", read only. */
+  var MODE = "policy";
+  var READONLY = false;
 
   /** What to tell a person when a request to this server fails. */
   function whyFailed(e, status){
@@ -1386,6 +1412,8 @@
   }
   function stateUrl(){
     var s = sinceIso();
+    if (MODE === "runs" && RUN)
+      return "/api/run?run=" + encodeURIComponent(RUN) + (s ? "&since=" + encodeURIComponent(s) : "");
     return "/api/state" + (s ? "?since=" + encodeURIComponent(s) : "");
   }
   function rangeLabel(){
@@ -1516,7 +1544,7 @@
     if (ASKING[name]) return;
     ASKING[name] = true;
     try {
-      var r = await fetch("/api/settings?role=" + encodeURIComponent(name),
+      var r = await fetch("/api/settings?role=" + encodeURIComponent(name) + (RUN ? "&run=" + encodeURIComponent(RUN) : ""),
                           { cache: "no-store", headers: { "x-seisin-token": TOKEN } });
       var out = await r.json();
       SETTINGS[name] = r.ok ? { settings: out.settings } : { error: out.error || "could not read the settings" };
@@ -1534,6 +1562,12 @@
     try {
       // Opened as a file there is no server to ask; the fetch only printed a CORS error.
       if (location.protocol === "file:") throw new Error("no server");
+      var info = await fetch("/api/info", { cache: "no-store", headers: { "x-seisin-token": TOKEN } });
+      if (info.ok) {
+        var mode = (await info.json()).mode;
+        if (mode === "runs") { MODE = "runs"; READONLY = true; }
+      }
+      if (MODE === "runs" && !RUN) { await bootRuns(); return; }
       got = await fetchState(true);
       // A live server that refuses this tab's token: `seisin ui` was restarted
       // and minted a new one. Falling back to the example here showed a policy
@@ -1572,6 +1606,10 @@
     LIVE = true;
     applyState(s);
     LIVE_LABEL = s.config.replace(/^.*\//, "") + " · live";
+    if (MODE === "runs") {
+      RUNINFO = s.run || null; LIVE_LABEL = "run " + RUN + " · read only"; drawRunBanner();
+      document.getElementById("req-note").textContent = "read only · asked for where the run was launched, not here";
+    }
     label.textContent = LIVE_LABEL;
     label.style.color = "var(--green)";
     // Live, the what-if button goes for good: "run every role unconfined" against a real repo is
@@ -1582,15 +1620,186 @@
     document.getElementById("kill").hidden = true;
     // And so does the card that counts what the button would do: live it could only say 0.
     document.getElementById("k-open").style.display = "none";
-    document.getElementById("toml-note").textContent = "the file on disk, as it stands";
-    document.getElementById("foot-mode").textContent = "Live.";
-    document.getElementById("foot-text").innerHTML =
-      "This page reads <b>" + esc(s.config) + "</b> and the log on disk. Two actions write, each in place and stamped " +
+    // Read only nothing waits on the person here: what the run asked for is asked for where it was launched.
+    if (READONLY) {
+      var nav = document.getElementById("nav-req");
+      nav.childNodes[1].textContent = "Asked for";
+      document.querySelector("#k-wait h2").textContent = "asked for";
+      document.getElementById("req-h").textContent = "What this run asked for";
+    }
+    document.getElementById("toml-note").textContent = READONLY ? "this run's policy, as its launcher archived it" : "the file on disk, as it stands";
+    document.getElementById("foot-mode").textContent = READONLY ? "Live, read only." : "Live.";
+    document.getElementById("foot-text").innerHTML = READONLY
+      ? "This page reads <b>" + esc(s.config) + "</b>, one archived run's policy, and its log. Nothing is written from here: " +
+        "the run's territory was lent by whoever launched it, and access is asked for there."
+      : "This page reads <b>" + esc(s.config) + "</b> and the log on disk. Two actions write, each in place and stamped " +
       "with its reason: a decision on a request, and saving a control-files change after its preview. Territories " +
       "and keys are changed in seisin.toml itself.";
     draw();
     show(route());
     poll();
+  }
+
+  /* ── a directory of runs ──────────────────────────────────────────────────
+   * `seisin ui --runs`: every run, filtered and summed, read only. One run opens
+   * as the console always looked — its policy, its denials, its log — with no
+   * grant on it. */
+  var RUNINFO = null;
+  var RFILTER = (function(){
+    var q = new URLSearchParams(location.search), out = {};
+    ["team", "role", "work_item", "status", "outcome", "q"].forEach(function(k){ var v = q.get(k); if (v) out[k] = v; });
+    return out;
+  })();
+  var RLAST = { url: null, etag: null, v: null };
+
+  function runsUrl(){
+    var q = new URLSearchParams();
+    Object.keys(RFILTER).forEach(function(k){ if (RFILTER[k]) q.set(k, RFILTER[k]); });
+    var s = q.toString();
+    return "/api/runs" + (s ? "?" + s : "");
+  }
+  async function fetchRuns(fresh){
+    var url = runsUrl();
+    var h = { "x-seisin-token": TOKEN };
+    if (!fresh && RLAST.etag && RLAST.url === url) h["if-none-match"] = RLAST.etag;
+    var r = await fetch(url, { cache: "no-store", headers: h });
+    if (r.status === 304) return { same: true };
+    if (!r.ok) return { status: r.status };
+    var v = await r.json();
+    RLAST = { url: url, etag: r.headers.get("etag"), v: v };
+    return { v: v };
+  }
+
+  function runMeta(r){
+    var bits = [];
+    if (r.team) bits.push("team <b>" + esc(r.team) + "</b>");
+    if (r.role) bits.push("role <b>" + esc(r.role) + "</b>");
+    if (r.work_item) bits.push("<b>" + esc(r.work_item) + "</b>");
+    if (r.repo) bits.push("repo " + esc(r.repo));
+    if (r.status) bits.push("status " + esc(r.status));
+    var w = when(r.started_at || "");
+    if (w.text) bits.push('started <span title="' + escA(w.title) + '">' + esc(w.text) + "</span>");
+    return bits.join(" · ");
+  }
+  function outcomeTag(o){
+    var says = { clean: "clean", denied: "denied", refused: "canary failed", unread: "policy unreadable" };
+    return '<span class="oc ' + escA(o) + '">' + esc(says[o] || o) + "</span>";
+  }
+
+  function drawRunBanner(){
+    var b = document.getElementById("run-banner");
+    var r = RUNINFO || { id: RUN };
+    b.innerHTML = "<b>Run " + esc(r.run_id || r.id) + "</b> " + outcomeTag(r.outcome || "") +
+      ' · <a href="./">all runs</a>' +
+      '<div class="meta">' + (runMeta(r) || "no run.json: only what its policy and log say") +
+      " · read only: nothing is granted from here</div>";
+    b.hidden = false;
+    document.getElementById("nav-runs").hidden = false;
+  }
+
+  function drawRunsView(v){
+    // The filters: every value any run has, with how many runs have it.
+    document.querySelectorAll("#rn-filters select").forEach(function(sel){
+      var f = sel.dataset.f;
+      var opts = (v.facets[f] || []);
+      var cur = RFILTER[f] || "";
+      sel.innerHTML = '<option value="">all</option>' + opts.map(function(o){
+        return '<option value="' + escA(o.value) + '"' + (o.value === cur ? " selected" : "") + ">" + esc(o.value) + " (" + o.runs + ")</option>";
+      }).join("");
+      sel.disabled = !opts.length;
+    });
+    document.getElementById("rn-count").textContent = v.totals.runs === v.total
+      ? plural(v.total, "run") : plural(v.totals.runs, "run") + " of " + v.total;
+    pill("runs-pin", v.total, v.total === 1 ? "run" : "runs");
+
+    var t = v.totals, k = t.byKind || {};
+    function card(cls, title, n, sub){
+      return '<div class="card kpi ' + cls + '"><h2>' + esc(title) + '</h2><div class="n">' + esc(Number(n).toLocaleString()) +
+        '</div><div class="s">' + sub + "</div></div>";
+    }
+    document.getElementById("rn-kpis").innerHTML =
+      card("b", "runs", t.runs, (t.outcome.denied || 0) + " denied something · " + (t.outcome.clean || 0) + " clean") +
+      card(t.outcome.refused ? "a" : "g", "canary failed", t.outcome.refused || 0, "runs that never started") +
+      card(t.denied ? "a" : "g", "denied", t.denied, (k.file || 0).toLocaleString() + " files · " + (k.network || 0).toLocaleString() + " network") +
+      card(t.retried ? "a" : "g", "spent retrying", t.retried, "calls after the first denial of the same thing");
+
+    var causes = v.causes || [];
+    document.getElementById("rn-causes").innerHTML = causes.length
+      ? "<thead><tr><th>denied</th><th>what</th><th class=num>runs</th><th class=num>times</th><th>teams</th><th>roles</th></tr></thead><tbody>" +
+        causes.map(function(c){
+          return '<tr class="' + (c.about === "system" ? "sys" : "") + '"><td>' + esc(c.action) + "</td><td><code>" + esc(c.target) +
+            "</code></td><td class=num>" + c.runs + "</td><td class=num>" + c.times + "</td><td>" + esc((c.teams || []).join(", ")) +
+            "</td><td>" + esc((c.roles || []).join(", ")) + "</td></tr>";
+        }).join("") + "</tbody>"
+      : '<tbody><tr><td class="blank quiet">Nothing denied in these runs.</td></tr></tbody>';
+
+    var SHOWN = 300, runs = v.runs || [];
+    document.getElementById("rn-list").innerHTML = runs.length
+      ? "<thead><tr><th>run</th><th>started</th><th>team</th><th>role</th><th>work item</th><th>status</th><th>outcome</th>" +
+        "<th class=num>denied</th><th class=num>retried</th><th>hosts denied</th></tr></thead><tbody>" +
+        runs.slice(0, SHOWN).map(function(r){
+          var w = when(r.started_at || "");
+          return "<tr><td><a href=\"./?run=" + encodeURIComponent(r.id) + "#requests\"><code>" + esc(r.run_id || r.id) + "</code></a></td>" +
+            '<td title="' + escA(w.title || "") + '">' + esc(w.text || "") + "</td><td>" + esc(r.team || "") + "</td><td>" + esc(r.role || "") +
+            "</td><td>" + esc(r.work_item || "") + "</td><td>" + esc(r.status || "") + "</td><td>" + outcomeTag(r.outcome) +
+            "</td><td class=num>" + r.denied + "</td><td class=num>" + r.retried + "</td><td>" +
+            (r.hosts || []).slice(0, 3).map(function(h){ return "<code>" + esc(h.target) + "</code>"; }).join(" ") + "</td></tr>";
+        }).join("") + "</tbody>"
+      : '<tbody><tr><td class="blank quiet">' + (v.total ? "No run matches these filters." : "No runs in " + esc(v.dir) + " yet.") + "</td></tr></tbody>";
+    var more = document.getElementById("rn-more");
+    more.hidden = runs.length <= SHOWN;
+    more.textContent = "Showing the newest " + SHOWN + " of " + runs.length + ": narrow the filters for the rest.";
+  }
+
+  function setRunFilter(k, val){
+    if (val) RFILTER[k] = val; else delete RFILTER[k];
+    var q = new URLSearchParams();
+    Object.keys(RFILTER).forEach(function(x){ q.set(x, RFILTER[x]); });
+    history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q : ""));
+    fetchRuns(true).then(function(g){ if (g.v) drawRunsView(g.v); }).catch(function(){});
+  }
+
+  async function bootRuns(){
+    var label = document.getElementById("source");
+    var got = await fetchRuns(true);
+    if (!got.v) {
+      label.textContent = got.status === 403 ? "link expired — open the new one" : "the console did not answer";
+      label.style.color = "var(--amber)";
+      return;
+    }
+    LIVE = true;
+    LIVE_LABEL = "runs · read only";
+    label.textContent = LIVE_LABEL;
+    label.style.color = "var(--green)";
+    document.getElementById("nav-runs").hidden = false;
+    document.getElementById("nav-all").classList.add("on");
+    document.getElementById("nav-cap").hidden = true;
+    document.querySelectorAll(".side .list > a[href^='#']").forEach(function(a){ a.hidden = true; });
+    // Inline, not `hidden`: the cards' own display rules outrank the attribute.
+    ["kpis", "range", "kill"].forEach(function(id){ var e = document.getElementById(id); if (e) { e.hidden = true; e.style.display = "none"; } });
+    document.getElementById("foot-mode").textContent = "Live, read only.";
+    document.getElementById("foot-text").innerHTML = "This page reads the runs in <b>" + esc(got.v.dir) +
+      "</b>, one folder each, as their launcher archived them. Nothing is written from here.";
+    document.querySelectorAll("#rn-filters select").forEach(function(sel){
+      sel.addEventListener("change", function(){ setRunFilter(sel.dataset.f, sel.value); });
+    });
+    var q = document.getElementById("rn-q");
+    q.value = RFILTER.q || "";
+    var tq = null;
+    q.addEventListener("input", function(){ clearTimeout(tq); tq = setTimeout(function(){ setRunFilter("q", q.value.trim()); }, 250); });
+    drawRunsView(got.v);
+    show("runs");
+    (function again(){
+      setTimeout(async function(){
+        try {
+          var g = await fetchRuns(false);
+          if (g.v) drawRunsView(g.v);
+          if (g.v || g.same) { FAILS = 0; if (OFFLINE) setOffline(null); }
+          else if (++FAILS >= 2) setOffline(g.status === 403 ? "expired" : "down");
+        } catch (_) { if (++FAILS >= 2) setOffline("down"); }
+        again();
+      }, 2000);
+    })();
   }
 
   /** Every two seconds after the last answer, not every two seconds regardless. */
@@ -1605,11 +1814,15 @@
    * it has to keep working opened straight off the disk with no server at all. */
   function views(){
     return {
+      runs:       {view:"runs",     title:"Runs",
+                   sub:"Every run in the directory, read only: what each was denied and what the denials cost. Open one for its policy and its log."},
       policy:     {view:"roles",    title:"Roles",
                    sub:"Each role's territory — the folders it may write — and the keys it may read. " +
                        (LIVE ? "Read-only here: the policy is seisin.toml." : "In this example you can edit them; nothing is saved.")},
-      requests:   {view:"requests", title:"Waiting on you",
-                   sub:"Requests: access an agent asked for and cannot have. Granting one adds a line to seisin.toml."},
+      requests:   {view:"requests", title: READONLY ? "Asked for" : "Waiting on you",
+                   sub: READONLY
+                     ? "Requests: access this run asked for and did not have. Read only: they are asked for where the run was launched."
+                     : "Requests: access an agent asked for and cannot have. Granting one adds a line to seisin.toml."},
       denied:     {view:"denied",   title:"Denied", tab:"path",
                    sub:"Everything an agent tried in the window and the OS denied, grouped by what it was about."},
       causes:     {view:"denied",   title:"Denied", tab:"name",
@@ -1656,7 +1869,7 @@
   }
 
   /** The landing view is what is waiting on you, not the policy table. */
-  function route(){ return (location.hash || "#requests").slice(1); }
+  function route(){ return MODE === "runs" && !RUN ? "runs" : (location.hash || "#requests").slice(1); }
   window.addEventListener("hashchange", function(){ show(route()); });
   show(route());
 

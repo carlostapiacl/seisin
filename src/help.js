@@ -123,10 +123,12 @@ export const COMMAND_HELP = {
     exits: [["0", "written"], ["2", "a policy is already there, or nothing was observed"]],
   },
   ui: {
-    usage: ["seisin ui [--port <n>] [--link]"],
-    values: ["--port"],
-    flags: [["--port <n>", "port on 127.0.0.1 (default 4178)"], ["--link", "print the link of a console already running, start nothing"]],
-    examples: ["seisin ui", "seisin ui --link"],
+    usage: ["seisin ui [--port <n>] [--link]", "seisin ui --runs <dir> [--port <n>] [--link [--json]]"],
+    values: ["--port", "--runs"],
+    flags: [["--port <n>", "port on 127.0.0.1 (default 4178; 4179 with --runs)"], ["--link", "print the link of a console already running, start nothing"],
+      ["--runs <dir>", "a read-only console over a directory of runs, one folder each (docs/runs.md)"],
+      ["--json", "with --link: {running, url, port, mode} for a program to read, nothing opened"]],
+    examples: ["seisin ui", "seisin ui --link", "seisin ui --runs ~/.wapentake/seisin/runs", "seisin ui --runs ~/.wapentake/seisin/runs --link --json"],
     exits: [["0", "stopped"], ["2", "could not start"]],
   },
   mcp: {
