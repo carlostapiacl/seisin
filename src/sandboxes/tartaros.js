@@ -17,17 +17,44 @@
  * check` says so), and the canary still checks every run that it can.
  */
 import { existsSync } from "node:fs";
-import { join, delimiter } from "node:path";
+import { createRequire } from "node:module";
+import { join, dirname, delimiter } from "node:path";
+import { fileURLToPath } from "node:url";
 import { assessCheck } from "./command.js";
 
-/** `tartaros` on PATH, or null. */
-export function resolveTartaros(path = process.env.PATH) {
+const HERE = dirname(fileURLToPath(import.meta.url));
+export const TARTAROS_PACKAGE = "@carlostapiacl/tartaros";
+
+/**
+ * The tartaros seisin depends on first, one on PATH second, and nothing third:
+ * the order srt is found in (srt.js), for the same reason. A tartaros built
+ * once and left on PATH goes on answering after the pinned one has its fixes.
+ *
+ * The pinned one is an optional dependency: a package per platform with the
+ * binary in it, and a main package whose binaryPath() finds that one whether
+ * npm nested it under the main package (a global install, measured) or hoisted
+ * it. An install that left it out (`--omit=optional`, a platform without a
+ * binary) falls through to PATH.
+ */
+export function resolveTartaros({ from = HERE, path = process.env.PATH } = {}) {
+  const pinned = dependencyTartaros(from);
+  if (pinned) return pinned;
   for (const dir of (path ?? "").split(delimiter)) {
     if (!dir) continue;
     const candidate = join(dir, "tartaros");
     if (existsSync(candidate)) return candidate;
   }
   return null;
+}
+
+/** The binary of the tartaros package that resolves from `from`, or null. */
+export function dependencyTartaros(from = HERE) {
+  try {
+    const bin = createRequire(join(from, "noop.js"))(TARTAROS_PACKAGE).binaryPath();
+    return bin && existsSync(bin) ? bin : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The command line for one run: the settings as they are, the role as a label. */
@@ -66,7 +93,7 @@ export function tartarosSettings(settings, { machRegister = [] } = {}) {
 export const tartaros = {
   name: "tartaros",
   locate: () => resolveTartaros(),
-  missing: () => "tartaros not found on PATH. Build it (cargo build --release -p tartaros-cli) and put its target directory on PATH.",
+  missing: () => `tartaros not found: neither ${TARTAROS_PACKAGE}, which installs with seisin unless optional dependencies are left out, nor tartaros on PATH.`,
   asksFile: true,
   adapt: tartarosSettings,
   machRegister: true,

@@ -62,8 +62,11 @@ tartaros explain --settings <settings file>
 
 which reads the file through the same code as `run` and exits non-zero (78 since 0.1.0-alpha.6), with the
 reason, on a field it cannot guarantee. That reason is what `seisin check`
-and a refused run print. tartaros needs to be on PATH (`cargo build --release
--p tartaros-cli`, then its `target/release`).
+and a refused run print. tartaros installs with seisin, as the optional
+dependency `@carlostapiacl/tartaros` (a prebuilt binary for macOS and Linux,
+pinned to one version), and that is the one seisin runs. A tartaros on PATH is
+used only when that package is not there: installed with `--omit=optional`, or
+on a platform it has no binary for.
 
 What decides whether it can hold a role is tartaros, not this page: as it
 learns a field, roles that needed it start being given to it, with nothing to
