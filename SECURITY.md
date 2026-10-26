@@ -78,13 +78,34 @@ you have, report it here and it gets routed.
 
 [srt]: https://github.com/anthropics/sandbox-runtime
 
-## Dependency advisory: GHSA-86w9-cpqp-85rv
+## Dependency advisories: both are the sandbox runtime's
 
-`npm audit` reports this high-severity `node-forge` advisory through the pinned sandbox
-runtime. The vulnerable operation is RSA PKCS#1 v1.5 signature verification accepting a malformed
-certificate structure. In runtime 0.0.78 (the analysis; the pin is now 0.0.81, not re-checked) the forge paths seisin reaches generate and sign the
-temporary MITM CA and leaf certificates, or parse a configured CA and compare its RSA modulus to
-the supplied private key; they do not call forge's certificate-signature verification. The
-advisory therefore does not appear reachable through seisin's current use, but remains an
-upstream dependency finding. Downgrading to the audit tool's suggested runtime 0.0.50 would remove
-security fixes and APIs seisin relies on, so it is not an acceptable remediation.
+`npm audit` and Dependabot report two high-severity advisories on seisin. Neither is in seisin's
+code: both are dependencies of the pinned sandbox runtime, [`@anthropic-ai/sandbox-runtime`][srt]
+(0.0.81), which seisin runs as a command and does not import. seisin itself depends on nothing
+else but the optional [tartaros][tt] package, which carries prebuilt binaries and no JavaScript
+dependencies. Both were re-checked against the runtime 0.0.81 source on 2026-10-26, and neither
+appears reachable through seisin's use. Each stays open until the runtime moves past it.
+
+[tt]: https://github.com/carlostapiacl/tartaros
+
+**`node-forge` — [GHSA-86w9-cpqp-85rv][forge].** RSA PKCS#1 v1.5 signature *verification*
+accepts a malformed certificate structure. No version fixes it. The runtime uses forge only in
+its TLS-terminating proxy (`mitm-ca.js`, `mitm-leaf.js`), and only to *build* certificates:
+`pki.createCertificate`, `pki.rsa.generateKeyPair`, PEM encoding and parsing, and a comparison of
+a configured CA's RSA modulus with its private key. The signature itself is made with Node's
+native `crypto`. Nothing calls forge's certificate-signature verification, the vulnerable
+operation. Downgrading to the runtime 0.0.50 that `npm audit fix` suggests would remove security
+fixes and APIs seisin relies on, so it is not a remediation.
+
+**`zod` — [GHSA-mrhx-c7xc-m3w5][zod].** Validating an oversized constrained collection can exhaust
+memory. Fixed only in zod 4.6.6; the runtime pins `^3.25` (zod 3.25.76 installed) and imports
+`zod/v3`, so it cannot be raised from here. The runtime validates two inputs with it. One is
+its settings file (`sandbox-config.js`), and under seisin that file is the one seisin writes for
+the run: the role cannot read it, let alone write it, and the canary checks that before every
+run. The other is the wire protocol of an external request decider (`decider-client.js`, the
+runtime's `proxy-only` mode), which seisin never starts. To exhaust memory through either, one
+would already need to control what seisin hands the runtime.
+
+[forge]: https://github.com/advisories/GHSA-86w9-cpqp-85rv
+[zod]: https://github.com/advisories/GHSA-mrhx-c7xc-m3w5
