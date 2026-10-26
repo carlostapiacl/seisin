@@ -85,6 +85,10 @@ const SCRATCH_FILE = [
   /^\.!\d+!/,                                  // `.!36165!file` — a copy in flight
   /^\.DS_Store$/,
   /^pytest-cache-files-/,
+  // Vite and Vitest bundle a TS config into `vite.config.ts.timestamp-<ms>-<hash>.mjs`
+  // beside it, load it and delete it: a name that never repeats, found asked for
+  // 28 times in one orchestrator's queue, owned by a phase that takes no work.
+  /\.timestamp-\d+(-[0-9a-f]+)?\.[cm]?js$/,
   /(^|[-_])logs?$/i,                           // `logs`, `latest_logs`: what a run leaves
 ];
 /**
@@ -230,7 +234,21 @@ export function kindsOf(targets, opts = {}) {
 export const EXPECTED = {
   plugins:
     "Claude Code updating its plugins from inside the sandbox: plugins run outside it and update there, so the denial is expected — nothing to grant",
+  "os-background":
+    "macOS frameworks reaching for shared state every program touches at start (preferences, notifications, a compatibility sysctl): denied, and nothing the agent does depends on it — nothing to grant",
 };
+
+/**
+ * The system denials macOS frameworks cause in any sandboxed program, whatever
+ * it is doing: counted in one orchestrator's runs, 280 lines of them against the
+ * handful that were the task's. Exact names, so a service the agent itself asks
+ * for still reads as a wall.
+ */
+const OS_BACKGROUND = new Set([
+  "apple.shm.notification_center", "apple.cfprefs.daemonv1", "com.apple.AppleDatabaseChanged",
+  "kcfpreferencesanyapplication", "kern.tcsm_enable", "kern.system_version_compat",
+]);
+const OS_BACKGROUND_RE = /^apple\.cfprefs\.\d+v1$/;   // the per-user cfprefs segment
 
 /**
  * `{ kind, hint }` when the refusal of `target` is expected, else null.
@@ -240,6 +258,7 @@ export const EXPECTED = {
  */
 export function expectedOf(target, { home = homedir(), env = process.env } = {}) {
   const t = String(target ?? "").replace(/\\/g, "/");
+  if (OS_BACKGROUND.has(t) || OS_BACKGROUND_RE.test(t)) return { kind: "os-background", hint: EXPECTED["os-background"] };
   const roots = [
     env.CLAUDE_CONFIG_DIR,
     home && `${home.replace(/\/+$/, "")}/.claude`,

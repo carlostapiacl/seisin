@@ -365,10 +365,10 @@ export function policyId(config) {
  * settings file rather than falling back to a permissive default, and seisin
  * matches that: a permission tool that guesses is worse than no permission tool.
  */
-export function loadConfig(path, text = readFileSync(path, "utf8")) {
+export function loadConfig(path, text = readFileSync(path, "utf8"), { root = null } = {}) {
   // `text` lets a caller validate an edit before writing it — the console
   // previews a policy that does not exist on disk yet, against the real root.
-  const parsed = parseToml(text);
+  const parsed = String(path).endsWith(".json") ? parseJsonPolicy(text, path) : parseToml(text);
   checkShape(parsed, SHAPE, "", path, LINES.get(parsed));
   // Read only what the file actually declared. The parser refuses the names
   // that make inheritance possible, and this is the second half of the same
@@ -445,7 +445,10 @@ export function loadConfig(path, text = readFileSync(path, "utf8")) {
   const runtimeWrites = own(runtime, "writes");
 
   const out = {
-    root: dirname(path), path, keyDirs, keyProviders,
+    // The root is the policy's folder, unless the policy was read from elsewhere
+    // (`--policy`): then it is the folder the command runs in, and the policy
+    // stays outside the repo it governs.
+    root: root ? resolve(root) : dirname(path), path, keyDirs, keyProviders,
     // Through asArray like every other list: `allow = "github.com"` was kept as
     // a string, and a string iterated is its characters.
     allowedDomains: asArray(own(own(parsed, "network"), "allow"), "network.allow"),
@@ -877,6 +880,70 @@ function checkShape(table, shape, prefix, path, lines) {
       throw new Error(`${at}: ${name} = ${JSON.stringify(value)} — ${name} is a table, [${name}], with its settings under it.`);
     if (typeof rule === "object") checkShape(value, rule, name, path, lines);
   }
+}
+
+/**
+ * A policy written as JSON (`--policy run.json`), for a launcher that generates
+ * one: JSON can hold a quote in a value, which the TOML subset cannot, and a
+ * program writing the policy should not have to avoid them.
+ *
+ * The same data and the same strictness as the TOML reader: tables, strings,
+ * whole numbers, booleans, and arrays of strings or whole numbers, nothing
+ * else; the forbidden names refused; every table with a null prototype; and a
+ * key written twice in one object refused, because JSON.parse keeps the last
+ * one, and a policy that is restrictive at the top and cancelled further down
+ * is exactly what the TOML reader refuses too. A JSON policy is not edited by
+ * `grant`: it is generated, so it is changed where it is generated.
+ */
+export function parseJsonPolicy(text, path = "policy.json") {
+  let raw;
+  try { raw = JSON.parse(text); } catch (e) { throw new Error(`${path}: not JSON — ${e.message}`); }
+  // Duplicate keys, which JSON.parse folds away: one pass over the text, which
+  // JSON.parse has just said is well formed.
+  const stack = [];
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === "{") stack.push({ obj: true, keys: new Set(), key: true });
+    else if (c === "[") stack.push({ obj: false });
+    else if (c === "}" || c === "]") stack.pop();
+    else if (c === "," && stack.at(-1)?.obj) stack.at(-1).key = true;
+    else if (c === '"') {
+      let j = i + 1;
+      while (text[j] !== '"') j += text[j] === "\\" ? 2 : 1;
+      const top = stack.at(-1);
+      if (top?.obj && top.key) {
+        const k = JSON.parse(text.slice(i, j + 1));
+        if (top.keys.has(k)) throw new Error(`${path}: "${k}" is written twice in one object; the last would silently win.`);
+        top.keys.add(k);
+        top.key = false;
+      }
+      i = j;
+    }
+  }
+  const walk = (v, name) => {
+    if (typeof v === "string" || typeof v === "boolean") return v;
+    if (typeof v === "number") {
+      if (!Number.isInteger(v) || v < 0) throw new Error(`${path}: ${name} = ${v} — only whole numbers`);
+      return v;
+    }
+    if (Array.isArray(v)) {
+      return v.map((x, i) => {
+        if (typeof x === "string" || (typeof x === "number" && Number.isInteger(x) && x >= 0)) return x;
+        throw new Error(`${path}: ${name}[${i}] — array items are strings or whole numbers`);
+      });
+    }
+    if (isTable(v)) {
+      const t = dict();
+      for (const [k, x] of Object.entries(v)) {
+        if (FORBIDDEN.has(k)) throw new Error(`${path}: "${k}" is not a name a table or key may have`);
+        t[k] = walk(x, name ? `${name}.${k}` : k);
+      }
+      return t;
+    }
+    throw new Error(`${path}: ${name} = ${JSON.stringify(v)} — a value is a string, a whole number, a boolean, an array or a table`);
+  };
+  if (!isTable(raw)) throw new Error(`${path}: the policy is an object`);
+  return walk(raw, "");
 }
 
 /** The candidate within edit distance 3 of `word`, or null. Shared with `check`. */

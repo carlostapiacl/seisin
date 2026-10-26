@@ -71,6 +71,9 @@ Beside the launcher's `status`, each run gets seisin's own `outcome`:
 | `refused` | its canary failed: the boundary did not hold, nothing ran |
 | `denied` | it ran, and was denied at least one file or host |
 | `clean` | it ran, and was denied neither. The OS's own housekeeping (`kind: "system"`) and the canary's expected probes do not count |
+
+A run whose system log dropped kernel messages (macOS, a flooded unified log) also says
+**record incomplete**: the boundary held, but some of its denials may be missing from the log.
 | `unread` | its `seisin.toml` is missing or does not load; the error is shown |
 
 **When something is missing:**
@@ -91,6 +94,33 @@ the console over one policy does.
 **The generated settings** a run's Roles view shows are worked out again from its archived
 `seisin.toml`, against the archive folder. Relative territory resolves there, not in the
 worktree the run had.
+
+## Writing runs in this shape: `--policy`, `--state-dir`, `--run-id`
+
+A launcher does not have to copy anything out of a worktree. Give each run a folder under
+`<dir>`, write the policy into it, and start the run from the worktree with:
+
+```bash
+cd <worktree>
+seisin run agent --policy <dir>/<run_id>/seisin.json --state-dir <dir>/<run_id>/.seisin \
+  --run-id <run_id> -- claude -p "…"
+```
+
+- `--policy <file>` reads the policy from that file and roots it at the working directory,
+  so the territory is the worktree and nothing of seisin's is written into it (no
+  `seisin.toml` to keep out of git, no `.seisin/` to copy). The file may be `seisin.toml`, or
+  `seisin.json` for a launcher that generates the policy: JSON can hold a quote in a value,
+  and it is read as strictly (same settings, a key written twice refused). A JSON policy is
+  changed where it is generated, so `grant` does not edit it.
+- `--state-dir <dir>` keeps the log and the request queue there. With `<dir>/<run_id>/.seisin`
+  the run is already in the shape this console reads, while it runs and after.
+- `--run-id <id>` names the run in the log with the launcher's id, so one run's lines and the
+  launcher's records join on the same key.
+- `seisin check --json` says which of these the installed seisin supports (`capabilities`),
+  and the sandbox, path and version each role gets.
+
+`--policy` and `--state-dir` work with any command (`seisin whose`, `seisin walls`…), the same
+way.
 
 ## Links
 

@@ -32,7 +32,8 @@ import { join, isAbsolute, delimiter, dirname, resolve, basename, sep } from "no
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { writePathsOf, realOrSelf } from "./grants.js";
-import { STATE_DIR, CONFIG_NAME } from "./layout.js";
+import { CONFIG_NAME } from "./layout.js";
+import { stateDir } from "./state.js";
 
 /** seisin's own package: the code the next `seisin run` executes. */
 const SEISIN_HOME = realOrSelf(join(dirname(fileURLToPath(import.meta.url)), ".."));
@@ -270,7 +271,7 @@ function computeParentInputs(config, env) {
     // for a person to diff and move onto the policy; a role that could write it
     // could plant a policy the operator then promotes in good faith.
     { path: policy + ".observed", why: "the policy", always: true },
-    { path: abs(STATE_DIR), why: "seisin's log and request queue", always: true },
+    { path: stateDir(config.root), why: "seisin's log and request queue", always: true },
     ...(config.keyDirs ?? []).map((d) => ({ path: abs(d), why: "a key directory", always: true })),
   ];
   for (const [scheme, p] of Object.entries(config.keyProviders ?? {})) {

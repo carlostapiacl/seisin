@@ -435,3 +435,17 @@ test("the canary fails closed on a sandbox that runs nothing", { skip }, async (
     assert.equal(CANARY_EXIT, 86);
   } finally { run.close(); }
 });
+
+test("territory keeps ~/.CFUserTextEncoding readable on macOS: every process reads it at start, and it holds no secret", async () => {
+  const { keptFor, PLATFORM_FILES } = await import("../src/territory.js");
+  const { homedir } = await import("node:os");
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(join(tmpdir(), "seisin-cfu-"));
+  writeFileSync(join(dir, "seisin.toml"), '[roles.a]\nwrites = ["src/**"]\n');
+  const config = loadConfig(join(dir, "seisin.toml"));
+  const kept = keptFor(config, config.roles.a, {});
+  const file = `${homedir()}/.CFUserTextEncoding`;
+  assert.equal(kept.includes(file), process.platform === "darwin");
+  assert.deepEqual(PLATFORM_FILES.linux, []);
+});

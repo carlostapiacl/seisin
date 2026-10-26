@@ -13,11 +13,12 @@
  * never know: which role a path belongs to, and therefore who to ask next.
  */
 import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { findConfig, loadConfig } from "./config.js";
 import { CONFIG_NAME } from "./layout.js";
+import { setStateDir } from "./state.js";
 import { C, out, err } from "./render.js";
 import { COMMAND_HELP, flagsOf, renderHelp, renderLimits } from "./help.js";
 import { nearest, checkFlags } from "./suggest.js";
@@ -35,6 +36,44 @@ import { nearest, checkFlags } from "./suggest.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const [, , command, ...argv] = process.argv;
+
+/**
+ * `--policy <file>` and `--state-dir <dir>`, for a launcher that keeps both out
+ * of the repo it runs in (an orchestrator with a folder per run). The policy is
+ * read from the file and rooted at the working directory; the log and the
+ * request queue go to the state directory. Both are taken out of seisin's own
+ * part of the line before the command reads it (after `--`, or after `run
+ * <role> <command>`, the words are the agent's), and both reach everything a
+ * run starts through the environment (SEISIN_CONFIG, SEISIN_ROOT,
+ * SEISIN_STATE_DIR).
+ */
+function ownEnd() {
+  const split = argv.indexOf("--");
+  if (split !== -1) return split;
+  if (command !== "run") return argv.length;
+  let i = 1;
+  const values = new Set([...(flagsOf("run")?.values ?? []), "--policy", "--state-dir"]);
+  while (i < argv.length && argv[i].startsWith("-")) i += values.has(argv[i]) ? 2 : 1;
+  return i;
+}
+function takeGlobal(name) {
+  const i = argv.indexOf(name);
+  if (i === -1 || i >= ownEnd()) return null;
+  const v = argv[i + 1];
+  if (v === undefined || v.startsWith("-")) {
+    err(`${C.red}seisin:${C.off} ${name} needs a value\n`);
+    process.exit(2);
+  }
+  argv.splice(i, 2);
+  return v;
+}
+const policyFlag = takeGlobal("--policy");
+const stateFlag = takeGlobal("--state-dir");
+if (stateFlag) setStateDir(stateFlag);
+const rootFlag = policyFlag ? process.cwd() : null;
+if (policyFlag) {
+  process.env.SEISIN_ROOT = rootFlag;
+}
 
 const USAGE = `
 ${C.b}seisin${C.off} — give each agent its own folders and its own keys
@@ -61,6 +100,9 @@ ${C.b}seisin${C.off} — give each agent its own folders and its own keys
   seisin mcp                            an MCP server on stdio — read-only
 
 seisin <command> --help lists a command's flags, examples and exit codes.
+Any command takes --policy <file> (the policy, rooted at the working directory) and
+--state-dir <dir> (where the log and the request queue go) for a launcher that keeps
+both outside the repo (docs/runs.md).
 seisin help limits says what seisin cannot do, in any repo.
 
 Enforcement comes from @anthropic-ai/sandbox-runtime, which asks the OS.
@@ -69,6 +111,7 @@ seisin decides what to ask for, and says whose file it was when the answer is no
 
 /** Loads the policy, or explains where to get one. */
 function config() {
+  if (policyFlag) return loadConfig(resolve(policyFlag), undefined, { root: rootFlag });
   const path = findConfig();
   if (!path) throw new Error(`no ${CONFIG_NAME} found here or above. Run "seisin init" to write one.`);
   return loadConfig(path);
@@ -76,6 +119,7 @@ function config() {
 
 /** The policy here, or null — for a command that can answer without one. */
 function maybeConfig() {
+  if (policyFlag) return config();
   const path = findConfig();
   return path ? loadConfig(path) : null;
 }

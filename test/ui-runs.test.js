@@ -219,3 +219,24 @@ test("without --runs the console is the one it was: one policy, and its writes",
     assert.equal(r.status, 400, "a decision is still taken — this one is just missing its key");
   } finally { server.close(); }
 });
+
+test("a run whose system log dropped kernel messages says its record is incomplete; macOS housekeeping counts as expected", () => {
+  const dir = boxed("ui-runs-dropped-");
+  run(dir, "r-lost", {
+    log: [
+      { event: "canary", role: "agent", run: "l1", confined: true, reasons: [] },
+      { role: "agent", source: "kernel", action: "ipc-posix-shm-read-data", kind: "system", target: "apple.shm.notification_center", verdict: "denied", owners: [] },
+      { role: "agent", source: "kernel", action: "sysctl-write", kind: "system", target: "kern.tcsm_enable", verdict: "denied", owners: [] },
+      { event: "log-dropped", role: "agent", run: "l1", batches: 3 },
+      { event: "log-dropped", role: "agent", run: "l1", batches: 2 },
+    ],
+  });
+  run(dir, "r-whole", { log: [{ event: "canary", role: "agent", run: "w1", confined: true, reasons: [] }] });
+  const v = runsView(dir);
+  const lost = v.runs.find((r) => r.id === "r-lost");
+  assert.equal(lost.dropped, 5);
+  assert.equal(lost.expected, 2);
+  assert.equal(lost.outcome, "clean");
+  assert.equal(v.runs.find((r) => r.id === "r-whole").dropped, 0);
+  assert.equal(v.totals.incomplete, 1);
+});
