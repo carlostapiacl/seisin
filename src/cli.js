@@ -57,6 +57,7 @@ ${C.b}seisin${C.off} — give each agent its own folders and its own keys
   seisin init [--force]                 propose a ${CONFIG_NAME} for this repo
   seisin init --from-observations       write ${CONFIG_NAME}.observed from observed runs
   seisin ui [--port n] [--link]         open the console, live (--link reopens a running one)
+  seisin ui --runs <dir> [--link --json]  a read-only console over a directory of runs (docs/runs.md)
   seisin mcp                            an MCP server on stdio — read-only
 
 seisin <command> --help lists a command's flags, examples and exit codes.
@@ -105,7 +106,7 @@ const COMMANDS = {
   },
   // --link only reads a record; it answers without a policy here too, and
   // says so when the console it finds serves another one.
-  ui: async () => (await import("./commands/ui.js")).ui(argv.includes("--link") ? maybeConfig() : config(), argv),
+  ui: async () => (await import("./commands/ui.js")).ui(argv.includes("--link") || argv.includes("--runs") ? maybeConfig() : config(), argv),
   whose: async () => void (await import("./commands/whose.js")).whose(config(), argv),
   wire: async () => void (await import("./commands/wire.js")).wire(config()),
   review: async () => ((await import("./commands/review.js")).reviewCommand(config(), argv).friction.length ? 1 : 0),

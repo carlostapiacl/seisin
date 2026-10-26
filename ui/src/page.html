@@ -30,7 +30,13 @@
       </div>
     </div>
     <div class="list">
-      <div class="cap">Policy</div>
+      <!-- Over a directory of runs (seisin ui --runs) the first item is every run, and the
+           rest is the one run that is open; with none open, only this one is shown. -->
+      <div id="nav-runs" hidden>
+        <div class="cap">Runs</div>
+        <a href="./" id="nav-all" title="Every run in the directory, read only"><i>☰</i>All runs<span class="pin" id="runs-pin"></span></a>
+      </div>
+      <div class="cap" id="nav-cap">Policy</div>
       <a class="on" href="#requests" id="nav-req" aria-current="page" title="Requests: access an agent asked for and cannot have"><i>⚖</i>Waiting on you<span class="pin" id="req-pin"></span></a>
       <a href="#denied" title="Every denial in the window: what an agent tried and the OS denied"><i>⊘</i>Denied<span class="pin" id="dn-pin"></span></a>
       <a href="#walls" title="A wall: something a role was denied twice or more and would still be denied today"><i>▦</i>Walls<span class="pin" id="wl-pin"></span></a>
@@ -58,6 +64,8 @@
       <code>seisin ui</code> in it.
     </div>
     <div class="banner off" id="off-banner" role="alert" hidden></div>
+    <!-- One run out of a directory of them: who it was, and that nothing here is granted. -->
+    <div class="banner run" id="run-banner" hidden></div>
 
     <div class="head">
       <div>
@@ -100,6 +108,34 @@
       <a class="card kpi" href="#walls" id="k-retry" title="Calls made after the first denial of the same thing">
         <h2>spent retrying</h2><div class="n" id="c-retry">0</div><div class="s" id="c-retry-s">calls on known walls</div></a>
     </div>
+
+    <!-- Every run in the directory (seisin ui --runs): filtered, summed, newest first. -->
+    <section data-view="runs" hidden>
+      <div class="box">
+        <header>
+          <h2>Filter</h2>
+          <span class="note" id="rn-count"></span>
+        </header>
+        <div class="pad runs-filters" id="rn-filters">
+          <label>team <select data-f="team"></select></label>
+          <label>role <select data-f="role"></select></label>
+          <label>work item <select data-f="work_item"></select></label>
+          <label>status <select data-f="status"></select></label>
+          <label>outcome <select data-f="outcome"></select></label>
+          <label>search <input type="search" id="rn-q" spellcheck="false" autocomplete="off" placeholder="run id, work item, repo"></label>
+        </div>
+      </div>
+      <div class="cards" id="rn-kpis"></div>
+      <div class="box">
+        <header><h2>Denied across these runs</h2><span class="note">the same denial in many runs is one line · the OS's own housekeeping last</span></header>
+        <div class="scrollx"><table class="runs" id="rn-causes"></table></div>
+      </div>
+      <div class="box">
+        <header><h2>Runs</h2><span class="note">newest first · open one to see its policy, its denials and its log</span></header>
+        <div class="scrollx"><table class="runs" id="rn-list"></table></div>
+        <p class="blank quiet" id="rn-more" hidden></p>
+      </div>
+    </section>
 
     <section data-view="roles">
 

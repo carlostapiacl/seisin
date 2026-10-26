@@ -35,10 +35,12 @@ function linkFile(port, base) {
  * console another repo had started — and opened a page about the wrong policy
  * with nothing on it to say so. The policy's path travels with the link now.
  */
-export function writeUiLink(port, url, base, policy = null) {
+export function writeUiLink(port, url, base, policy = null, { mode = "policy", dir = null } = {}) {
   const file = linkFile(port, base);
   const temp = `${file}.tmp-${randomBytes(12).toString("hex")}`;
-  writeFileSync(temp, JSON.stringify({ url, pid: process.pid, policy }) + "\n", { flag: "wx", mode: 0o600 });
+  // `mode` and `dir`: a console over a directory of runs (`--runs`) serves no
+  // one policy, and whoever reads this record has to be able to tell.
+  writeFileSync(temp, JSON.stringify({ url, pid: process.pid, policy, mode, dir }) + "\n", { flag: "wx", mode: 0o600 });
   try {
     // Replacing an existing record must neither inherit its mode nor follow
     // its symlink. Readers see one complete record, including after a crash.
@@ -61,7 +63,12 @@ export function readUiLink(port, base) {
   if (!e || typeof e.url !== "string") return null;
   let alive = null;
   if (Number.isInteger(e.pid) && e.pid > 0) alive = processAlive(e.pid);
-  return { url: e.url, pid: e.pid ?? null, alive, policy: typeof e.policy === "string" ? e.policy : null };
+  return {
+    url: e.url, pid: e.pid ?? null, alive,
+    policy: typeof e.policy === "string" ? e.policy : null,
+    mode: e.mode === "runs" ? "runs" : "policy",
+    dir: typeof e.dir === "string" ? e.dir : null,
+  };
 }
 
 /** Removes the record. Called on exit, and when a stale one is found. */
