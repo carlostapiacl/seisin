@@ -15,8 +15,9 @@ changed rather than failing on the old spelling.
   longer needs cargo. seisin runs that one first and a `tartaros` on PATH only when the package
   is not installed, the order srt is found in. *What to do:* nothing; a tartaros you built and
   put on PATH stops being the one used, unless you install with `--omit=optional`.
-- **The canary's granted write goes into a directory made for it.** Under tartaros on Linux
-  without a mount namespace, a granted root with a deny below it (`/tmp`, with `/tmp/claude`
+- **The canary's granted write goes into a directory made for it.** Under tartaros on Linux,
+  where it falls back to its Landlock carve (no mount namespace, or a denied path that does not
+  exist yet), a granted root with a deny below it (`/tmp`, with `/tmp/claude`
   denied) takes no new entries at its top, so the control failed and no run started (exit 86).
   *What to do:* nothing.
 

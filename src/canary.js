@@ -66,11 +66,13 @@ export async function runCanary({ srt, wrap = null, settingsFile, settings, env,
   const candidates = (granted ?? settings.filesystem.allowWrite ?? []).filter((p) => isDir(p));
   const writable = candidates.find((p) => !(cwd && (p === cwd || p.startsWith(cwd + "/") || cwd.startsWith(p + "/")))) ?? candidates[0];
   // Written into a directory made for it, not beside what is already there:
-  // tartaros on Linux without a mount namespace grants a root that has a deny
-  // below it (`/tmp/claude`, under `/tmp`) only through its subdirectories,
-  // so a new entry at that root is refused although the policy grants it
-  // (ubuntu-latest, tartaros 0.1.0-alpha.14: the control at /tmp's root
-  // failed). A directory that exists when the sandbox starts is one of them.
+  // where tartaros on Linux falls back to its Landlock carve (no mount
+  // namespace, or a denied path that does not exist yet), a root with a deny
+  // below it (`/tmp/claude`, under `/tmp`) is granted only through its
+  // subdirectories, so a new entry at that root is refused although the
+  // policy grants it (ubuntu-latest, tartaros 0.1.0-alpha.14: the control at
+  // /tmp's root failed; `explain` says so as a warning). A directory that
+  // exists when the sandbox starts is one of them.
   const insideDir = writable ? join(writable, `.seisin-canary-${nonce}`) : null;
   const inside = insideDir ? join(insideDir, "in") : null;
   // The runtime's shared temp directory (srt.js, SHARED_TMP): granted by the
