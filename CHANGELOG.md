@@ -8,6 +8,14 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## Unreleased
+
+- **tartaros installs with seisin.** `@carlostapiacl/tartaros` 0.1.0-alpha.14 is an optional
+  dependency: a prebuilt binary for macOS and Linux, so `[sandbox] provider = "tartaros"` no
+  longer needs cargo. seisin runs that one first and a `tartaros` on PATH only when the package
+  is not installed, the order srt is found in. *What to do:* nothing; a tartaros you built and
+  put on PATH stops being the one used, unless you install with `--omit=optional`.
+
 ## 0.6.0 — 2026-10-23
 
 **Breaking:** every run now starts with a mandatory canary. A machine or policy where 0.5.0

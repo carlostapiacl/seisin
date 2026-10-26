@@ -44,6 +44,9 @@
   "dependencies": {
     "@anthropic-ai/sandbox-runtime": "0.0.81"
   },
+  "optionalDependencies": {
+    "@carlostapiacl/tartaros": "0.1.0-alpha.14"
+  },
   "scripts": {
     "test": "node --test test/*.test.js",
     "build:ui": "node ui/build.js",

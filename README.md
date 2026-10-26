@@ -212,7 +212,7 @@ will not make its guarantee stronger than it is.
 npm install -g seisin
 ```
 
-That pulls in [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropics/sandbox-runtime), the default sandbox: Seatbelt on macOS, bubblewrap on Linux. No containers, no VMs, no daemon. seisin has **no other dependencies**. [tartaros](https://github.com/carlostapiacl/tartaros), or a sandbox of your own, can enforce instead ([docs/sandboxes.md](https://github.com/carlostapiacl/seisin/blob/main/docs/sandboxes.md)).
+That pulls in [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropics/sandbox-runtime), the default sandbox: Seatbelt on macOS, bubblewrap on Linux. No containers, no VMs, no daemon. Its one other dependency is optional: [tartaros](https://github.com/carlostapiacl/tartaros), prebuilt for macOS and Linux, which can enforce instead — as can a sandbox of your own ([docs/sandboxes.md](https://github.com/carlostapiacl/seisin/blob/main/docs/sandboxes.md)).
 
 **On Linux you also need three system packages** — the runtime refuses to start without
 them rather than running unconfined, which is the right failure and an unhelpful message:

@@ -13,7 +13,7 @@ import { writeFileSync, existsSync, chmodSync, mkdirSync, readFileSync, rmSync, 
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { loadConfig } from "../src/config.js";
-import { tartarosArgv, tartaros } from "../src/sandboxes/tartaros.js";
+import { tartarosArgv, tartaros, resolveTartaros, dependencyTartaros } from "../src/sandboxes/tartaros.js";
 import { commandSandbox, assessCheck } from "../src/sandboxes/command.js";
 import { weigh, chooseSandbox, sandboxesOf, DEFAULT_SANDBOX } from "../src/sandboxes/index.js";
 import { runCanary } from "../src/canary.js";
@@ -114,10 +114,14 @@ exec "${resolveSrt() ?? "srt"}" --settings "$file" -- "$@"
   chmodSync(join(dir, "tartaros"), 0o755);
   return { dir, asked: () => (existsSync(asked) ? readFileSync(asked, "utf8").trim().split("\n") : []) };
 }
+// In this process the stand-in is the one found: the pinned package, which a
+// checkout has installed, would be found before it. A child seisin finds that one.
 const onPath = (dir, fn) => {
   const was = process.env.PATH;
+  const locate = tartaros.locate;
   process.env.PATH = `${dir}:${was}`;
-  try { return fn(); } finally { process.env.PATH = was; }
+  tartaros.locate = () => resolveTartaros({ from: dir });
+  try { return fn(); } finally { process.env.PATH = was; tartaros.locate = locate; }
 };
 
 test("tartaros is handed the settings file as it is, the role as a label", () => {
@@ -152,13 +156,38 @@ test("a run's own settings file is the one asked about, when there is one", () =
 
 test("tartaros not installed is passed over as missing, without asking anything", () => {
   const box = cfg(`[sandbox]\nprovider = ["tartaros", "srt"]\n${ROLE}`);
-  const was = process.env.PATH;
-  process.env.PATH = "/nonexistent";
+  const was = tartaros.locate;
+  tartaros.locate = () => null;
   try {
     const { options } = weigh(box, settings(), { platform: "linux" });
-    assert.match(options[0].missing, /tartaros not found on PATH/);
+    assert.match(options[0].missing, /tartaros not found: neither @carlostapiacl\/tartaros/);
     assert.deepEqual(options[0].unmet, []);
-  } finally { process.env.PATH = was; }
+  } finally { tartaros.locate = was; }
+});
+
+test("the pinned tartaros package is found before one on PATH, and PATH is the fallback", () => {
+  const tt = fakeTartaros();
+  const root = scratch("seisin-tt-pkg-");
+  const pkg = join(root, "node_modules", "@carlostapiacl", "tartaros");
+  mkdirSync(join(pkg, "bin"), { recursive: true });
+  const pinned = join(pkg, "bin", "tartaros");
+  writeFileSync(pinned, "#!/bin/sh\n");
+  chmodSync(pinned, 0o755);
+  writeFileSync(join(pkg, "package.json"), JSON.stringify({ name: "@carlostapiacl/tartaros", main: "index.js" }));
+  writeFileSync(join(pkg, "index.js"), `exports.binaryPath = () => ${JSON.stringify(pinned)};`);
+  assert.equal(dependencyTartaros(root), pinned);
+  assert.equal(resolveTartaros({ from: root, path: tt.dir }), pinned);
+  const bare = scratch("seisin-tt-nopkg-");
+  assert.equal(dependencyTartaros(bare), null);
+  assert.equal(resolveTartaros({ from: bare, path: tt.dir }), join(tt.dir, "tartaros"));
+  assert.equal(resolveTartaros({ from: bare, path: "/nonexistent" }), null);
+  // A package whose binary is missing (an optional platform package left out) is not found.
+  const broken = scratch("seisin-tt-nobin-");
+  const bpkg = join(broken, "node_modules", "@carlostapiacl", "tartaros");
+  mkdirSync(bpkg, { recursive: true });
+  writeFileSync(join(bpkg, "package.json"), JSON.stringify({ name: "@carlostapiacl/tartaros", main: "index.js" }));
+  writeFileSync(join(bpkg, "index.js"), `exports.binaryPath = () => { throw new Error("no tartaros-linux-x64"); };`);
+  assert.equal(dependencyTartaros(broken), null);
 });
 
 test("a declared sandbox's check decides like tartaros's, and silence or a hang is a no", () => {
@@ -254,7 +283,22 @@ test("a declared sandbox that ignores the policy starts nothing: the canary stop
   assert.ok(!existsSync(join(dir, "web/z")), "the agent ran under a sandbox that failed its canary");
 });
 
-test("a role runs under tartaros through its own --settings, and the territory holds", { skip: srtSkip() }, () => {
+/**
+ * A seisin started as its own process finds the pinned tartaros, when a checkout
+ * has it installed, before any stand-in on PATH. Then the run below is under the
+ * real one, which only holds where the host gives it its backend (Landlock: not
+ * Docker Desktop's linuxkit). Its own explain says whether this host does.
+ */
+function pinnedTartarosSkip() {
+  const bin = dependencyTartaros();
+  if (!bin) return false;
+  const file = join(scratch("seisin-tt-host-"), "settings.json");
+  writeFileSync(file, JSON.stringify(settings()));
+  const r = spawnSync(bin, ["explain", "--settings", file], { encoding: "utf8" });
+  return r.status === 0 ? false : `the pinned tartaros cannot run here: ${(r.stderr || r.stdout).trim().split("\n").pop()}`;
+}
+
+test("a role runs under tartaros through its own --settings, and the territory holds", { skip: srtSkip() || pinnedTartarosSkip() }, () => {
   const tt = fakeTartaros();
   const dir = repoWith("sbx-tt-", `[sandbox]\nprovider = "tartaros"\n[roles.dev]\nwrites = ["src/**"]\n`, ["src/", "web/"]);
   const r = onPath(tt.dir, () => run(dir, "run", "dev", "--agent", "none", "--", "sh", "-c", "echo ok > src/a; echo no > web/b 2>/dev/null; true"));
