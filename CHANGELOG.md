@@ -8,7 +8,10 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
-## Unreleased
+## 0.6.1 — 2026-10-26
+
+Fixes tartaros on Linux, where 0.6.0 started no run wherever tartaros falls back to its Landlock
+carve, and installs tartaros with seisin.
 
 - **tartaros installs with seisin.** `@carlostapiacl/tartaros` 0.1.0-alpha.14 is an optional
   dependency: a prebuilt binary for macOS and Linux, so `[sandbox] provider = "tartaros"` no

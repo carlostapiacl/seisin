@@ -6,9 +6,9 @@
 
 ## The suite
 
-**1090 tests** in the macOS suite; 1083 passed and 7 platform tests skipped (after 0.6.0, local,
-2026-10-26). In CI for 0.6.0 (2026-10-23): `ubuntu-latest` 1088, 1059 passed and 29 skipped; macOS 1089, 1079
-passed and 10 skipped; Node 18/20/22/24. Before that, Linux locally: 1023, 1000 passed and 23
+**1090 tests** in the macOS suite; 1083 passed and 7 platform tests skipped (0.6.1, local,
+2026-10-26). In CI the same day: `ubuntu-latest` 1089, 1060 passed and 29 skipped; macOS 1090, 1081
+passed and 9 skipped; Node 18/20/22/24. Before that, Linux locally: 1023, 1000 passed and 23
 skipped (2026-10-13, Debian 12, bubblewrap 0.8.0). The [workflow](../.github/workflows/test.yml) runs macOS and Linux
 under bubblewrap on Node 18/20/22/24 for pull requests and pushes to `main`, and a release is
 published only after it passes ([publish.yml](../.github/workflows/publish.yml)). Historical full-suite measurements remain dated below; the
@@ -105,7 +105,7 @@ what has not.
 
 | | macOS 15 · Seatbelt | Linux · bubblewrap |
 |---|---|---|
-| the suite | **1090 tests, 1083 passing and 7 skipped** (platform) — local, after 0.6.0, 2026-10-26 | **1023 tests, 1000 passing and 23 skipped** — 2026-10-13, local, in Docker: Debian 12, bwrap 0.8.0, `--privileged` (bubblewrap mounts `/proc`) |
+| the suite | **1090 tests, 1083 passing and 7 skipped** (platform) — local, 0.6.1, 2026-10-26 | **1023 tests, 1000 passing and 23 skipped** — 2026-10-13, local, in Docker: Debian 12, bwrap 0.8.0, `--privileged` (bubblewrap mounts `/proc`) |
 | CI (paused) | last green run 2026-10-04, Node 18/20/22/24; CI failed then if the 26 sandbox tests skipped | `ubuntu-latest`, Node 18/20/22/24, same run |
 | `[runtime] isolate = "home"` (`= true`) | ✅ — and it did not start here at all until the 104-byte socket fix | ✅ — `tmpdir()` is `/tmp`, so the path never came close |
 | `[runtime] isolate = "credentials"` | ✅ — no role home, so the socket limit cannot reach it | ✅ |
