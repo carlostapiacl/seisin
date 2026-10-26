@@ -8,6 +8,18 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## Unreleased
+
+- **`seisin ui --runs <dir>`: a read-only console over a directory of runs.** For a launcher
+  that writes a policy per run and throws the worktree away: it archives each run's
+  `seisin.toml`, `.seisin/` and a `run.json` into one folder per run, and this lists them all.
+  It filters by team, role, work item, status and outcome, and sums what they were denied and
+  what that cost in retries. One run opens with `&run=<run_id>` in the link. Nothing is
+  written from it: every write answers 405 and the page draws no grant. `--link --json`
+  prints `{running, url, port, mode}` for a program, opening nothing. The folder's contract
+  is [docs/runs.md](docs/runs.md). On port 4179 by default. *What to do:* nothing; `seisin ui`
+  without `--runs` is as it was.
+
 ## 0.6.1 — 2026-10-26
 
 Fixes tartaros on Linux, where 0.6.0 started no run wherever tartaros falls back to its Landlock

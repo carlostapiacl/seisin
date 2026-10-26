@@ -23,6 +23,7 @@ import { pending, requestsPath, settle, applyGrant, refuseIfBarred, editPolicy, 
 import { causesOf, describeWalls, parseSince, queue, verdicts, wallsByRole } from "./views.js";
 import { planEdit, hashOf } from "./controls.js";
 import { inspect } from "./inspect.js";
+import { scanRuns, runsView, runOf, runPolicy, filtersOf, isRunId } from "./runs.js";
 
 // Moved to views.js, which the MCP server shares; kept importable from here.
 export { causesOf } from "./views.js";
@@ -104,7 +105,7 @@ function remember(map, key, value, max = 4) {
  * page downloaded every two seconds and it drew none of them. One role's are
  * served on demand by /api/settings.
  */
-export function state(configPath, { since = null, snap = snapshot(configPath) } = {}) {
+export function state(configPath, { since = null, snap = snapshot(configPath), readOnly = false } = {}) {
   const { cfg, text, all } = snap;
 
   // The date filter narrows everything read from the log: activity, causes,
@@ -162,7 +163,9 @@ export function state(configPath, { since = null, snap = snapshot(configPath) } 
     // A write keyed by a folder can be granted as its one file instead; the
     // line that choice carries is said here, once, so the page and the CLI
     // say the same thing about Claude Code.
-    requests: queue(cfg, all).map((r) => ({
+    // Read only (an archived run): a queue an older seisin left is an error to
+    // show, never a rewrite of a file that is not this console's (requests.js).
+    requests: queue(cfg, all, { readOnly }).map((r) => ({
       ...r,
       // Said by the server in the same words as the CLI, so the page never
       // works out where a request goes on its own (handoff.js).
@@ -197,14 +200,14 @@ export function state(configPath, { since = null, snap = snapshot(configPath) } 
  * moved — and a tag naming it, so a poll that already has it gets a 304 and
  * no body at all.
  */
-function stateBody(configPath, since) {
+function stateBody(configPath, since, { readOnly = false } = {}) {
   // One snapshot for the tag and the body. Each used to take its own, so a
   // file that moved between the two calls got a body filed under the tag of
   // what was there before — and a 304 for it until something else moved.
   const snap = snapshot(configPath);
-  const k = `${snap.key}|${since}`;
+  const k = `${snap.key}|${since}|${readOnly}`;
   return memo.bodies.get(k) ?? remember(memo.bodies, k, {
-    body: JSON.stringify(state(configPath, { since, snap })),
+    body: JSON.stringify(state(configPath, { since, snap, readOnly })),
     etag: `"${createHash("sha256").update(k).digest("hex").slice(0, 24)}"`,
   });
 }
@@ -458,7 +461,37 @@ function declineAll(configPath, { keys, reason }) {
   return { ok: true, declined };
 }
 
-export function serve(configPath, port = 4178, { lockWaitMs = 10000 } = {}) {
+/**
+ * The console over a directory of runs (`seisin ui --runs`, runs.js), read
+ * only: the territory each run had was lent by whoever launched it, and a
+ * grant written into an archived policy changes nothing. So in this mode
+ * every route that writes answers 405, and the page draws no grant.
+ */
+function runsBody(dir, query) {
+  const filters = filtersOf(query);
+  const scanned = scanRuns(dir);
+  const k = `${JSON.stringify(filters)}|${scanned.sig}`;
+  return runsMemo.get(k) ?? remember(runsMemo, k, {
+    body: JSON.stringify(runsView(dir, filters, { scanned })),
+    etag: `"${createHash("sha256").update(k).digest("hex").slice(0, 24)}"`,
+  });
+}
+const runsMemo = new Map();
+
+/** One run as the page draws it: its own state, read only, with what run.json said. */
+function runBody(dir, id, since) {
+  const run = runOf(dir, id);
+  if (run.outcome === "unread") throw Object.assign(new Error(`run ${id}: ${run.error}`), { status: 422 });
+  const got = stateBody(runPolicy(dir, id), since, { readOnly: true });
+  // The state is already a string; the run is stitched onto it rather than
+  // parsed and serialized again on every poll.
+  return {
+    body: `${got.body.slice(0, -1)},"mode":"runs","readOnly":true,"run":${JSON.stringify(run)}}`,
+    etag: `"${createHash("sha256").update(`${got.etag}|${JSON.stringify(run)}`).digest("hex").slice(0, 24)}"`,
+  };
+}
+
+export function serve(configPath, port = 4178, { lockWaitMs = 10000, runsDir = null } = {}) {
   const page = join(HERE, "..", "ui", "index.html");
   if (!existsSync(page)) throw new Error("the console is missing from this install");
 
@@ -553,6 +586,12 @@ export function serve(configPath, port = 4178, { lockWaitMs = 10000 } = {}) {
         return answer(statusOf(e), { error: e.message });
       }
     };
+    const query = (req.url ?? "").split("?")[1] ?? "";
+    // Over runs, nothing is written: not a decision, not a control file.
+    if (runsDir && req.method !== "GET" && req.method !== "HEAD") {
+      res.writeHead(405, { allow: "GET", "content-type": "application/json" });
+      return res.end(JSON.stringify({ error: "read only: this console shows archived runs. Access is asked for where the run was launched, not here." }));
+    }
     // ~85 bytes per key: 1 MB is ten thousand requests on one screen.
     if (req.method === "POST" && pathOf(req.url) === "/api/decline-all")
       return post(1024 * 1024, (args) => declineAll(configPath, args));
@@ -571,12 +610,23 @@ export function serve(configPath, port = 4178, { lockWaitMs = 10000 } = {}) {
         res.writeHead(405, { allow: "GET" });
         return res.end();
       }
-      if (pathOf(req.url) === "/api/state") {
+      if (pathOf(req.url) === "/api/info")
+        return answer(200, runsDir ? { mode: "runs", dir: runsDir, readOnly: true } : { mode: "policy", config: configPath, readOnly: false });
+      const routes = runsDir
+        ? { "/api/runs": () => runsBody(runsDir, query),
+            "/api/run": () => {
+              const id = new URLSearchParams(query).get("run");
+              if (!isRunId(id)) throw bad("run must name one of the runs: ?run=<run_id>");
+              return runBody(runsDir, id, sinceOf(req.url));
+            } }
+        : { "/api/state": () => stateBody(configPath, sinceOf(req.url)) };
+      const route = routes[pathOf(req.url)];
+      if (route) {
         let got;
         try {
-          got = stateBody(configPath, sinceOf(req.url));
+          got = route();
         } catch (e) {
-          return answer(500, { error: e.message });
+          return answer(e.status ?? 500, { error: e.message });
         }
         // The page polls, so tell every cache in between to stay out of it;
         // the page itself sends the tag back and is told when nothing moved.
@@ -587,8 +637,16 @@ export function serve(configPath, port = 4178, { lockWaitMs = 10000 } = {}) {
       }
       if (pathOf(req.url) === "/api/settings") {
         try {
-          const role = new URLSearchParams(req.url.split("?")[1] ?? "").get("role");
-          return answer(200, { role, settings: settingsOf(configPath, role) });
+          const params = new URLSearchParams(query);
+          const role = params.get("role");
+          let policy = configPath;
+          if (runsDir) {
+            const id = params.get("run");
+            if (!isRunId(id)) throw bad("run must name one of the runs: ?run=<run_id>");
+            runOf(runsDir, id);
+            policy = runPolicy(runsDir, id);
+          }
+          return answer(200, { role, settings: settingsOf(policy, role) });
         } catch (e) {
           return answer(e.status ?? 500, { error: e.message });
         }
@@ -611,6 +669,9 @@ export function serve(configPath, port = 4178, { lockWaitMs = 10000 } = {}) {
       // For `seisin ui`, which builds the URL, and for tests. Never sent.
       Object.defineProperty(server, "seisinToken", { value: token });
       ok(server);
+      // The first read of a few hundred runs takes seconds; started now, it is
+      // mostly done by the time the page asks.
+      if (runsDir) setImmediate(() => { try { scanRuns(runsDir); } catch {} });
     });
     server.on("error", (e) =>
       fail(e.code === "EADDRINUSE"

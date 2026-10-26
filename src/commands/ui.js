@@ -14,6 +14,8 @@
  * failing. See uilink.js.
  */
 import { spawnSync } from "node:child_process";
+import { statSync } from "node:fs";
+import { resolve } from "node:path";
 import { serve } from "../serve.js";
 import { writeUiLink, readUiLink, clearUiLink } from "../uilink.js";
 import { C, out } from "../render.js";
@@ -23,28 +25,58 @@ function open(url) {
   spawnSync(opener, [url], { stdio: "ignore", shell: process.platform === "win32" });
 }
 
+/**
+ * `--runs <dir>`: the console over a directory of runs, read only (runs.js,
+ * docs/runs.md), on 4179 unless told otherwise, so it does not take the port a
+ * repository's own console would want.
+ */
+function runsDirOf(argv) {
+  const i = argv.indexOf("--runs");
+  if (i === -1) return null;
+  const dir = argv[i + 1];
+  if (!dir || dir.startsWith("--")) throw new Error("--runs needs a directory: seisin ui --runs <dir>");
+  let st = null;
+  try { st = statSync(dir); } catch {}
+  if (!st?.isDirectory()) throw new Error(`--runs ${dir}: not a directory`);
+  return resolve(dir);
+}
+
 export async function ui(config, argv = []) {
+  const runsDir = runsDirOf(argv);
+  const mode = runsDir ? "runs" : "policy";
   const i = argv.indexOf("--port");
-  const port = i === -1 ? 4178 : Number(argv[i + 1]);
+  const port = i === -1 ? (runsDir ? 4179 : 4178) : Number(argv[i + 1]);
+  const json = argv.includes("--json");
 
   // `seisin ui --link`: print the live link a running console left, and open
   // it, without starting anything. For when the terminal that had it is gone.
+  // With --json, the record for a program to read — `{url, port, mode}` — and
+  // nothing opened: the launcher's own panel links to it.
   if (argv.includes("--link")) {
     const found = readUiLink(port);
+    if (json) {
+      if (found && found.alive === false) clearUiLink(port);
+      const live = found && found.alive !== false;
+      out(JSON.stringify(live
+        ? { running: true, url: found.url, port, mode: found.mode, ...(found.dir && { dir: found.dir }), ...(found.policy && { policy: found.policy }) }
+        : { running: false, port }) + "\n");
+      return;
+    }
     if (found && found.alive !== false) {
       out(`\n  ${C.b}${found.url}${C.off}\n  ${C.dim}the link a seisin ui on ${port} is serving. open it here, do not paste it anywhere.${C.off}\n` +
-        servesWhich(found.policy, config?.path) + "\n");
+        servesWhich(found.policy, runsDir ? null : config?.path, found) + "\n");
       open(found.url);
       return;
     }
     if (found && found.alive === false) clearUiLink(port);
-    out(`\n  ${C.dim}no seisin ui running on ${port} — start one with: seisin ui${port === 4178 ? "" : ` --port ${port}`}${C.off}\n\n`);
+    const start = runsDir ? `seisin ui --runs ${runsDir}${port === 4179 ? "" : ` --port ${port}`}` : `seisin ui${port === 4178 ? "" : ` --port ${port}`}`;
+    out(`\n  ${C.dim}no seisin ui running on ${port} — start one with: ${start}${C.off}\n\n`);
     return;
   }
 
   let server;
   try {
-    server = await serve(config.path, port);
+    server = await serve(runsDir ? null : config.path, port, { runsDir });
   } catch (e) {
     // A console is already on this port: hand back its live link rather than
     // erroring, which is the case that sends people digging in the terminal.
@@ -54,7 +86,7 @@ export async function ui(config, argv = []) {
         out(
           `\n  ${C.b}${found.url}${C.off}\n` +
           `  ${C.dim}a seisin ui is already running on ${port}; reopening its link. ctrl-c that terminal to stop it.${C.off}\n` +
-          servesWhich(found.policy, config.path) + "\n"
+          servesWhich(found.policy, runsDir ? null : config.path, found) + "\n"
         );
         open(found.url);
         return;
@@ -70,19 +102,22 @@ export async function ui(config, argv = []) {
   const bound = server.address().port;
   const url = `http://127.0.0.1:${bound}/#t=${server.seisinToken}`;
   // Recorded before we print, so `--link` and a second `seisin ui` can find it.
-  writeUiLink(bound, url, undefined, config.path);
+  writeUiLink(bound, url, undefined, runsDir ? null : config.path, { mode, dir: runsDir });
 
   // local_binding opens every port (macOS); local_ports opens the ones it
   // names, on every platform — so only a role that names THIS port counts.
-  const reach = Object.values(config.roles)
+  const reach = Object.values(config?.roles ?? {})
     .filter((r) => (r.localBinding && process.platform === "darwin") || (r.localPorts ?? []).includes(bound))
     .map((r) => r.name);
 
   out(
     `\n  ${C.b}${url}${C.off}\n` +
-    `  ${C.dim}reading ${config.path} and the log, live. ctrl-c to stop.${C.off}\n` +
+    (runsDir
+      ? `  ${C.dim}reading the runs in ${runsDir}, live and read only: nothing is granted from here. ctrl-c to stop.${C.off}\n` +
+        `  ${C.dim}one run: add &run=<run_id> to the link.${C.off}\n`
+      : `  ${C.dim}reading ${config.path} and the log, live. ctrl-c to stop.${C.off}\n`) +
     `  ${C.dim}the link carries this run's token: open it here, do not paste it anywhere.${C.off}\n` +
-    `  ${C.dim}lost it? this terminal has it above, or run: seisin ui --link${bound === 4178 ? "" : ` --port ${bound}`}${C.off}\n` +
+    `  ${C.dim}lost it? this terminal has it above, or run: seisin ui${runsDir ? ` --runs ${runsDir}` : ""} --link${bound === (runsDir ? 4179 : 4178) ? "" : ` --port ${bound}`}${C.off}\n` +
     (reach.length
       ? `  ${C.yellow}${reach.join(", ")} can reach this port on localhost: they can load this page, ` +
         `but not the token, which only travels in the link above.${C.off}\n`
@@ -101,7 +136,8 @@ export async function ui(config, argv = []) {
  * Which policy a running console serves, and a warning when it is not the one
  * this directory would use. `here` is null when there is no policy here.
  */
-export function servesWhich(served, here) {
+export function servesWhich(served, here, found = null) {
+  if (found?.mode === "runs") return `  ${C.dim}serving the runs in ${found.dir} (read only)${C.off}\n`;
   if (!served) return `  ${C.dim}(started by an older seisin: which seisin.toml it serves is not recorded)${C.off}\n`;
   if (here && served !== here)
     return `  ${C.yellow}it serves ${served} — not ${here}, the policy for this directory.${C.off}\n` +

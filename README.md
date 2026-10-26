@@ -280,6 +280,7 @@ seisin explain frontend write src/api/x  # ask one question, exit 0 or 1
 seisin review --since 7d                 # what the log says about the policy, this week
 seisin wire                              # install the PreToolUse hook in this repo
 seisin ui                                # a console for deciding what is waiting
+seisin ui --runs <dir>                   # read only, over many runs a launcher archived (docs/runs.md)
 ```
 
 **Three ways in, and they say the same thing.** The **CLI** is what a person types and what
@@ -1036,8 +1037,8 @@ the same kernel or workspace, and which one you want depends on what you are pro
 
 ## Status
 
-**1090 tests on macOS, 1083 passing and 7 platform skips** (0.6.1, 2026-10-26, local); in CI the
-same day, on `ubuntu-latest` **1089, 1060 passing and 29 platform skips**, and on macOS 1090,
+**1101 tests on macOS, 1094 passing and 7 platform skips** (after 0.6.1, 2026-10-26, local); in CI for
+0.6.1 the same day, on `ubuntu-latest` **1089, 1060 passing and 29 platform skips**, and on macOS 1090,
 1081 passing and 9 skips, Node 18/20/22/24, with the 26 core boundary tests skipping none. On 2026-10-12, 91 of the suite's tests
 needed `@anthropic-ai/sandbox-runtime` installed — counted by running it with the runtime
 hidden — and run real commands through the real kernel; 26 of them are the core boundary file,
