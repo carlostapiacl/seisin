@@ -8,6 +8,16 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## Unreleased
+
+- **`key_mode = "inject"` on macOS, under tartaros.** Whether a sandbox can mask is now the
+  sandbox's to say: srt masks on Linux (macOS is still upstream, sandbox-runtime#593), tartaros
+  masks on Linux and macOS from 0.1.0-alpha.16, and `check` says when a macOS provider list has
+  no tartaros. *What to do:* on macOS, `[sandbox] provider = ["tartaros", "srt"]`.
+- **A sandbox of your own is never handed an `inject` role.** It is started with the real value
+  in its environment and seisin cannot know it masks; before, on Linux, it could be chosen.
+  *What to do:* nothing, unless a role with `inject` ran under one; `check` now says no.
+
 ## 0.6.2 — 2026-10-26
 
 A read-only console over many runs, and tartaros 0.1.0-alpha.15.

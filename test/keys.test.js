@@ -153,17 +153,16 @@ test("the provider can carry the default, and the role overrides it", () => {
   rmSync(b.dir, { recursive: true, force: true });
 });
 
-test("inject runs on Linux and is refused elsewhere, with the reason in the message", () => {
-  // inject is the mode where the agent never sees the value; it is Linux-only
-  // for now. On Linux modeOf returns it (the host check lives in injectKeysOf);
-  // off Linux it is refused, and the message points at the upstream fix rather
-  // than reading as "not supported".
+test("inject runs on Linux and macOS and is refused elsewhere, with the reason in the message", () => {
+  // inject is the mode where the agent never sees the value. Which sandbox can
+  // mask is the sandbox's to say (sandboxes/, masks); modeOf refuses only where
+  // none does.
   const { cfg, dir } = cfgWith('keys = ["keychain://t"]\nkey_mode = "inject"');
   const call = () => modeOf(cfg, cfg.roles.frontend, cfg.roles.frontend.keyEntries[0]);
-  if (process.platform === "linux") {
+  if (process.platform === "linux" || process.platform === "darwin") {
     assert.equal(call(), "inject");
   } else {
-    assert.throws(call, /not available on .* yet[\s\S]*593/);
+    assert.throws(call, /not available on/);
   }
   rmSync(dir, { recursive: true, force: true });
 });

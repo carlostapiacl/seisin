@@ -71,10 +71,14 @@ export function weigh(config, settings, { platform = process.platform, role = nu
       // `browsers`: a Mach service to register. srt's schema has no field for it
       // (srt-mach.mjs adds it); tartaros takes it as network.allowMachRegister
       // (adapt). A sandbox that is given it neither way cannot hold the role.
+      // `inject`: the real value is in the environment the sandbox starts with,
+      // so only one that masks credentials may be handed the role.
+      const masked = (own.credentials?.envVars ?? []).length > 0;
+      const masking = masked ? (sandbox.masks ? sandbox.masks(platform) : `masked credentials: ${sandbox.name} does not mask them`) : null;
       const browser = register.length && !sandbox.machRegister
         ? [`a Mach service to register (${register.join(", ")}, for browsers): ${sandbox.name} is not given it, only srt and tartaros are`]
         : [];
-      return { sandbox, bin, unmet: [...unmet, ...browser], warnings, missing: bin ? null : sandbox.missing() };
+      return { sandbox, bin, unmet: [...(masking ? [masking] : []), ...unmet, ...browser], warnings, missing: bin ? null : sandbox.missing() };
     });
     const chosen = options.find((o) => o.bin && o.unmet.length === 0) ?? null;
     return { chosen, options };
