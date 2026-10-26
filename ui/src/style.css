@@ -431,3 +431,25 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     .preview input{width:100%}
     .places li{flex-direction:column;gap:2px}
   }
+
+/* ── a directory of runs (seisin ui --runs) ─────────────────────────────── */
+/* `hidden` has to win over the display these set, or the runs view keeps the policy's nav and cards. */
+.side a[hidden],.side .cap[hidden],.cards[hidden],.range[hidden]{display:none}
+.banner.run{border-left:3px solid var(--blue)}
+.banner.run .meta{color:var(--mid);font-size:12px;margin-top:4px}
+.runs-filters{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+.runs-filters label{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--mid)}
+.runs-filters select,.runs-filters input{font:inherit;font-size:12px;padding:4px 6px;border:1px solid var(--line);
+  border-radius:6px;background:var(--panel);color:var(--fg);max-width:220px}
+table.runs{width:100%;border-collapse:collapse;font-size:12px}
+table.runs th{text-align:left;font-weight:600;color:var(--dim);padding:6px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.runs td{padding:6px 10px;border-bottom:1px solid var(--line2);vertical-align:top}
+table.runs td.num,table.runs th.num{text-align:right;font-variant-numeric:tabular-nums}
+table.runs td code{font-family:var(--mono);font-size:11px;word-break:break-all}
+table.runs tr.sys td{color:var(--dim)}
+.oc{font-weight:600;font-size:11px;padding:1px 6px;border-radius:9px;border:1px solid var(--line)}
+.oc.clean{color:var(--green);border-color:var(--green)}
+.oc.denied{color:var(--amber);border-color:var(--amber)}
+.oc.refused,.oc.unread{color:var(--fg);background:var(--amber-bg);border-color:var(--amber)}
+.ro-ask{font-size:12px;color:var(--mid);max-width:320px}
+.ro-ask code{font-family:var(--mono)}
