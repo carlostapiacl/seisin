@@ -109,10 +109,12 @@ test("the hosts a sandbox's broker refused come back as one entry per target", a
     { axis: "network", action: "broker-connect-denied", target: "bad.example:443", outcome: "denied" },
     { axis: "network", action: "broker-egress-denied", target: "169.254.169.254:80/", outcome: "denied" },
     { axis: "filesystem", action: "write", target: "/x", outcome: "denied" },
+    { axis: "network", action: "broker-terminate-refused", target: "api.github.com:443 (POST /repos/evil is not allowed by the request rules for api.github.com)", outcome: "denied" },
   ].map((e) => JSON.stringify(e)).join("\n") + "\nnot json\n");
   assert.deepEqual(brokerDenials(f), [
     { target: "bad.example:443", reason: "broker-connect-denied", times: 2 },
     { target: "169.254.169.254:80", reason: "broker-egress-denied", times: 1 },
+    { target: "api.github.com:443", reason: "POST /repos/evil is not allowed by the request rules for api.github.com", times: 1 },
   ]);
   assert.deepEqual(brokerDenials(join(folder, "missing.jsonl")), []);
 });
@@ -144,4 +146,26 @@ test("handoff_exempt: validated, handed to tartaros only, and a role srt cannot 
   // Nothing asked, nothing added: the settings object is the same one.
   const plain = { filesystem: {}, network: {} };
   assert.equal(tartarosSettings(plain, {}), plain);
+});
+
+test("requests: parsed, the host must be in network, handed to tartaros only", async () => {
+  const { loadConfig } = await import("../src/config.js");
+  const { tartarosSettings } = await import("../src/sandboxes/tartaros.js");
+  const dir = boxed("orch-requests-");
+  const p = join(dir, "seisin.toml");
+  writeFileSync(p, '[roles.d]\nwrites = ["src/**"]\nnetwork = ["api.github.com"]\nrequests = ["GET api.github.com", "POST,PATCH api.github.com/repos/acme/"]\n');
+  const r = loadConfig(p).roles.d.requests;
+  assert.deepEqual(r, [
+    { host: "api.github.com", methods: ["GET"], paths: [] },
+    { host: "api.github.com", methods: ["POST", "PATCH"], paths: ["/repos/acme/"] },
+  ]);
+  writeFileSync(p, '[roles.d]\nwrites = ["src/**"]\nnetwork = ["api.github.com"]\nrequests = ["GET example.com"]\n');
+  assert.throws(() => loadConfig(p), /not in roles\.d\.network/);
+  for (const bad of ["get api.github.com", "GET https://api.github.com", "GET api.github.com/a/../b"]) {
+    writeFileSync(p, `[roles.d]\nwrites = ["src/**"]\nnetwork = ["api.github.com"]\nrequests = ["${bad}"]\n`);
+    assert.throws(() => loadConfig(p), /METHODS host\[\/path\]/, bad);
+  }
+  const s = tartarosSettings({ filesystem: {}, network: { allowedDomains: ["api.github.com"] } }, { requests: r });
+  assert.deepEqual(s.network.requestRules, r);
+  assert.deepEqual(s.network.allowedDomains, ["api.github.com"]);
 });

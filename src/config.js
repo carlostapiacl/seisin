@@ -548,6 +548,26 @@ export function loadConfig(path, text = readFileSync(path, "utf8"), { root = nul
      * open exactly that (tartaros) is handed the role.
      */
     const handoffExempt = own(r, "handoff_exempt") === undefined ? [] : asArray(own(r, "handoff_exempt"), `roles.${name}.handoff_exempt`);
+    /**
+     * `requests`: the only requests the role may send to an allowed host,
+     * `"METHODS host[/path]"` (METHODS: `GET,POST` or `*`). An allowed host is
+     * otherwise all of it: a token for api.github.com pushes to any repository
+     * it reaches. The host must be in `network`. Only tartaros enforces it
+     * (from 0.1.0-alpha.18): it terminates that host and refuses anything else.
+     */
+    const requests = own(r, "requests") === undefined ? [] : asArray(own(r, "requests"), `roles.${name}.requests`).map((spec) => {
+      const m = /^(\*|[A-Z]+(?:,[A-Z]+)*)\s+([A-Za-z0-9.-]+)(\/\S*)?$/.exec(String(spec).trim());
+      if (!m || (m[3] ?? "").split("/").some((seg) => seg === "." || seg === ".."))
+        throw new Error(`${path}: roles.${name}.requests "${spec}": "METHODS host[/path]", e.g. "GET api.github.com" or "POST,PATCH api.github.com/repos/acme/"`);
+      return { host: m[2], methods: m[1] === "*" ? [] : m[1].split(","), paths: m[3] ? [m[3]] : [] };
+    });
+    // A rule narrows a host the role may reach; on a host it may not, it says nothing.
+    const reach = own(r, "network") === undefined ? [] : asArray(own(r, "network"), `roles.${name}.network`);
+    for (const q of requests) {
+      const covered = reach.some((h) => h === q.host || (h.startsWith("*.") && q.host.endsWith(h.slice(1))));
+      if (!covered)
+        throw new Error(`${path}: roles.${name}.requests: ${q.host} is not in roles.${name}.network, so the role cannot reach it at all`);
+    }
     for (const e of handoffExempt)
       if (e.startsWith("/") || e.startsWith("~") || e.split("/").includes("..") || /[*?[\]]/.test(e) || !e.trim())
         throw new Error(`${path}: roles.${name}.handoff_exempt "${e}": a folder in the repo, relative, with no ".." and no globs`);
@@ -660,6 +680,8 @@ export function loadConfig(path, text = readFileSync(path, "utf8"), { root = nul
       handoff: handoff !== false,
       /** Folders, relative to the root, where trust-handoff is not protected (tartaros only). */
       handoffExempt,
+      /** The only requests to an allowed host: `{ host, methods, paths }` (tartaros only). */
+      requests,
       /**
        * What this role reads beyond its repo, under `read = "territory"`.
        *
@@ -990,7 +1012,7 @@ function readBoolean(value, where) {
 }
 
 /** The keys a `[roles.<name>]` table can hold. Anything else is reported by `check`. */
-export const ROLE_KEYS = ["writes", "private", "keys", "key_mode", "inject_hosts", "env", "network", "never_writes", "local_binding", "local_ports", "browsers", "mcp", "trustd", "control_files", "reads", "toolchain", "verify", "handoff", "handoff_exempt"];
+export const ROLE_KEYS = ["writes", "private", "keys", "key_mode", "inject_hosts", "env", "network", "never_writes", "local_binding", "local_ports", "browsers", "mcp", "trustd", "control_files", "reads", "toolchain", "verify", "handoff", "handoff_exempt", "requests"];
 
 /**
  * `control_files`: which families of control files a role may edit. Refused at

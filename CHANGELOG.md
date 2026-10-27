@@ -38,6 +38,11 @@ runs seisin):
   their own `.git/` and `.github/`. Only tartaros can hold the role (0.1.0-alpha.18 and later);
   srt cannot leave a folder out, and `check` says so. *What to do:* a launcher that ran its
   setup phase under a profile of its own can run it under seisin again.
+- **`requests = ["GET api.github.com", "POST api.github.com/repos/acme/"]`, a role key**: the
+  only requests a role may send to a host in its `network`. A host is otherwise all of it: a
+  token for api.github.com pushes to any repository it reaches. Only tartaros enforces it
+  (0.1.0-alpha.18 and later); srt takes such rules only as a library callback, and `check`
+  says so. A refused request is in the log with its method and path.
 - **The hosts tartaros's egress broker refused are in seisin's log** (with tartaros 0.1.0-alpha.18
   and later, which records them with `--egress-log`): a denied host is a network entry like
   any other, not a line on stderr.

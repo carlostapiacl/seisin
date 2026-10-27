@@ -87,10 +87,14 @@ export function brokerDenials(file) {
     let e;
     try { e = JSON.parse(line); } catch { continue; }
     if (e?.axis !== "network" || e.outcome !== "denied" || typeof e.target !== "string") continue;
-    const target = e.target.replace(/\/$/, "").slice(0, 300);
-    const d = by.get(target) ?? { target, reason: String(e.action ?? "denied"), times: 0 };
+    // A request refused on a terminated connection says `host:port (why)`: the
+    // host is the wall, the why (method and path) is its reason.
+    const m = /^(\S+) \((.*)\)$/.exec(e.target);
+    const target = (m ? m[1] : e.target).replace(/\/$/, "").slice(0, 300);
+    const reason = m ? m[2].slice(0, 300) : String(e.action ?? "denied");
+    const d = by.get(`${target}\u0000${reason}`) ?? { target, reason, times: 0 };
     d.times++;
-    by.set(target, d);
+    by.set(`${target}\u0000${reason}`, d);
   }
   return [...by.values()];
 }
@@ -255,7 +259,8 @@ export async function run(config, argv) {
   if (box.error) throw box.error;
   const { sandbox, bin } = box;
   const handoffExempt = (config.roles[role].handoffExempt ?? []).map((e) => join(config.root, e));
-  const settings = settingsOf(sandbox, generated, { machRegister, handoffExempt });
+  const requests = config.roles[role].requests ?? [];
+  const settings = settingsOf(sandbox, generated, { machRegister, handoffExempt, requests });
   // Per run, never per role: `.seisin/<role>.json` was one file for every run
   // of that role, and two at once wrote each other's socket path into it.
   const file = theRun.writeSettings(settings);
