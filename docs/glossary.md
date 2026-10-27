@@ -392,6 +392,11 @@ protected, for a setup phase that fills a dependency tree whose packages ship th
 no globs. Only tartaros can hold such a role (from 0.1.0-alpha.18); it says the exemption at
 the start of every run. The repo's own surfaces stay protected.
 
+**`requests`** — a role key: the only requests the role may send to a host in its `network`,
+`"METHODS host[/path]"` (`requests = ["GET api.github.com", "POST api.github.com/repos/acme/"]`).
+A host is otherwise all of it. Only tartaros enforces it (from 0.1.0-alpha.18): it terminates
+the host's TLS and refuses any other request, which lands in the log as a network denial.
+
 **expected denial** — a denial the caller of `seisin run` said it would probe for, with
 `--expect-denied <path>`: logged with `"expected": true`, asked of nobody. *Not:* the plugin
 updater's denials, which `walls` and `review` call expected on their own.

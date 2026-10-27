@@ -102,12 +102,14 @@ export const tartarosUnmet = (bin, file, ctx) => tartarosAssess(bin, file, ctx).
  * (tartaros 99b0117). Only when there is one: an unchanged role is handed the
  * same file as before, and srt, whose schema is strict, never sees the field.
  */
-export function tartarosSettings(settings, { machRegister = [], handoffExempt = [] } = {}) {
-  if (!machRegister.length && !handoffExempt.length) return settings;
+export function tartarosSettings(settings, { machRegister = [], handoffExempt = [], requests = [] } = {}) {
+  if (!machRegister.length && !handoffExempt.length && !requests.length) return settings;
   let out = settings;
   if (machRegister.length) out = { ...out, network: { ...out.network, allowMachRegister: machRegister.map((p) => `${p}*`) } };
   // tartaros's own field (its --handoff-exempt), absolute: srt never sees it.
   if (handoffExempt.length) out = { ...out, filesystem: { ...out.filesystem, handoffExempt } };
+  // tartaros's own field (its --allow-request): the only requests an allowed host gets.
+  if (requests.length) out = { ...out, network: { ...out.network, requestRules: requests } };
   return out;
 }
 
@@ -124,6 +126,8 @@ export const tartaros = {
   // Takes filesystem.handoffExempt (tartaros 0.1.0-alpha.18): a folder left out of
   // its trust-handoff protection.
   handoffExempt: true,
+  // Takes network.requestRules (0.1.0-alpha.18): methods and paths per host.
+  requestRules: true,
   assess: (_settings, { bin, file, platform } = {}) => tartarosAssess(bin, file, { platform }),
   unmet: (_settings, { bin, file, platform } = {}) => tartarosUnmet(bin, file, { platform }),
   wrap: (bin, file, _settings, inner, ctx) => tartarosArgv(bin, file, inner, ctx),
