@@ -535,8 +535,11 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
      * Masked credentials: the real value reaches the runtime's own environment
      * (run.js), never the sandbox, which sees `fake_value_…`. `mode: "mask"`
      * and the per-credential `injectHosts` are all that is emitted — no
-     * `extract`, `decode`, files or SigV4, and never `allowPlaintextInject`,
+     * `extract`, `decode`, files or `awsPairs`, and never `allowPlaintextInject`,
      * which over HTTPS carries the sentinel and so is deny with extra steps.
+     * An AWS pair under its usual names (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+     * is paired by the sandbox itself and re-signed (srt; tartaros from
+     * 0.1.0-alpha.18).
      */
     ...(credentials ? { credentials } : {}),
   };
