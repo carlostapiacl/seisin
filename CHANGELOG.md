@@ -10,6 +10,10 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+## 0.6.4 — 2026-10-27
+
+With tartaros 0.1.0-alpha.18.
+
 For a launcher that runs agents in worktrees it throws away (found reviewing how wapentake
 runs seisin):
 
