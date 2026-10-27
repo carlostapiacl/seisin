@@ -99,3 +99,49 @@ test("a JSON policy reads like the TOML one, holds a quote, and refuses what the
   const r = seisin(["whose", "src/a.js", "--policy", p]);
   assert.equal(r.status, 0, r.stderr);
 });
+
+test("the hosts a sandbox's broker refused come back as one entry per target", async () => {
+  const { brokerDenials } = await import("../src/commands/run.js");
+  const f = join(folder, "sandbox-log.jsonl");
+  writeFileSync(f, [
+    { axis: "network", action: "broker-connect", target: "ok.example:443", outcome: "allowed" },
+    { axis: "network", action: "broker-connect-denied", target: "bad.example:443", outcome: "denied" },
+    { axis: "network", action: "broker-connect-denied", target: "bad.example:443", outcome: "denied" },
+    { axis: "network", action: "broker-egress-denied", target: "169.254.169.254:80/", outcome: "denied" },
+    { axis: "filesystem", action: "write", target: "/x", outcome: "denied" },
+  ].map((e) => JSON.stringify(e)).join("\n") + "\nnot json\n");
+  assert.deepEqual(brokerDenials(f), [
+    { target: "bad.example:443", reason: "broker-connect-denied", times: 2 },
+    { target: "169.254.169.254:80", reason: "broker-egress-denied", times: 1 },
+  ]);
+  assert.deepEqual(brokerDenials(join(folder, "missing.jsonl")), []);
+});
+
+test("--egress-log is passed only to a tartaros that takes it", async () => {
+  const { tartarosArgv } = await import("../src/sandboxes/tartaros.js");
+  const old = join(folder, "tartaros-old"), now = join(folder, "tartaros-new");
+  writeFileSync(old, "#!/bin/sh\necho 'usage: tartaros run --log FILE'\n", { mode: 0o755 });
+  writeFileSync(now, "#!/bin/sh\necho 'usage: tartaros run --egress-log FILE'\n", { mode: 0o755 });
+  assert.ok(!tartarosArgv(old, "s.json", ["true"], { log: "/l" }).includes("--egress-log"));
+  assert.ok(tartarosArgv(now, "s.json", ["true"], { log: "/l" }).includes("--egress-log"));
+  assert.ok(!tartarosArgv(now, "s.json", ["true"], {}).includes("--egress-log"));
+});
+
+test("handoff_exempt: validated, handed to tartaros only, and a role srt cannot hold", async () => {
+  const { loadConfig } = await import("../src/config.js");
+  const { tartarosSettings } = await import("../src/sandboxes/tartaros.js");
+  const dir = boxed("orch-exempt-");
+  const ok = join(dir, "seisin.toml");
+  writeFileSync(ok, '[roles.prepare]\nwrites = ["**"]\nhandoff_exempt = ["vendor", "web/node_modules"]\n');
+  assert.deepEqual(loadConfig(ok).roles.prepare.handoffExempt, ["vendor", "web/node_modules"]);
+  for (const bad of ["/abs", "../up", "a/../b", "v*", "~/x"]) {
+    writeFileSync(ok, `[roles.prepare]\nwrites = ["**"]\nhandoff_exempt = ["${bad}"]\n`);
+    assert.throws(() => loadConfig(ok), /relative, with no "\.\." and no globs/, bad);
+  }
+  const s = tartarosSettings({ filesystem: { allowWrite: ["/r"] }, network: {} }, { handoffExempt: ["/r/vendor"] });
+  assert.deepEqual(s.filesystem.handoffExempt, ["/r/vendor"]);
+  assert.deepEqual(s.filesystem.allowWrite, ["/r"]);
+  // Nothing asked, nothing added: the settings object is the same one.
+  const plain = { filesystem: {}, network: {} };
+  assert.equal(tartarosSettings(plain, {}), plain);
+});
