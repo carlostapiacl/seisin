@@ -95,6 +95,9 @@ export const tartaros = {
   locate: () => resolveTartaros(),
   missing: () => `tartaros not found: neither ${TARTAROS_PACKAGE}, which installs with seisin unless optional dependencies are left out, nor tartaros on PATH.`,
   asksFile: true,
+  // Masked credentials: tartaros says whether it masks them, through explain
+  // (0.1.0-alpha.16 and later do; earlier ones refuse the field).
+  masks: () => null,
   adapt: tartarosSettings,
   machRegister: true,
   assess: (_settings, { bin, file, platform } = {}) => tartarosAssess(bin, file, { platform }),

@@ -110,11 +110,11 @@ test("an inject_hosts entry for a key that is not injected is refused", () => {
 
 // ── platform gate ────────────────────────────────────────────────────────────
 
-test("modeOf runs inject on Linux and holds it elsewhere, pointing at the upstream fix", () => {
+test("modeOf takes inject on Linux and macOS, where a sandbox masks; the sandbox decides which", () => {
   const { cfg, dir } = repo();
   const e = entriesOf(cfg.roles.r).find((x) => x.kind === "ref");
-  if (process.platform === "linux") assert.equal(modeOf(cfg, cfg.roles.r, e), "inject");
-  else assert.throws(() => modeOf(cfg, cfg.roles.r, e), /not available on .* yet[\s\S]*593/);
+  if (process.platform === "linux" || process.platform === "darwin") assert.equal(modeOf(cfg, cfg.roles.r, e), "inject");
+  else assert.throws(() => modeOf(cfg, cfg.roles.r, e), /not available on/);
   clean(dir);
 });
 
@@ -137,10 +137,18 @@ test("check names the wildcard that interception drags in whole", () => {
   clean(dir);
 });
 
-test("off Linux, check says the role will not run here", () => {
+test("on macOS without tartaros, check says the role will not run here; with it, nothing", () => {
   const { cfg, dir } = repo();
   const plat = injectWs(cfg).find((w) => w.kind === "inject-platform");
   if (process.platform === "linux") assert.equal(plat, undefined);
-  else { assert.ok(plat); assert.match(plat.detail, /593/); }
+  else { assert.ok(plat); assert.match(plat.detail, process.platform === "darwin" ? /593[\s\S]*tartaros/ : /Linux or macOS/); }
   clean(dir);
+  if (process.platform !== "darwin") return;
+  const d2 = mkdtempSync(join(tmpdir(), "seisin-inject-tt-"));
+  writeFileSync(join(d2, "seisin.toml"),
+    `[sandbox]\nprovider = ["tartaros", "srt"]\n\n[keys.providers.op]\ncommand = ["op", "read", "op://{ref}"]\nmode = "env"\n\n` +
+    `[roles.r]\nwrites = ["src/**"]\nnetwork = ["api.github.com"]\nkey_mode = "inject"\nkeys = ["GH_TOKEN=op://v/gh"]\n\n` +
+    `[roles.r.inject_hosts]\nGH_TOKEN = ["api.github.com"]\n`);
+  assert.equal(injectWs(loadConfig(join(d2, "seisin.toml"))).find((w) => w.kind === "inject-platform"), undefined);
+  clean(d2);
 });

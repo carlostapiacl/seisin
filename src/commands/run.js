@@ -496,6 +496,14 @@ export async function run(config, argv) {
       event: "canary", role, run: theRun.id.slice(0, 8), ...trace, agent: agent ?? null, confined: false, reasons: probe.failed,
       ...(sandbox.name === DEFAULT_SANDBOX ? {} : { sandbox: sandbox.name }),
     });
+    if (probe.exposed) {
+      err(`${C.red}seisin: ${role} was NOT started — another process holds a real value the agent would see:${C.off}\n` +
+        probe.failed.map((f) => `  - ${f}\n`).join("") +
+        `  A process's environment and arguments are readable by every process of your user (on macOS no sandbox ` +
+        `hides them), so masking would hide nothing. Usually a shell that exported the token, and what it started. ` +
+        `Unset it there or end that process, and keep the value only where seisin's key points (docs/keys.md).\n`);
+      process.exit(CANARY_EXIT);
+    }
     err(`${C.red}seisin: ${role} was NOT started — the sandbox failed its canary:${C.off}\n` +
       probe.failed.map((f) => `  - ${f}\n`).join("") +
       `  The policy as generated does not hold on this machine, so no agent runs under it. ` +

@@ -11,6 +11,7 @@
  * price printed next to the thing it buys.
  */
 import { injectKeysOf } from "../keys.js";
+import { sandboxesOf } from "../sandboxes/index.js";
 import { coversHost as covers } from "../srt.js";
 
 export function injectWarnings(config, roles) {
@@ -27,14 +28,24 @@ export function injectWarnings(config, roles) {
     if (inject.length === 0) continue;
     const allowed = r.network ?? config.allowedDomains ?? [];
 
-    if (process.platform !== "linux")
+    // Which sandbox masks is the sandbox's to say (sandboxes/, `masks`): on macOS
+    // only tartaros does, so a provider list without it cannot run the role here.
+    const names = sandboxesOf(config).map((s) => s.name);
+    if (process.platform === "darwin" && !names.includes("tartaros"))
       out.push({
         kind: "inject-platform",
         role: r.name,
-        headline: `${r.name}: key_mode = "inject" is not available on ${process.platform} — it is Linux-only for now`,
-        detail: `On this machine the role will not run. Masked injection on macOS is tracked upstream ` +
-          `(anthropics/sandbox-runtime#593) and enables once that lands. Run this role on Linux, or ` +
-          `use "env"/"run-file" here.`,
+        headline: `${r.name}: key_mode = "inject" needs tartaros on macOS — [sandbox] provider is ${names.join(", ")}`,
+        detail: `On macOS sandbox-runtime does not mask credentials yet (anthropics/sandbox-runtime#593), so ` +
+          `this role will not run here. Add tartaros: [sandbox] provider = ["tartaros", "srt"]. Or run it on ` +
+          `Linux, or use "env"/"run-file" here.`,
+      });
+    else if (process.platform !== "linux" && process.platform !== "darwin")
+      out.push({
+        kind: "inject-platform",
+        role: r.name,
+        headline: `${r.name}: key_mode = "inject" is not available on ${process.platform}`,
+        detail: `No sandbox seisin runs here masks credentials. Run this role on Linux or macOS, or use "env"/"run-file".`,
       });
 
     for (const c of inject) {

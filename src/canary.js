@@ -130,6 +130,16 @@ export async function runCanary({ srt, wrap = null, settingsFile, settings, env,
   }
 
   if (timedOut) failed.push(`the canary did not finish in ${timeoutMs / 1000}s`);
+  // tartaros refuses a run whose real value another process exposes (its exec
+  // record, which the agent can read; on macOS no sandbox hides it). That is not
+  // a boundary to fix in the policy, and its own advice names a flag seisin does
+  // not pass, so it is said apart, as the variable and the process.
+  const exposed = [...stderr.matchAll(/tartaros: secret exposed: the value of (\S+) in pid (\d+) \(([^)]*)\)/g)]
+    .map(([, name, pid, proc]) => ({ name, pid: Number(pid), proc }));
+  if (exposed.length) {
+    for (const p of [secret, outside, insideDir, shared]) if (p) try { rmSync(p, { force: true, recursive: p === insideDir }); } catch {}
+    return { ok: false, exposed, failed: exposed.map((e) => `${e.name}'s real value is readable in pid ${e.pid} (${e.proc})`), ms: Date.now() - t0 };
+  }
   if (!output.includes(`ALIVE-${nonce}`)) {
     // The runtime's own words, when it said any: a sandbox that refuses to
     // start usually says why (measured: a path the runtime read as a broken

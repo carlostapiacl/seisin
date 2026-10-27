@@ -85,6 +85,9 @@ export function commandSandbox(name, command, check = null, { tagsDenials = fals
     assess,
     unmet: (settings, ctx) => assess(settings, ctx).unmet,
     wrap: (bin, file, _settings, inner) => [bin, ...withPolicy(command.slice(1), file), ...inner],
+    // A sandbox of your own is not known to mask credentials, and it is started
+    // with the real value in its environment: an inject role is never its.
+    masks: () => `masked credentials (key_mode = "inject"): ${name} is not known to mask them, and it would start with the real value in its environment`,
     // Declared, not detected: `tags_denials = true` says its Seatbelt denials
     // carry sandbox-runtime's tag (docs/sandboxes.md). Without it, on macOS,
     // none of the kernel's refusals under it reach the log.

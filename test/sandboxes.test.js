@@ -338,6 +338,21 @@ test("runCanary takes the sandbox's own command line", { skip: srtSkip() }, asyn
   assert.ok(r.failed.some((f) => /planted secret was readable/.test(f)), r.failed.join("\n"));
 });
 
+test("runCanary: tartaros refusing a value another process exposes is said as that, not as a broken boundary", async () => {
+  const d = scratch("seisin-sbx-exposed-");
+  mkdirSync(join(d, "runs", "r"), { recursive: true });
+  const said = "tartaros: secret exposed: the value of GH_TOKEN in pid 4242 (/opt/node/bin/node), whose arguments or environment the agent can read\n" +
+    "tartaros: refusing to run. Give the value to tartaros's environment only, or pass --allow-exposed-secrets\n";
+  const r = await runCanary({
+    wrap: () => ["/bin/sh", "-c", `printf '%s' "$0" >&2; exit 78`, said], settingsFile: join(d, "settings.json"), settings: settings(),
+    env: { PATH: process.env.PATH }, cwd: d, runDir: join(d, "runs", "r"), runsRoot: join(d, "runs"),
+    role: { localBinding: true }, granted: [],
+  });
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.exposed, [{ name: "GH_TOKEN", pid: 4242, proc: "/opt/node/bin/node" }]);
+  assert.deepEqual(r.failed, ["GH_TOKEN's real value is readable in pid 4242 (/opt/node/bin/node)"]);
+});
+
 test("seccompDir: from the srt that runs, through its links, to the runtime's vendor/seccomp", () => {
   const dir = scratch("seccomp-");
   const pkg = join(dir, "lib", "node_modules", "@anthropic-ai", "sandbox-runtime");
@@ -361,4 +376,19 @@ test("on Linux, read = \"territory\" keeps the runtime's apply-seccomp readable"
   assert.ok(seccomp, "the runtime that runs has a vendor/seccomp");
   const shut = fs.denyRead.some((d) => seccomp.startsWith(d + "/")) && !fs.allowRead.some((a) => seccomp === a || seccomp.startsWith(a + "/"));
   assert.ok(!shut, `${seccomp} is shut by ${JSON.stringify(fs.denyRead)}`);
+});
+
+test("inject: only a sandbox that masks is handed the role — srt on Linux, tartaros (it answers), never one of your own", () => {
+  const masked = { ...settings({ net: { allowedDomains: ["api.github.com"] } }),
+    credentials: { envVars: [{ name: "GH_TOKEN", mode: "mask", injectHosts: ["api.github.com"] }] }, tlsTerminate: { excludeDomains: [] } };
+  const srtOn = (platform) => weigh(cfg(`[sandbox]\nprovider = "srt"\n${ROLE}`), masked, { platform, locate: false }).options[0].unmet;
+  assert.deepEqual(srtOn("linux").filter((u) => /masked/.test(u)), [], "srt masks on Linux");
+  assert.match(srtOn("darwin")[0], /masked credentials .* on darwin: sandbox-runtime does not mask them there yet .*593.*tartaros does/);
+  const mine = weigh(cfg(`[sandbox]\nprovider = "mybox"\n[sandbox.providers.mybox]\ncommand = ["/bin/sh", "-c", "exit 0", "{policy}"]\n${ROLE}`),
+    masked, { platform: "linux", locate: false }).options[0].unmet;
+  assert.match(mine[0], /mybox is not known to mask them, and it would start with the real value/);
+  const tt = weigh(cfg(`[sandbox]\nprovider = "tartaros"\n${ROLE}`), masked, { platform: "darwin", locate: false }).options[0].unmet;
+  assert.deepEqual(tt.filter((u) => /masked credentials/.test(u)), [], "tartaros is asked, not second-guessed");
+  // Without credentials, nothing changes for anyone.
+  assert.deepEqual(weigh(cfg(`[sandbox]\nprovider = "srt"\n${ROLE}`), settings(), { platform: "darwin", locate: false }).options[0].unmet, []);
 });

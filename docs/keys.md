@@ -164,7 +164,7 @@ parent executes them, so a role that could rewrite one would decide what runs ou
 |---|---|
 | **`mode = "env"`** | resolved and passed as a variable |
 | **`mode = "run-file"`** | written to a file in the **run directory** (private to the run), removed when the run ends. The file holds the value exactly as the provider printed it, or for `file://` exactly the file's bytes — trailing newline included, which an ssh key needs. The path arrives **both** as `NETLIFY_TOKEN` and as `NETLIFY_TOKEN_FILE` — `_FILE` is the Docker-secrets convention, while `KUBECONFIG` and `GOOGLE_APPLICATION_CREDENTIALS` already expect a path in the plain name. Neither holds the value. Called `scratch` before 0.6.0, when the file still sat in shared scratch; a policy that says `scratch` is refused with the line to change |
-| **`mode = "inject"`** | the agent never sees the value — it gets a sentinel, and the runtime substitutes the real token on egress to the hosts you declare. **Linux-only for now** (see below), and it is not free: masking does not load without terminating that role's TLS with a CA of seisin's own — MITM over the injected hosts, which `check` prices and names. Declare the hosts per credential: |
+| **`mode = "inject"`** | the agent never sees the value — it gets a sentinel, and the runtime substitutes the real token on egress to the hosts you declare. **On Linux, and on macOS under tartaros** (see below), and it is not free: masking does not load without terminating that role's TLS with a CA of seisin's own — MITM over the injected hosts, which `check` prices and names. Declare the hosts per credential: |
 
 ```toml
 [roles.deploy]
@@ -189,12 +189,20 @@ injected host stores what the agent sends and returns it later — an issue, a g
 a note — the agent can post the sentinel, let the host keep the real value, and read it back.
 Use a least-scope token. `check` prints this per credential.
 
-**Why Linux-only.** Masked delivery is validated on the Linux backend; the macOS path is not
-enabled yet. It is tracked upstream, where the fit for it is a credential computed per run
-rather than read from the environment
-([sandbox-runtime#593](https://github.com/anthropics/sandbox-runtime/pull/593)); inject enables
-on macOS once that lands. Until then, inject on macOS is held — the message says so and points
-at `"env"`/`"run-file"` or running the role on Linux.
+**Which sandbox masks.** The sandbox does the masking, so it is the sandbox that says whether it
+can: the real value is in the environment it is started with, and a sandbox that does not mask
+is never handed the role.
+
+- **srt** masks on Linux. On macOS it does not yet: that is tracked upstream
+  ([sandbox-runtime#593](https://github.com/anthropics/sandbox-runtime/pull/593)).
+- **tartaros** masks on Linux and macOS, from 0.1.0-alpha.16: its broker terminates TLS toward
+  the injected hosts and keeps the run's secrets out of its own exec environment. So on macOS,
+  `inject` needs `[sandbox] provider = ["tartaros", "srt"]` (or `"tartaros"`); `check` says so.
+  On macOS no sandbox hides another process's environment from the agent (unless the binary is
+  Apple's own), so tartaros refuses the run (exit 78, naming the variable and the process) when
+  another process holds the real value: usually a shell that `export`ed the token, whose
+  children (an editor, a `node` server) keep it. Keep the token in the provider only.
+- **A sandbox of your own** is never handed an `inject` role: seisin cannot know it masks.
 
 There is **no default mode**. A reference with none declared anywhere is an error, because
 the answers differ in what the agent can walk away with and picking one for you is picking
@@ -260,7 +268,7 @@ else. Both are refused when the config loads, as is one name claimed by two keys
 **And what it does not do, in the same breath:** this resolves the secret **at rest**, not
 in the agent's context. The value still reaches the process and the agent can still read it.
 The secret stops living on your disk and the policy holds a reference you can review — a
-strict improvement — but "the agent never sees it" is `inject` (above), which is Linux-only for now.
+strict improvement — but "the agent never sees it" is `inject` (above), on Linux, and on macOS under tartaros.
 
 ### A database is four files, and you declare it once
 
