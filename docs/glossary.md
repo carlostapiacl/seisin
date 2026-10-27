@@ -386,6 +386,12 @@ ours is decided by ownership, not by the model.
 role that is a pipeline phase, not a worker. What it owns goes to another owner, or to a person
 (`no-receiver`).
 
+**`handoff_exempt`** — a role key: folders of the repo where the trust-handoff set is not
+protected, for a setup phase that fills a dependency tree whose packages ship their own `.git/`,
+`.github/` or `.gitattributes` (`handoff_exempt = ["vendor", "node_modules"]`). Relative, no `..`,
+no globs. Only tartaros can hold such a role (from 0.1.0-alpha.18); it says the exemption at
+the start of every run. The repo's own surfaces stay protected.
+
 **expected denial** — a denial the caller of `seisin run` said it would probe for, with
 `--expect-denied <path>`: logged with `"expected": true`, asked of nobody. *Not:* the plugin
 updater's denials, which `walls` and `review` call expected on their own.

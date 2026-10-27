@@ -540,6 +540,17 @@ export function loadConfig(path, text = readFileSync(path, "utf8"), { root = nul
     const toolchain = readReadList(own(r, "toolchain"), `${path}: roles.${name}.toolchain`);
     const priv = readPrivate(own(r, "private"), `${path}: roles.${name}.private`);
     const verify = own(r, "verify") === undefined ? null : asArray(own(r, "verify"), `roles.${name}.verify`);
+    /**
+     * `handoff_exempt`: folders where the trust-handoff set is not protected, for a
+     * setup phase that fills a dependency tree whose packages ship their own
+     * `.gitattributes`, `.github/` or `.git/` (`composer install`, measured: 326
+     * denials). Relative to the repo, no `..`, no globs. Only a sandbox that can
+     * open exactly that (tartaros) is handed the role.
+     */
+    const handoffExempt = own(r, "handoff_exempt") === undefined ? [] : asArray(own(r, "handoff_exempt"), `roles.${name}.handoff_exempt`);
+    for (const e of handoffExempt)
+      if (e.startsWith("/") || e.startsWith("~") || e.split("/").includes("..") || /[*?[\]]/.test(e) || !e.trim())
+        throw new Error(`${path}: roles.${name}.handoff_exempt "${e}": a folder in the repo, relative, with no ".." and no globs`);
     if (verify && verify.length === 0)
       throw new Error(`${path}: roles.${name}.verify is empty. It is the command that proves the role can check ` +
         `its own work — ["python", "-m", "pytest", "--version"] — or leave it out.`);
@@ -647,6 +658,8 @@ export function loadConfig(path, text = readFileSync(path, "utf8"), { root = nul
        * another owner or to a person instead of starting it.
        */
       handoff: handoff !== false,
+      /** Folders, relative to the root, where trust-handoff is not protected (tartaros only). */
+      handoffExempt,
       /**
        * What this role reads beyond its repo, under `read = "territory"`.
        *
@@ -977,7 +990,7 @@ function readBoolean(value, where) {
 }
 
 /** The keys a `[roles.<name>]` table can hold. Anything else is reported by `check`. */
-export const ROLE_KEYS = ["writes", "private", "keys", "key_mode", "inject_hosts", "env", "network", "never_writes", "local_binding", "local_ports", "browsers", "mcp", "trustd", "control_files", "reads", "toolchain", "verify", "handoff"];
+export const ROLE_KEYS = ["writes", "private", "keys", "key_mode", "inject_hosts", "env", "network", "never_writes", "local_binding", "local_ports", "browsers", "mcp", "trustd", "control_files", "reads", "toolchain", "verify", "handoff", "handoff_exempt"];
 
 /**
  * `control_files`: which families of control files a role may edit. Refused at

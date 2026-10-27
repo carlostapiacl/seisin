@@ -17,6 +17,7 @@
  * check` says so), and the canary still checks every run that it can.
  */
 import { existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -58,7 +59,17 @@ export function dependencyTartaros(from = HERE) {
 }
 
 /** The command line for one run: the settings as they are, the role as a label. */
-export function tartarosArgv(bin, file, inner, { role = null, machRegister = [] } = {}) {
+/** Whether this tartaros takes `--egress-log` (0.1.0-alpha.18): asked once per binary. */
+const egressLog = new Map();
+export function supportsEgressLog(bin) {
+  if (!egressLog.has(bin)) {
+    const r = spawnSync(bin, ["--help"], { encoding: "utf8", timeout: 5000 });
+    egressLog.set(bin, `${r.stdout ?? ""}${r.stderr ?? ""}`.includes("--egress-log"));
+  }
+  return egressLog.get(bin);
+}
+
+export function tartarosArgv(bin, file, inner, { role = null, machRegister = [], log = null } = {}) {
   // A browser role gets tartaros's browser grants — the shared memory, IOKit
   // classes and sysctls a headless Chromium dies without (f7edae1) — and a
   // run-private TMPDIR, the only place it may open a unix socket (bcb0c69):
@@ -68,7 +79,13 @@ export function tartarosArgv(bin, file, inner, { role = null, machRegister = [] 
   // the role gets — built from the role's own list (env.js), with the hook's
   // socket, the role's name and its env-mode keys. tartaros's own scrub
   // (7f9925f) would drop those, and the hook would go silent.
-  return [bin, "run", ...(role ? ["--role", role] : []), "--inherit-env", ...browser, "--settings", file, "--", ...inner];
+  // --egress-log: tartaros's record of its egress broker's decisions, read back
+  // into seisin's log at the end of the run (commands/run.js, brokerDenials).
+  // Not --log, which also starts the effect collectors (more than a second a
+  // run, measured). A tartaros older than the flag gets nothing: an unknown
+  // option would refuse the run.
+  const record = log && supportsEgressLog(bin) ? ["--egress-log", log] : [];
+  return [bin, "run", ...(role ? ["--role", role] : []), "--inherit-env", ...browser, ...record, "--settings", file, "--", ...inner];
 }
 
 /** What tartaros says of this file: what it cannot hold, and its warnings. Only asked of a binary that was found. */
@@ -85,9 +102,13 @@ export const tartarosUnmet = (bin, file, ctx) => tartarosAssess(bin, file, ctx).
  * (tartaros 99b0117). Only when there is one: an unchanged role is handed the
  * same file as before, and srt, whose schema is strict, never sees the field.
  */
-export function tartarosSettings(settings, { machRegister = [] } = {}) {
-  if (!machRegister.length) return settings;
-  return { ...settings, network: { ...settings.network, allowMachRegister: machRegister.map((p) => `${p}*`) } };
+export function tartarosSettings(settings, { machRegister = [], handoffExempt = [] } = {}) {
+  if (!machRegister.length && !handoffExempt.length) return settings;
+  let out = settings;
+  if (machRegister.length) out = { ...out, network: { ...out.network, allowMachRegister: machRegister.map((p) => `${p}*`) } };
+  // tartaros's own field (its --handoff-exempt), absolute: srt never sees it.
+  if (handoffExempt.length) out = { ...out, filesystem: { ...out.filesystem, handoffExempt } };
+  return out;
 }
 
 export const tartaros = {
@@ -100,6 +121,9 @@ export const tartaros = {
   masks: () => null,
   adapt: tartarosSettings,
   machRegister: true,
+  // Takes filesystem.handoffExempt (tartaros 0.1.0-alpha.18): a folder left out of
+  // its trust-handoff protection.
+  handoffExempt: true,
   assess: (_settings, { bin, file, platform } = {}) => tartarosAssess(bin, file, { platform }),
   unmet: (_settings, { bin, file, platform } = {}) => tartarosUnmet(bin, file, { platform }),
   wrap: (bin, file, _settings, inner, ctx) => tartarosArgv(bin, file, inner, ctx),

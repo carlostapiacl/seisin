@@ -74,6 +74,28 @@ export function agentFor(mine, cmd) {
 }
 
 /**
+ * The egress refusals in a sandbox's own JSON-lines log (tartaros `--log`:
+ * `{axis: "network", outcome: "denied", target: "host:port", action}`), one per
+ * target with how many times: a client retrying a refused host is one wall, not
+ * fifty lines. Missing or unreadable: none, the run's own record still stands.
+ */
+export function brokerDenials(file) {
+  let text;
+  try { text = readFileSync(file, "utf8"); } catch { return []; }
+  const by = new Map();
+  for (const line of text.split("\n")) {
+    let e;
+    try { e = JSON.parse(line); } catch { continue; }
+    if (e?.axis !== "network" || e.outcome !== "denied" || typeof e.target !== "string") continue;
+    const target = e.target.replace(/\/$/, "").slice(0, 300);
+    const d = by.get(target) ?? { target, reason: String(e.action ?? "denied"), times: 0 };
+    d.times++;
+    by.set(target, d);
+  }
+  return [...by.values()];
+}
+
+/**
  * `--run-id <id>`: the launcher's own id for this run (an orchestrator's ULID),
  * used instead of a random one wherever the run is named. Letters, digits, `-`
  * and `_`, 64 at most: it becomes part of a directory name and of log lines.
@@ -232,7 +254,8 @@ export async function run(config, argv) {
   const box = chooseSandbox(config, generated, { role });
   if (box.error) throw box.error;
   const { sandbox, bin } = box;
-  const settings = settingsOf(sandbox, generated, { machRegister });
+  const handoffExempt = (config.roles[role].handoffExempt ?? []).map((e) => join(config.root, e));
+  const settings = settingsOf(sandbox, generated, { machRegister, handoffExempt });
   // Per run, never per role: `.seisin/<role>.json` was one file for every run
   // of that role, and two at once wrote each other's socket path into it.
   const file = theRun.writeSettings(settings);
@@ -574,7 +597,12 @@ export async function run(config, argv) {
   const nested = nestedSandboxWarning(cmd);
   if (nested) err(`${C.yellow}seisin: ${nested}${C.off}\n`);
 
-  const [runner, ...runnerArgs] = wrap(boxed);
+  // The sandbox's own record of what its egress broker refused (tartaros
+  // `--log`), in this run's private directory: read back into seisin's log when
+  // the run ends, so a denied host is a wall like any other instead of a line
+  // on stderr. Only the agent's run gets it, not the canary's.
+  const brokerLog = join(theRun.dir, "sandbox-log.jsonl");
+  const [runner, ...runnerArgs] = sandbox.wrap(bin, file, settings, boxed, { role, machRegister, log: brokerLog });
   const child = spawn(runner, runnerArgs, {
     stdio: outStream ? ["inherit", "pipe", "pipe"] : "inherit",
     env,
@@ -654,6 +682,10 @@ export async function run(config, argv) {
     // returns as soon as the stream goes quiet, so a run that was denied
     // nothing pays a tick.
     await denials.close({ drain: DRAIN_MS });
+    // Before the directory goes: the hosts the sandbox's broker refused.
+    for (const d of brokerDenials(brokerLog))
+      append(logPath(config.root), { role, run: runLabel, ...trace, tool: "broker", source: sandbox.name, action: "connect",
+        kind: "network", target: d.target, verdict: "denied", owners: [], reason: d.reason, times: d.times });
     // The run made this directory, so the run removes it.
     cleanup();
 

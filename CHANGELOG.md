@@ -33,6 +33,14 @@ runs seisin):
   denials.
 - **Vite's bundled config (`*.timestamp-<n>-<hash>.mjs`) is a temporary file**: it files no
   request.
+- **`handoff_exempt = ["vendor"]`, a role key, for a setup phase** (`composer install`,
+  `npm install`): the trust-handoff set is not protected in those folders, whose packages ship
+  their own `.git/` and `.github/`. Only tartaros can hold the role (0.1.0-alpha.18 and later);
+  srt cannot leave a folder out, and `check` says so. *What to do:* a launcher that ran its
+  setup phase under a profile of its own can run it under seisin again.
+- **The hosts tartaros's egress broker refused are in seisin's log** (with tartaros 0.1.0-alpha.18
+  and later, which records them with `--egress-log`): a denied host is a network entry like
+  any other, not a line on stderr.
 
 ## 0.6.3 — 2026-10-26
 
