@@ -17,11 +17,21 @@
  * seconds over hundreds of runs re-reads a directory listing and some stats,
  * not every log.
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadConfig } from "./config.js";
-import { read, logPath } from "./log.js";
-import { requestsPath } from "./requests.js";
+import { read } from "./log.js";
+import { STATE_DIR, LOG_NAME } from "./layout.js";
+import { expectedOf } from "./kinds.js";
+
+/**
+ * An archived run's own files, always at `<run>/.seisin/`: a run folder is read
+ * as it was written, whatever `--state-dir` this process was given. A launcher
+ * that runs with `--policy <run>/seisin.toml --state-dir <run>/.seisin` writes
+ * each run straight into this shape, and has nothing to copy at the end.
+ */
+const logPath = (root) => join(root, STATE_DIR, LOG_NAME);
+const requestsPath = (root) => join(root, STATE_DIR, "requests.jsonl");
 
 /** The name a run's folder may have: what becomes `run=` in a link. */
 const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -51,9 +61,11 @@ export function runFolders(dir) {
   return names.filter((d) => d.isDirectory() && isRunId(d.name)).map((d) => d.name).sort();
 }
 
-/** Where a run's policy is. */
+/** Where a run's policy is: `seisin.toml`, or `seisin.json` for a launcher that generates JSON. */
 export function runPolicy(dir, id) {
-  return join(dir, id, "seisin.toml");
+  const toml = join(dir, id, "seisin.toml");
+  const json = join(dir, id, "seisin.json");
+  return existsSync(toml) || !existsSync(json) ? toml : json;
 }
 
 /**
@@ -66,7 +78,7 @@ function signatureOf(dir, id) {
   const root = join(dir, id);
   const log = logPath(root);
   return [
-    statSig(join(root, "seisin.toml")),
+    statSig(runPolicy(dir, id)),
     statSig(join(root, "run.json")),
     statSig(requestsPath(root)),
     statSig(log),
@@ -114,8 +126,8 @@ function summarize(dir, id) {
   let cfg;
   try { cfg = loadConfig(runPolicy(dir, id)); }
   catch (e) {
-    return { ...base, outcome: "unread", error: e.code === "ENOENT" ? "no seisin.toml in this run's folder" : e.message,
-      roles: [], denied: 0, byKind: {}, expected: 0, retried: 0, causes: [], hosts: [], entries: 0, canary: null };
+    return { ...base, outcome: "unread", error: e.code === "ENOENT" ? "no seisin.toml (or seisin.json) in this run's folder" : e.message,
+      roles: [], denied: 0, byKind: {}, expected: 0, retried: 0, causes: [], hosts: [], entries: 0, canary: null, dropped: 0 };
   }
   const all = read(logPath(cfg.root));
   /**
@@ -131,7 +143,9 @@ function summarize(dir, id) {
   const groups = new Map();
   for (const e of all) {
     if (e.verdict !== "denied") continue;
-    if (e.expected === true) { expected++; continue; }
+    // macOS framework housekeeping counts as expected even in a log written
+    // before seisin said so (kinds.js expectedOf).
+    if (e.expected === true || (e.kind === "system" && expectedOf(e.target))) { expected++; continue; }
     const k = e.kind ?? "file";
     byKind[k] = (byKind[k] ?? 0) + 1;
     if (k !== "system") denied++;
@@ -144,6 +158,9 @@ function summarize(dir, id) {
   const causes = [...groups.values()].sort((a, b) => b.times - a.times);
   const retried = causes.reduce((n, g) => n + (g.about === "system" ? 0 : g.times - 1), 0);
   const hosts = causes.filter((g) => g.about === "network").slice(0, 10).map(({ target, times }) => ({ target, times }));
+  // Batches of kernel messages the system log threw away during the run: its
+  // walls may be missing some. The boundary held; the record did not.
+  const dropped = all.filter((e) => e.event === "log-dropped").reduce((n, e) => n + (Number(e.batches) || 0), 0);
   const canaries = all.filter((e) => e.event === "canary");
   const canary = canaries.length ? canaries[canaries.length - 1] : null;
   const outcome = canaries.some((e) => e.confined === false) ? "refused" : denied ? "denied" : "clean";
@@ -164,6 +181,7 @@ function summarize(dir, id) {
     // Kept whole for the sum across runs, cut to RUN_CAUSES when sent.
     causes,
     canary: canary ? { confined: canary.confined !== false, reasons: canary.reasons ?? [] } : null,
+    dropped,
   };
 }
 
@@ -267,13 +285,14 @@ export function runsView(dir, filters = {}, { scanned = scanRuns(dir) } = {}) {
 function viewOf(dir, filters, every) {
   const shown = every.filter((r) => matches(r, filters))
     .sort((a, b) => cmp(b.started_at ?? "", a.started_at ?? "") || cmp(b.id, a.id));
-  const totals = { runs: shown.length, denied: 0, retried: 0, expected: 0, byKind: {}, outcome: {} };
+  const totals = { runs: shown.length, denied: 0, retried: 0, expected: 0, byKind: {}, outcome: {}, incomplete: 0 };
   for (const r of shown) {
     totals.denied += r.denied;
     totals.retried += r.retried;
     totals.expected += r.expected;
     for (const [k, n] of Object.entries(r.byKind)) totals.byKind[k] = (totals.byKind[k] ?? 0) + n;
     totals.outcome[r.outcome] = (totals.outcome[r.outcome] ?? 0) + 1;
+    if (r.dropped) totals.incomplete++;
   }
   return {
     mode: "runs",

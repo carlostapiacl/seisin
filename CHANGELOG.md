@@ -10,6 +10,47 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+## 0.6.4 — 2026-10-27
+
+With tartaros 0.1.0-alpha.18.
+
+For a launcher that runs agents in worktrees it throws away (found reviewing how wapentake
+runs seisin):
+
+- **`--policy <file>` and `--state-dir <dir>`, on every command, and `run --run-id <id>`.**
+  The policy is read from the file and rooted at the working directory; the log and the
+  request queue go to the state directory; the run is named with the launcher's id. A
+  launcher writes each run straight into the shape `seisin ui --runs` reads, and nothing of
+  seisin's lands in the worktree. *What to do:* nothing, unless you launch runs; then see
+  docs/runs.md.
+- **A policy can be JSON** (`--policy x.json`, or `seisin.json` in a run folder), for a
+  launcher that generates it: a value can hold a quote. Read as strictly as the TOML (a key
+  written twice is refused); `grant` does not edit it.
+- **`seisin check --json`**: seisin's version and capabilities, the sandbox each role gets
+  with its path and version, the warnings. A launcher stops parsing `--help` and `--version`.
+- **`seisin ui --runs` says when a run's record is incomplete**: the system log dropped
+  kernel messages during it, so some denials may be missing.
+- **macOS housekeeping is expected, not a wall**: the shared memory and preferences every
+  framework reaches for at start (notification center, cfprefs, two compatibility sysctls).
+  Under `read = "territory"`, `~/.CFUserTextEncoding` is readable: every process reads it at
+  start, and it holds a text-encoding code. Together they were most of one launcher's
+  denials.
+- **Vite's bundled config (`*.timestamp-<n>-<hash>.mjs`) is a temporary file**: it files no
+  request.
+- **`handoff_exempt = ["vendor"]`, a role key, for a setup phase** (`composer install`,
+  `npm install`): the trust-handoff set is not protected in those folders, whose packages ship
+  their own `.git/` and `.github/`. Only tartaros can hold the role (0.1.0-alpha.18 and later);
+  srt cannot leave a folder out, and `check` says so. *What to do:* a launcher that ran its
+  setup phase under a profile of its own can run it under seisin again.
+- **`requests = ["GET api.github.com", "POST api.github.com/repos/acme/"]`, a role key**: the
+  only requests a role may send to a host in its `network`. A host is otherwise all of it: a
+  token for api.github.com pushes to any repository it reaches. Only tartaros enforces it
+  (0.1.0-alpha.18 and later); srt takes such rules only as a library callback, and `check`
+  says so. A refused request is in the log with its method and path.
+- **The hosts tartaros's egress broker refused are in seisin's log** (with tartaros 0.1.0-alpha.18
+  and later, which records them with `--egress-log`): a denied host is a network entry like
+  any other, not a line on stderr.
+
 ## 0.6.3 — 2026-10-26
 
 `key_mode = "inject"` on macOS, under tartaros 0.1.0-alpha.16.

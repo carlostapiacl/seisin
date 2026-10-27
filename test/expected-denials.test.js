@@ -246,3 +246,13 @@ test("check: a writes entry that resolves into scratch is every role's", () => {
   const r = cli(["check"], dir);
   assert.match(r.stdout + r.stderr, /every role can write build's out\/\*\*/);
 });
+
+test("macOS framework background lookups read as expected, by exact name", async () => {
+  const { expectedOf } = await import("../src/kinds.js");
+  for (const t of ["apple.shm.notification_center", "apple.cfprefs.daemonv1", "apple.cfprefs.501v1",
+    "com.apple.AppleDatabaseChanged", "kcfpreferencesanyapplication", "kern.tcsm_enable", "kern.system_version_compat"])
+    assert.equal(expectedOf(t)?.kind, "os-background", t);
+  // A service or sysctl the agent asks for itself is still a wall.
+  for (const t of ["com.apple.coreservices.launchservicesd", "kern.tcsm_enable_x", "apple.cfprefs.x", "src/apple.shm.notification_center"])
+    assert.equal(expectedOf(t), null, t);
+});

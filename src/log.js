@@ -16,13 +16,14 @@
 import { appendFileSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { basename, dirname, join } from "node:path";
-import { STATE_DIR, LOG_NAME } from "./layout.js";
+import { LOG_NAME } from "./layout.js";
+import { stateDir } from "./state.js";
 import { send } from "./spool.js";
 
 export { STATE_DIR, LOG_NAME } from "./layout.js";
 
 export function logPath(root) {
-  return join(root, STATE_DIR, LOG_NAME);
+  return join(stateDir(root), LOG_NAME);
 }
 
 /**

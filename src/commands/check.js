@@ -3,6 +3,11 @@ import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { inspect } from "../inspect.js";
 import { renderReport, out, C } from "../render.js";
+import { readFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { stateDir } from "../state.js";
+
+const say = out;
 import { measureSystemLog } from "../violations.js";
 import { join } from "node:path";
 import { settingsFor } from "../srt.js";
@@ -10,13 +15,29 @@ import { weigh } from "../sandboxes/index.js";
 import { runsRoot } from "../rundir.js";
 import { channelName } from "../spool.js";
 
+/**
+ * What this seisin can be asked to do, for a launcher deciding which flags to
+ * pass: one list, instead of a version compared against minimums or a search
+ * through `--help`. A name is added when the feature ships and never removed
+ * while it works.
+ */
+export const CAPABILITIES = [
+  "policy-flag", "state-dir", "run-id", "expect-denied", "agent-flag", "handoff", "handoff-false",
+  "browsers", "local-ports", "key-mode-inject", "check-json", "ui-runs",
+];
+
 export async function check(config, argv = []) {
   if (argv.includes("--parallel") && !argv.includes("--verify"))
     throw new Error("--parallel is experimental and requires --verify");
+  const json = argv.includes("--json");
   const role = argv.find((a) => !a.startsWith("-")) ?? null;
   const report = inspect(config, role, config.path);
-  out(renderReport(report, { verbose: argv.includes("--verbose") }));
-  if (config.sandbox?.provider) report.sandboxes = sandboxes(config, role);
+  if (!json) out(renderReport(report, { verbose: argv.includes("--verbose") }));
+  if (config.sandbox?.provider || json) report.sandboxes = sandboxes(config, role, { quiet: json });
+  if (json) {
+    out(JSON.stringify(asJson(config, report), null, 2) + "\n");
+    return report;
+  }
   if (argv.includes("--verify")) report.verify = await verify(config, role, argv.includes("--parallel"));
   if (argv.includes("--system-log")) report.systemLog = await systemLog();
   return report;
@@ -56,16 +77,17 @@ const SYSTEM_LOG_SECONDS = 3;
  * too. Printed only when `[sandbox] provider` is set: without it every role
  * runs under srt, as it always has, and there is nothing to choose.
  */
-export function sandboxes(config, only = null, { platform = process.platform } = {}) {
+export function sandboxes(config, only = null, { platform = process.platform, quiet = false } = {}) {
+  const out = quiet ? () => {} : say;
   const sock = join(runsRoot(), "check", channelName(platform));
   const rows = [];
-  out(`\n${C.b}sandboxes${C.off} (${config.sandbox.provider.join(" → ")})\n`);
+  out(`\n${C.b}sandboxes${C.off} (${(config.sandbox?.provider ?? ["srt"]).join(" → ")})\n`);
   for (const r of Object.values(config.roles)) {
     if (only && r.name !== only) continue;
     let settings;
     try { settings = settingsFor(config, r.name, sock); } catch (e) { rows.push({ role: r.name, chosen: null, error: e.message }); continue; }
     const { chosen, options } = weigh(config, settings, { platform, role: r.name });
-    rows.push({ role: r.name, chosen: chosen?.sandbox.name ?? null,
+    rows.push({ role: r.name, chosen: chosen?.sandbox.name ?? null, bin: chosen?.bin ?? null,
       options: options.map((o) => ({ name: o.sandbox.name, missing: o.missing, unmet: o.unmet, warnings: o.warnings })) });
     out(chosen ? `  ${C.green}✓${C.off} ${r.name}: ${chosen.sandbox.name}\n` : `  ${C.red}✗${C.off} ${r.name}: no sandbox can hold it\n`);
     // Held, but not the way the role may expect: the sandbox's own words.
@@ -80,6 +102,32 @@ export function sandboxes(config, only = null, { platform = process.platform } =
     }
   }
   return rows;
+}
+
+/** `--version`'s first line from a sandbox binary, or null: what a launcher would otherwise parse itself. */
+function versionOf(bin) {
+  if (!bin || bin === "(not looked up)") return null;
+  const r = spawnSync(bin, ["--version"], { encoding: "utf8", timeout: 5000 });
+  return r.status === 0 ? (r.stdout || "").split("\n")[0].trim() || null : null;
+}
+
+/** `check --json`: the same answer as the text, for a program. */
+function asJson(config, report) {
+  const pkg = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "package.json"), "utf8"));
+  return {
+    seisin: pkg.version,
+    platform: process.platform,
+    capabilities: CAPABILITIES,
+    policy: config.path,
+    root: config.root,
+    stateDir: stateDir(config.root),
+    roles: (report.sandboxes ?? []).map((s) => ({
+      role: s.role, sandbox: s.chosen, bin: s.bin ?? null, version: versionOf(s.bin), error: s.error ?? null,
+      unmet: (s.options ?? []).filter((o) => o.name !== s.chosen).map((o) => ({ sandbox: o.name, missing: o.missing, unmet: o.unmet })),
+    })),
+    warnings: report.warnings.map((w) => ({ kind: w.kind, role: w.role ?? null, headline: w.headline ?? w.message ?? null })),
+    ok: checkStatus(report) === 0,
+  };
 }
 
 /**

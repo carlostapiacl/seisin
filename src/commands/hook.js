@@ -30,7 +30,7 @@ export async function hook(stdin = process.stdin, env = process.env) {
 
   let config;
   try {
-    config = loadConfig(env.SEISIN_CONFIG ?? findConfig());
+    config = loadConfig(env.SEISIN_CONFIG ?? findConfig(), undefined, { root: env.SEISIN_ROOT || null });
   } catch {
     return null;
   }

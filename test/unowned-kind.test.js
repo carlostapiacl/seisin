@@ -55,6 +55,8 @@ const TABLE = [
   ["app/.cache/babel/x.json", "temporary"],
   ["api/.pytest_cache/v/cache/nodeids", "temporary"],
   ["pkg/__pycache__/mod.cpython-310.pyc", "temporary"],
+  ["vitest.config.ts.timestamp-1729012345678-ab12cd34ef.mjs", "temporary"],
+  ["web/vite.config.ts.timestamp-1729012345678.mjs", "temporary"],
   ["pkg/__pycache__/mod.cpython-310.pyc.4419525232", "temporary"],
   ["mod.pyc", "temporary"],
   [".hypothesis/constants/1bc864a5", "temporary"],
@@ -85,6 +87,7 @@ const TABLE = [
   // territory: a normal path nobody claims — the real decision
   ["src/auth/token.ts", "territory"],            // code ABOUT tokens is not a token
   ["docs/secrets.md", "territory"],
+  ["src/app.timestamp.js", "territory"],         // a file named so, not Vite's bundled config
   [".env.example", "territory"],                 // made to be committed
   ["api/.env.sample", "territory"],
   ["yarn.lock", "territory"],                    // pins dependencies; somebody's to edit

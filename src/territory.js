@@ -60,6 +60,14 @@ export const READ_MODES = ["all", "territory"];
 export const AGENT_FILES = { claude: ["~/.claude.json"], codex: [] };
 
 /**
+ * Files in HOME every process on the platform reads at start, whatever it is,
+ * and that hold nothing about anybody. On macOS CoreFoundation reads
+ * `~/.CFUserTextEncoding` (a text-encoding code, `0x1F5:0x0:0x0`); shut, it was
+ * 278 of 409 denials in one orchestrator's runs, every one of them noise.
+ */
+export const PLATFORM_FILES = { darwin: ["~/.CFUserTextEncoding"], linux: [] };
+
+/**
  * Where data lives, per platform. Whole roots: what is under them belongs to
  * somebody. `/opt/homebrew/var` and `/usr/local/var` hold the databases a
  * package manager runs (Postgres, Redis); the rest of `/opt/homebrew` is the
@@ -225,6 +233,7 @@ export function keptFor(config, role, { observe = false, agent, program } = {}) 
     // starts and says "Not logged in" (measured, 2026-10-09). A run of no
     // agent, or of another, does not get it.
     ...(agent ? (AGENT_FILES[agent] ?? []).map(expand) : []),
+    ...(PLATFORM_FILES[process.platform] ?? []).map(expand),
     ...writePathsOf(config, role, { observe, agent }),
     ...(role.reads ?? []).map((p) => readPath(config.root, p)),
     ...(role.toolchain ?? []).map((p) => readPath(config.root, p)),

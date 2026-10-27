@@ -49,6 +49,8 @@ export function sandboxesOf(config) {
 export function weigh(config, settings, { platform = process.platform, role = null, locate = true, file = null } = {}) {
   const list = sandboxesOf(config);
   const register = role ? machOf(config.roles?.[role]).register : [];
+  const exempt = role ? (config.roles?.[role]?.handoffExempt ?? []).map((e) => join(config.root, e)) : [];
+  const requests = role ? (config.roles?.[role]?.requests ?? []) : [];
   let scratch = null;
   let copies = 0;
   // The file a sandbox is asked about is the one it would be handed: the run's
@@ -63,7 +65,7 @@ export function weigh(config, settings, { platform = process.platform, role = nu
   try {
     const options = list.map((sandbox) => {
       const bin = locate ? sandbox.locate() : "(not looked up)";
-      const own = settingsOf(sandbox, settings, { machRegister: register });
+      const own = settingsOf(sandbox, settings, { machRegister: register, handoffExempt: exempt, requests });
       const asked = sandbox.asksFile && locate && bin;
       const ctx = { platform, role, bin, file: asked ? fileFor(own) : null };
       const { unmet, warnings } = sandbox.asksFile && !asked ? { unmet: [], warnings: [] }
@@ -78,7 +80,18 @@ export function weigh(config, settings, { platform = process.platform, role = nu
       const browser = register.length && !sandbox.machRegister
         ? [`a Mach service to register (${register.join(", ")}, for browsers): ${sandbox.name} is not given it, only srt and tartaros are`]
         : [];
-      return { sandbox, bin, unmet: [...(masking ? [masking] : []), ...unmet, ...browser], warnings, missing: bin ? null : sandbox.missing() };
+      // `handoff_exempt`: a folder where trust-handoff is not protected. Only a
+      // sandbox that opens exactly that is handed the role; srt protects its
+      // own surfaces with no way to exempt a subtree.
+      const exemption = exempt.length && !sandbox.handoffExempt
+        ? [`handoff_exempt (${config.roles[role].handoffExempt.join(", ")}): ${sandbox.name} cannot leave a folder out of its trust-handoff protection, tartaros can`]
+        : [];
+      // `requests`: methods and paths per host. srt takes them only as a library
+      // callback, so seisin cannot hand them to it.
+      const ruled = requests.length && !sandbox.requestRules
+        ? [`requests (${requests.map((q) => q.host).join(", ")}): ${sandbox.name} cannot limit the methods and paths of a host from its settings, tartaros can`]
+        : [];
+      return { sandbox, bin, unmet: [...(masking ? [masking] : []), ...unmet, ...browser, ...exemption, ...ruled], warnings, missing: bin ? null : sandbox.missing() };
     });
     const chosen = options.find((o) => o.bin && o.unmet.length === 0) ?? null;
     return { chosen, options };

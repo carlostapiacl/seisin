@@ -2403,15 +2403,18 @@ table.runs tr.sys td{color:var(--dim)}
     if (w.text) bits.push('started <span title="' + escA(w.title) + '">' + esc(w.text) + "</span>");
     return bits.join(" · ");
   }
-  function outcomeTag(o){
+  function outcomeTag(o, dropped){
     var says = { clean: "clean", denied: "denied", refused: "canary failed", unread: "policy unreadable" };
-    return '<span class="oc ' + escA(o) + '">' + esc(says[o] || o) + "</span>";
+    // A run whose system log dropped kernel messages: its walls may be missing some.
+    var lost = dropped ? ' <span class="oc refused" title="the system log dropped ' + escA(String(dropped)) +
+      ' batch(es) of kernel messages during this run: denials may be missing from its record">record incomplete</span>' : "";
+    return '<span class="oc ' + escA(o) + '">' + esc(says[o] || o) + "</span>" + lost;
   }
 
   function drawRunBanner(){
     var b = document.getElementById("run-banner");
     var r = RUNINFO || { id: RUN };
-    b.innerHTML = "<b>Run " + esc(r.run_id || r.id) + "</b> " + outcomeTag(r.outcome || "") +
+    b.innerHTML = "<b>Run " + esc(r.run_id || r.id) + "</b> " + outcomeTag(r.outcome || "", r.dropped) +
       ' · <a href="./">all runs</a>' +
       '<div class="meta">' + (runMeta(r) || "no run.json: only what its policy and log say") +
       " · read only: nothing is granted from here</div>";
@@ -2442,6 +2445,7 @@ table.runs tr.sys td{color:var(--dim)}
     document.getElementById("rn-kpis").innerHTML =
       card("b", "runs", t.runs, (t.outcome.denied || 0) + " denied something · " + (t.outcome.clean || 0) + " clean") +
       card(t.outcome.refused ? "a" : "g", "canary failed", t.outcome.refused || 0, "runs that never started") +
+      (t.incomplete ? card("a", "record incomplete", t.incomplete, "runs whose system log dropped kernel messages") : "") +
       card(t.denied ? "a" : "g", "denied", t.denied, (k.file || 0).toLocaleString() + " files · " + (k.network || 0).toLocaleString() + " network") +
       card(t.retried ? "a" : "g", "spent retrying", t.retried, "calls after the first denial of the same thing");
 
@@ -2463,7 +2467,7 @@ table.runs tr.sys td{color:var(--dim)}
           var w = when(r.started_at || "");
           return "<tr><td><a href=\"./?run=" + encodeURIComponent(r.id) + "#requests\"><code>" + esc(r.run_id || r.id) + "</code></a></td>" +
             '<td title="' + escA(w.title || "") + '">' + esc(w.text || "") + "</td><td>" + esc(r.team || "") + "</td><td>" + esc(r.role || "") +
-            "</td><td>" + esc(r.work_item || "") + "</td><td>" + esc(r.status || "") + "</td><td>" + outcomeTag(r.outcome) +
+            "</td><td>" + esc(r.work_item || "") + "</td><td>" + esc(r.status || "") + "</td><td>" + outcomeTag(r.outcome, r.dropped) +
             "</td><td class=num>" + r.denied + "</td><td class=num>" + r.retried + "</td><td>" +
             (r.hosts || []).slice(0, 3).map(function(h){ return "<code>" + esc(h.target) + "</code>"; }).join(" ") + "</td></tr>";
         }).join("") + "</tbody>"
