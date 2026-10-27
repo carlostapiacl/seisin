@@ -17,6 +17,21 @@ import { parseKey, MODES, checkNames, BUILTIN, unknownMode } from "./keys.js";
 import { readNotify } from "./notify.js";
 import { BROWSERS } from "./browsers.js";
 
+/** `a/b//` → `a/b`, in linear time (a `/\/+$/` regex backtracks on a long run of slashes). */
+const trimSlashes = (p) => {
+  let end = p.length;
+  while (end > 0 && p[end - 1] === "/") end--;
+  return p.slice(0, end);
+};
+
+// The directory above a path's first glob character: "src/a*/b" gives "src", "a*" gives "".
+const beforeGlob = (p) => {
+  const g = p.search(/[*?[\]{}]/);
+  if (g < 0) return p;
+  const slash = p.lastIndexOf("/", g);
+  return slash < 0 ? "" : p.slice(0, slash);
+};
+
 export { CONFIG_NAME } from "./layout.js";
 
 /** Walk up from `from` until a seisin.toml shows up. Returns its path or null. */
@@ -329,7 +344,7 @@ function readReadList(v, at) {
     if (/[*?[\]{}]/.test(above) || p === "**")
       throw new Error(
         `${at} = "${p}" cannot be enforced as written.\n` +
-        `  A read grant is a path and everything under it. Write "${above.replace(/\/?[^/]*[*?[\]{}].*$/, "") || "."}/**" ` +
+        `  A read grant is a path and everything under it. Write "${beforeGlob(above) || "."}/**" ` +
         `for the subtree, or name the paths.`);
   }
   return list;
@@ -436,7 +451,7 @@ export function loadConfig(path, text = readFileSync(path, "utf8"), { root = nul
   // them as prefixes: with the slash kept, `scan` walked into the protected
   // directory and a bare key resolved to `.secrets//x`, which matched nothing.
   const keyDirs = (keyDir === undefined ? [] : asArray(keyDir, "keys.dir"))
-    .map((d) => d.replace(/\/+$/, "") || d);
+    .map((d) => trimSlashes(d) || d);
   const keyProviders = readProviders(own(own(parsed, "keys"), "providers"), path);
   // `undefined` means "use the defaults"; an explicit empty array means "none".
   // The difference matters: one is a user who has not thought about it, the
@@ -1183,7 +1198,7 @@ function readNeverWrites(value, where) {
 function readPrivate(value, where) {
   const list = value === undefined ? [] : asArray(value, where);
   for (const p of list) {
-    const dir = p.replace(/\/\*\*$/, "").replace(/\/+$/, "").replace(/^\.\//, "");
+    const dir = trimSlashes(p.replace(/\/\*\*$/, "")).replace(/^\.\//, "");
     if (p.startsWith("/"))
       throw new Error(`${where}: "${p}" is absolute. A private folder is relative to the repo root, like writes.`);
     if (dir.split("/").includes(".."))
@@ -1193,13 +1208,13 @@ function readPrivate(value, where) {
         `"notes/**" — and every other role is denied it.`);
     if (/[*?[\]{}]/.test(dir))
       throw new Error(`${where}: "${p}" is a pattern. A private folder is one path and everything under it: ` +
-        `write "${dir.replace(/\/?[^/]*[*?[\]{}].*$/, "") || "dir"}/**".`);
+        `write "${beforeGlob(dir) || "dir"}/**".`);
   }
   return list;
 }
 
 /** `private` with its `/**` and `./` taken off: the folder itself. */
-export const privateDir = (p) => p.replace(/\/\*\*$/, "").replace(/\/+$/, "").replace(/^\.\//, "");
+export const privateDir = (p) => trimSlashes(p.replace(/\/\*\*$/, "")).replace(/^\.\//, "");
 
 /**
  * One owner per private folder. Two roles naming the same folder, or one
