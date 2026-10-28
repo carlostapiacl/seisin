@@ -7,7 +7,7 @@
  * request queue writable by the process they are a record of: an agent could
  * truncate `log.jsonl`, rewrite a decision, or invent a request that had never
  * been refused. The files said "append-only" in their own comments and nothing
- * enforced it. An external review named this and was right.
+ * enforced it. A review named this and was right.
  *
  * So the file moves out of reach and a socket takes its place:
  *

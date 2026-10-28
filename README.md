@@ -49,7 +49,7 @@ sandbox covers most of this ([what is left over](#what-it-is-not)).
 
 A **permission layer**, not a sandbox — it sits on top of one. The isolation comes from the OS; what seisin adds is the part an OS cannot know: which role a path belongs to, and therefore who to ask next.
 
-*Outside reviews went looking for ways past the boundary. [What they found, what broke, and what is still open →](https://github.com/carlostapiacl/seisin/blob/main/docs/what-it-has-been-put-through.md)*
+*Five reviews went looking for ways past the boundary. [What they found, what broke, and what is still open →](https://github.com/carlostapiacl/seisin/blob/main/docs/what-it-has-been-put-through.md)*
 
 *And what running four teams of agents behind it actually cost — including the numbers that did not survive a re-check. [Field notes →](https://github.com/carlostapiacl/seisin/blob/main/docs/field-notes.md)*
 

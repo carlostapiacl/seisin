@@ -94,8 +94,7 @@ Source: [GitHub Security Lab, *Safeguarding VS Code against prompt injections*](
 
 ## Five reviews
 
-Reviews 1 and 2 came from outside and were not commissioned. 3 is the second reviewer again, on
-the fixed version. 4 went through the config parser. 5 is the team that runs seisin, testing the
+Review 3 repeats review 2 on the fixed version. 4 went through the config parser. 5 is the team that runs seisin, testing the
 npm package before it was published.
 
 ### Review 1, architecture
