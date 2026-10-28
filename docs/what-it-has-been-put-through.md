@@ -9,7 +9,7 @@ the defects I found myself. Open findings are listed as open.
 Node 18/20/22/24, on every pull request and every push to `main`. A release is published only
 from CI, after that passes ([publish.yml](../.github/workflows/publish.yml)), with npm provenance.
 
-Last run on `main`, 2026-10-27, 0.6.4, all eight jobs green. On Node 24:
+Last run on `main`, 2026-10-27 (0.6.4): 1120 tests on macOS, all eight jobs green. On Node 24:
 
 | | tests | pass | skipped |
 |---|---|---|---|
