@@ -19,8 +19,12 @@ seisin init && seisin check            # propose a policy from the repo, then re
 seisin run <role> -- claude -p "…"     # the roles are the ones seisin check lists
 ```
 
-**Is it for me?** If two or more agents work in one repository, yes — that is what it is for.
-With one agent, its own sandbox covers most of this ([what is left over](#what-it-is-not)).
+**Before you install:** by default a role can still read your home directory, `~/.ssh`, `~/.aws`
+and `~/.config` included. seisin closes the keys you declare, not every credential on the machine.
+To close the rest, set `[runtime] isolate = "credentials"` ([how it protects secrets](#how-it-protects-secrets)).
+
+**Is it for me?** If two or more agents work in one repository, yes. With one agent, its own
+sandbox covers most of this ([what is left over](#what-it-is-not)).
 
 **[The short version, with the demos playing →](https://carlostapiacl.github.io/seisin/)** · this page is the long one.
 
@@ -66,9 +70,8 @@ flowchart LR
     style H fill:#eef,stroke:#66c
 ```
 
-**The kernel says no. seisin says whose.** That second half is the whole thing: other
-permission layers in this space answer *yes* or *no*, or at best *which rule* said no — and a
-denial that also names an owner turns a dead end into a handoff.
+**The kernel says no. seisin says whose.** Other permission layers answer *yes* or *no*, or
+which rule said no. A denial that names an owner turns a dead end into a handoff.
 
 ```
 $ seisin run frontend -- sh -c 'echo // fix >> src/api/orders.ts'
@@ -92,19 +95,17 @@ The line under the request is where it goes, decided from the policy as it stand
 backend*, or *a person decides* when nobody or several roles own it. seisin does not start
 backend. Whatever does reads that decision (`seisin requests --json`, `seisin_requests`) and runs
 `seisin run backend --handoff frontend:write:src/api`, which starts only if the policy hands that
-request to backend — and anything backend is then denied joins the same handoff chain, so work
+request to backend. Anything backend is then denied joins the same handoff chain, so work
 cannot bounce back to frontend ([where a request goes](https://github.com/carlostapiacl/seisin/blob/main/docs/requests.md#where-a-request-goes)).
 A role that is a pipeline phase rather than a worker says `handoff = false`: it keeps its
-territory and is never handed work — what it owns goes to another owner, or to a person.
+territory and is never handed work; what it owns goes to another owner, or to a person.
 
-A caller that probes the sandbox with a write it expects to be denied — its own canary — names
+A caller that probes the sandbox with a write it expects to be denied (its own canary) names
 that path with `--expect-denied <path>` (repeatable). The denial is logged as expected and asked
 of nobody: no request, no notification, no handoff. Only that exact path; any other is a request
 as usual ([expected denials](https://github.com/carlostapiacl/seisin/blob/main/docs/requests.md#a-denial-the-caller-expects)).
 
-**Whose it was, at the moment it was denied.** Other permission layers answer *yes* or *no*, and the good ones say which rule it was and how to widen it. Answering **"no, and it belongs to `backend`"** turns a denial into a handoff — and one a person can grant in a command, rather than a line somebody has to remember to go and read.
-
-The kernel is what denies; the name comes from the policy. That first line is all the boundary itself can say — no path, no reason, nothing to read afterwards — so seisin reads the denial out of the kernel's own log and answers the question it leaves open. On Linux only the hook can do that; [the ask is upstream](https://github.com/carlostapiacl/seisin/blob/main/docs/upstream/cli-violations.md) as [issue #582](https://github.com/anthropics/sandbox-runtime/issues/582).
+The kernel denies; the name comes from the policy. `Operation not permitted` is all the boundary itself says, so seisin reads the denial from the kernel's log and looks up the owner. On Linux only the hook can do that; [the ask is upstream](https://github.com/carlostapiacl/seisin/blob/main/docs/upstream/cli-violations.md) as [issue #582](https://github.com/anthropics/sandbox-runtime/issues/582).
 
 The agent can ask directly too, from inside the sandbox:
 
@@ -162,21 +163,14 @@ A rule is a string comparison against a command someone might not spell that way
 
 ## What it is for, and what it is not for
 
-> **It turns an agent's mistake into a contained mistake. Against a hostile agent, the
-> guarantee is the one of the sandbox you run it under.**
->
-> Two outside reviews, plus three follow-ups, have gone through it looking for ways past the boundary.
-> [What they found and what remains open](https://github.com/carlostapiacl/seisin/blob/main/docs/what-it-has-been-put-through.md) lists all of them — what was
-> fixed, what was measured, and what is still open.
+**It contains an agent's mistakes. Against a hostile agent, the guarantee is the one of the
+sandbox you run it under.** Five reviews went looking for ways past the boundary;
+[what they found and what is still open](https://github.com/carlostapiacl/seisin/blob/main/docs/what-it-has-been-put-through.md).
 
-That distinction is the whole threat model, and it is worth reading before you install
-rather than after.
-
-**It holds against an agent that is wrong.** One that edits the file it was not asked
-about, reads the key meant for another role, or calls an API nobody declared. The kernel
-denies, and it does not care how the command was spelled — verified against a grandchild
-process, an absolute path, a symlink, a `python -c`, and a shell redirect the agent fell
-back to when its own file API was denied.
+**It holds against an agent that is wrong:** one that edits a file it was not asked about, reads
+another role's key, or calls an API nobody declared. The kernel denies however the command was
+spelled. Verified against a grandchild process, an absolute path, a symlink, `python -c`, and a
+shell redirect.
 
 **Against an agent that is trying, the line is drawn by the sandbox.** seisin writes the
 policy and checks that the sandbox can hold it; [the sandbox you choose](https://github.com/carlostapiacl/seisin/blob/main/docs/sandboxes.md)
@@ -189,7 +183,7 @@ own fixtures:
 | it can write anything inside its own territory | including staging an exfiltration |
 | `base64` defeats the redaction | only the literal value is masked, and only on stdout and stderr |
 | an allowed domain is an allowed channel | if the agent's own API is reachable, so is everything that goes through it. [`[network] deny_addresses`](#configure) keeps an allowed name from resolving into your LAN |
-| the hook is text-based and evadable | on purpose — what escapes it goes **past the hook, not past the kernel**: the kernel still denies. On macOS it is no longer unexplained either, because [the kernel's own denials are recorded](#seeing-what-happened); on Linux it is. Either way, attribution is not a control |
+| the hook is text-based and evadable | on purpose: what escapes the hook still hits the kernel, which denies. On macOS [the kernel's own denials are recorded](#seeing-what-happened); on Linux they are not. Attribution is not a control |
 
 Others are the sandbox's, and differ between the two built in:
 
@@ -212,10 +206,10 @@ will not make its guarantee stronger than it is.
 npm install -g seisin
 ```
 
-That pulls in [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropics/sandbox-runtime), the default sandbox: Seatbelt on macOS, bubblewrap on Linux. No containers, no VMs, no daemon. Its one other dependency is optional: [tartaros](https://github.com/carlostapiacl/tartaros), prebuilt for macOS and Linux, which can enforce instead — as can a sandbox of your own ([docs/sandboxes.md](https://github.com/carlostapiacl/seisin/blob/main/docs/sandboxes.md)).
+That pulls in [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropics/sandbox-runtime), the default sandbox: Seatbelt on macOS, bubblewrap on Linux. No containers, no VMs, no daemon. Its one other dependency is optional: [tartaros](https://github.com/carlostapiacl/tartaros), prebuilt for macOS and Linux, which can enforce instead, as can a sandbox of your own ([docs/sandboxes.md](https://github.com/carlostapiacl/seisin/blob/main/docs/sandboxes.md)).
 
-**On Linux you also need three system packages** — the runtime refuses to start without
-them rather than running unconfined, which is the right failure and an unhelpful message:
+**On Linux you also need three system packages.** Without them the runtime refuses to start
+rather than run unconfined:
 
 ```bash
 apt install bubblewrap ripgrep socat      # or your distro's equivalent
@@ -229,9 +223,8 @@ namespace`:
 sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 ```
 
-Worth knowing what this looks like when you hit it: seisin appears to deny
-*everything*, because the sandbox never starts. It is not a policy problem and
-no amount of editing `seisin.toml` will move it.
+When this happens seisin seems to deny everything, because the sandbox never starts. Editing
+`seisin.toml` will not fix it.
 
 **Inside a container** bubblewrap needs to create namespaces and mount `/proc`, which a
 default Docker container forbids. `--cap-add SYS_ADMIN --security-opt seccomp=unconfined`
@@ -828,8 +821,8 @@ Verified by the test suite, which runs real commands in a real sandbox:
 
 ## How it protects secrets
 
-Four ways a secret leaves a process, and seisin closes three. The fourth is named rather
-than hidden.
+Six ways a secret leaves a process. seisin closes four by default, one when you turn it on, and
+one not at all.
 
 | way out | closed by |
 |---|---|
@@ -837,6 +830,7 @@ than hidden.
 | a key riding in the environment | the launcher — the child's environment is **built, not inherited** |
 | spilling a key the role does hold | the launcher — masked on stdout and stderr, even split across buffers |
 | sending it somewhere | the kernel — egress is allow-only, by hostname. HTTP(S) works; [SSH does not on macOS](https://github.com/carlostapiacl/seisin/blob/main/docs/decisions.md#ssh-does-not-work-and-it-is-not-seisin-that-decided-that) |
+| **credentials in your home** (`~/.ssh`, `~/.aws`, `~/.npmrc`, `~/.config`) | **not by default** (`read = "all"`). `[runtime] isolate = "credentials"` closes them and the agent stays logged in; `read = "territory"` closes more |
 | **a key stored outside the declared directories** | **nothing.** `seisin scan` finds them so you know |
 
 ```toml
@@ -1037,29 +1031,16 @@ the same kernel or workspace, and which one you want depends on what you are pro
 
 ## Status
 
-**1120 tests on macOS, 1113 passing and 7 platform skips** (with the 0.6.4 changes, 2026-10-26, local); for 0.6.3, in CI
-the same day, on `ubuntu-latest` **1100, 1071 passing and 29 platform skips**, and on macOS 1101,
-1092 passing and 9 skips, Node 18/20/22/24, with the 26 core boundary tests skipping none. On 2026-10-12, 91 of the suite's tests
-needed `@anthropic-ai/sandbox-runtime` installed — counted by running it with the runtime
-hidden — and run real commands through the real kernel; 26 of them are the core boundary file,
-`test/sandbox.test.js`, which the CI gate fails if it *skips*, because a green run that quietly
-tested nothing looks exactly like a real one. That is not hypothetical:
-when there were eighteen of them, they skipped on Linux for a day, behind a runtime check that looked for the global
-install and missed the bundled one, and hid a defect that broke `seisin run` on that platform
-entirely.
+CI runs the full suite on macOS and `ubuntu-latest`, Node 18/20/22/24, on every pull request and
+push to `main`. On 2026-10-27 (0.6.4), on Node 24: macOS **1120 tests, 1111 passing, 9 skipped**;
+Linux **1119, 1090 passing, 29 skipped**. The skips are platform tests; the job fails if the 26
+core boundary tests in `test/sandbox.test.js` skip. A release is published only from CI, after
+that passes, with npm provenance. [Which claim was measured where](https://github.com/carlostapiacl/seisin/blob/main/docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),
+and [what running agents behind it cost](https://github.com/carlostapiacl/seisin/blob/main/docs/field-notes.md).
 
-A release is published only from CI, after the full suite passes on macOS and `ubuntu-latest`,
-Node 18/20/22/24 (`publish.yml`), with npm provenance.
-Historically: 811 tests on macOS 15, 809 passing and 2 skipped, on 2026-09-30.
-[Which claim was measured where](https://github.com/carlostapiacl/seisin/blob/main/docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),
-and [what running agents behind it cost the people using it](https://github.com/carlostapiacl/seisin/blob/main/docs/field-notes.md).
-The [2026-10-02 review](https://github.com/carlostapiacl/seisin/blob/main/docs/reviews/2026-10-02.md) and its [follow-up](https://github.com/carlostapiacl/seisin/blob/main/docs/reviews/2026-10-02-followup.md)
-added 32 regressions and record their portable checks apart from the kernel measurements above.
-The config format may still move before `1.0` — if it does, `seisin check` will
-tell you what changed.
+The config format may still change before `1.0`; `seisin check` will say what changed.
 
-**What is genuinely open**, so nobody spends an afternoon on something that is
-already done:
+**Still open:**
 
 | | |
 |---|---|
@@ -1069,13 +1050,11 @@ already done:
 | **SSH inside a run (macOS)** | on macOS the `ProxyCommand` the runtime sets can't authenticate to its own proxy, so `git` over SSH fails at the handshake (on Linux the runtime routes it through an authenticated proxy — read from its source, not measured here). Fix upstream: [PR #516](https://github.com/anthropics/sandbox-runtime/pull/516). Use an HTTPS remote |
 | **A browser inside a role (macOS)** | headless Chromium runs with `browsers = ["chromium"]`. Not covered yet: Chrome and Chrome for Testing, and `@playwright/mcp` under srt (it runs under tartaros). [docs/browsers.md](https://github.com/carlostapiacl/seisin/blob/main/docs/browsers.md#what-is-not-covered-yet) |
 
-Every word above has one meaning, listed in [the glossary](https://github.com/carlostapiacl/seisin/blob/main/docs/glossary.md) — the boundary
-**denies**, a person **grants** or **declines**, seisin **refuses** a config it cannot enforce. A tool whose
-product is a sentence cannot afford two words for one thing.
+Each term has one meaning, listed in [the glossary](https://github.com/carlostapiacl/seisin/blob/main/docs/glossary.md): the boundary
+**denies**, a person **grants** or **declines**, seisin **refuses** a config it cannot enforce.
 
-Issues and pull requests welcome — [CONTRIBUTING.md](https://github.com/carlostapiacl/seisin/blob/main/CONTRIBUTING.md) says what is actually
-different about contributing here, which is mostly that a claim has to be downstream of
-something measured. If you are reporting something that got past the boundary, do it
+Issues and pull requests welcome — [CONTRIBUTING.md](https://github.com/carlostapiacl/seisin/blob/main/CONTRIBUTING.md): mainly, a claim has to come
+from something measured. If you are reporting something that got past the boundary, do it
 [privately](https://github.com/carlostapiacl/seisin/blob/main/SECURITY.md); `seisin log --verdict denied` and the `seisin.toml` are the two
 things that make it reproducible.
 

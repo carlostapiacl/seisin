@@ -1,26 +1,24 @@
 # What it has been put through
 
-> Every claim in the README is downstream of something on this page. Where a
-> finding is still open it says so, and where a fix is unverified it says that
-> too — a security tool that only publishes its passes is advertising.
+Every claim in the README comes from something on this page: the test suite, five reviews, and
+the defects I found myself. Open findings are listed as open.
 
 ## The suite
 
-**1120 tests** in the macOS suite; 1113 passed and 7 platform tests skipped (with the 0.6.4 changes, local,
-2026-10-26). For 0.6.3, in CI the same day: `ubuntu-latest` 1100, 1071 passed and 29 skipped; macOS 1101, 1092
-passed and 9 skipped; Node 18/20/22/24. Before that, Linux locally: 1023, 1000 passed and 23
-skipped (2026-10-13, Debian 12, bubblewrap 0.8.0). The [workflow](../.github/workflows/test.yml) runs macOS and Linux
-under bubblewrap on Node 18/20/22/24 for pull requests and pushes to `main`, and a release is
-published only after it passes ([publish.yml](../.github/workflows/publish.yml)). Historical full-suite measurements remain dated below; the
-[2026-10-02 review](reviews/2026-10-02.md) and its
-[follow-up](reviews/2026-10-02-followup.md) record portable validation and its limits.
+[CI](../.github/workflows/test.yml) runs the suite on macOS and `ubuntu-latest` (bubblewrap),
+Node 18/20/22/24, on every pull request and every push to `main`. A release is published only
+from CI, after that passes ([publish.yml](../.github/workflows/publish.yml)), with npm provenance.
 
-On 2026-10-12, 91 of the suite's tests were not unit tests: they run real commands through the
-real sandbox and check what the kernel did — and they skip themselves when `srt` is not
-installed, so on a machine without it the suite reports them skipped rather than failing (that
-is how they were counted: the suite run with the runtime hidden, 91 skipped). 26 of them are the
-core boundary file, `test/sandbox.test.js`, and the CI gate **fails if those skip** — a green
-run that quietly tested nothing looks exactly like a real one. A few of them:
+Last run on `main`, 2026-10-27, 0.6.4, all eight jobs green. On Node 24:
+
+| | tests | pass | skipped |
+|---|---|---|---|
+| macOS | 1120 | 1111 | 9 |
+| `ubuntu-latest` | 1119 | 1090 | 29 |
+
+The skips are platform tests. Some tests run real commands through the real sandbox and check
+what the kernel did; 26 of them are the core boundary file, `test/sandbox.test.js`, and the job
+**fails if those skip**, because a run that tested nothing looks green too. A few:
 
 ```
 ✔ a role reads the key it declares
@@ -31,418 +29,224 @@ run that quietly tested nothing looks exactly like a real one. A few of them:
 ✔ reading another role's code still works
 ✔ the boundary survives a grandchild process
 ✔ an absolute path does not walk around the rule
-✔ the child's exit code comes back out
-✔ output still arrives in full when it is redacted
-✔ check exits clean on a valid config
-✔ explain exits 1 when it denies, so it composes in a script
-✔ the agent's own flags are not eaten by the sandbox
 ✔ CR-1 · a missing boundary refuses to run, and the child never starts
 ✔ CR-2 · ownership does not depend on which role is asking
-✔ CR-3 · the confined process can ask whose it is
 ✔ seisin refuses to run inside seisin, by name
 ✔ an isolated role starts, and loses the credentials the ordinary mode leaves open
 ```
 
-## Public agent attacks, turned into boundary tests
+The [2026-10-02 review](reviews/2026-10-02.md) and its [follow-up](reviews/2026-10-02-followup.md)
+record the portable checks apart from the kernel ones.
 
-The 0.6.0 review added two boundary families to this evidence: a territory aimed directly at
-`.claude` cannot reopen its settings or hooks, and the territory read mode's explanations are
-checked against real kernel reads. Every run also executes the canary described in the README;
-its positive and negative controls run against the kernel on macOS and Linux.
+### Where each claim was actually run
 
-GitHub Security Lab showed an indirect prompt injection changing
-`.vscode/settings.json` to turn on tool auto-approval and reconfigure an MCP
-server. The detail that matters is timing: VS Code reloads the file at once, so
-asking a person to Keep or Undo afterwards is not a boundary.
+macOS enforces with Seatbelt and Linux with bubblewrap, so "it works" is a claim per platform.
 
-seisin already treated `.mcp.json`, `.claude/`, git hooks and Codex's config as
-files that make a program outside the sandbox act. `.vscode/` was not in that
-family. `sandbox-runtime` protects it on its own, but only under the directory
-the run starts in ([#432](https://github.com/anthropics/sandbox-runtime/issues/432)),
-so a project's `.vscode` anywhere else in a role's territory was that role's to
-change. ATTACK-009 runs from a sibling directory for exactly that reason — from
-the repository root it passed before seisin did anything, which made it a test
-of the runtime, not of this.
+| | macOS 15 · Seatbelt | Linux · bubblewrap |
+|---|---|---|
+| the suite | CI, every push | CI, every push; also Debian 12 locally (bwrap 0.8.0, Docker `--privileged`) |
+| `isolate = "home"` | yes (did not start at all before the socket fix, below) | yes |
+| `isolate = "credentials"` | yes | yes |
+| Claude Code 2.1.270 | yes | not run |
+| opencode 1.18.30 | yes | not run |
+| codex 0.150.1 | yes, with its own sandbox off | not run |
+| LangGraph 1.2.11 | yes | not run |
+| gemini 0.57.0 | started only, not run against a policy | not run |
+| Windows | not run | not run |
 
-Since 0.5.0 `.vscode/`, `.cursor/` and `.windsurf/` are protected by default,
-and `CLAUDE.md`, `AGENTS.md` and their kin when the policy turns that on. A
-policy can hand either family to a role that maintains those files; the first
-version of this change could not, and denied every `CLAUDE.md` a working team
-edits several times a week. That, and three other costs found before it
-shipped — npm dropping those files from the packages it unpacks, a role's
-`git checkout` leaving them stale without a word, and `check` listing hundreds
-of paths that did not exist — are why the families are protected by exact
-patterns at each project's root and literally only where they exist.
+The suite is what asserts the boundary holds, on both. The agent runs show that real tools work
+inside it, and they have only been done on macOS.
 
-What the kernel tests do, and each fails with the protection switched off:
+## Prompt-injection attacks, turned into tests
+
+GitHub Security Lab showed a prompt injection rewriting `.vscode/settings.json` to turn on tool
+auto-approval. VS Code reloads that file at once, so asking a person to keep or undo the change
+afterwards is too late.
+
+seisin already protected `.mcp.json`, `.claude/`, git hooks and Codex's config: files that make
+a program outside the sandbox act. `.vscode/` was not on that list. `sandbox-runtime` protects it,
+but only in the directory the run starts in ([#432](https://github.com/anthropics/sandbox-runtime/issues/432)),
+so a nested project's `.vscode` was open. Since 0.5.0, `.vscode/`, `.cursor/` and `.windsurf/` are
+protected by default, and `CLAUDE.md`, `AGENTS.md` and similar when the policy turns that on. A
+policy can hand either family to the role that maintains them.
+
+The first version denied every `CLAUDE.md` a team edits several times a week, and had three more
+problems (npm dropping the files, a `git checkout` leaving them stale, `check` listing paths that
+did not exist). That is why the protection is by exact pattern at each project's root, and only
+where the files exist.
+
+Each test fails with the protection switched off:
 
 | id | tries | result |
 |---|---|---|
 | ATTACK-009 | rewrite a nested project's `.vscode/settings.json`, move it aside, create a `.cursor/` | denied |
-| ATTACK-009b | the same edit, by a role handed `control_files = ["ide"]` | written |
+| ATTACK-009b | the same, by a role handed `control_files = ["ide"]` | written |
 | ATTACK-010 | rewrite a nested `AGENTS.md`, create a `CLAUDE.md` | denied |
 | ATTACK-011 | append to `~/.npm/_logs` and `~/.claude/debug` | denied |
 
-The last one is a different finding. The pinned runtime makes those two
-directories writable by itself, even though neither appears in the territory
-seisin prints; a confined process created a file in the first. Both are now
-denied.
+ATTACK-011 was a separate finding: the pinned runtime makes those two directories writable on its
+own, outside the territory seisin prints. Both are denied now.
 
-Two things this does not solve. Output passes through byte for byte, terminal
-escape sequences included; hardening that belongs to the terminal or the agent's
-UI. And allowing an MCP server controls whether it may be called, not whether
-its description or its output can steer a model. seisin confines what such
-steering can do; it does not judge prompt content.
+Not covered: terminal escape sequences in output pass through as they are, and allowing an MCP
+server decides whether it can be called, not whether its output steers the model.
 
-Source: [GitHub Security Lab, *Safeguarding VS Code against prompt
-injections*](https://github.blog/security/vulnerability-research/safeguarding-vs-code-against-prompt-injections/).
+Source: [GitHub Security Lab, *Safeguarding VS Code against prompt injections*](https://github.blog/security/vulnerability-research/safeguarding-vs-code-against-prompt-injections/).
 
-### Where each claim was actually run
+## Five reviews
 
-Two platforms enforce differently — Seatbelt on macOS, bubblewrap on Linux — so
-"it works" is a per-platform claim. This is what has been exercised on each, and
-what has not.
+Reviews 1 and 2 came from outside and were not commissioned. 3 is the second reviewer again, on
+the fixed version. 4 went through the config parser. 5 is the team that runs seisin, testing the
+npm package before it was published.
 
-| | macOS 15 · Seatbelt | Linux · bubblewrap |
-|---|---|---|
-| the suite | **1120 tests, 1113 passing and 7 skipped** (platform) — local, with the 0.6.4 changes, 2026-10-26 | **1023 tests, 1000 passing and 23 skipped** — 2026-10-13, local, in Docker: Debian 12, bwrap 0.8.0, `--privileged` (bubblewrap mounts `/proc`) |
-| CI (paused) | last green run 2026-10-04, Node 18/20/22/24; CI failed then if the 26 sandbox tests skipped | `ubuntu-latest`, Node 18/20/22/24, same run |
-| `[runtime] isolate = "home"` (`= true`) | ✅ — and it did not start here at all until the 104-byte socket fix | ✅ — `tmpdir()` is `/tmp`, so the path never came close |
-| `[runtime] isolate = "credentials"` | ✅ — no role home, so the socket limit cannot reach it | ✅ |
-| Claude Code 2.1.270 | ✅ | not run |
-| opencode 1.18.30 | ✅ | not run |
-| codex 0.150.1 | ✅, with its own sandbox off | not run |
-| LangGraph 1.2.11 | ✅ | not run |
-| gemini 0.57.0 | started only — not run against a policy | not run |
-| Windows | — | — |
+### Review 1, architecture
 
-The four agents have only been run under macOS. The suite covers both, and the
-suite is what asserts the boundary holds; the agent runs are evidence that real
-tools behave inside it, and that evidence is one platform deep.
-
-The asymmetry in the `isolate` row is the reason this table exists. A defect can
-be specific to the platform its author develops on, stay invisible on the other,
-and be invisible in CI too when no test turns the feature on.
-
-## Two outside reviews, plus three follow-ups
-
-Reviews 1 and 2 are the outside ones. Neither was commissioned and neither was friendly, which
-is the useful kind. Reviews 3 to 5 are follow-ups and are counted as such: 3 is the second
-reviewer again, on the fixed version; 4 went through the config parser; 5 is the team that
-runs seisin, exercising the package before it was published.
-
-### Review 1 — architecture
-
-Four findings, all four real, all four reproduced before being fixed.
+Four findings, all reproduced before the fix.
 
 | | what it was | now |
 |---|---|---|
-| **Policy ≠ enforcement** | `ownersOf` read `src/*` as one level; the kernel got `src`, the whole subtree. `seisin explain` said *denied* and the write landed | patterns the kernel cannot express exactly are **refused**, not widened. There is no exact translation to find later: a sandbox grants prefixes and "one level down" is not a prefix |
-| **The audit trail was writable by what it audits** | `.seisin/` was in every role's allowWrite, so the log and queue could be truncated, rewritten or forged | the directory left the territory. The hook sends lines to the parent over a unix socket granted by path; the parent holds the file |
-| **Paths were not canonical** | `src/web/../api/orders.ts` is backend's file and matched frontend's `src/web/**`. The kernel still denied — but `whose` named the wrong owner and the log said `allowed` for a write that was about to fail | resolved before anyone decides anything. Above the root owns nothing |
-| **The README contradicted itself on Linux** | one section said the suite passed on Debian 12, another said it had never run there | CI ran it on both platforms at every push from then on — last green run 2026-10-04. A release is published only after it passes on both |
+| **Policy and enforcement disagreed** | `ownersOf` read `src/*` as one level; the kernel got the whole subtree. `explain` said *denied* and the write landed | seisin refuses a pattern the kernel cannot express exactly, instead of widening it |
+| **The audit trail was writable by what it audits** | `.seisin/` was in every role's write list | it left the territory; the hook sends lines over a socket and the parent writes the file |
+| **Paths were not canonical** | `src/web/../api/orders.ts` matched frontend's `src/web/**`. The kernel still denied, but `whose` named the wrong owner | paths are resolved before any decision |
+| **The README contradicted itself on Linux** | one section said the suite passed on Debian 12, another that it had never run there | CI runs both platforms on every push |
 
-### Review 2 — security, file by file
+### Review 2, security
 
-Ten findings. **Seven held up.** Each was reproduced against the real kernel
-before the fix and re-measured after.
-
-| | what it was |
-|---|---|
-| **A full-repo role owned its own policy** | `writes = ["**"]` plus `denyWrite: []` meant the role could rewrite `seisin.toml` and come back wider next run |
-| **A grant could land in the wrong role** | granting for a role that declares only `keys` wrote the permission into the *next* role, carrying a comment naming the role it was meant for |
-| **A reason could become configuration** | the reason a person typed went into a comment unescaped, and a newline ends a comment |
-| **A key could point outside the key directories** | a slash in the name made it relative to the repo root, so `keys = ["../.ssh/id_rsa"]` was a read grant hiding in the one list nobody audits twice |
-| **`--observe` was read from the whole command line** | a flag belonging to the agent could change seisin's mode |
-| **The audit socket sat in writable scratch** | the channel could be unlinked |
-| **Every role shared the real home** | `~/.claude`, `~/.cache`, `/tmp` — so "its own folders" was only ever true of the repo |
-
-Plus two smaller ones: the MCP server's input buffer was unbounded, and its
-declared schemas were documentation rather than enforcement.
-
-**One finding did not hold.** The reason-injection escalation had already
-stopped working — the strict parser landed hours earlier and turns a poisoned
-reason into an unparseable file rather than a wider one. The reason is
-sanitised anyway: a permission file a sentence can break is still broken.
-
-## What a fix is worth here
-
-Each of these is a command that was run, not an argument that was made.
-
-**A role with the whole repo, against the real kernel:**
-
-```
-seisin.toml          denied 
-.secrets/            denied 
-.seisin/log.jsonl    denied 
-src/ok.txt           written   ← its actual territory
-```
-
-**The audit trail, attacked from inside the sandbox:**
-
-```
-rm .seisin/log.jsonl              denied
-echo WIPED > .seisin/log.jsonl    denied
-echo x >> .seisin/requests.jsonl  denied
-unlink the audit socket           denied
-a confined process sending a line arrived
-```
-
-**Isolated mode, two roles:**
-
-```
-role a HOME  .../seisin-home-<repo>/a
-role b HOME  .../seisin-home-<repo>/b
-a → the real ~/.claude         cannot see it
-a → writing b's home           denied
-a → reading b's home           denied
-```
-
-That last line was **wrong here for a day**. The only thing measured was the
-write, and the sentence written down read as general — so `a` could read the
-session token `b`'s CLI had just written, while this page said otherwise. A
-reviewer found it by reading the generated settings rather than the claim. It
-is the failure this whole project is about, committed on the page that lists
-the others.
-
-### Review 3 — the same reviewer, on the fixed version
-
-Confirmed the seven above closed, then found eight more.
+Ten findings; seven held up, each reproduced against the kernel before the fix and measured after.
 
 | | what it was |
 |---|---|
-| **A policy could be cancelled further down the file** | duplicate tables and duplicate keys both parsed, last one wins. A config reads restrictive at the top and is undone forty lines below; the reviewer reads the first table |
-| **A key that is a symlink escaped its directory** | the check compared text and the sandbox enforces on the destination. `.secrets/github-token.txt -> ~/.ssh/id_rsa` was a read grant on the ssh key. Measured: the read succeeded through the link *and* through the real path |
-| **`check` mislabelled what it could not enforce** | every settingsFor error was reported as a glob problem, sending the reader to the wrong line — and it exited 0 on a config `run` would refuse |
-| **The audit socket was at a guessable path** | already unlinkable-proof, but any other process of this user could connect and add lines |
-| **Territory outside the repo was silent** | supported on purpose, and a different promise from "this repo, divided" |
-| **`env = ["GITHUB_TOKEN"]` was silent** | the one place a secret reaches a role without being a declared key |
-| **Reading was wide open** | "read anything except the declared key directories" leaves `~/.ssh`, `~/.aws`, `~/.npmrc`, `~/.config/gh` readable to every role |
-| **Isolated mode was off by default** | so the shared-home fix applied only to people who switched it on |
+| **A full-repo role owned its own policy** | `writes = ["**"]` let the role rewrite `seisin.toml` and come back wider |
+| **A grant could land in the wrong role** | granting to a role with only `keys` wrote the permission into the next role |
+| **A reason could become configuration** | the typed reason went into a comment unescaped, and a newline ends a comment |
+| **A key could point outside the key directories** | `keys = ["../.ssh/id_rsa"]` was a read grant |
+| **`--observe` was read from the whole command line** | an agent's flag could change seisin's mode |
+| **The audit socket sat in writable scratch** | it could be unlinked |
+| **Every role shared the real home** | `~/.claude`, `~/.cache`, `/tmp` |
 
-The last two are the threat-model question rather than bugs, and they are
-answered the same way: `[runtime] isolate` closes reading as well as writing,
-and it stays opt-in. Measured both ways — `~/.ssh` reads fine by default and
-comes back `Operation not permitted` isolated.
+Also: the MCP server's input buffer was unbounded, and its schemas were not enforced. The finding
+that did not hold, reason injection, had already been stopped by the strict parser; the reason is
+sanitised anyway.
 
-**Amended 2026-09-14.** "It stays opt-in" was doing more work than it deserved.
-Opting in cost the agent its login, so the reviewers' point stood in practice
-even after this answer. It is two levels now: `"credentials"` closes those reads
-with the agent still logged in, `"home"` is the stronger one and keeps the cost.
+What the fixes look like, run against the real kernel:
 
-### Review 4 — the config parser
-
-One finding, and it was the kind that does not show up in review at all.
-
-`[roles.__proto__]` does not appear in `Object.keys(roles)`. So `seisin check`
-printed the roles that exist and said nothing — while every other role
-inherited whatever that table declared. A config reading
-
-```toml
-[roles.frontend]
-keys = []
+```
+a role with the whole repo        the audit trail, from inside
+seisin.toml          denied       rm .seisin/log.jsonl              denied
+.secrets/            denied       echo WIPED > .seisin/log.jsonl    denied
+.seisin/log.jsonl    denied       echo x >> .seisin/requests.jsonl  denied
+src/ok.txt           written      unlink the audit socket           denied
 ```
 
-came out of the parser owning the whole repo and holding `GITHUB_TOKEN`,
-because forty lines earlier a table nobody could see had said so.
+Isolated mode, two roles: `a` cannot see the real `~/.claude`, write `b`'s home, or read it. That
+last one was **wrong on this page for a day**: only the write had been measured, and `a` could read
+the session token `b` had just written. A reviewer found it by reading the generated settings.
 
-Closed twice over, because what it produces is invisible: the parser refuses
-the three reserved names and builds every table with a null prototype, and
-`loadConfig` reads only properties a file actually declared. Each was tested on
-its own — the second one against a prototype polluted by hand.
+### Review 3, the same reviewer on the fixed version
 
-The same review tightened three more: config is now emitted through one rule
-instead of three (`init` did not check what `applyGrant` did, and
-`renderObserved` builds lines out of log targets, which is text an agent
-chose); log entries are validated the way queue entries already were, so a
-process in the box cannot write `allowed` lines for paths it never touched —
-which would not move the boundary but would move `review`, and
-`init --from-observations` builds a policy out of exactly that; and the README
-said 16 tests run against the real sandbox when 13 do.
+Confirmed the seven closed and found eight more.
 
-### Review 5 — the npm package, before publishing
+| | what it was |
+|---|---|
+| **A policy could be cancelled further down the file** | duplicate tables and keys parsed, last one wins |
+| **A key that is a symlink escaped its directory** | `.secrets/github-token.txt -> ~/.ssh/id_rsa` was a read grant on the ssh key, measured |
+| **`check` mislabelled what it could not enforce** | and exited 0 on a config `run` would refuse |
+| **The audit socket was at a guessable path** | any process of the same user could add lines |
+| **Territory outside the repo was silent** | it is supported, and it is a different promise |
+| **`env = ["GITHUB_TOKEN"]` was silent** | a secret reaching a role without being a declared key |
+| **Reading was wide open** | `~/.ssh`, `~/.aws`, `~/.npmrc`, `~/.config/gh` readable to every role |
+| **Isolated mode was off by default** | so the shared-home fix only helped people who turned it on |
 
-The tarball that would be published, installed globally, exercised by the team
-that runs this in production. The half I cannot test alone — a real agent
-crossing a real boundary — closed end to end: the denial, the request landing
-in the queue, the grant rewriting `seisin.toml` with its provenance and
-comments intact, and the same run succeeding afterwards.
+The last two are a threat-model question. The first answer was "`isolate` closes it, and stays
+opt-in", but opting in signed the agent out of its CLI. Since 2026-09-14 there are two levels:
+`isolate = "credentials"` closes those reads and the agent stays logged in; `isolate = "home"` is
+stronger and costs the login. The default is still `read = "all"`.
 
+### Review 4, the config parser
+
+`[roles.__proto__]` does not show up in `Object.keys(roles)`, so `check` listed the visible roles
+while every one of them inherited what that table declared. A `frontend` with `keys = []` came out
+owning the whole repo and holding `GITHUB_TOKEN`. The parser now refuses the three reserved names
+and builds every table with a null prototype, and `loadConfig` reads only declared properties;
+each fix was tested on its own.
+
+The same review moved config output to one rule instead of three, validated log entries like queue
+entries (a confined process could write `allowed` lines, which feed `review` and
+`init --from-observations`), and corrected the README's count of sandbox tests.
+
+### Review 5, the npm package before publishing
+
+The team installed the tarball globally and ran it end to end: the denial, the request in the
+queue, the grant rewriting `seisin.toml` with its comments intact, and the same run passing after.
 Two defects, both in `init --from-observations`:
 
 | | what it was |
 |---|---|
-| **A file became a directory that does not exist** | observing a write to `NOTAS.md` proposed `NOTAS.md/**`, which grants nothing over the file that was actually written |
-| **The observed policy deleted the roles that were idle** | it emitted only the roles the log had seen, and the file says *"diff it, then move it"* — so moving it silently removed the territory of every role that happened to do nothing during the window. A role that did nothing is not a role that needs nothing; it is a role nobody watched. Observation adds now, and each role says which part came from where |
+| **A file became a directory** | a write to `NOTAS.md` proposed `NOTAS.md/**`, which grants nothing over the file |
+| **Idle roles were deleted** | it emitted only the roles seen in the log, so moving the file into place removed every idle role's territory. It adds now, and marks what came from where |
 
-Everything deliberately broken held: malformed arrays, an empty config, a role
-with spaces, `--` in the wrong place, a territory outside the repo. Each named
-the file, the line and the known roles.
+Open from that run: the agent knew whose file it was, but found out by reading `seisin.toml` itself;
+what it was handed was `EPERM`. The hook does return the owner's name for `Write` and `Edit`.
+Whether that reached the agent's context in that run is not known yet.
 
-**One open question, from the same run.** The agent knew whose file it was — but
-it worked that out by reading `seisin.toml` and `.seisin/frontend.json` itself.
-What it was handed was `EPERM`. The hook's side is verified here: it returns
-`permissionDecision: "deny"` with the owner's name, for `Write` and `Edit`
-alike. Whether that reached the agent's context in their run, or a different
-call produced the `EPERM`, is one data point away and it is the sentence this
-whole project is built on.
+## Found without a reviewer
 
-### Found here, not by a reviewer — `isolate` never started on macOS
+### `isolate` never started on macOS
 
-Two outside reviews recommended making `[runtime] isolate = true` the default.
-Turning it on to weigh the cost is how it came out that **it did not run at all**
-on macOS, for every role name including a two-letter one:
+Turning it on to measure its cost showed it failed for every role:
 
 ```
 Error: listen EINVAL: invalid argument
   /var/folders/.../T/seisin-home-<16 chars>/dev/tmp/srt-mux-34547-0.sock    106 bytes
 ```
 
-The runtime creates its multiplexing socket **inside** the role's home, a unix
-socket path is capped near 104 bytes, and `tmpdir()` on macOS is 48 of them
-before anything else is added. The budget for a role home is 79 bytes and the
-old name spent 81 before naming the role.
+The runtime puts a socket inside the role's home, and a unix socket path is capped near 104 bytes.
+The name went from `seisin-home-` plus 16 characters to `sn-` plus 8, and `settingsFor` now refuses
+with its own message. Shortening it showed the id was the tail of the path's base64:
+`/Users/ana/dev/proyecto` and `/Users/bob/dev/proyecto` got the same home, session token included.
+It is a hash of the whole path now. No test had turned the feature on; three do now, one of them
+end to end. Verified on macOS 15 and on Debian with bubblewrap 0.8.0: 148 of 148.
 
-`spool.js` documents this exact limit, in this exact repo, for its own socket.
-The same defect was re-derived one layer down — which is the tell that it is a
-design problem rather than an oversight.
+### `seisin run` was broken on Linux
 
-**Two fixes, and the second is the one that mattered.** The name went from
-`seisin-home-` plus sixteen characters to `sn-` plus eight, and `settingsFor`
-now refuses with its own message rather than letting the runtime fail on EINVAL
-with no role named. But shortening the id exposed what the id was: **the tail of
-the base64 of the path, which is the tail of the path**. `/Users/ana/dev/proyecto`
-and `/Users/bob/dev/proyecto` produced the same one — three of four ordinary
-pairs collided — and a collision here hands one checkout's role home, session
-token included, to another. That was already true at sixteen characters. It is a
-hash of the whole path now.
+Every run died with `denials.attributeTo is not a function`: the inert watcher Linux gets was
+missing a method. The sandbox tests did not catch it because they looked for the runtime with
+`command -v srt` and missed the bundled copy, so they skipped. Now the inert watcher has the same
+methods as the live one (tested for `linux`, `win32` and `freebsd`), and the tests find the runtime
+the same way `seisin run` does. Verified on Debian 12.15 with bubblewrap 0.8.0: 225 of 225, plus a
+real run.
 
-**And the reason none of it was caught: no test turned the feature on.** A green
-suite said nothing about a documented mode that could not start. There are three
-now — the path arithmetic, the collision pairs, and one that runs a role under
-`isolate` end to end and asserts it both starts and loses `~/.ssh`.
+## Still open
 
-Verified after the fix on macOS 15 and, in Docker, on Debian with bubblewrap
-0.8.0: **148 of 148, nothing skipped on either.**
-
-### Found by running the suite on the other platform — `seisin run` was broken on Linux
-
-Not degraded: **broken**. Every run died before the agent started, with
-`denials.attributeTo is not a function`.
-
-The kernel-denial watcher returns an inert object where it cannot watch, and
-that object was missing a method `seisin run` calls unconditionally. On macOS
-the branch is never taken. On Linux it is always taken.
-
-**It survived a day because the suite could not see it either.** The fourteen
-tests that run real commands through the real kernel decided whether the runtime
-was present with `command -v srt` — the global install only, never the bundled
-one the code actually prefers. So they skipped, quietly, and a run with fourteen
-silent skips reports green. Two defects covering for each other: one that breaks
-a platform, one that hides it.
-
-Three things came out of parting them, and the middle one is the general lesson:
-
-- the inert watcher has the same **shape** as the live one. Everything a caller
-  may invoke exists at both ends; `available` says whether it will find
-  anything. A test asserts that for `linux`, `win32` and `freebsd`, because the
-  next platform added will take the same branch.
-- **a test that decides it cannot run must decide it the same way the code
-  decides it can.** `haveSrt` now resolves the runtime exactly as `seisin run`
-  does.
-- the per-run notice that Linux cannot record kernel denials is gone from
-  `seisin run` and is a standing limit in `seisin check` instead. On the
-  platform where that branch is always taken it printed on every single
-  command — a line the reader cannot act on, in front of everything they type,
-  and a notice seen five hundred times is not read the five hundred and first.
-
-Verified afterwards on Debian 12.15 with bubblewrap 0.8.0, in Docker with
-`--privileged`: **225 of 225, nothing skipped**, plus a real run that reads its
-declared key, writes inside its territory, and is denied outside it.
-
-## Still open, and named
-
-- **Deleting inside your own territory.** `rm` in a role's own folders
-  succeeds, because writes and deletes are one permission to the kernel. Not
-  coverable here — [the ask is upstream](upstream/denyUnlink.md), with a
-  measurement behind it: 66 times in ~330 runs of real agent work.
-- **Forgery in the audit trail.** A hostile agent can still *send* lines, so it
-  can pad its own history. It cannot erase or alter what is there. Tampering is
-  closed to the agent, and detectable for anyone else (the log is tamper-evident);
-  forgery is not.
-- **Isolated mode is off by default** — and since 2026-09-14 it is no longer the
-  all-or-nothing it is described as above. Two reviewers asked for it to be the
-  default, and the answer was that turning it on signs every CLI in the sandbox out.
-  That was true of one switch doing two jobs. `isolate = "credentials"` now
-  closes `~/.ssh`, `~/.aws`, `~/.npmrc` and `~/.config` while leaving `HOME`
-  alone, and the agent stays logged in — measured. `isolate = "home"` is still
-  the stronger claim, still costs the login, and is still what `true` means.
-  With it off, reading remains wide.
-
-  So the reviewers were more right than the answer allowed: the half they wanted
-  did not need the cost that was used to decline it. What stays a choice is the
-  second half — whether one role may read another's session — and *that* is the
-  threat model. See `decisions.md`.
-- **No resource limits.** CPU, memory, PID count and disk are not bounded. A
-  runaway agent can still exhaust the machine; the boundary is about what it
-  can reach, not how much of it there is.
-- **Windows.** The runtime has a backend. seisin has never been pointed at it.
-- **No fuzzing.** The parser has a property test over a fixed corpus, which is
-  not the same thing.
-- **Processes an agent leaves running.** Whether a command that double-forks, uses
-  `nohup` or calls `setsid` outlives the run is the sandbox's answer, not seisin's.
-  Measured on macOS on 2026-10-16: under `srt` all three outlive it, confined (their
-  territory does not widen) but no longer watched; under `tartaros` the run's process group
-  is killed and only the `setsid` one survives. On Linux `srt` runs the agent in a PID
-  namespace that ends with the run, and `tartaros` kills the run's cgroup whole (both read
-  from source, not measured here). One started under a wider grant keeps that profile after
-  the grant is narrowed. If `seisin run` itself is `SIGKILL`ed, what happens to the agent is
-  again the sandbox's: `tartaros` on Linux dies with its parent; `srt` keeps running,
-  confined but unaudited.
-- **`explain` on the wrong platform's spelling.** On a case-insensitive or
-  NFC/NFD-normalising disk the kernel matches a path that `explain` spells
-  differently, so `explain` can be stricter than the boundary (never looser).
-  The safe direction, but a mismatch: read `check` for what the kernel is given.
-- **A network deny by resolved address.** The runtime denies loopback, link-local
-  and cloud-metadata IPs by default, so an allowed domain cannot be rebound to
-  the metadata endpoint. Private-LAN ranges (RFC1918, CGNAT, ULA) are not denied
-  unless the policy says so: `[network] deny_addresses` (2026-10-16) passes them to
-  the runtime, which then denies an allowed name that resolves into them. Without
-  it, an allowed domain whose DNS an attacker controls could still reach a host on
-  your LAN. An allowed domain sees every port, too — the allow list is per host,
-  not per port.
-- **A hard link made from outside the sandbox.** Ownership is by path, and the kernel
-  enforces it by path, so two names for one inode are two territories' worth of
-  access to the same bytes. A role cannot *create* a hard link that crosses its
-  territory (the kernel denies it, measured), but a hard link placed inside its
-  territory by something outside the sandbox — a person, another tool — lets the
-  role write the inode it points at, whatever path that inode also has. Closing
-  it would need the kernel to key on inode, which the runtime does not; the honest
-  fix is not to hard-link a sensitive file into an agent's territory.
-- **A planted repository with a different name.** A role can write, inside its own
-  territory, a directory that is a git repository under a name that is not `.git`,
-  and a `.git` *file* pointing at it. A `git status` run there by a person or an
-  IDE — outside the sandbox — then runs what that repository's config names. seisin
-  denies the config and hooks of a `.git` directory, and of submodules and
-  worktrees, but a glob that also caught the pointer file would deny the whole
-  `.git` subtree and stop the agent committing. Closing it needs a runtime
-  primitive or a check after the run; the ask is upstream.
-- **A chain stripped whole, with its record deleted.** Where the chain starts is
-  recorded beside the log (`log.jsonl.genesis`) the first time a chained line is
-  written, and `log verify` checks the oldest segment against it. Removing every
-  `prev` *and* that record leaves a log that reads like one written before the
-  chain existed; `verify` then says the start is not recorded rather than
-  broken. Deleting only the record does show: with chained lines and no record
-  `verify` warns, and the record the next entry writes is marked late, with how
-  many chained lines stood before it. Keep the record where the agent cannot
-  write it — it is inside `.seisin/`, which no role can.
+- **Deleting inside your own territory.** Write includes delete for the kernel. Asked upstream
+  ([measurement](upstream/denyUnlink.md): 66 times in about 330 runs of real agent work).
+- **Forged lines in the audit trail.** An agent can send lines, so it can pad its history. It cannot
+  erase or alter what is there, and the log is tamper-evident.
+- **Reading is wide by default.** With `read = "all"` and no `isolate`, every role reads `~/.ssh`,
+  `~/.aws`, `~/.npmrc` and `~/.config`. `isolate = "credentials"` or `read = "territory"` close them.
+  Whether one role may read another's session is the remaining choice; see `decisions.md`.
+- **No resource limits.** CPU, memory, PIDs and disk are not bounded.
+- **Windows.** Never run.
+- **No fuzzing.** The parser has a property test over a fixed corpus.
+- **Processes an agent leaves running.** That is the sandbox's call. On macOS (measured 2026-10-16),
+  under `srt` a double-fork, `nohup` or `setsid` outlives the run, still confined but unwatched;
+  under `tartaros` only `setsid` does. On Linux both end with the run (read from source, not
+  measured). If `seisin run` is killed, `tartaros` on Linux dies with it and `srt` keeps going.
+- **`explain` on case-insensitive or normalising disks** can be stricter than the kernel, never looser.
+  `check` shows what the kernel is given.
+- **Private LAN addresses.** Loopback, link-local and cloud metadata are denied by default; RFC1918,
+  CGNAT and ULA only with `[network] deny_addresses`. An allowed domain gets every port.
+- **A hard link placed from outside.** A role cannot create one across territories (measured), but
+  one placed inside its territory by someone else lets it write that file. Do not hard-link a
+  sensitive file into an agent's territory.
+- **A planted repository under another name.** A role can write a git repository not named `.git`
+  plus a `.git` file pointing at it; a `git status` outside the sandbox then runs its config. Asked
+  upstream.
+- **A hash chain stripped whole, with its start record deleted**, reads like a log from before the
+  chain existed; `log verify` says the start is not recorded. The record lives in `.seisin/`, which
+  no role can write.
 
 ## The claim this supports
 
-Not *"safe against a hostile agent"*. The honest one:
-
-> seisin confines the mistakes of agents you run yourself, using the operating
-> system rather than pattern-matching, with per-role write isolation and
-> isolation of the keys you declare.
-
-Everything above is why that sentence is shaped the way it is.
+seisin confines the mistakes of agents you run yourself, using the operating system rather than
+pattern-matching, with per-role write isolation and isolation of the keys you declare. Against a
+hostile agent, the guarantee is the one of the sandbox you run it under.
