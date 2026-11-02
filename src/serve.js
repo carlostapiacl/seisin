@@ -20,7 +20,7 @@ import { decideRequest } from "./decide-request.js";
 import { read, logPath, logSegments } from "./log.js";
 import { settingsFor } from "./srt-settings.js";
 import { describeHandoff } from "./handoff.js";
-import { pending, requestsPath, editPolicy, cleanReason, lastAgentOf, fileOnlyNote } from "./requests.js";
+import { pending, requestsPath, editPolicy, settle, cleanReason, lastAgentOf, fileOnlyNote } from "./requests.js";
 import { causesOf, describeWalls, parseSince, queue, verdicts, wallsByRole } from "./views.js";
 import { planEdit, hashOf } from "./controls.js";
 import { inspect } from "./inspect.js";
