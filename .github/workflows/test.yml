@@ -67,26 +67,12 @@ jobs:
 
       - run: npm ci
 
+      # Kept, so the count below reads this run instead of running the suite again.
       - name: suite
-        run: npm test
-
-      # Three times now a test count in the docs has drifted from the suite, and
-      # every time a reader found it before I did. In a project whose argument
-      # is "we measured it", a number that is quietly wrong costs more than the
-      # thing it counts. So it is checked rather than remembered.
-      - name: the documented counts are the real ones
-        if: matrix.os == 'macos-latest' && matrix.node == 22
+        shell: bash
         run: |
-          # The total, not the passes: one test is Linux-only and skips on macOS.
-          total=$(npm test 2>&1 | grep -oE '^. tests [0-9]+' | grep -oE '[0-9]+')
-          sandbox=$(node --test test/sandbox.test.js 2>&1 | grep -oE '^. pass [0-9]+' | grep -oE '[0-9]+')
-          echo "suite=$total sandbox=$sandbox"
-          for f in README.md docs/what-it-has-been-put-through.md; do
-            grep -qE "\b$total tests\b" "$f" || {
-              echo "::error file=$f::says a test count that is not $total"; exit 1; }
-          done
-          grep -qE "\b$sandbox of them\b|\($sandbox of them" README.md docs/what-it-has-been-put-through.md \
-            || echo "::warning::sandbox count ($sandbox) not stated anywhere"
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/suite.log
 
       # A green run that skipped every sandbox test is the failure this whole
       # job exists to prevent, and it looks identical to a real pass.
@@ -104,3 +90,22 @@ jobs:
               exit 1
             fi
           done
+
+      # Three times now a test count in the docs has drifted from the suite, and
+      # every time a reader found it before I did. In a project whose argument
+      # is "we measured it", a number that is quietly wrong costs more than the
+      # thing it counts. So it is checked rather than remembered.
+      - name: the documented counts are the real ones
+        if: matrix.os == 'macos-latest' && matrix.node == 22
+        run: |
+          # The total, not the passes: one test is Linux-only and skips on macOS.
+          # From the runs above: the suite's log and the sandbox file's TAP.
+          total=$(grep -oE '^. tests [0-9]+' /tmp/suite.log | grep -oE '[0-9]+')
+          sandbox=$(grep -oE '^# pass [0-9]+' /tmp/sandbox.log | grep -oE '[0-9]+')
+          echo "suite=$total sandbox=$sandbox"
+          for f in README.md docs/what-it-has-been-put-through.md; do
+            grep -qE "\b$total tests\b" "$f" || {
+              echo "::error file=$f::says a test count that is not $total"; exit 1; }
+          done
+          grep -qE "\b$sandbox of them\b|\($sandbox of them" README.md docs/what-it-has-been-put-through.md \
+            || echo "::warning::sandbox count ($sandbox) not stated anywhere"
