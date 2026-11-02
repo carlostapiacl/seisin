@@ -94,6 +94,15 @@ test("check --json says what this seisin can do and which sandbox each role gets
   assert.equal(typeof j.ok, "boolean");
 });
 
+test("check --json --verify runs the verify and says how it went: a failing one is not ok", { skip }, () => {
+  writeFileSync(join(folder, "verify-fails.json"), JSON.stringify({ roles: { dev: { writes: ["src/**"], verify: ["false"] } } }));
+  const r = seisin(["check", "--json", "--verify", "--policy", join(folder, "verify-fails.json"), "--state-dir", join(folder, "state-vf")]);
+  assert.equal(r.status, 1, r.stderr);
+  const j = JSON.parse(r.stdout);
+  assert.equal(j.ok, false);
+  assert.deepEqual(j.verify, [{ role: "dev", ok: false, status: 1 }]);
+});
+
 test("a JSON policy reads like the TOML one, holds a quote, and refuses what the TOML reader refuses", async () => {
   const { loadConfig, parseJsonPolicy } = await import("../src/config.js");
   const p = join(folder, "policy.json");

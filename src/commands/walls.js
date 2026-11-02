@@ -1,5 +1,5 @@
 /** `seisin walls <role>` — what that role keeps being denied, and what it cost. */
-import { unknownRole } from "../suggest.js";
+import { unknownRole, positiveInt } from "../suggest.js";
 import { walls, wasted } from "../walls.js";
 import { STALE_RUNS } from "../requests.js";
 import { logPath } from "../log.js";
@@ -7,6 +7,9 @@ import { standingOf } from "../owners.js";
 import { kindsOf } from "../kinds.js";
 import { parseSince } from "../views.js";
 import { C, out, safe } from "../render.js";
+
+/** How many walls a terminal shows without --all. */
+const SHOWN = 6;
 
 export function wallsCommand(config, argv = []) {
   const role = argv[0];
@@ -22,21 +25,25 @@ export function wallsCommand(config, argv = []) {
     throw new Error(`--since takes a date (2026-10-01) or a duration back from now (7d, 12h, 2w), not "${safe(at("--since", "") ?? "")}"`);
   const every = walls(config, role, {
     file: logPath(config.root),
-    min: Number(at("--min", 2)),
+    min: positiveInt("--min", at("--min", "2")),
     since,
     limit: 0,
   });
   const all = argv.includes("--all");
-  const list = (all ? every : every.filter((w) => !w.stale)).slice(0, 6);
+  // Six at a terminal unless --all, and the rest counted: a cut nobody is told
+  // about reads as the whole list. The exit status is over everything selected.
+  const selected = withKinds(config, all ? every : every.filter((w) => !w.stale));
+  const shown = all ? selected : selected.slice(0, SHOWN);
   const old = every.filter((w) => w.stale).length;
-  const shown = withKinds(config, list);
   if (shown.length) out(renderForPerson(role, shown));
+  if (selected.length > shown.length)
+    out(`  (${selected.length - shown.length} more wall(s): seisin walls ${safe(role)} --all)\n`);
   else if (!every.length)
     out(`\n  ${C.dim}${safe(role)} has no repeated denials in the recorded runs. A path becomes a wall after ${at("--min", 2)} denials.${C.off}\n\n`);
   else if (!all)
     out(`\n  ${C.dim}${safe(role)} has no recent walls; older ones are hidden. Use seisin walls ${safe(role)} --all.${C.off}\n\n`);
   if (old && !all) out(`  (${old} older wall(s) not hit in the last ${STALE_RUNS}+ runs: seisin walls ${role} --all)\n`);
-  return shown;
+  return selected;
 }
 
 /**

@@ -447,3 +447,19 @@ test("check says when a territory sits inside the key directory, where no role c
   assert.match(r.all, /lead writes private\/notes\/\*\* — inside the key directory private, which no role can write/);
   assert.doesNotMatch(r.all, /dev writes app\/\*\* — inside the key directory/);
 });
+
+test("a flag that takes a value and has none is refused, and --min is a whole number from 1", () => {
+  const dir = demo("ux-values-");
+  for (const [args, said] of [
+    [["log", "--role"], /--role needs a value/],
+    [["log", "--verdict", "--limit", "3"], /--verdict needs a value/],
+    [["walls", "frontend", "--min", "banana"], /--min takes a whole number from 1, not "banana"/],
+    [["review", "--min", "0"], /--min takes a whole number from 1, not "0"/],
+  ]) {
+    const r = sh(dir, ...args);
+    assert.equal(r.code, 2, `${args.join(" ")}: ${r.all}`);
+    assert.match(r.err, said);
+  }
+  assert.equal(sh(dir, "log", "--limit", "5").code, 0);
+  assert.equal(sh(dir, "walls", "frontend", "--min", "3").code, 0);
+});

@@ -59,7 +59,11 @@ test("a role cannot read another role's scratch key while it runs", { skip }, as
     // Released on a failure too: a holder left waiting kept the whole suite
     // from ending.
     writeFileSync(join(repo, "a", "done"), "");
+    // Bounded: if the holder stops watching for a/done, it is killed rather
+    // than left holding the suite open.
+    const late = setTimeout(() => holder.kill("SIGKILL"), 30000);
     await exited;
+    clearTimeout(late);
   }
   // ...and its owner still reads it, or the deny would be blanket.
   assert.equal(as("a", 'test "$(cat "$S_FILE")" = scratch-secret-value').status, 0);

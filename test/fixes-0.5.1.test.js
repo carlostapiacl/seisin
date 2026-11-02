@@ -118,6 +118,27 @@ test("walls in the terminal gives an unowned path the console's kind and hint", 
   assert.match(said, /deploy\/x\.yml {2}belongs to ops/);
 });
 
+test("walls shows six and counts the rest; --all shows every one; the status is over all of them", (t) => {
+  const { root, cfg } = repo('[roles.dev]\nwrites = ["src/**"]\n[roles.ops]\nwrites = ["deploy/**"]\n');
+  mkdirSync(join(root, ".seisin"), { recursive: true });
+  const line = (p) => JSON.stringify({ at: "2026-09-30T10:00:00.000Z", role: "dev", action: "write", target: p, verdict: "denied" });
+  const paths = Array.from({ length: 8 }, (_, i) => `deploy/f${i}.yml`);
+  writeFileSync(join(root, ".seisin", "log.jsonl"), paths.flatMap((p) => [line(p), line(p)]).join("\n") + "\n");
+  const printed = [];
+  t.mock.method(process.stdout, "write", (x) => { printed.push(String(x)); return true; });
+  let cut, every;
+  try { cut = wallsCommand(cfg, ["dev"]); } finally { t.mock.restoreAll(); }
+  const said = printed.join("").replace(/\x1b\[[0-9;]*m/g, "");
+  assert.equal(cut.length, 8, "the status is over every wall, not the six shown");
+  assert.equal((said.match(/deploy\/f\d\.yml/g) ?? []).length, 6);
+  assert.match(said, /2 more wall\(s\): seisin walls dev --all/);
+  printed.length = 0;
+  t.mock.method(process.stdout, "write", (x) => { printed.push(String(x)); return true; });
+  try { every = wallsCommand(cfg, ["dev", "--all"]); } finally { t.mock.restoreAll(); }
+  assert.equal(every.length, 8);
+  assert.equal((printed.join("").match(/deploy\/f\d\.yml/g) ?? []).length, 8);
+});
+
 /* ── 5. the comment says where the Linux limit is said ─────────────────── */
 
 test("violations.js does not claim `run` announces the Linux limit", () => {

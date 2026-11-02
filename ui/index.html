@@ -2088,9 +2088,9 @@ table.runs tr.sys td{color:var(--dim)}
    * that was gone or had a new token. After two failed polls in a row the page
    * says which of the two it is, since when, and turns the writes off. */
   var FAILS = 0, OFFLINE = null;
-  function setOffline(kind){
-    if (kind && OFFLINE && OFFLINE.kind === kind) return;
-    OFFLINE = kind ? { kind: kind, since: (OFFLINE && OFFLINE.since) || new Date() } : null;
+  function setOffline(kind, why){
+    if (kind && OFFLINE && OFFLINE.kind === kind && OFFLINE.why === why) return;
+    OFFLINE = kind ? { kind: kind, why: why || null, since: (OFFLINE && OFFLINE.since) || new Date() } : null;
     var label = document.getElementById("source");
     var ban = document.getElementById("off-banner");
     if (!OFFLINE) {
@@ -2099,7 +2099,11 @@ table.runs tr.sys td{color:var(--dim)}
     } else {
       var t = pad(OFFLINE.since.getHours()) + ":" + pad(OFFLINE.since.getMinutes());
       label.style.color = "var(--amber)";
-      if (kind === "expired") {
+      if (kind === "policy") {
+        label.textContent = "seisin.toml cannot be read";
+        ban.innerHTML = "<b>seisin.toml cannot be read</b> (since " + t + "): " + esc(OFFLINE.why) + " " +
+          "What is on screen is the last policy that loaded. Decisions and saves are off until the file is fixed.";
+      } else if (kind === "expired") {
         label.textContent = "link expired — open the new one";
         ban.innerHTML = "<b>This tab's link has expired</b> (since " + t + "): the console was restarted with a new one. " +
           "Open the new link — run <code>seisin ui --link</code> in the repository. Decisions and saves are off in this tab.";
@@ -2184,7 +2188,13 @@ table.runs tr.sys td{color:var(--dim)}
     if (!fresh && LAST.etag && LAST.url === url) h["if-none-match"] = LAST.etag;
     var r = await fetch(url, { cache: "no-store", headers: h });
     if (r.status === 304) return { same: true };
-    if (!r.ok) return { status: r.status };
+    // A refusal carries the server's reason (a seisin.toml that no longer
+    // parses): kept, so it is shown instead of reading as the server gone.
+    if (!r.ok) {
+      var why = null;
+      try { why = (await r.json()).error || null; } catch (_) { /* no body */ }
+      return { status: r.status, error: why };
+    }
     var s = await r.json();
     if (s.error) return { status: r.status, error: s.error };
     LAST = { url: url, etag: r.headers.get("etag") };
@@ -2309,6 +2319,16 @@ table.runs tr.sys td{color:var(--dim)}
         'Open the new one: run <code>seisin ui --link</code> in the repository, or use the link it printed in the terminal.</p>' +
         '<p style="margin:0;color:var(--mid)">Nothing here is shown until then, so this page never ' +
         'passes the example policy off as yours.</p></div>';
+      return;
+    }
+    if (!s && got && got.error) {
+      label.textContent = "seisin.toml cannot be read";
+      label.style.color = "var(--amber)";
+      document.querySelector("main").innerHTML =
+        '<div class="box" style="padding:22px 24px;max-width:640px">' +
+        '<h2 style="margin:0 0 8px;font-size:17px">The console cannot read this repository\'s policy</h2>' +
+        '<p style="margin:0 0 8px" class="err">' + esc(got.error) + '</p>' +
+        '<p style="margin:0;color:var(--mid)">Fix the file and reload. <code>seisin check</code> says the same in a terminal.</p></div>';
       return;
     }
     if (!s) {
@@ -2632,6 +2652,8 @@ table.runs tr.sys td{color:var(--dim)}
       if (got.s) applyState(got.s);
       return;
     }
+    // The server answered, with the reason it cannot: said at once, not as an outage.
+    if (got.error && got.status !== 401 && got.status !== 403) { FAILS = 0; setOffline("policy", got.error); return; }
     FAILS++;
     if (FAILS >= 2) setOffline(got.status === 401 || got.status === 403 ? "expired" : "down");
   }

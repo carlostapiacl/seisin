@@ -10,7 +10,21 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
-Three things wapentake found running 0.6.4 with a folder per run:
+- **`check --json --verify` runs the verify**, and `--system-log` its measurement, and the JSON
+  says how each went. They were skipped and `ok` came back `true`. *What to do:* a script that
+  read `ok` from `check --json --verify` now gets the real answer.
+- **`walls <role> --all` lists every wall.** It stopped at six; without `--all` the rest are now
+  counted, and the exit status is over all of them.
+- **A flag that takes a value and has none is refused** (`seisin log --role` answered for every
+  role), and `--min` takes a whole number from 1 (`--min banana` read as no walls).
+- **`seisin watch` shows a line that reaches the log in two pieces**, once it is whole. It was
+  dropped as half-written.
+- **The console says why it cannot read `seisin.toml`** (the parser's message) instead of
+  "not answering", or the example policy on a reload.
+- Docs: how the log rotates and what it deletes, where a `file://` key resolves under
+  `--policy`, the `--run-id` limits, and how to set up `[notify]`.
+
+Three things found running 0.6.4 under a launcher with a folder per run:
 
 - **`--run-id` names every line of the run**, the kernel's denials included: they carried
   the first 8 characters of seisin's own id, so a launcher could not join them with its

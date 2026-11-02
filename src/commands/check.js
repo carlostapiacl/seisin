@@ -34,12 +34,11 @@ export async function check(config, argv = []) {
   const report = inspect(config, role, config.path);
   if (!json) out(renderReport(report, { verbose: argv.includes("--verbose") }));
   if (config.sandbox?.provider || json) report.sandboxes = sandboxes(config, role, { quiet: json });
-  if (json) {
-    out(JSON.stringify(asJson(config, report), null, 2) + "\n");
-    return report;
-  }
-  if (argv.includes("--verify")) report.verify = await verify(config, role, argv.includes("--parallel"));
-  if (argv.includes("--system-log")) report.systemLog = await systemLog();
+  // What a flag asked for runs in --json too, quietly, and lands in the JSON:
+  // skipping it answered "ok" about a check that never ran.
+  if (argv.includes("--verify")) report.verify = await verify(config, role, argv.includes("--parallel"), { quiet: json });
+  if (argv.includes("--system-log")) report.systemLog = await systemLog({ quiet: json });
+  if (json) out(JSON.stringify(asJson(config, report), null, 2) + "\n");
   return report;
 }
 
@@ -51,7 +50,8 @@ export async function check(config, argv = []) {
  * it before, with who is writing the most — the only lead to a fix. A flag,
  * because it takes seconds and `check` otherwise answers at once.
  */
-async function systemLog() {
+async function systemLog({ quiet = false } = {}) {
+  const out = quiet ? () => {} : say;
   const m = await measureSystemLog({ seconds: SYSTEM_LOG_SECONDS });
   if (!m.available) {
     out(`\n${C.dim}system log: not measured — ${m.reason}${C.off}\n`);
@@ -126,6 +126,8 @@ function asJson(config, report) {
       unmet: (s.options ?? []).filter((o) => o.name !== s.chosen).map((o) => ({ sandbox: o.name, missing: o.missing, unmet: o.unmet })),
     })),
     warnings: report.warnings.map((w) => ({ kind: w.kind, role: w.role ?? null, headline: w.headline ?? w.message ?? null })),
+    ...(report.verify ? { verify: report.verify.map((v) => ({ role: v.role, ok: v.ok, status: v.status ?? null })) } : {}),
+    ...(report.systemLog ? { systemLog: { available: report.systemLog.available, dropped: report.systemLog.dropped ?? 0, reason: report.systemLog.reason ?? null } } : {}),
     ok: checkStatus(report) === 0,
   };
 }
@@ -153,7 +155,8 @@ export function checkStatus(report) {
  * The one thing `check` executes, which is why it is a flag: without it
  * `check` still runs nothing.
  */
-async function verify(config, only, parallel = false) {
+async function verify(config, only, parallel = false, { quiet = false } = {}) {
+  const out = quiet ? () => {} : say;
   const cli = fileURLToPath(new URL("../cli.js", import.meta.url));
   const roles = Object.values(config.roles).filter((r) => (only ? r.name === only : true) && r.verify);
   const results = [];

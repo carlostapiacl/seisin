@@ -106,6 +106,9 @@ seisin run agent --policy <dir>/<run_id>/seisin.json --state-dir <dir>/<run_id>/
   --run-id <run_id> -- claude -p "…"
 ```
 
+`--run-id` is stricter than a folder name: letters, digits, `_` and `-`, up to 64 characters (no
+`.`). An id that fits it fits both.
+
 - `--policy <file>` reads the policy from that file and roots it at the working directory,
   so the territory is the worktree and nothing of seisin's is written into it (no
   `seisin.toml` to keep out of git, no `.seisin/` to copy). The file may be `seisin.toml`, or

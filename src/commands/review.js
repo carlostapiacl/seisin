@@ -15,6 +15,7 @@
  * would mean a correct policy cannot go green.
  */
 import { review } from "../review.js";
+import { positiveInt } from "../suggest.js";
 import { parseSince } from "../views.js";
 import { C, out, safe } from "../render.js";
 import { wired } from "./wire.js";
@@ -30,7 +31,7 @@ export function reviewCommand(config, argv = []) {
   const since = s === -1 ? null : parseSince(argv[s + 1]);
   if (s !== -1 && !since)
     throw new Error(`--since takes a date (2026-10-01) or a duration back from now (7d, 12h, 2w), not "${safe(argv[s + 1] ?? "")}"`);
-  const r = review(config, { minDenials: i === -1 ? 3 : Number(argv[i + 1]), since });
+  const r = review(config, { minDenials: i === -1 ? 3 : positiveInt("--min", argv[i + 1]), since });
   // Ten rows per section unless --all: on a real 32-role log the full report
   // was 1,557 lines, which nobody reads.
   const all = argv.includes("--all");
