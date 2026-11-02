@@ -72,8 +72,6 @@ export function assessCheck(argv, file, label) {
   return { unmet: [`${label} says it cannot hold this policy: ${why}`], warnings };
 }
 
-/** Only the answer: `[]` for yes, the reason for no. */
-export const askCheck = (argv, file, label) => assessCheck(argv, file, label).unmet;
 
 export function commandSandbox(name, command, check = null, { tagsDenials = false } = {}) {
   const assess = (_settings, { file } = {}) => (check ? assessCheck(check, file, `its check (${check[0]})`) : { unmet: [], warnings: [] });
