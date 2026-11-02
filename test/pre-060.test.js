@@ -10,7 +10,7 @@ import { spawnSync } from "node:child_process";
 import { loadConfig } from "../src/config.js";
 import { inspect } from "../src/inspect.js";
 import { explain, explainFileRead } from "../src/owners.js";
-import { settingsFor } from "../src/srt.js";
+import { settingsFor } from "../src/srt-settings.js";
 import { boxed, CLI, srtSkip } from "./_tmp.js";
 
 const policy = (writes, extra = "") =>

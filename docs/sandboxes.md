@@ -71,7 +71,7 @@ on a platform it has no binary for.
 What decides whether it can hold a role is tartaros, not this page: as it
 learns a field, roles that needed it start being given to it, with nothing to
 change in seisin. What `explain` prints as `warning:` while saying yes,
-`seisin check` shows under the role — on Linux without mount privileges, for
+`seisin check` shows under the role: on Linux without mount privileges, for
 one, that a role given a whole repo cannot create new entries at its root.
 
 tartaros tags every Seatbelt denial the way sandbox-runtime does, so on macOS

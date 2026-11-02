@@ -20,7 +20,7 @@ import { loadConfig } from "../src/config.js";
 import { explain, ownersOf } from "../src/owners.js";
 import { inspect } from "../src/inspect.js";
 import { renderReport } from "../src/render.js";
-import { settingsFor } from "../src/srt.js";
+import { settingsFor } from "../src/srt-settings.js";
 import { decide } from "../src/hook.js";
 import { pending } from "../src/requests.js";
 

@@ -68,6 +68,20 @@ test("a run with --policy, --state-dir and --run-id leaves its record in the run
   assert.equal(existsSync(join(repo, ".seisin")), false);
   const log = readFileSync(join(state, "log.jsonl"), "utf8");
   assert.match(log, /"run":"01J9Z3K8R4W2"/);
+  // Every line names the run by the launcher's whole id, the kernel's denial of outside.txt included.
+  const lines = log.trim().split("\n").map((l) => JSON.parse(l)).filter((e) => "run" in e);
+  // Kernel denials are read on macOS only.
+  if (process.platform === "darwin") assert.ok(lines.some((e) => e.source === "kernel"), "the denied write left a kernel line");
+  for (const e of lines) assert.equal(e.run, "01J9Z3K8R4W2", JSON.stringify(e));
+});
+
+test("check --verify runs each role's verify under the --policy it was given", { skip }, () => {
+  writeFileSync(join(folder, "verify.json"), JSON.stringify({ roles: { dev: { writes: ["src/**"], verify: ["ls", "src"] } } }));
+  const r = seisin(["check", "--verify", "--policy", join(folder, "verify.json"), "--state-dir", join(folder, "state-verify")]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /verify dev/);
+  assert.doesNotMatch(r.stdout + r.stderr, /no seisin\.toml found/);
+  assert.equal(existsSync(join(repo, ".seisin")), false);
 });
 
 test("check --json says what this seisin can do and which sandbox each role gets", () => {

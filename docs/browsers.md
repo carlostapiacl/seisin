@@ -64,13 +64,13 @@ role that asked for a browser gets no browser; it never gets less sandbox.
 tartaros ([sandboxes.md](sandboxes.md)) takes the names in its own settings
 field, `network.allowMachRegister`, with the same trailing `*` for a prefix, and
 turns them into the same `global-name-prefix` rule. seisin writes that field
-only into the file a tartaros run is handed — srt's schema is strict and never
+only into the file a tartaros run is handed; srt's schema is strict and never
 sees it. Any other sandbox is given the names neither way, so for a role with
 `browsers` it is passed over with that reason.
 
-A tartaros run of such a role is also started with `--browser` — the shared
+A tartaros run of such a role is also started with `--browser` (the shared
 memory, IOKit classes and sysctls a headless Chromium dies without, the same
-ones srt's profile allows every process — and `--private-tmp`, a TMPDIR of the
+ones srt's profile allows every process) and `--private-tmp`, a TMPDIR of the
 run's own and the only place the role may open a unix socket. Measured with
 tartaros f7edae1: the probe loads `example.com` (`200`), a host off the list
 fails, and `@playwright/mcp` runs (below).

@@ -10,7 +10,7 @@ import { stateDir } from "../state.js";
 const say = out;
 import { measureSystemLog } from "../violations.js";
 import { join } from "node:path";
-import { settingsFor } from "../srt.js";
+import { settingsFor } from "../srt-settings.js";
 import { weigh } from "../sandboxes/index.js";
 import { runsRoot } from "../rundir.js";
 import { channelName } from "../spool.js";
@@ -158,10 +158,15 @@ async function verify(config, only, parallel = false) {
   const roles = Object.values(config.roles).filter((r) => (only ? r.name === only : true) && r.verify);
   const results = [];
   if (!roles.length) out(`\n${C.yellow}verify: no role ${only ? `"${only}" ` : ""}declares a verify command${C.off}\n`);
+  // The policy check read, passed on by name: one given with --policy (a JSON
+  // file outside the repo) is not where the child would look for seisin.toml.
+  // The state directory already travels as SEISIN_STATE_DIR.
+  const policy = config.path ? ["--policy", config.path] : [];
   const run = async (r) => {
+    const argv = [cli, "run", ...policy, r.name, "--agent", "none", "--", ...r.verify];
     const res = parallel
-      ? await runParallel(process.execPath, [cli, "run", r.name, "--agent", "none", "--", ...r.verify], config.root)
-      : spawnSync(process.execPath, [cli, "run", r.name, "--agent", "none", "--", ...r.verify], {
+      ? await runParallel(process.execPath, argv, config.root)
+      : spawnSync(process.execPath, argv, {
         cwd: config.root, encoding: "utf8", timeout: 300_000, env: process.env,
       });
     const ok = res.status === 0;

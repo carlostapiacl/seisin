@@ -29,12 +29,12 @@ holds is:
 
 | the role declares | under `nono` |
 |---|---|
-| `local_ports`, no `local_binding` | not expressible — stays on `sandbox-runtime` |
+| `local_ports`, no `local_binding` | not expressible; stays on `sandbox-runtime` |
 | `local_binding = true` and serves on fixed ports listed in `local_ports` | `open_port` for those ports: narrower than "may listen", never wider |
-| `local_binding = true` with a dynamic port (`listen(0)`, a dev server that falls back to the next free port) | not expressible — stays on `sandbox-runtime` |
+| `local_binding = true` with a dynamic port (`listen(0)`, a dev server that falls back to the next free port) | not expressible; stays on `sandbox-runtime` |
 
-For the second row the command must refuse automatic port fallback — Vite's
-`--strictPort`, for example — or a busy port moves the server outside the
+For the second row the command must refuse automatic port fallback (Vite's
+`--strictPort`, for example), or a busy port moves the server outside the
 grant and the failure reads as a mystery:
 
 ```bash
@@ -61,7 +61,7 @@ Everything above was measured on macOS. On Linux the question is settled before
 any port is considered:
 
 - **Landlock cannot deny a path inside one it allows.** A seisin profile nearly
-  always needs exactly that — the policy file, `.seisin/`, key directories and
+  always needs exactly that: the policy file, `.seisin/`, key directories and
   the control files of every project inside a role's territory are denied
   within territories the role may write. `nono` refuses to start such a profile
   rather than drop the deny, which is the right refusal and means the role
@@ -93,6 +93,6 @@ ports, SIGTERM and denial diagnostics.
    the others;
 3. denial diagnostics that feed the same ownership and request pipeline as the
    current Seatbelt watcher;
-4. `seisin check` naming, per role, which backend it would get and why — before
+4. `seisin check` naming, per role, which backend it would get and why, before
    anything starts;
 5. fallback decisions visible and covered by tests.

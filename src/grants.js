@@ -1,7 +1,7 @@
 /**
  * What a line of policy grants on disk, as paths.
  *
- * Pulled out of srt.js, which used to hold both halves: translating a policy
+ * Pulled out of srt-settings.js, which used to hold both halves: translating a policy
  * into paths, and assembling the runtime's settings object out of them. The
  * first half has a second reader now — surface.js asks "what can ANY role
  * write?" to decide what the parent must not trust — and a module that needs

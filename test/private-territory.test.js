@@ -14,7 +14,7 @@ import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig } from "../src/config.js";
-import { settingsFor } from "../src/srt.js";
+import { settingsFor } from "../src/srt-settings.js";
 import { explain, ownersOf, privateOwner } from "../src/owners.js";
 import { inspect } from "../src/inspect.js";
 import { decide } from "../src/hook.js";

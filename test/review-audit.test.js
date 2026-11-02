@@ -210,7 +210,7 @@ test("the poll carries no settings; one role's are served on demand, with the to
   const { get, base } = await console_(t);
   const s = await (await get("/api/state")).json();
   assert.ok(s.roles.every((r) => !("settings" in r)), "settings are back in the poll");
-  const { settingsFor } = await import("../src/srt.js");
+  const { settingsFor } = await import("../src/srt-settings.js");
   const one = await get("/api/settings?role=frontend");
   assert.equal(one.status, 200);
   const body = await one.json();

@@ -20,7 +20,7 @@ import { homedir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { loadConfig } from "../src/config.js";
-import { settingsFor } from "../src/srt.js";
+import { settingsFor } from "../src/srt-settings.js";
 import { machOf, browserFor, BROWSERS } from "../src/browsers.js";
 import { withRules } from "../src/sandboxes/mach-profile.js";
 import { srt, withMachPreload, resolveSrt } from "../src/sandboxes/srt.js";

@@ -28,7 +28,7 @@ export const TARTAROS_PACKAGE = "@carlostapiacl/tartaros";
 
 /**
  * The tartaros seisin depends on first, one on PATH second, and nothing third:
- * the order srt is found in (srt.js), for the same reason. A tartaros built
+ * the order srt is found in (resolveSrt in sandboxes/srt.js), for the same reason. A tartaros built
  * once and left on PATH goes on answering after the pinned one has its fixes.
  *
  * The pinned one is an optional dependency: a package per platform with the

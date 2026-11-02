@@ -18,7 +18,7 @@ import { boxed, repoWith as shared } from "./_tmp.js";
 
 import { buildEnv, DEFAULTS } from "../src/env.js";
 import { loadConfig } from "../src/config.js";
-import { settingsFor } from "../src/srt.js";
+import { settingsFor } from "../src/srt-settings.js";
 import { inspect } from "../src/inspect.js";
 import { renderReport } from "../src/render.js";
 

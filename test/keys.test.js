@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { parseKey, defaultName, modeOf, resolveRef, resolveKeys, entriesOf, MODES, readFileRef } from "../src/keys.js";
 import { loadConfig } from "../src/config.js";
-import { settingsFor } from "../src/srt.js";
+import { settingsFor } from "../src/srt-settings.js";
 import { resolveExecutable, denyFor } from "../src/surface.js";
 import { inspect } from "../src/inspect.js";
 import { scratch } from "./_tmp.js";

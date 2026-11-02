@@ -76,7 +76,7 @@ if (policyFlag) {
 }
 
 const USAGE = `
-${C.b}seisin${C.off} — give each agent its own folders and its own keys
+${C.b}seisin${C.off}: give each agent its own folders and its own keys
 
   seisin run <role> -- <command...>     run a command as that role
   seisin run <role> --observe -- <cmd>  open the repo and watch — the network stays shut
@@ -105,7 +105,7 @@ Any command takes --policy <file> (the policy, rooted at the working directory) 
 both outside the repo (docs/runs.md).
 seisin help limits says what seisin cannot do, in any repo.
 
-Enforcement comes from @anthropic-ai/sandbox-runtime, which asks the OS.
+Enforcement comes from the sandbox (sandbox-runtime by default, or tartaros), which asks the OS.
 seisin decides what to ask for, and says whose file it was when the answer is no.
 `;
 

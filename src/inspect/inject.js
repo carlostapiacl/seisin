@@ -12,7 +12,7 @@
  */
 import { injectKeysOf } from "../keys.js";
 import { sandboxesOf } from "../sandboxes/index.js";
-import { coversHost as covers } from "../srt.js";
+import { coversHost as covers } from "../srt-settings.js";
 
 export function injectWarnings(config, roles) {
   const out = [];

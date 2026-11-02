@@ -30,7 +30,7 @@ import { toRepoRelative } from "./paths.js";
 import { loadConfig, findConfig } from "./config.js";
 import { inspect } from "./inspect.js";
 import { explain, ownersOf } from "./owners.js";
-import { settingsFor } from "./srt.js";
+import { settingsFor } from "./srt-settings.js";
 import { queueOf, queueData, refuseIfBarred, shellId } from "./requests.js";
 import { read, logPath } from "./log.js";
 import { causesOf, parseSince, queue as requestQueue, verdicts, wallsByRole } from "./views.js";

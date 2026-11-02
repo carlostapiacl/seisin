@@ -1,4 +1,4 @@
-import { settingsFor } from "../srt.js";
+import { settingsFor } from "../srt-settings.js";
 
 export function enforceWarnings(config, roles) {
   const warnings = [];

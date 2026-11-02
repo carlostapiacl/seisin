@@ -17,7 +17,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
 import { read, logPath, logSegments } from "./log.js";
-import { settingsFor } from "./srt.js";
+import { settingsFor } from "./srt-settings.js";
 import { describeHandoff } from "./handoff.js";
 import { pending, requestsPath, settle, applyGrant, refuseIfBarred, editPolicy, cleanReason, asFileGrant, lastAgentOf, fileOnlyNote } from "./requests.js";
 import { causesOf, describeWalls, parseSince, queue, verdicts, wallsByRole } from "./views.js";

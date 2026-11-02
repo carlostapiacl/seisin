@@ -12,7 +12,7 @@ import { finished } from "node:stream/promises";
 import { constants as osConstants } from "node:os";
 import { mkdirSync, writeFileSync, existsSync, readFileSync, statSync } from "node:fs";
 import { join, dirname, delimiter, resolve } from "node:path";
-import { settingsFor, roleHome, loopbackVia, agentOf, AGENTS, AGENT_HOMES } from "../srt.js";
+import { settingsFor, roleHome, loopbackVia, agentOf, AGENTS, AGENT_HOMES } from "../srt-settings.js";
 import { buildEnv } from "../env.js";
 import { traceFields } from "../trace.js";
 import { resolveKeys } from "../keys.js";
@@ -229,7 +229,7 @@ export async function run(config, argv) {
    * The run's temp directory: one the role may write, never the runtime's.
    *
    * sandbox-runtime hands every child `/tmp/claude` as TMPDIR, and that
-   * directory is now denied (srt.js, SHARED_TMP). It takes CLAUDE_CODE_TMPDIR
+   * directory is now denied (srt-settings.js, SHARED_TMP). It takes CLAUDE_CODE_TMPDIR
    * instead when set, so that is where the run's goes: the role's own tmp under
    * `isolate = "home"`, else the parent's TMPDIR when the role may already write
    * it, else one made for this run beside the runs root, granted to it alone. A caller's
@@ -270,7 +270,7 @@ export async function run(config, argv) {
   // The launcher's W3C trace, read from the parent's environment once: every line
   // this run writes carries it, so the log joins the launcher's trace (trace.js).
   const trace = traceFields(process.env);
-  const take = intake({ config, role, runId: theRun.id, observe, settings, notify, chain: handed?.chain ?? null, expectDenied, trace });
+  const take = intake({ config, role, runId: theRun.id, label: runLabel, observe, settings, notify, chain: handed?.chain ?? null, expectDenied, trace });
   // The channel is a unix socket on macOS, and a socket path is capped. Past
   // the cap the listen dies on `EINVAL` and a path, which says nothing about
   // TMPDIR — the one thing that decides how long it is.
@@ -580,7 +580,7 @@ export async function run(config, argv) {
         `${handed.chain.depth} of ${MAX_DEPTH}${C.off}\n`);
   }
 
-  const boxed = ["env", ...restoreTmp, `SEISIN_RUN_ID=${theRun.id}`, ...loopbackVia(config.roles[role], cmd, sandbox.name)];
+  const boxed = ["env", ...restoreTmp, `SEISIN_RUN_ID=${runLabel}`, ...loopbackVia(config.roles[role], cmd, sandbox.name)];
   // The tag is sandbox-runtime's: under any other sandbox there is none to
   // match, and attribution goes by the process tree alone (violations.js).
   denials = watchDenials(take.fromKernel, { argv: sandbox.tagsDenials ? boxed : null });

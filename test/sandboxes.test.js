@@ -18,7 +18,7 @@ import { commandSandbox, assessCheck } from "../src/sandboxes/command.js";
 import { weigh, chooseSandbox, sandboxesOf, DEFAULT_SANDBOX } from "../src/sandboxes/index.js";
 import { runCanary } from "../src/canary.js";
 import { seccompDir } from "../src/sandboxes/srt.js";
-import { settingsFor } from "../src/srt.js";
+import { settingsFor } from "../src/srt-settings.js";
 import { resolveSrt } from "../src/commands/run.js";
 import { scratch, repoWith, srtSkip, CLI } from "./_tmp.js";
 

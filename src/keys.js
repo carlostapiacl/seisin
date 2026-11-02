@@ -542,7 +542,7 @@ function injectGate(role) {
 
 /**
  * The role's `inject` keys as `{ entry, name, hosts }`, the single source both
- * the settings (srt.js) and `check` read. Throws when the policy is internally
+ * the settings (srt-settings.js) and `check` read. Throws when the policy is internally
  * inconsistent — an inject key with no `inject_hosts` entry, or an
  * `inject_hosts` entry naming a key that is not injected — because either one
  * is a masked credential that silently injects nowhere, or a host list that

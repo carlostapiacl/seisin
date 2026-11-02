@@ -2,7 +2,7 @@
  * Where seisin's own files live. Names only — no logic, no imports.
  *
  * These were spread across the modules that happened to create each file, and
- * that produced one dependency that points the wrong way: `srt.js`, whose job
+ * that produced one dependency that points the wrong way: `srt-settings.js`, whose job
  * is translating a policy into a sandbox, imported `log.js` purely to learn the
  * name of the state directory it has to keep writable. A module that decides
  * what the kernel may allow should not know that logging exists.

@@ -10,6 +10,28 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+Three things wapentake found running 0.6.4 with a folder per run:
+
+- **`--run-id` names every line of the run**, the kernel's denials included: they carried
+  the first 8 characters of seisin's own id, so a launcher could not join them with its
+  records. The "denied N times in this run" count also matches the run again under
+  `--run-id`. *What to do:* nothing.
+- **`check --verify` honours `--policy`**: each role's verify ran without it and stopped on
+  "no seisin.toml found". *What to do:* nothing.
+- **`~/.CFUserTextEncoding` is kept readable from the account's home, not `$HOME`.** macOS
+  reads it from the account even when a launcher gives each run its own HOME, so under
+  `read = "territory"` the real read was denied. *What to do:* a launcher that added it to
+  `reads` can drop that.
+
+Inside, with no change in behaviour:
+
+- **`src/config.js` in three:** the TOML subset (`toml.js`), the reader of each field
+  (`config-fields.js`) and the load. `src/srt.js` is now `srt-settings.js`, so it is not
+  mistaken for the adapter in `src/sandboxes/srt.js`. The package's API is the same.
+- **The README is half as long.** Configuration in full, the JavaScript API, the log, console,
+  MCP server and walls, and prior art moved to `docs/` (`configure.md`, `api.md`, `log.md`,
+  `prior-art.md`). `--help` names tartaros as a sandbox too.
+
 ## 0.6.4 — 2026-10-27
 
 With tartaros 0.1.0-alpha.18.

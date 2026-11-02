@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { repoWith as shared } from "./_tmp.js";
 import { loadConfig } from "../src/config.js";
-import { settingsFor } from "../src/srt.js";
+import { settingsFor } from "../src/srt-settings.js";
 
 const load = (toml) => loadConfig(join(shared("deny-addr-", toml, ["app/"]), "seisin.toml"));
 const ROLE = '[roles.app]\nwrites = ["app/**"]\n';

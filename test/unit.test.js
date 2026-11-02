@@ -37,7 +37,7 @@ import { serve } from "../src/serve.js";
 import { review } from "../src/review.js";
 import { wire, wired } from "../src/commands/wire.js";
 import { spool, send, flush } from "../src/spool.js";
-import { settingsFor, RUNTIME_WRITES, roleHomeRoot, homeFits } from "../src/srt.js";
+import { settingsFor, RUNTIME_WRITES, roleHomeRoot, homeFits } from "../src/srt-settings.js";
 
 const cfg = {
   root: "/repo",

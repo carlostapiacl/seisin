@@ -138,10 +138,12 @@ export function hitsOf(file, role, action, target, run = null) {
   // the cut, so a cut on a boundary keeps it). Comparing the file's byte size
   // with the text's UTF-16 length used to decide that, and with any multibyte
   // character in the tail it kept the fragment of a line or dropped a whole one.
-  const id = run ? String(run).slice(0, 8) : null;
+  // The canary carries the run's label: the launcher's --run-id whole, or the
+  // first 8 characters of seisin's own id (older runs exported the whole id).
+  const id = run ? String(run) : null;
   let total = 0, inRun = null;
   for (const e of readEntries(file, { tail: TAIL_BYTES })) {
-    if (id && e.event === "canary" && e.role === role && e.run === id) inRun = 0;
+    if (id && e.event === "canary" && e.role === role && (e.run === id || e.run === id.slice(0, 8))) inRun = 0;
     if (e.role === role && e.verdict === "denied" && e.action === action && e.target === target) {
       total++;
       if (inRun !== null) inRun++;

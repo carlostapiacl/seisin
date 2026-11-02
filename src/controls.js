@@ -19,7 +19,7 @@
  */
 import { createHash } from "node:crypto";
 import { loadConfig, CONTROL_FAMILIES, stripComment, closesArray } from "./config.js";
-import { settingsFor } from "./srt.js";
+import { settingsFor } from "./srt-settings.js";
 import { denyFor } from "./surface.js";
 import { cleanReason } from "./requests.js";
 
