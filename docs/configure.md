@@ -197,5 +197,22 @@ name per run, and never as a request. Most are the sandbox doing its job and the
 carrying on; one of them is how a browser dies at start, and `seisin run` names the preset
 that answers it. macOS only.
 
+## Notifications
+
+`[notify]` sends one message per new request (the role, the path, whose it is, and
+`seisin grant '<id>'`) from the parent process, never from the role.
+
+```toml
+[notify]
+url_file = ".secrets/notify-url.txt"   # e.g. https://ntfy.sh/<your-topic>
+format   = "text"                      # or "slack", "json"
+```
+
+The URL is a credential: whoever reads it can send you a fake "grant this". So `url = "…"` in
+`seisin.toml`, which every role can read, is refused. `url_file` has to sit inside a `[keys] dir`
+and no role may declare it as a key. Or leave `url_file` out and set `SEISIN_NOTIFY_URL` in the
+environment that starts seisin (`SEISIN_NOTIFY_FORMAT` for the format). The URL never reaches a
+role's environment, not even when the role names it.
+
 `seisin init` will propose this from whatever your repo already says: `.claude/agents/`, then `CODEOWNERS` (one role per owner, with all of that owner's paths), then one role per top-level folder that holds code. It declares `[keys] dir` when `.secrets/`, `secrets/` or `.keys/` is there, and adds `.seisin/` to an existing `.gitignore`. It **proposes** (a generated policy you did not read is not a policy) and a second `init` changes nothing without `--force`, which keeps the old one as `seisin.toml.bak`.
 

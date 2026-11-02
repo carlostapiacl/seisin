@@ -60,9 +60,10 @@ keys = [
 ]
 ```
 
-No provider to declare. The path resolves against the policy file's directory, not the
-current one, because a key that resolves differently depending on where you were standing
-works in your shell and fails in the agent's.
+No provider to declare. The path resolves against the policy's root (the directory that holds
+`seisin.toml`, or the working directory when the policy comes from `--policy`), not the current
+one, because a key that resolves differently depending on where you were standing works in your
+shell and fails in the agent's.
 
 A fragment reads one value out of **an env file or a JSON object**, whichever the file turns
 out to be (sniffed from the content, because the name lies often enough to matter). In an env

@@ -22,7 +22,10 @@ $ seisin log
 `[kernel]` marks a line the kernel reported; the others came from the hook.
 
 One append-only JSONL under `.seisin/`, and that is the whole storage design: no daemon, no
-database, and `watch` is a tail. A run started with a W3C `TRACEPARENT` (a launcher's trace)
+database, and `watch` is a tail. At 8 MiB the log is retired to `log.jsonl.1`, `.2`… and a new one
+starts with a `rotated` line that continues the hash chain; the 5 newest retired segments are kept
+and older ones are deleted, whole. So `review --since 30d` reads only what is still there.
+`SEISIN_LOG_MAX_BYTES` and `SEISIN_LOG_KEEP` change both numbers. A run started with a W3C `TRACEPARENT` (a launcher's trace)
 stamps its `trace_id` and `span_id` on every line, so the log joins that trace in any
 OpenTelemetry tool.
 

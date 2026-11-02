@@ -375,7 +375,7 @@ writes = ["src/web/**", "public/**",
 **Granting is never a tool call.** An agent can read the queue and draft the change; only a
 person applies it, in a terminal or in the console. The MCP server is read-only for that reason.
 
-With `[notify]` a person gets one message per new request (ntfy, Slack or any webhook), and
+With [`[notify]`](https://github.com/carlostapiacl/seisin/blob/main/docs/configure.md#notifications) a person gets one message per new request (ntfy, Slack or any webhook), and
 `seisin wire` lets the hook tell the agent whose a path was before and after it is denied.
 
 **[How a denial becomes a request, why it deduplicates, and what a grant records →](https://github.com/carlostapiacl/seisin/blob/main/docs/requests.md)**
