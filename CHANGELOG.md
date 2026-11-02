@@ -8,7 +8,7 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
-## Unreleased
+## 0.6.5 — 2026-11-02
 
 - **`check --json --verify` runs the verify**, and `--system-log` its measurement, and the JSON
   says how each went. They were skipped and `ok` came back `true`. *What to do:* a script that
