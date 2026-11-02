@@ -114,7 +114,7 @@ one. CHANGELOG.md is not read: history quotes the old words on purpose.
 
 `seisin.toml` is parsed by a deliberate subset of TOML: `[table]` headers and
 `key = "value"` / `key = ["a", "b"]` pairs, no inline tables, no escapes. That is not a
-missing feature to be completed. From `src/config.js`:
+missing feature to be completed. From `src/toml.js`:
 
 > *If your config outgrows this subset, the config is doing too much.*
 
