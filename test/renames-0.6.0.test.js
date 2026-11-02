@@ -129,21 +129,35 @@ test("lines appended while the queue is migrated are all kept", async () => {
   const { f, text } = oldQueue();
   const N = 2000;
   const requestsJs = JSON.stringify(new URL("../src/requests.js", import.meta.url).href);
+  // Two halves with a migration guaranteed between them: the writer stops at
+  // the half and waits for the go, so the count below does not rest on how the
+  // CPU happened to share itself out.
+  const half = f + ".half", go = f + ".go";
   const writer = spawn(process.execPath, ["--input-type=module", "-e", `
     const { record, settle } = await import(${requestsJs});
-    for (let i = 0; i < ${N}; i++)
-      if (i % 2) settle(${JSON.stringify(f)}, "k" + i, "denied", "r");
-      else record(${JSON.stringify(f)}, { role: "web", action: "write", target: "x/" + i, owners: [] });
+    const { existsSync, writeFileSync } = await import("node:fs");
+    const write = (i) => i % 2
+      ? settle(${JSON.stringify(f)}, "k" + i, "denied", "r")
+      : record(${JSON.stringify(f)}, { role: "web", action: "write", target: "x/" + i, owners: [] });
+    for (let i = 0; i < ${N / 2}; i++) write(i);
+    writeFileSync(${JSON.stringify(half)}, "");
+    while (!existsSync(${JSON.stringify(go)})) await new Promise((ok) => setTimeout(ok, 10));
+    for (let i = ${N / 2}; i < ${N}; i++) write(i);
   `], { stdio: "inherit" });
   const done = new Promise((ok) => writer.on("exit", ok));
   let finished = false;
   done.then(() => { finished = true; });
   let migrations = 0;
+  for (let i = 0; i < 3000 && !existsSync(half); i++) await new Promise((ok) => setTimeout(ok, 10));
+  assert.ok(existsSync(half), "the writer reached the half");
+  migrations += migrateQueue(f) > 0 ? 1 : 0;   // the old spellings of the first half
+  writeFileSync(go, "");
+  // and over and over while the second half is written
   while (!finished) {
     migrations += migrateQueue(f) > 0 ? 1 : 0;
     await new Promise((ok) => setImmediate(ok));
   }
-  migrateQueue(f);
+  migrations += migrateQueue(f) > 0 ? 1 : 0;
   const lines = readFileSync(f, "utf8").split("\n").filter(Boolean);
   assert.equal(lines.length, text.split("\n").filter(Boolean).length + N);
   const parsed = lines.map((l) => { try { return JSON.parse(l); } catch { return null; } });
@@ -151,7 +165,7 @@ test("lines appended while the queue is migrated are all kept", async () => {
   for (let i = 1; i < N; i += 2) assert.ok(declined.has("k" + i), `k${i} kept, as declined`);
   assert.equal(parsed.filter((e) => e?.kind === "asked" && e.target?.startsWith("x/")).length, N / 2);
   assert.ok(!lines.some((l) => l.includes('"kind":"denied"')));
-  assert.ok(migrations > 1, `migrated while the writer ran (${migrations})`);
+  assert.ok(migrations > 1, `migrated between the halves and after (${migrations})`);
 });
 
 // ── key_mode = "run-file" ─────────────────────────────────────────────────
