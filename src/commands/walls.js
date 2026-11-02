@@ -8,6 +8,9 @@ import { kindsOf } from "../kinds.js";
 import { parseSince } from "../views.js";
 import { C, out, safe } from "../render.js";
 
+/** How many walls a terminal shows without --all. */
+const SHOWN = 6;
+
 export function wallsCommand(config, argv = []) {
   const role = argv[0];
   if (!role) throw new Error("usage: seisin walls <role> [--since <date|duration>] [--min <n>] [--all]");
@@ -27,16 +30,20 @@ export function wallsCommand(config, argv = []) {
     limit: 0,
   });
   const all = argv.includes("--all");
-  const list = (all ? every : every.filter((w) => !w.stale)).slice(0, 6);
+  // Six at a terminal unless --all, and the rest counted: a cut nobody is told
+  // about reads as the whole list. The exit status is over everything selected.
+  const selected = withKinds(config, all ? every : every.filter((w) => !w.stale));
+  const shown = all ? selected : selected.slice(0, SHOWN);
   const old = every.filter((w) => w.stale).length;
-  const shown = withKinds(config, list);
   if (shown.length) out(renderForPerson(role, shown));
+  if (selected.length > shown.length)
+    out(`  (${selected.length - shown.length} more wall(s): seisin walls ${safe(role)} --all)\n`);
   else if (!every.length)
     out(`\n  ${C.dim}${safe(role)} has no repeated denials in the recorded runs. A path becomes a wall after ${at("--min", 2)} denials.${C.off}\n\n`);
   else if (!all)
     out(`\n  ${C.dim}${safe(role)} has no recent walls; older ones are hidden. Use seisin walls ${safe(role)} --all.${C.off}\n\n`);
   if (old && !all) out(`  (${old} older wall(s) not hit in the last ${STALE_RUNS}+ runs: seisin walls ${role} --all)\n`);
-  return shown;
+  return selected;
 }
 
 /**
