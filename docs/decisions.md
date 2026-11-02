@@ -24,7 +24,7 @@ same keys, no answer to *whose is it*.
 
 Rejected along with it: naming a new category ("Agent Permission Layer", "RBAC
 for repos"). A category nobody has heard of has to be explained before the tool
-can be, and [a three-row table](../README.md#why-not-a-container) does the same
+can be, and [a three-row table](prior-art.md#why-not-a-container) does the same
 work without asking the reader to learn vocabulary.
 
 ## MIT, not Apache-2.0

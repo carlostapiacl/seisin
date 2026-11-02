@@ -336,7 +336,7 @@ test("every word the product prints about its own model has a glossary line", ()
   for (const t of TERMS) assert.match(g, new RegExp(`^\\*\\*\`?${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "mi"), `no glossary line for "${t}"`);
 });
 
-test("the README's sample of `seisin walls` says what `seisin walls` says", async () => {
+test("docs/log.md's sample of `seisin walls` says what `seisin walls` says", async () => {
   // Two voices, one list: the terminal speaks to the person who ran the
   // command, the session-start context to the agent. The README shows both,
   // and each has to be what the product prints.
@@ -346,14 +346,14 @@ test("the README's sample of `seisin walls` says what `seisin walls` says", asyn
     { times: 19, action: "write", target: "../shared/.git/index.lock", owners: ["platform"] },
     { times: 6, action: "read", target: "~/.npmrc", owners: [], reason: "no role declares ~/.npmrc — add it under a [roles.<name>] keys list" },
   ]));
-  const readme = readFileSync(join(ROOT, "README.md"), "utf8");
+  const readme = readFileSync(join(ROOT, "docs", "log.md"), "utf8");
   assert.ok(readme.includes(`$ seisin walls dev\n${shown.replace(/\n+$/, "")}\n\`\`\``),
     `README's terminal sample is not what \`seisin walls dev\` prints:\n${shown}`);
   const said = readFileSync(join(ROOT, "src", "diagnose.js"), "utf8").match(/"(Already denied more than once[^"]*)"/)[1];
   assert.ok(readme.includes(said), `README's session-start sample is not the hook's sentence:\n  product: ${said}`);
 });
 
-test("the README's sample of `seisin review` is what `seisin review` prints for that log", async (t) => {
+test("docs/log.md's sample of `seisin review` is what `seisin review` prints for that log", async (t) => {
   const { boxed } = await import("./_tmp.js");
   const { mkdirSync, writeFileSync } = await import("node:fs");
   const { loadConfig } = await import(join(ROOT, "src", "config.js"));
@@ -380,7 +380,7 @@ test("the README's sample of `seisin review` is what `seisin review` prints for 
   t.mock.method(process.stdout, "write", (s) => { printed.push(String(s)); return true; });
   try { reviewCommand(loadConfig(join(dir, "seisin.toml")), []); } finally { t.mock.restoreAll(); }
   const shown = printed.join("").replace(/\x1b\[[0-9;]*m/g, "").replace(/\n+$/, "");
-  const readme = readFileSync(join(ROOT, "README.md"), "utf8");
+  const readme = readFileSync(join(ROOT, "docs", "log.md"), "utf8");
   assert.ok(readme.includes(`$ seisin review\n${shown}\n\`\`\``), `README's review sample is not what review prints:\n${shown}`);
 });
 

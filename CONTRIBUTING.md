@@ -139,7 +139,7 @@ document people actually use — several comments in the source point at it.
 ## What is out of scope
 
 - **Being a sandbox.** The OS is the sandbox. seisin writes its settings and explains its
-  denials. See [What it is not](README.md#what-it-is-not).
+  denials. See [What it is for](README.md#what-it-is-for).
 - **Storing secrets.** A provider *resolves* a reference; a vault keeps it. Rotation, backup
   and recovery are a different product.
 - **Wiring in a specific vault.** A provider is a command, which is what keeps this from
