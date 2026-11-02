@@ -471,3 +471,23 @@ test("~/.CFUserTextEncoding resolves against the account's home, not $HOME (an o
     assert.equal(kept.includes(`${join(dir, "run-home")}/.CFUserTextEncoding`), false);
   } finally { process.env.HOME = saved; }
 });
+
+test("against the kernel: a declared toolchain's bin/ comes before the PATH seisin was started with", { skip }, async () => {
+  const { base, root } = repo(POLICY.replace('keys = ["k.txt"]', 'keys = ["k.txt"]\ntoolchain = ["../tc"]'));
+  for (const [dir, said] of [["tc/bin", "FROM-TOOLCHAIN"], ["elsewhere/bin", "FROM-PATH"]]) {
+    mkdirSync(join(base, dir), { recursive: true });
+    writeFileSync(join(base, dir, "hello"), `#!/bin/sh\necho ${said}\n`, { mode: 0o755 });
+  }
+  const env = { ...process.env, PATH: `${join(base, "elsewhere", "bin")}:${process.env.PATH}` };
+  const { out, code } = await new Promise((ok) => {
+    let o = "";
+    const p = spawn(process.execPath, [CLI, "run", "dev", "--agent", "none", "--", "/bin/sh", "-c", "hello; echo DONE"], { cwd: root, env });
+    p.stdout.on("data", (d) => (o += d));
+    p.stderr.on("data", (d) => (o += d));
+    p.on("close", (c) => ok({ out: o, code: c }));
+  });
+  assert.equal(code, 0, out);
+  assert.match(out, /FROM-TOOLCHAIN/, out);
+  assert.doesNotMatch(out, /FROM-PATH/);
+  assert.match(out, /DONE/);
+});
