@@ -270,7 +270,7 @@ export async function run(config, argv) {
   // The launcher's W3C trace, read from the parent's environment once: every line
   // this run writes carries it, so the log joins the launcher's trace (trace.js).
   const trace = traceFields(process.env);
-  const take = intake({ config, role, runId: theRun.id, observe, settings, notify, chain: handed?.chain ?? null, expectDenied, trace });
+  const take = intake({ config, role, runId: theRun.id, label: runLabel, observe, settings, notify, chain: handed?.chain ?? null, expectDenied, trace });
   // The channel is a unix socket on macOS, and a socket path is capped. Past
   // the cap the listen dies on `EINVAL` and a path, which says nothing about
   // TMPDIR — the one thing that decides how long it is.
@@ -580,7 +580,7 @@ export async function run(config, argv) {
         `${handed.chain.depth} of ${MAX_DEPTH}${C.off}\n`);
   }
 
-  const boxed = ["env", ...restoreTmp, `SEISIN_RUN_ID=${theRun.id}`, ...loopbackVia(config.roles[role], cmd, sandbox.name)];
+  const boxed = ["env", ...restoreTmp, `SEISIN_RUN_ID=${runLabel}`, ...loopbackVia(config.roles[role], cmd, sandbox.name)];
   // The tag is sandbox-runtime's: under any other sandbox there is none to
   // match, and attribution goes by the process tree alone (violations.js).
   denials = watchDenials(take.fromKernel, { argv: sandbox.tagsDenials ? boxed : null });

@@ -47,10 +47,11 @@ export { policyId };
  * (`seisin run --expect-denied`): taken from the parent's own argv, never from
  * anything the sandbox can reach. See expectedByCaller below.
  */
-export function intake({ config, role, runId, observe = false, settings, notify, chain = null, expectDenied = [], trace = {} }) {
+export function intake({ config, role, runId, label = null, observe = false, settings, notify, chain = null, expectDenied = [], trace = {} }) {
   // `trace` is the launcher's (trace.js), read by the parent: in the stamp, so a
   // line the sandbox sends cannot claim another run's trace.
-  const stamp = { run: runId.slice(0, 8), policy: policyId(config), ...trace };
+  // The name the rest of the run's lines carry (the launcher's --run-id when it gave one).
+  const stamp = { run: label ?? runId.slice(0, 8), policy: policyId(config), ...trace };
   // No `at` from here or from the sandbox: append() stamps the parent's clock and
   // ignores any other. The confined process chose the time of its own lines —
   // it could date them into or out of every `since` window, or make its

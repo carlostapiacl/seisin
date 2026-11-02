@@ -50,7 +50,7 @@
  * nothing else in a data root is.
  */
 import { readdirSync, lstatSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { homedir, tmpdir, userInfo } from "node:os";
 import { realOrSelf, writePathsOf, expand } from "./grants.js";
 import { realAncestor } from "./paths.js";
 
@@ -64,8 +64,18 @@ export const AGENT_FILES = { claude: ["~/.claude.json"], codex: [] };
  * and that hold nothing about anybody. On macOS CoreFoundation reads
  * `~/.CFUserTextEncoding` (a text-encoding code, `0x1F5:0x0:0x0`); shut, it was
  * 278 of 409 denials in one orchestrator's runs, every one of them noise.
+ * The system reads it from the account's home, not from `$HOME`: an
+ * orchestrator that gives each run its own HOME still sees the real file read
+ * (measured), so these resolve against the account, see `accountHome`.
  */
 export const PLATFORM_FILES = { darwin: ["~/.CFUserTextEncoding"], linux: [] };
+
+/** The home directory of the account, from the user database, whatever `$HOME` says. */
+export function accountHome() {
+  try { return userInfo().homedir || homedir(); } catch { return homedir(); }
+}
+
+const expandAccount = (p) => (p.startsWith("~/") ? `${accountHome()}/${p.slice(2)}` : expand(p));
 
 /**
  * Where data lives, per platform. Whole roots: what is under them belongs to
@@ -233,7 +243,7 @@ export function keptFor(config, role, { observe = false, agent, program } = {}) 
     // starts and says "Not logged in" (measured, 2026-10-09). A run of no
     // agent, or of another, does not get it.
     ...(agent ? (AGENT_FILES[agent] ?? []).map(expand) : []),
-    ...(PLATFORM_FILES[process.platform] ?? []).map(expand),
+    ...(PLATFORM_FILES[process.platform] ?? []).map(expandAccount),
     ...writePathsOf(config, role, { observe, agent }),
     ...(role.reads ?? []).map((p) => readPath(config.root, p)),
     ...(role.toolchain ?? []).map((p) => readPath(config.root, p)),

@@ -449,3 +449,21 @@ test("territory keeps ~/.CFUserTextEncoding readable on macOS: every process rea
   assert.equal(kept.includes(file), process.platform === "darwin");
   assert.deepEqual(PLATFORM_FILES.linux, []);
 });
+
+test("~/.CFUserTextEncoding resolves against the account's home, not $HOME (an orchestrator gives each run its own HOME)", async () => {
+  const { keptFor, accountHome } = await import("../src/territory.js");
+  const { userInfo } = await import("node:os");
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(join(tmpdir(), "seisin-cfu-home-"));
+  writeFileSync(join(dir, "seisin.toml"), '[roles.a]\nwrites = ["src/**"]\n');
+  const config = loadConfig(join(dir, "seisin.toml"));
+  const saved = process.env.HOME;
+  process.env.HOME = join(dir, "run-home");
+  try {
+    assert.equal(accountHome(), userInfo().homedir);
+    const kept = keptFor(config, config.roles.a, {});
+    assert.equal(kept.includes(`${userInfo().homedir}/.CFUserTextEncoding`), process.platform === "darwin");
+    assert.equal(kept.includes(`${join(dir, "run-home")}/.CFUserTextEncoding`), false);
+  } finally { process.env.HOME = saved; }
+});
