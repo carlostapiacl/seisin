@@ -21,6 +21,11 @@ changed rather than failing on the old spelling.
   dropped as half-written.
 - **The console says why it cannot read `seisin.toml`** (the parser's message) instead of
   "not answering", or the example policy on a reload.
+- Inside, with no change in behaviour: `run()` reads as the order of its steps, with the
+  environment, the credentials, the run's home and the end of the run in functions of their own;
+  the CLI and the console grant and decline through one transaction (`decide-request.js`); the
+  attribution of kernel denials is its own component (`denial-attribution.js`), tested without
+  the system log.
 - Docs: how the log rotates and what it deletes, where a `file://` key resolves under
   `--policy`, the `--run-id` limits, and how to set up `[notify]`.
 
