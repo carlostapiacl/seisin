@@ -8,7 +8,9 @@
  * Reading is the easy half. Writing goes through spool.js when the writer is
  * inside a sandbox, so that the record is not editable by what it records.
  */
-import { createReadStream, watch as watchDir } from "node:fs";
+import { closeSync, openSync, readSync, watch as watchDir } from "node:fs";
+import { StringDecoder } from "node:string_decoder";
+import { lineReader } from "../lines.js";
 import { dirname, relative } from "node:path";
 import { read, logPath, size, verifyLog, LOG_NAME } from "../log.js";
 import { renderEntry, C, out } from "../render.js";
@@ -120,21 +122,26 @@ export function watch(config, { interval = 500 } = {}) {
   let at = size(file);
   out(`\n  ${C.dim}watching ${relative(process.cwd(), file)} — ctrl-c to stop${C.off}\n\n`);
 
+  // One reader across reads: a line that arrives in two pieces is shown once
+  // it is whole, instead of being dropped as half-written. Read synchronously,
+  // so a filesystem event and the interval never interleave two reads.
+  const show = (line) => { try { out(renderEntry(JSON.parse(line))); } catch { /* not a log line */ } };
+  let reader = lineReader(show), text = new StringDecoder("utf8");
   const drain = () => {
     const end = size(file);
-    if (end <= at) { at = end; return; }   // truncated, or nothing new
-    const stream = createReadStream(file, { start: at, end: end - 1, encoding: "utf8" });
-    at = end;
-    let buf = "";
-    stream.on("data", (d) => (buf += d));
-    stream.on("end", () => {
-      for (const line of buf.split("\n")) {
-        if (!line.trim()) continue;
-        try { out(renderEntry(JSON.parse(line))); } catch { /* half-written line */ }
-      }
-    });
+    if (end < at) { reader = lineReader(show); text = new StringDecoder("utf8"); }   // truncated or rotated: start over
+    if (end <= at) { at = end; return; }
+    const fd = openSync(file, "r");
+    try {
+      const chunk = Buffer.alloc(end - at);
+      readSync(fd, chunk, 0, chunk.length, at);
+      at = end;
+      reader(text.write(chunk));
+    } finally { closeSync(fd); }
   };
 
-  try { watchDir(dirname(file), () => drain()); } catch { /* platform without events */ }
-  return setInterval(drain, interval);
+  let dir = null;
+  try { dir = watchDir(dirname(file), () => drain()); } catch { /* platform without events */ }
+  const timer = setInterval(drain, interval);
+  return { stop: () => { clearInterval(timer); dir?.close(); } };
 }
