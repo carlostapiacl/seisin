@@ -10,7 +10,7 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
-Three things wapentake found running 0.6.4 with a folder per run:
+Three things found running 0.6.4 under a launcher with a folder per run:
 
 - **`--run-id` names every line of the run**, the kernel's denials included: they carried
   the first 8 characters of seisin's own id, so a launcher could not join them with its
