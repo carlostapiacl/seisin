@@ -41,12 +41,37 @@ export function unknownRole(config, role) {
  * `--verbsoe` is a question answered as if it had not been asked.
  * `values` are the flags that take the next word as their value.
  */
+/**
+ * A count a person types (`--min 3`): a whole number from 1. Anything else is
+ * refused; `Number("banana")` made every comparison false and the answer
+ * "no walls" looked like a real one.
+ */
+export function positiveInt(flag, value) {
+  if (!/^[1-9][0-9]*$/.test(String(value ?? ""))) {
+    const e = new Error(`${flag} takes a whole number from 1, not "${value ?? ""}"`);
+    e.usage = true;
+    throw e;
+  }
+  return Number(value);
+}
+
 export function checkFlags(command, argv, known, values = []) {
   const all = [...known, ...values];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--") break;
-    if (values.includes(a)) { i++; continue; }
+    if (values.includes(a)) {
+      // A flag that takes a value and has none is refused: `log --role` read
+      // as no filter at all, and answered for every role.
+      const v = argv[i + 1];
+      if (v === undefined || v === "--" || (v.startsWith("-") && v !== "-")) {
+        const e = new Error(`${a} needs a value\n  seisin ${command} --help lists its flags`);
+        e.usage = true;
+        throw e;
+      }
+      i++;
+      continue;
+    }
     if (!a.startsWith("-") || a === "-") continue;
     if (all.includes(a)) continue;
     const near = nearest(a, all);

@@ -1,5 +1,5 @@
 /** `seisin walls <role>` — what that role keeps being denied, and what it cost. */
-import { unknownRole } from "../suggest.js";
+import { unknownRole, positiveInt } from "../suggest.js";
 import { walls, wasted } from "../walls.js";
 import { STALE_RUNS } from "../requests.js";
 import { logPath } from "../log.js";
@@ -25,7 +25,7 @@ export function wallsCommand(config, argv = []) {
     throw new Error(`--since takes a date (2026-10-01) or a duration back from now (7d, 12h, 2w), not "${safe(at("--since", "") ?? "")}"`);
   const every = walls(config, role, {
     file: logPath(config.root),
-    min: Number(at("--min", 2)),
+    min: positiveInt("--min", at("--min", "2")),
     since,
     limit: 0,
   });
