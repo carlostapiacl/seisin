@@ -272,13 +272,17 @@ test("against the kernel: what another run creates beside this one, after it sta
   writeFileSync(join(base, "turns", "a", "early.txt"), "OWN-TURN-EARLY\n");
   writeFileSync(join(root, "seisin.toml"), POLICY.replace('keys = ["k.txt"]', 'keys = ["k.txt"]\nreads = ["../../turns/a"]'));
   const go = join(root, "src", "go");
-  const script = `i=0; while [ ! -f src/go ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; test -f src/go && echo STARTED-BEFORE; ` +
+  // The run says it is confined (src/ready, written from inside) before the
+  // late entries are made; a fixed wait passed whenever the start was slow,
+  // with every entry already there at start and the test proving nothing.
+  const script = `echo > src/ready; i=0; while [ ! -f src/go ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; test -f src/go && echo STARTED-BEFORE; ` +
     `cat src/a.txt ../../turns/a/early.txt ../../turns/a/late.txt; cat .secrets/k.txt >/dev/null && echo KEY-READ; ` +
     `cat ../../turns/b/config/mcp.json ../../turns/b/private/t.jsonl ../../worktrees/task-b/x ../../late.txt 2>/dev/null; ` +
     `echo w > src/new.txt && cat src/new.txt; echo DONE`;
   const done = run(root, "dev", script);
   // Made once the run is confined: the run reads src/go only after this.
-  await new Promise((ok) => setTimeout(ok, 3000));
+  for (let i = 0; i < 600 && !existsSync(join(root, "src", "ready")); i++) await new Promise((ok) => setTimeout(ok, 100));
+  assert.ok(existsSync(join(root, "src", "ready")), "the run started");
   mkdirSync(join(base, "turns", "b", "config"), { recursive: true });
   mkdirSync(join(base, "turns", "b", "private"), { recursive: true });
   mkdirSync(join(base, "worktrees", "task-b"), { recursive: true });
