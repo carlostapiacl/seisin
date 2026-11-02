@@ -118,6 +118,32 @@ test("seisin grant --file says nothing about Claude Code for a role that runs an
   assert.doesNotMatch(cli(box, "grant", "--file", "1"), /Claude Code/);
 });
 
+// A reopened request still carries the earlier file grants. Each interface's
+// settlement must keep its existing journal shape when declining the sibling.
+for (const channel of ["CLI", "console"]) {
+  test(`${channel} decline preserves file metadata handling after a sibling reopens`, async (t) => {
+    const { box, q, toml } = repo();
+    cli(box, "grant", "1", "--file");
+    const granted = toml();
+    record(q, { role: "backend", action: "write", target: "docs/guide.md", owners: [] });
+    const key = pending(q)[0].key;
+    if (channel === "CLI") cli(box, "decline", key, "--reason", "only the API page");
+    else {
+      const call = await consoleOf(t, box);
+      const response = await call("/api/decide", { key, decision: "declined", reason: "only the API page" });
+      assert.equal(response.status, 200);
+    }
+    const last = JSON.parse(readFileSync(q, "utf8").trim().split("\n").at(-1));
+    assert.equal(last.kind, "declined");
+    assert.equal(last.key, key);
+    assert.equal(last.reason, "only the API page");
+    if (channel === "CLI") assert.equal(Object.hasOwn(last, "only"), false);
+    else assert.deepEqual(last.only, ["docs/api.md"]);
+    assert.equal(toml(), granted);
+    assert.equal(pending(q).length, 0);
+  });
+}
+
 test("--file is refused for a key, which is already one file", () => {
   assert.throws(() => asFileGrant({ key: "a:read:x", action: "read", target: "stripe.txt" }), /already one file/);
   assert.throws(() => asFileGrant({ key: "a:write:d", action: "write", target: "d/**" }), /not one file/);

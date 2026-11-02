@@ -16,10 +16,11 @@ import { readFileSync, existsSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
+import { decideRequest } from "./decide-request.js";
 import { read, logPath, logSegments } from "./log.js";
 import { settingsFor } from "./srt-settings.js";
 import { describeHandoff } from "./handoff.js";
-import { pending, requestsPath, settle, applyGrant, refuseIfBarred, editPolicy, cleanReason, asFileGrant, lastAgentOf, fileOnlyNote } from "./requests.js";
+import { pending, requestsPath, editPolicy, cleanReason, lastAgentOf, fileOnlyNote } from "./requests.js";
 import { causesOf, describeWalls, parseSince, queue, verdicts, wallsByRole } from "./views.js";
 import { planEdit, hashOf } from "./controls.js";
 import { inspect } from "./inspect.js";
@@ -263,29 +264,17 @@ function decide(configPath, { key, decision, reason, scope = "folder" }) {
   const cfg = loadConfig(configPath);
   const file = requestsPath(cfg.root);
 
-  /**
-   * Looked up, applied and settled under one lock — the policy's, the one
-   * every grant takes (editPolicy). The lookup used to happen before it and
-   * the settle after it, so the console and `seisin grant` could both find the
-   * same request pending and both act on it. A decline takes the lock as well,
-   * though it writes no policy, for the same reason.
-   *
-   * The config is edited as text, so comments and order survive, and it is
-   * written before the queue is settled: if the write throws, the request is
-   * still open rather than marked done against a file that never changed.
-   */
   let req = null;
   let result = null;
   try {
-    result = editPolicy(cfg, (before) => {
-      const current = loadConfig(configPath, before);
-      req = pending(file, { keyDirs: current.keyDirs }).find((r) => r.key === key);
-      if (!req) throw bad(`request ${key} is no longer pending — reload to see the queue as it is now`);
-      if (decision !== "granted") return { toml: before, changed: false };
-      if (scope === "file") req = asFileGrant(req);
-      refuseIfBarred(current, req);
-      return applyGrant(before, req, reason);
-    }, { after: () => settle(file, req.key, decision, reason, { only: req.only }) });
+    ({ request: req, ...result } = decideRequest(cfg, {
+      decision, reason, only: scope === "file",
+      select: (current) => {
+        const request = pending(file, { keyDirs: current.keyDirs }).find((r) => r.key === key);
+        if (!request) throw bad(`request ${key} is no longer pending — reload to see the queue as it is now`);
+        return request;
+      },
+    }));
   } catch (e) {
     if (e.code === "ELOCKED") throw Object.assign(new Error("another grant is in progress — try again in a moment"), { status: 503 });
     throw e;
