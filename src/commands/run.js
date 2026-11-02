@@ -286,145 +286,10 @@ export async function run(config, argv) {
     writeFileSync(join(dirname(file), MACH_FILE), JSON.stringify({ register: machRegister }), { mode: 0o600 });
   const wrap = (inner) => sandbox.wrap(bin, file, settings, inner, { role, machRegister });
 
-  // The hook runs inside the child and has to know which role it is. These are
-  // the only variables seisin injects, and none carries a secret.
-  const { env, dropped } = buildEnv(process.env, config.roles[role]);
-  env.SEISIN_ROLE = role;
-  env.SEISIN_CONFIG = config.path;
-  // A policy read with --policy is rooted where the run started, not beside the
-  // file; the hook must agree, or it would judge paths against the wrong repo.
-  if (config.root !== dirname(config.path)) env.SEISIN_ROOT = config.root;
-  else delete env.SEISIN_ROOT;
-  env[SOCK_ENV] = sockPath;
-  // The handoff chain, for the hook's words only (handoff.js, CHAIN_ENV): set
-  // from the decision checked above, and removed otherwise, so a value the
-  // parent happened to have never reaches a run that was not handed work.
-  delete env[CHAIN_ENV];
-  if (handed) env[CHAIN_ENV] = JSON.stringify(handed.chain);
-  /**
-   * The declared toolchain goes first on PATH, under `read = "territory"`.
-   *
-   * Declaring `~/.venvs/api` and then having `python` resolve to whatever the
-   * parent's PATH found first is not having the toolchain. Only in that mode:
-   * under "all" the PATH is the parent's, as it has always been.
-   */
-  if (config.read === "territory") {
-    const bins = toolchainBins(config, config.roles[role], isDir);
-    if (bins.length) env.PATH = [...bins, ...(env.PATH ? [env.PATH] : [])].join(delimiter);
-  }
-
-  /**
-   * Reference keys: resolved here, by the parent, before anything is spawned.
-   *
-   * The ordering is the security property, not a convenience. The provider
-   * command holds the vault's own credential — the keychain prompt, the
-   * 1Password session — and running it inside the sandbox would mean putting that
-   * credential in there too, which is the thing this feature exists to avoid.
-   * The confined side cannot reach the parent; the parent can reach the vault;
-   * so the parent resolves and hands over the result.
-   *
-   * A failure here stops the run. Not an empty value, not the file of the same
-   * name, not a skipped key: a role that starts without a credential it
-   * declared fails later, somewhere else, looking like something it is not.
-   */
-  /**
-   * Each resolution is a line in the log: which key, which provider, which
-   * mode, whether it resolved. Never the value — the log is the record of what
-   * the policy did, and a secret in it would be a second plaintext copy with
-   * worse access control than the first. Shaped like the canary's line, a
-   * run-level event beside the verdicts, so readers that count verdicts skip it.
-   */
-  const resolved = resolveKeys(config, config.roles[role], {
-    record: ({ entry, mode, ok }) => append(logPath(config.root), {
-      // The variable's name and the provider, never the reference: a reference
-      // can carry what it points at (a provider that echoes it, a path that
-      // names the secret), and the log is read by more people than the policy.
-      event: "key", role, run: runLabel, ...trace, key: entry.name, provider: entry.scheme, mode, ok,
-    }),
-  });
-  const runFileKeys = theRun.keys;
-  if (resolved.some((r) => r.mode === "run-file")) mkdirSync(runFileKeys, { recursive: true, mode: 0o700 });
-  for (const { entry, mode, value } of resolved) {
-    if (mode === "env") { env[entry.name] = value; continue; }
-    /**
-     * `inject`: the real value goes into the environment of `srt` — not the
-     * agent's. The settings this run already generated declare it under
-     * `credentials.envVars` with `mode: "mask"`, so the runtime reads the real
-     * value from its own environment, hands the sandboxed child a sentinel, and
-     * substitutes the real value back only on egress to the credential's hosts.
-     * `srt` runs outside the sandbox, and the sandboxed child gets the sentinel.
-     * This mode is Linux-only for now — see injectGate in keys.js. The value is
-     * still masked on stdout/stderr below, so a sentinel the agent reflects into
-     * its own output is covered too.
-     */
-    if (mode === "inject") { env[entry.name] = value; continue; }
-    // `run-file`: the value lands in the per-run directory this process already
-    // makes for the spool and already removes on exit, so its lifetime is the
-    // run's by construction rather than by a cleanup somebody has to remember.
-    // The variable carries the PATH, which is the convention every tool that
-    // wants a secret from a file already reads (`_FILE`), and it means the
-    // value itself is not in the environment of a process that may print it.
-    const file = join(runFileKeys, entry.name);
-    writeFileSync(file, value, { mode: 0o600 });
-    /**
-     * Both names, because the world has two conventions and neither is ours.
-     *
-     * `<NAME>_FILE` is the Docker-secrets shape, read by tools that normally
-     * take the value in `<NAME>`. But a large family of tools already expects
-     * a PATH in the plain variable — `KUBECONFIG`,
-     * `GOOGLE_APPLICATION_CREDENTIALS`, `AWS_SHARED_CREDENTIALS_FILE` — and
-     * for those, `KUBECONFIG_FILE` is a name nothing reads.
-     *
-     * Found by running `kubectl` against it rather than reasoning about it:
-     * the file was there and correct, and the variable it was announced under
-     * was one kubectl has never heard of.
-     *
-     * Setting both costs nothing and leaks nothing: in `run-file` mode the
-     * value is deliberately not in the environment, so both variables hold a
-     * path and neither holds a secret.
-     */
-    env[entry.name] = file;
-    env[`${entry.name}_FILE`] = file;
-  }
-
-  /**
-   * Isolated mode: point the toolchain at a home of this role's own.
-   *
-   * Granting `~/.claude` to every role is what made "its own folders" only
-   * true of the repo. A CLI that keeps session state — or a token — under the
-   * real home put it somewhere every other role could read and write.
-   *
-   * The XDG variables are set as well as HOME, because a tool that reads
-   * `XDG_CACHE_HOME` directly would otherwise still land in the real one, and
-   * that failure is silent: the run works and the isolation does not.
-   */
-  // Only the `home` level moves HOME. `credentials` closes the places
-  // credentials live and leaves the home where it is — which is what keeps the
-  // agent logged in, since on macOS its credential is in the login keychain and
-  // the keychain is found through HOME.
-  if (config.isolate === "home" || config.isolate === true) {
-    const home = roleHome(config, role);
-    for (const d of [home, join(home, ".config"), join(home, ".local", "share"),
-                     join(home, ".local", "state"), join(home, ".cache"), join(home, "tmp")])
-      mkdirSync(d, { recursive: true });
-    env.HOME = home;
-    env.XDG_CONFIG_HOME = join(home, ".config");
-    env.XDG_DATA_HOME = join(home, ".local", "share");
-    env.XDG_STATE_HOME = join(home, ".local", "state");
-    env.XDG_CACHE_HOME = join(home, ".cache");
-    env.TMPDIR = join(home, "tmp");
-    // zsh writes its heredocs to $TMPPREFIX, not $TMPDIR, and defaults it to
-    // /tmp/zsh — which the role cannot write. Every heredoc in every zsh script
-    // failed with the role's own tmp a directory away (measured by an orchestrator running zsh scripts).
-    env.TMPPREFIX = join(home, "tmp", "zsh");
-  }
-  env.TMPDIR = runTmp;
-  env.CLAUDE_CODE_TMPDIR = runTmp;
-  // zsh writes heredocs to $TMPPREFIX (default /tmp/zsh), not $TMPDIR: see
-  // the isolated-home note above. Same answer for every run now.
-  env.TMPPREFIX = join(runTmp, "zsh");
-  delete env.CLAUDE_TMPDIR;
-  if (observe) env.SEISIN_OBSERVE = "1";
+  const { env, dropped } = prepareEnvironment({ config, role, sockPath, handed, isDir });
+  // Resolve in the parent, then deliver, before the canary or agent can start.
+  const resolved = deliverCredentials({ config, role, runLabel, trace, theRun, env });
+  prepareRunHome({ config, role, env, runTmp, observe });
   if (mine.includes("--debug-env")) err(`${C.dim}seisin: dropped ${dropped.join(" ")}${C.off}\n`);
 
   /**
@@ -645,17 +510,6 @@ export async function run(config, argv) {
     process.on(sig, () => { stoppedBy ??= sig; try { child.kill(sig); } catch {} });
   if (outStream) { child.stdout.pipe(outStream); child.stderr.pipe(errStream); }
 
-  // The exit code is the child's, and the output has to be all the way out
-  // before we leave. Both halves were wrong once and neither was loud:
-  //
-  //   - Calling exit() the moment the child exits discards whatever is still in
-  //     the redaction stream, so the command looks like it produced nothing.
-  //   - Waiting for `finish` but subscribing AFTER it fired left nothing to call
-  //     exit: first the process drifted out with status 0 (every failure
-  //     reported as a success), later the 2-second guard below caught it and
-  //     every keyed run paid two seconds. `finished()` has no such window.
-  //
-  // Keep a real timer (not unref'd, or it cannot save anything) as the ceiling.
   /**
    * The status is worked out when the run is about to leave, not when the
    * child exits. A Ctrl-C reaches the runtime and seisin at once; when the
@@ -672,100 +526,10 @@ export async function run(config, argv) {
     : interrupted && !code ? 130
     : code ?? 0;
 
-  child.on("exit", async (code, signal) => {
-    // The notice rides on what you are already looking at. A queue nobody opens
-    // is not human-in-the-loop, and this is the terminal that just showed you
-    // the denial — so it goes to stderr, beside it, not into the agent's stdout
-    // where a pipeline would swallow it.
-    // Close the spool before reading the queue: a line the hook sent on the
-    // agent's last turn may still be in flight, and reporting a queue that is
-    // one entry behind is how a request goes unnoticed for a day.
-    audit.close();
-    // Same reason, one layer further out: the kernel writes its line through a
-    // separate process, so the last denial of a run can still be in flight
-    // here. This is the only wait the mechanism adds and it is per run — it
-    // returns as soon as the stream goes quiet, so a run that was denied
-    // nothing pays a tick.
-    await denials.close({ drain: DRAIN_MS });
-    // Before the directory goes: the hosts the sandbox's broker refused.
-    for (const d of brokerDenials(brokerLog))
-      append(logPath(config.root), { role, run: runLabel, ...trace, tool: "broker", source: sandbox.name, action: "connect",
-        kind: "network", target: d.target, verdict: "denied", owners: [], reason: d.reason, times: d.times });
-    // The run made this directory, so the run removes it.
-    cleanup();
-
-    // Say what was dropped rather than only what was kept. A filter nobody can
-    // see is indistinguishable from a monitor that is not working, and this one
-    // drops the majority of what the kernel says on a busy run.
-    // Only when something was actually recorded. A run where every denial was
-    // filtered out has nothing to contextualise, and `0 recorded, 1 outside the
-    // policy's paths` is a line that answers a question nobody asked — the
-    // counts exist to explain a filter, not to announce that one ran.
-    const { attributed, dropped } = denials.stats;
-    // The one loss the filter above does not explain: the system log could not
-    // keep up and threw lines away before seisin saw them. The boundary held;
-    // the record did not. Said every time, and written down, because a denial
-    // that never arrived files no request and nothing else would show it.
-    if (dropped) {
-      append(logPath(config.root), { event: "log-dropped", role, run: runLabel, ...trace, batches: dropped });
-      err(`${C.yellow}seisin: the system log dropped ${dropped} batch(es) of messages during this run: ` +
-          `kernel denials may be missing from the log and the queue. ` +
-          `\`seisin check --system-log\` says what is flooding it.${C.off}\n`);
-    }
-    const { offPolicy, walks, expected, probes, atomic, browsers } = take.stats;
-    // A browser that died at start on its Mach rendezvous: the crash the agent
-    // saw does not say why, and this is the line that does.
-    for (const b of browsers)
-      err(`${C.yellow}seisin: ${role} started ${b} and the sandbox denied the Mach service it registers at start, so it ` +
-        `exited. Add browsers = ["${b}"] to [roles.${role}] in seisin.toml (docs/browsers.md).${C.off}\n`);
-    // A save refused at its temporary file, beside a file this role may write:
-    // the file was not saved, and nothing was queued because there is nothing
-    // to grant (the temporary name changes every time). Said whether or not
-    // anything else was recorded, because the agent's error said neither.
-    if (atomic.length) {
-      const files = [...new Set(atomic)];
-      err(`${C.yellow}seisin: ${files.length} file(s) ${role} may write were not saved: the save's temporary file beside ` +
-          `${files.slice(0, 3).join(", ")}${files.length > 3 ? ` and ${files.length - 3} more` : ""} was denied ` +
-          `(Claude Code's Edit and Write). \`seisin check ${role}\` says whether a grant can fix it.${C.off}\n`);
-    }
-    const recorded = attributed - offPolicy - walks;
-    if (recorded > 0)
-      err(`${C.dim}seisin: ${recorded} kernel denial(s) recorded` +
-          `${walks ? `, ${walks} directory scan(s)` : ""}` +
-          `${offPolicy ? `, ${offPolicy} outside the policy's paths` : ""}${C.off}\n` +
-          // Claude Code's plugin updater, refused correctly: said as expected so
-          // it does not read as the run failing (kinds.js expectedOf).
-          (expected ? `${C.dim}seisin: ${expected} of them expected: ${EXPECTED.plugins}${C.off}\n` : "") +
-          // The caller's own probes: denied as it asked, and nothing to grant.
-          (probes ? `${C.dim}seisin: ${probes} of them expected by the caller (--expect-denied) — nothing queued${C.off}\n` : ""));
-
-    // Only what this run added, with the numbers `grant` takes, and one line
-    // for the rest. The whole queue after every run buried the new request
-    // under the ones already seen; nothing new, nothing said.
-    const queue = queueOf(config);
-    const added = queue.map((q, i) => ({ ...q, n: i + 1 })).filter((q) => !before.has(q.key));
-    if (added.length) err(renderAdded(added, queue.length - added.length));
-    const failed = await notify.settle();
-    if (failed.length) err(`${C.yellow}seisin: could not notify about a new request (${failed[0]})${C.off}\n`);
-    // One more turn of the loop, so a signal that arrived with the child's exit
-    // has run its handler before the status is decided.
-    await new Promise((r) => setImmediate(r));
-    const status = statusOf(code, signal);
-    if (!outStream) return process.exit(status);
-    // `finished()` and not `once("finish")`, because the event is usually over
-    // before this line runs: `child.stdout.pipe(outStream)` ends the redactor
-    // itself when the child's stdout closes, so the listener was attached to an
-    // event that had already fired and the 2-second guard was the only way out.
-    // Every run with a key paid it — measured 3.0 s against 1.2 s without keys.
-    // `finished()` settles at once for a stream that is already done.
-    const guard = setTimeout(() => process.exit(status), 2000);
-    // A child's exit is not its pipes' EOF. Let pipe() end the redactors
-    // after the remaining stdout/stderr arrives; ending them here lost that
-    // output. The guard still bounds a descendant that keeps a pipe open.
-    await Promise.all([finished(outStream), finished(errStream)]).catch(() => {});
-    clearTimeout(guard);
-    process.exit(status);
-  });
+  child.on("exit", (code, signal) => finishRun({
+    config, role, runLabel, trace, audit, denials, brokerLog, sandbox,
+    cleanup, take, before, notify, statusOf, outStream, errStream,
+  }, code, signal));
   // Not a `throw`: in a listener it is an uncaught exception — exit 1, a
   // stack trace, and none of the cleanup. Said the way cli.js says any other
   // failure, with its code; the `exit` handler above removes the run.
@@ -773,6 +537,269 @@ export async function run(config, argv) {
     err(`${C.red}seisin:${C.off} could not start the sandbox: ${e.message}\n`);
     process.exit(2);
   });
+}
+
+// Keep environment filtering ahead of credential resolution: providers run in
+// the parent, and only the sandbox receives the resulting environment.
+function prepareEnvironment({ config, role, sockPath, handed, isDir }) {
+  // The hook runs inside the child and has to know which role it is. These are
+  // the only variables seisin injects, and none carries a secret.
+  const { env, dropped } = buildEnv(process.env, config.roles[role]);
+  env.SEISIN_ROLE = role;
+  env.SEISIN_CONFIG = config.path;
+  // A policy read with --policy is rooted where the run started, not beside the
+  // file; the hook must agree, or it would judge paths against the wrong repo.
+  if (config.root !== dirname(config.path)) env.SEISIN_ROOT = config.root;
+  else delete env.SEISIN_ROOT;
+  env[SOCK_ENV] = sockPath;
+  // The handoff chain, for the hook's words only (handoff.js, CHAIN_ENV): set
+  // from the decision checked above, and removed otherwise, so a value the
+  // parent happened to have never reaches a run that was not handed work.
+  delete env[CHAIN_ENV];
+  if (handed) env[CHAIN_ENV] = JSON.stringify(handed.chain);
+  /**
+   * The declared toolchain goes first on PATH, under `read = "territory"`.
+   *
+   * Declaring `~/.venvs/api` and then having `python` resolve to whatever the
+   * parent's PATH found first is not having the toolchain. Only in that mode:
+   * under "all" the PATH is the parent's, as it has always been.
+   */
+  if (config.read === "territory") {
+    const bins = toolchainBins(config, config.roles[role], isDir);
+    if (bins.length) env.PATH = [...bins, ...(env.PATH ? [env.PATH] : [])].join(delimiter);
+  }
+  return { env, dropped };
+}
+
+function deliverCredentials({ config, role, runLabel, trace, theRun, env }) {
+  /**
+   * Reference keys: resolved here, by the parent, before anything is spawned.
+   *
+   * The ordering is the security property, not a convenience. The provider
+   * command holds the vault's own credential — the keychain prompt, the
+   * 1Password session — and running it inside the sandbox would mean putting that
+   * credential in there too, which is the thing this feature exists to avoid.
+   * The confined side cannot reach the parent; the parent can reach the vault;
+   * so the parent resolves and hands over the result.
+   *
+   * A failure here stops the run. Not an empty value, not the file of the same
+   * name, not a skipped key: a role that starts without a credential it
+   * declared fails later, somewhere else, looking like something it is not.
+   */
+  /**
+   * Each resolution is a line in the log: which key, which provider, which
+   * mode, whether it resolved. Never the value — the log is the record of what
+   * the policy did, and a secret in it would be a second plaintext copy with
+   * worse access control than the first. Shaped like the canary's line, a
+   * run-level event beside the verdicts, so readers that count verdicts skip it.
+   */
+  const resolved = resolveKeys(config, config.roles[role], {
+    record: ({ entry, mode, ok }) => append(logPath(config.root), {
+      // The variable's name and the provider, never the reference: a reference
+      // can carry what it points at (a provider that echoes it, a path that
+      // names the secret), and the log is read by more people than the policy.
+      event: "key", role, run: runLabel, ...trace, key: entry.name, provider: entry.scheme, mode, ok,
+    }),
+  });
+  const runFileKeys = theRun.keys;
+  if (resolved.some((r) => r.mode === "run-file")) mkdirSync(runFileKeys, { recursive: true, mode: 0o700 });
+  for (const { entry, mode, value } of resolved) {
+    if (mode === "env") { env[entry.name] = value; continue; }
+    /**
+     * `inject`: the real value goes into the environment of `srt` — not the
+     * agent's. The settings this run already generated declare it under
+     * `credentials.envVars` with `mode: "mask"`, so the runtime reads the real
+     * value from its own environment, hands the sandboxed child a sentinel, and
+     * substitutes the real value back only on egress to the credential's hosts.
+     * `srt` runs outside the sandbox, and the sandboxed child gets the sentinel.
+     * This mode is Linux-only for now — see injectGate in keys.js. The value is
+     * still masked on stdout/stderr below, so a sentinel the agent reflects into
+     * its own output is covered too.
+     */
+    if (mode === "inject") { env[entry.name] = value; continue; }
+    // `run-file`: the value lands in the per-run directory this process already
+    // makes for the spool and already removes on exit, so its lifetime is the
+    // run's by construction rather than by a cleanup somebody has to remember.
+    // The variable carries the PATH, which is the convention every tool that
+    // wants a secret from a file already reads (`_FILE`), and it means the
+    // value itself is not in the environment of a process that may print it.
+    const file = join(runFileKeys, entry.name);
+    writeFileSync(file, value, { mode: 0o600 });
+    /**
+     * Both names, because the world has two conventions and neither is ours.
+     *
+     * `<NAME>_FILE` is the Docker-secrets shape, read by tools that normally
+     * take the value in `<NAME>`. But a large family of tools already expects
+     * a PATH in the plain variable — `KUBECONFIG`,
+     * `GOOGLE_APPLICATION_CREDENTIALS`, `AWS_SHARED_CREDENTIALS_FILE` — and
+     * for those, `KUBECONFIG_FILE` is a name nothing reads.
+     *
+     * Found by running `kubectl` against it rather than reasoning about it:
+     * the file was there and correct, and the variable it was announced under
+     * was one kubectl has never heard of.
+     *
+     * Setting both costs nothing and leaks nothing: in `run-file` mode the
+     * value is deliberately not in the environment, so both variables hold a
+     * path and neither holds a secret.
+     */
+    env[entry.name] = file;
+    env[`${entry.name}_FILE`] = file;
+  }
+  return resolved;
+}
+
+// Home and tmp overrides follow key delivery, as they did in the inline setup.
+function prepareRunHome({ config, role, env, runTmp, observe }) {
+  /**
+   * Isolated mode: point the toolchain at a home of this role's own.
+   *
+   * Granting `~/.claude` to every role is what made "its own folders" only
+   * true of the repo. A CLI that keeps session state — or a token — under the
+   * real home put it somewhere every other role could read and write.
+   *
+   * The XDG variables are set as well as HOME, because a tool that reads
+   * `XDG_CACHE_HOME` directly would otherwise still land in the real one, and
+   * that failure is silent: the run works and the isolation does not.
+   */
+  // Only the `home` level moves HOME. `credentials` closes the places
+  // credentials live and leaves the home where it is — which is what keeps the
+  // agent logged in, since on macOS its credential is in the login keychain and
+  // the keychain is found through HOME.
+  if (config.isolate === "home" || config.isolate === true) {
+    const home = roleHome(config, role);
+    for (const d of [home, join(home, ".config"), join(home, ".local", "share"),
+                     join(home, ".local", "state"), join(home, ".cache"), join(home, "tmp")])
+      mkdirSync(d, { recursive: true });
+    env.HOME = home;
+    env.XDG_CONFIG_HOME = join(home, ".config");
+    env.XDG_DATA_HOME = join(home, ".local", "share");
+    env.XDG_STATE_HOME = join(home, ".local", "state");
+    env.XDG_CACHE_HOME = join(home, ".cache");
+    env.TMPDIR = join(home, "tmp");
+    // zsh writes its heredocs to $TMPPREFIX, not $TMPDIR, and defaults it to
+    // /tmp/zsh — which the role cannot write. Every heredoc in every zsh script
+    // failed with the role's own tmp a directory away (measured by an orchestrator running zsh scripts).
+    env.TMPPREFIX = join(home, "tmp", "zsh");
+  }
+  env.TMPDIR = runTmp;
+  env.CLAUDE_CODE_TMPDIR = runTmp;
+  // zsh writes heredocs to $TMPPREFIX (default /tmp/zsh), not $TMPDIR: see
+  // the isolated-home note above. Same answer for every run now.
+  env.TMPPREFIX = join(runTmp, "zsh");
+  delete env.CLAUDE_TMPDIR;
+  if (observe) env.SEISIN_OBSERVE = "1";
+}
+
+// Do not pass resolved keys or env to closing: it needs audit/output state.
+// statusOf reads live signal state after the drains, not a snapshot at exit.
+async function finishRun({
+  config, role, runLabel, trace, audit, denials, brokerLog, sandbox,
+  cleanup, take, before, notify, statusOf, outStream, errStream,
+}, code, signal) {
+  // The exit code is the child's, and the output has to be all the way out
+  // before we leave. Both halves were wrong once and neither was loud:
+  //
+  //   - Calling exit() the moment the child exits discards whatever is still in
+  //     the redaction stream, so the command looks like it produced nothing.
+  //   - Waiting for `finish` but subscribing AFTER it fired left nothing to call
+  //     exit: first the process drifted out with status 0 (every failure
+  //     reported as a success), later the 2-second guard below caught it and
+  //     every keyed run paid two seconds. `finished()` has no such window.
+  //
+  // Keep a real timer (not unref'd, or it cannot save anything) as the ceiling.
+  // Drain and record before cleanup removes the run's broker log and keys.
+  // The notice rides on what you are already looking at. A queue nobody opens
+  // is not human-in-the-loop, and this is the terminal that just showed you
+  // the denial — so it goes to stderr, beside it, not into the agent's stdout
+  // where a pipeline would swallow it.
+  // Close the spool before reading the queue: a line the hook sent on the
+  // agent's last turn may still be in flight, and reporting a queue that is
+  // one entry behind is how a request goes unnoticed for a day.
+  audit.close();
+  // Same reason, one layer further out: the kernel writes its line through a
+  // separate process, so the last denial of a run can still be in flight
+  // here. This is the only wait the mechanism adds and it is per run — it
+  // returns as soon as the stream goes quiet, so a run that was denied
+  // nothing pays a tick.
+  await denials.close({ drain: DRAIN_MS });
+  // Before the directory goes: the hosts the sandbox's broker refused.
+  for (const d of brokerDenials(brokerLog))
+    append(logPath(config.root), { role, run: runLabel, ...trace, tool: "broker", source: sandbox.name, action: "connect",
+      kind: "network", target: d.target, verdict: "denied", owners: [], reason: d.reason, times: d.times });
+  // The run made this directory, so the run removes it.
+  cleanup();
+
+  // Say what was dropped rather than only what was kept. A filter nobody can
+  // see is indistinguishable from a monitor that is not working, and this one
+  // drops the majority of what the kernel says on a busy run.
+  // Only when something was actually recorded. A run where every denial was
+  // filtered out has nothing to contextualise, and `0 recorded, 1 outside the
+  // policy's paths` is a line that answers a question nobody asked — the
+  // counts exist to explain a filter, not to announce that one ran.
+  const { attributed, dropped } = denials.stats;
+  // The one loss the filter above does not explain: the system log could not
+  // keep up and threw lines away before seisin saw them. The boundary held;
+  // the record did not. Said every time, and written down, because a denial
+  // that never arrived files no request and nothing else would show it.
+  if (dropped) {
+    append(logPath(config.root), { event: "log-dropped", role, run: runLabel, ...trace, batches: dropped });
+    err(`${C.yellow}seisin: the system log dropped ${dropped} batch(es) of messages during this run: ` +
+        `kernel denials may be missing from the log and the queue. ` +
+        `\`seisin check --system-log\` says what is flooding it.${C.off}\n`);
+  }
+  const { offPolicy, walks, expected, probes, atomic, browsers } = take.stats;
+  // A browser that died at start on its Mach rendezvous: the crash the agent
+  // saw does not say why, and this is the line that does.
+  for (const b of browsers)
+    err(`${C.yellow}seisin: ${role} started ${b} and the sandbox denied the Mach service it registers at start, so it ` +
+      `exited. Add browsers = ["${b}"] to [roles.${role}] in seisin.toml (docs/browsers.md).${C.off}\n`);
+  // A save refused at its temporary file, beside a file this role may write:
+  // the file was not saved, and nothing was queued because there is nothing
+  // to grant (the temporary name changes every time). Said whether or not
+  // anything else was recorded, because the agent's error said neither.
+  if (atomic.length) {
+    const files = [...new Set(atomic)];
+    err(`${C.yellow}seisin: ${files.length} file(s) ${role} may write were not saved: the save's temporary file beside ` +
+        `${files.slice(0, 3).join(", ")}${files.length > 3 ? ` and ${files.length - 3} more` : ""} was denied ` +
+        `(Claude Code's Edit and Write). \`seisin check ${role}\` says whether a grant can fix it.${C.off}\n`);
+  }
+  const recorded = attributed - offPolicy - walks;
+  if (recorded > 0)
+    err(`${C.dim}seisin: ${recorded} kernel denial(s) recorded` +
+        `${walks ? `, ${walks} directory scan(s)` : ""}` +
+        `${offPolicy ? `, ${offPolicy} outside the policy's paths` : ""}${C.off}\n` +
+        // Claude Code's plugin updater, refused correctly: said as expected so
+        // it does not read as the run failing (kinds.js expectedOf).
+        (expected ? `${C.dim}seisin: ${expected} of them expected: ${EXPECTED.plugins}${C.off}\n` : "") +
+        // The caller's own probes: denied as it asked, and nothing to grant.
+        (probes ? `${C.dim}seisin: ${probes} of them expected by the caller (--expect-denied) — nothing queued${C.off}\n` : ""));
+
+  // Only what this run added, with the numbers `grant` takes, and one line
+  // for the rest. The whole queue after every run buried the new request
+  // under the ones already seen; nothing new, nothing said.
+  const queue = queueOf(config);
+  const added = queue.map((q, i) => ({ ...q, n: i + 1 })).filter((q) => !before.has(q.key));
+  if (added.length) err(renderAdded(added, queue.length - added.length));
+  const failed = await notify.settle();
+  if (failed.length) err(`${C.yellow}seisin: could not notify about a new request (${failed[0]})${C.off}\n`);
+  // One more turn of the loop, so a signal that arrived with the child's exit
+  // has run its handler before the status is decided.
+  await new Promise((r) => setImmediate(r));
+  const status = statusOf(code, signal);
+  if (!outStream) return process.exit(status);
+  // `finished()` and not `once("finish")`, because the event is usually over
+  // before this line runs: `child.stdout.pipe(outStream)` ends the redactor
+  // itself when the child's stdout closes, so the listener was attached to an
+  // event that had already fired and the 2-second guard was the only way out.
+  // Every run with a key paid it — measured 3.0 s against 1.2 s without keys.
+  // `finished()` settles at once for a stream that is already done.
+  const guard = setTimeout(() => process.exit(status), 2000);
+  // A child's exit is not its pipes' EOF. Let pipe() end the redactors
+  // after the remaining stdout/stderr arrives; ending them here lost that
+  // output. The guard still bounds a descendant that keeps a pipe open.
+  await Promise.all([finished(outStream), finished(errStream)]).catch(() => {});
+  clearTimeout(guard);
+  process.exit(status);
 }
 
 /**
