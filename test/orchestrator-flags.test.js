@@ -70,7 +70,8 @@ test("a run with --policy, --state-dir and --run-id leaves its record in the run
   assert.match(log, /"run":"01J9Z3K8R4W2"/);
   // Every line names the run by the launcher's whole id, the kernel's denial of outside.txt included.
   const lines = log.trim().split("\n").map((l) => JSON.parse(l)).filter((e) => "run" in e);
-  assert.ok(lines.some((e) => e.source === "kernel"), "the denied write left a kernel line");
+  // Kernel denials are read on macOS only.
+  if (process.platform === "darwin") assert.ok(lines.some((e) => e.source === "kernel"), "the denied write left a kernel line");
   for (const e of lines) assert.equal(e.run, "01J9Z3K8R4W2", JSON.stringify(e));
 });
 
