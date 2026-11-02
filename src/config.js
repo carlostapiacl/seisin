@@ -7,7 +7,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { CONFIG_NAME } from "./layout.js";
 import { parseKey, MODES, checkNames, BUILTIN, unknownMode } from "./keys.js";
-import { readNotify } from "./notify.js";
+import { readNotify } from "./notify-config.js";
 import { FORBIDDEN, dict, isTable, own, LINES, parseToml } from "./toml.js";
 
 export { own, parseToml, closesArray, stripComment } from "./toml.js";
