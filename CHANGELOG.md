@@ -23,6 +23,15 @@ Three things wapentake found running 0.6.4 with a folder per run:
   `read = "territory"` the real read was denied. *What to do:* a launcher that added it to
   `reads` can drop that.
 
+Inside, with no change in behaviour:
+
+- **`src/config.js` in three:** the TOML subset (`toml.js`), the reader of each field
+  (`config-fields.js`) and the load. `src/srt.js` is now `srt-settings.js`, so it is not
+  mistaken for the adapter in `src/sandboxes/srt.js`. The package's API is the same.
+- **The README is half as long.** Configuration in full, the JavaScript API, the log, console,
+  MCP server and walls, and prior art moved to `docs/` (`configure.md`, `api.md`, `log.md`,
+  `prior-art.md`). `--help` names tartaros as a sandbox too.
+
 ## 0.6.4 — 2026-10-27
 
 With tartaros 0.1.0-alpha.18.
