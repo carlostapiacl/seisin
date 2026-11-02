@@ -119,3 +119,22 @@ test("check's help says --system-log fails when it measures a loss", async () =>
   const out = spawnSync(process.execPath, [CLI, "check", "--help"], { encoding: "utf8" });
   assert.match(out.stdout + out.stderr, /--system-log.*exits 1 when it is/);
 });
+
+test("close drains a split denial completed by SIGINT before resolving its stats", async () => {
+  const cut = WRITE_DENY.indexOf("CMD64_");
+  const end = WRITE_DENY.indexOf("_SBX");
+  const child = fakeStream({ held: WRITE_DENY.slice(end) + MARKER });
+  const seen = [];
+  const w = watchDenials((d) => seen.push(d.path), {
+    pid: 900, platform: "darwin", spawnFn: () => child,
+    treeFn: () => new Map([[65518, 900]]),
+  });
+  child.stdout.push(WRITE_DENY.slice(0, cut));
+  await delivered();
+  const closing = w.close({ drain: 250 });
+  child.stdout.push(WRITE_DENY.slice(cut, end));
+  const stats = await closing;
+  assert.deepEqual(seen, ["/private/tmp/demo/src/api/tagprobe.txt"]);
+  assert.deepEqual(stats, { attributed: 1, foreign: 0, unattributed: 0, dropped: 1 });
+  assert.deepEqual(child.signals, ["SIGINT"]);
+});

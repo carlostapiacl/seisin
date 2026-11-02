@@ -6,10 +6,10 @@
  * person acting in a channel the agent does not have. That is the invariant the
  * whole feature rests on — see docs/requests.md.
  */
-import { settle, applyGrant, refuseIfBarred, requestsPath, editPolicy, queueOf, queueData, shellId, asFileGrant, lastAgentOf, fileOnlyNote } from "../requests.js";
+import { queueOf, queueData, shellId, lastAgentOf, fileOnlyNote } from "../requests.js";
 import { describeHandoff } from "../handoff.js";
 import { keyHolders } from "../owners.js";
-import { loadConfig } from "../config.js";
+import { decideRequest } from "../decide-request.js";
 import { read, logPath } from "../log.js";
 import { C, out, safe } from "../render.js";
 
@@ -125,14 +125,10 @@ export function grant(config, argv = []) {
   // Looked up, applied and settled under one lock — the one the console's
   // decide takes too. Picking before the lock let this and the console both
   // find the same request open and act on it twice.
-  let req;
-  const { changed } = underLock(() => editPolicy(config, (before) => {
-    const current = loadConfig(config.path, before);
-    req = pick(current, which, "grant");
-    if (only) req = asFileGrant(req);
-    refuseIfBarred(current, req);
-    return applyGrant(before, req, reason);
-  }, { after: () => settle(requestsPath(config.root), req.key, "granted", reason, { only: req.only }) }));
+  const { request: req, changed } = underLock(() => decideRequest(config, {
+    decision: "granted", reason, only,
+    select: (current) => pick(current, which, "grant"),
+  }));
   // Said once, beside the grant it is about: a literal file is useless to an
   // agent that saves through a temporary beside it.
   const caveat = only ? fileOnlyNote(req.role, lastAgentOf(read(logPath(config.root)), req.role)) : "";
@@ -181,11 +177,10 @@ export function decline(config, argv = []) {
 
   // The policy is not edited, but the lock is still the policy's: it is the one
   // every decision takes, so a decline cannot settle what a grant is applying.
-  let req;
-  underLock(() => editPolicy(config, (before) => {
-    req = pick(config, argv[0], "decline");
-    return { toml: before, changed: false };
-  }, { after: () => settle(requestsPath(config.root), req.key, "declined", reason) }));
+  const { request: req } = underLock(() => decideRequest(config, {
+    decision: "declined", reason, reload: false, includeOnly: false,
+    select: (current) => pick(current, argv[0], "decline"),
+  }));
   out(
     `\n  ${C.yellow}declined${C.off}  ${req.role} ✕ ${req.grant}\n` +
     `  ${C.dim}${reason || "no reason recorded"}${C.off}\n\n`
