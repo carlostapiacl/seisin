@@ -8,6 +8,13 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## Unreleased
+
+- **Why srt cannot hold an `inject` role on macOS, said right.** `check` and the refusal said
+  sandbox-runtime does not mask there. It does; the reason is that it holds the real value in its
+  own environment, which the agent can read from inside the sandbox. Nothing changes in which
+  sandbox is chosen. *What to do:* nothing; on macOS `inject` still needs tartaros.
+
 ## 0.6.5 — 2026-11-02
 
 - **`check --json --verify` runs the verify**, and `--system-log` its measurement, and the JSON

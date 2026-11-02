@@ -383,7 +383,8 @@ test("inject: only a sandbox that masks is handed the role — srt on Linux, tar
     credentials: { envVars: [{ name: "GH_TOKEN", mode: "mask", injectHosts: ["api.github.com"] }] }, tlsTerminate: { excludeDomains: [] } };
   const srtOn = (platform) => weigh(cfg(`[sandbox]\nprovider = "srt"\n${ROLE}`), masked, { platform, locate: false }).options[0].unmet;
   assert.deepEqual(srtOn("linux").filter((u) => /masked/.test(u)), [], "srt masks on Linux");
-  assert.match(srtOn("darwin")[0], /masked credentials .* on darwin: sandbox-runtime does not mask them there yet .*593.*tartaros does/);
+  assert.match(srtOn("darwin")[0], /masked credentials .* on darwin: sandbox-runtime masks them, but holds the real value in its own environment.*593.*tartaros does not keep it there/);
+  assert.match(srtOn("win32")[0], /on win32: sandbox-runtime does not mask them there; tartaros does/);
   const mine = weigh(cfg(`[sandbox]\nprovider = "mybox"\n[sandbox.providers.mybox]\ncommand = ["/bin/sh", "-c", "exit 0", "{policy}"]\n${ROLE}`),
     masked, { platform: "linux", locate: false }).options[0].unmet;
   assert.match(mine[0], /mybox is not known to mask them, and it would start with the real value/);

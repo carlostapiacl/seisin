@@ -30,8 +30,9 @@
  * policy holds a reviewable reference instead of a path, and every resolution
  * is logged without its value (`event: "key"`, see commands/run.js) — but it is not "the agent never sees it". That
  * is `inject`, which costs terminating the role's TLS with a CA of your own and
- * needs a sandbox that masks credentials: srt on Linux, tartaros on Linux and
- * macOS (see `injectGate` below, and `masks` on each sandbox).
+ * needs a sandbox that masks credentials without leaving the real value where
+ * the agent can read it: srt on Linux, tartaros on Linux and macOS (see
+ * `injectGate` below, and `masks` on each sandbox).
  *
  * ## Why the value is never written down
  *
@@ -526,7 +527,8 @@ export function modeOf(config, role, entry) {
  * the agent a sentinel and substitutes the real value on egress to the
  * credential's declared hosts. Which sandbox can do that is the sandbox's to
  * say (`masks` in sandboxes/): srt on Linux, tartaros on Linux and macOS
- * (srt's macOS path is tracked upstream, anthropics/sandbox-runtime#593). A
+ * (on macOS srt masks, but holds the real value in an environment the agent can
+ * read; anthropics/sandbox-runtime#593 takes it out of there). A
  * sandbox that does not mask is never handed the role, because the real value
  * is in the environment it is started with. Here only the platforms where no
  * sandbox masks are refused outright.

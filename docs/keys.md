@@ -194,7 +194,10 @@ Use a least-scope token. `check` prints this per credential.
 can: the real value is in the environment it is started with, and a sandbox that does not mask
 is never handed the role.
 
-- **srt** masks on Linux. On macOS it does not yet: that is tracked upstream
+- **srt** masks on Linux. On macOS it masks too, but it reads the real value from its own
+  environment, and from inside its sandbox the agent can read that environment back (measured
+  with 0.0.81). So seisin does not hand it an `inject` role there. Taking the value out of srt's
+  environment is upstream
   ([sandbox-runtime#593](https://github.com/anthropics/sandbox-runtime/pull/593)).
 - **tartaros** masks on Linux and macOS, from 0.1.0-alpha.16: its broker terminates TLS toward
   the injected hosts and keeps the run's secrets out of its own exec environment. So on macOS,

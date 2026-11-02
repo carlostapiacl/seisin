@@ -1238,6 +1238,11 @@ role is refused before the id is looked up: no decision can route there.
   with the real value in its environment. That last one closes a gap the old
   gate hid: on Linux, a role with `inject` could be handed to a sandbox of the
   user's own. `modeOf` now refuses only where no sandbox masks.
+- **Update (2026-11-02): why srt stays off `inject` on macOS.** srt does mask there:
+  measured with 0.0.81, the agent sees the sentinel and the host gets the real value. But
+  srt reads that value from its own environment, and from inside its sandbox the agent can
+  read srt's environment back. The gate stays; only what it says changed, from "does not mask" to where the value
+  leaks. #593 is still what lifts it, since a sourced value never enters srt's environment.
 
 ## No second config format, for anybody
 
