@@ -31,10 +31,10 @@ export const RUNS_NAME = "snr";
 /**
  * Where a run's temp directory lives when the role may write no other: beside
  * the runs root, not inside it. The runs root is denied to writes as a whole
- * (srt.js), and a deny wins over any grant beneath it.
+ * (srt-settings.js), and a deny wins over any grant beneath it.
  */
 export const TMP_NAME = "snt";
-/** The settings file inside a run's directory. srt.js denies it to the run by this name. */
+/** The settings file inside a run's directory. srt-settings.js denies it to the run by this name. */
 export const SETTINGS_NAME = "settings.json";
 
 /**

@@ -23,7 +23,7 @@ import { keptFor, shutByTerritory } from "./territory.js";
  * Does this glob cover this path? Supports `**`, `*`, `?` and a trailing `/`.
  *
  * A wildcard-free pattern is a **prefix**, because that is what the kernel is
- * given. `toWritePath` in srt.js hands `src/api` to `allowWrite` unchanged, and
+ * given. `toWritePath` in srt-settings.js hands `src/api` to `allowWrite` unchanged, and
  * a sandbox grants a path and everything under it — so `src/api`, `src/api/`
  * and `src/api/**` are one grant to the OS, and reading the first of them as
  * "that path only" made seisin describe a boundary that was not there.
@@ -246,7 +246,7 @@ export function ownersOf(config, path) {
     path = path.slice(root.length);
   }
   // A private folder has one owner, whatever else covers it: every other role
-  // is given a denyWrite on it (srt.js), and denyWrite wins over any territory.
+  // is given a denyWrite on it (srt-settings.js), and denyWrite wins over any territory.
   const mine = privateOwner(config, path);
   return Object.values(config.roles)
     .filter((r) => r.writes.some((g) => covers(g, path)) && !neverWrites(r, path, config))

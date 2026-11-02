@@ -21,7 +21,7 @@ import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { agentOf, runtimeWritesFor, otherAgentsCredentials, expand, roleHome, realOrSelf } from "../src/grants.js";
-import { settingsFor } from "../src/srt.js";
+import { settingsFor } from "../src/srt-settings.js";
 import { agentFor } from "../src/commands/run.js";
 import { explain, explainFileRead } from "../src/owners.js";
 import { denyFor, protectedBy } from "../src/surface.js";

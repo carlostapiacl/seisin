@@ -13,7 +13,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { loadConfig } from "../src/config.js";
-import { settingsFor } from "../src/srt.js";
+import { settingsFor } from "../src/srt-settings.js";
 import { inspect } from "../src/inspect.js";
 import { renderReport } from "../src/render.js";
 import { serve } from "../src/serve.js";

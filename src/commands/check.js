@@ -10,7 +10,7 @@ import { stateDir } from "../state.js";
 const say = out;
 import { measureSystemLog } from "../violations.js";
 import { join } from "node:path";
-import { settingsFor } from "../srt.js";
+import { settingsFor } from "../srt-settings.js";
 import { weigh } from "../sandboxes/index.js";
 import { runsRoot } from "../rundir.js";
 import { channelName } from "../spool.js";

@@ -4,7 +4,7 @@ import { lstatSync, readdirSync } from "node:fs";
 /**
  * A role's territory, sorted by what the kernel will do with each line.
  *
- * Three shapes get through `settingsFor` (see EXPRESSIBLE in srt.js): the whole
+ * Three shapes get through `settingsFor` (see EXPRESSIBLE in srt-settings.js): the whole
  * repo, a subtree `x/**`, and a literal path. The literal path is the one the
  * text cannot settle on its own — `data/base.sqlite` and `data` are both
  * literal, and to the kernel the second is a subtree because it is a directory.

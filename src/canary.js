@@ -75,7 +75,7 @@ export async function runCanary({ srt, wrap = null, settingsFile, settings, env,
   // exists when the sandbox starts is one of them.
   const insideDir = writable ? join(writable, `.seisin-canary-${nonce}`) : null;
   const inside = insideDir ? join(insideDir, "in") : null;
-  // The runtime's shared temp directory (srt.js, SHARED_TMP): granted by the
+  // The runtime's shared temp directory (srt-settings.js, SHARED_TMP): granted by the
   // runtime to every sandbox, taken back by seisin. Probed where it exists;
   // where it does not, there is nothing beside which to write.
   const shared = isDir(SHARED_TMP_DIR) ? join(SHARED_TMP_DIR, `.seisin-canary-${nonce}`) : null;

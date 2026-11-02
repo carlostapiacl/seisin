@@ -1,4 +1,4 @@
-import { CREDENTIAL_HOMES } from "../srt.js";
+import { CREDENTIAL_HOMES } from "../srt-settings.js";
 
 /**
  * What a role can still read in YOUR home, which is the limit people are most

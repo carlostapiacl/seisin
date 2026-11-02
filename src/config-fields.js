@@ -162,7 +162,7 @@ export function readLocalPorts(value, where) {
  * substitution per credential: credential A's real value reaches only A's
  * hosts, never B's. A host is an exact name — no wildcard — so `check` can say
  * precisely which traffic is intercepted; the match against a wider wildcard in
- * `allowedDomains` is computed later (srt.js), where the terminated set is.
+ * `allowedDomains` is computed later (srt-settings.js), where the terminated set is.
  */
 export function readInjectHosts(value, where) {
   if (value === undefined) return null;

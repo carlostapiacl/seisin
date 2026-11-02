@@ -18,7 +18,7 @@ import assert from "node:assert/strict";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readIsolate } from "../src/config.js";
-import { settingsFor, expand, CREDENTIAL_HOMES } from "../src/srt.js";
+import { settingsFor, expand, CREDENTIAL_HOMES } from "../src/srt-settings.js";
 
 const policy = (isolate) => ({
   root: "/repo", path: "/repo/seisin.toml", keyDirs: [".secrets"],

@@ -229,7 +229,7 @@ test("without a .bin link the runtime's own bin entry is used; with no runtime, 
 /* ── the runtime's log directories on Linux ───────────────────────────── */
 
 test("on Linux a missing runtime log dir is made first where a role could make it, and left out where it could not", { skip: process.platform !== "linux" && "Linux only" }, async () => {
-  const { settingsFor } = await import("../src/srt.js");
+  const { settingsFor } = await import("../src/srt-settings.js");
   const { loadConfig } = await import("../src/config.js");
   // Not under the temp dir: that is a runtime scratch every role may write, and
   // a ~/.npm there would be creatable — and rightly made first and denied.

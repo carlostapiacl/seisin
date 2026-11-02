@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { boxed, CLI, srtSkip, repoWith as shared } from "./_tmp.js";
 
 import { loadConfig } from "../src/config.js";
-import { settingsFor, loopbackVia, localPortDomains, NO_PROXY_WITHOUT_LOOPBACK } from "../src/srt.js";
+import { settingsFor, loopbackVia, localPortDomains, NO_PROXY_WITHOUT_LOOPBACK } from "../src/srt-settings.js";
 import { inspect } from "../src/inspect.js";
 import { renderReport } from "../src/render.js";
 import { resolveTartaros } from "../src/sandboxes/tartaros.js";

@@ -11,7 +11,7 @@ import { spawn } from "node:child_process";
 import { scratch } from "./_tmp.js";
 
 import { loadConfig } from "../src/config.js";
-import { settingsFor } from "../src/srt.js";
+import { settingsFor } from "../src/srt-settings.js";
 import { applyControlFiles, applyProtect, planEdit } from "../src/controls.js";
 import { record, requestsPath, pending } from "../src/requests.js";
 

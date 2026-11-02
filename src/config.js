@@ -221,7 +221,7 @@ export function loadConfig(path, text = readFileSync(path, "utf8"), { root = nul
     deniedAddresses: readAddresses(own(own(parsed, "network"), "deny_addresses"), `${path}: network.deny_addresses`),
     runtimeWrites: runtimeWrites === undefined ? undefined : asArray(runtimeWrites, "runtime.writes"),
     // `[runtime] isolate` — how much of your home a role stops reaching. See
-    // srt.js for what each level emits, and readIsolate() below for why there
+    // srt-settings.js for what each level emits, and readIsolate() below for why there
     // are two of them.
     isolate: readIsolate(own(runtime, "isolate")),
     // `[runtime] read` — what a role may read. "all" is every file but the ones
@@ -398,7 +398,7 @@ export function loadConfig(path, text = readFileSync(path, "utf8"), { root = nul
        * every port on localhost (macOS), which includes whatever control API
        * is listening there without a password. This names the ports instead,
        * and the runtime's proxy enforces the list — the same allowlist the
-       * domains go through. See srt.js for what that costs: the client has to
+       * domains go through. See srt-settings.js for what that costs: the client has to
        * go through the proxy, which HTTP clients do and a MySQL driver does not.
        */
       localPorts,
@@ -420,7 +420,7 @@ export function loadConfig(path, text = readFileSync(path, "utf8"), { root = nul
        * Whether this role may reach com.apple.trustd.agent (macOS). Needed by
        * Dart/Flutter and by Go built before 1.27 to verify TLS at all; Go 1.27+
        * does without it through the SSL_CERT_FILE that env.js sets. Off unless
-       * the role says so. See srt.js for what it costs.
+       * the role says so. See srt-settings.js for what it costs.
        */
       trustd: trustd === true,
       /**

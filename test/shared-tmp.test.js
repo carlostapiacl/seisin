@@ -16,7 +16,7 @@ import { homedir, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
 import { loadConfig } from "../src/config.js";
-import { settingsFor, SHARED_TMP } from "../src/srt.js";
+import { settingsFor, SHARED_TMP } from "../src/srt-settings.js";
 import { srtSkip } from "./_tmp.js";
 
 // Under the home, not /tmp: with /tmp writable as scratch, a write into

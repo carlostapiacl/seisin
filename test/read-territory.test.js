@@ -18,7 +18,7 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { territoryReads, outlastAllows, readPath, dataRoots, shutByTerritory, MAX_CARVE } from "../src/territory.js";
 import { loadConfig, readReadMode } from "../src/config.js";
-import { settingsFor } from "../src/srt.js";
+import { settingsFor } from "../src/srt-settings.js";
 import { inspect } from "../src/inspect.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { srtSkip } from "./_tmp.js";

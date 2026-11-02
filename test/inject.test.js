@@ -14,7 +14,7 @@ import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { loadConfig } from "../src/config.js";
-import { settingsFor } from "../src/srt.js";
+import { settingsFor } from "../src/srt-settings.js";
 import { modeOf, entriesOf, injectKeysOf } from "../src/keys.js";
 import { warningsFor } from "../src/inspect/warnings.js";
 

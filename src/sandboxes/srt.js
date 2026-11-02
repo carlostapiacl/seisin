@@ -2,7 +2,7 @@
  * `srt`: @anthropic-ai/sandbox-runtime, the sandbox seisin was built on.
  *
  * The default, and the reference every other provider is measured against:
- * the settings seisin generates (srt.js, one level up) ARE this runtime's
+ * the settings seisin generates (srt-settings.js, one level up) ARE this runtime's
  * settings file, so it enforces all of them by construction and `unmet` is
  * always empty. What a run hands it is the file and the command, nothing else.
  */

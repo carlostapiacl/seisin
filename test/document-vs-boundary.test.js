@@ -10,7 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { covers, ownersOf } from "../src/owners.js";
-import { settingsFor } from "../src/srt.js";
+import { settingsFor } from "../src/srt-settings.js";
 import { scratch } from "./_tmp.js";
 
 const policy = (writes) => ({

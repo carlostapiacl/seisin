@@ -12,7 +12,7 @@ import { finished } from "node:stream/promises";
 import { constants as osConstants } from "node:os";
 import { mkdirSync, writeFileSync, existsSync, readFileSync, statSync } from "node:fs";
 import { join, dirname, delimiter, resolve } from "node:path";
-import { settingsFor, roleHome, loopbackVia, agentOf, AGENTS, AGENT_HOMES } from "../srt.js";
+import { settingsFor, roleHome, loopbackVia, agentOf, AGENTS, AGENT_HOMES } from "../srt-settings.js";
 import { buildEnv } from "../env.js";
 import { traceFields } from "../trace.js";
 import { resolveKeys } from "../keys.js";
@@ -229,7 +229,7 @@ export async function run(config, argv) {
    * The run's temp directory: one the role may write, never the runtime's.
    *
    * sandbox-runtime hands every child `/tmp/claude` as TMPDIR, and that
-   * directory is now denied (srt.js, SHARED_TMP). It takes CLAUDE_CODE_TMPDIR
+   * directory is now denied (srt-settings.js, SHARED_TMP). It takes CLAUDE_CODE_TMPDIR
    * instead when set, so that is where the run's goes: the role's own tmp under
    * `isolate = "home"`, else the parent's TMPDIR when the role may already write
    * it, else one made for this run beside the runs root, granted to it alone. A caller's

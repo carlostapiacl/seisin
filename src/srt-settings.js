@@ -33,7 +33,7 @@ import {
   CREDENTIAL_HOMES, toWritePath, writePathsOf, otherAgentsCredentials,
 } from "./grants.js";
 
-// Re-exported: these were srt.js's exports before grants.js existed, and
+// Re-exported: these were srt-settings.js's exports before grants.js existed, and
 // callers (the CLI, the tests, anyone embedding seisin) import them from here.
 export {
   expand, homeFits, roleHome, roleHomeRoot, CREDENTIAL_HOMES, RUNTIME_WRITES,

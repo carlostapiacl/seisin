@@ -22,7 +22,7 @@ export { CONFIG_NAME, STATE_DIR, LOG_NAME } from "./layout.js";
 export { covers, ownersOf, keyHolders, explain, explainFileRead, readTarget } from "./owners.js";
 
 /** A policy, resolved into sandbox settings. */
-export { settingsFor } from "./srt.js";
+export { settingsFor } from "./srt-settings.js";
 
 /**
  * Keys that are references, and how a resolved value reaches a role.
