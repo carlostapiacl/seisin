@@ -14,7 +14,7 @@ because a security tool that lists only its wins is not one.
 | a key riding in the environment | the launcher | the child's environment is **built, not inherited**. Measured before this existed: 93 variables crossed into every run, a planted token among them |
 | spilling a key the role does hold | the launcher | the value is masked on stdout and stderr, including when it lands split across two buffers |
 | sending it somewhere | the kernel | egress is allow-only. `curl` to a domain you did not list gets nothing |
-| **a key stored outside the declared directories** | **nothing** | `seisin scan` finds them so you know what is not covered — or keep it in a vault and name it by [reference](#a-key-can-be-a-reference-instead-of-a-file) instead of by path |
+| **a key stored outside the declared directories** | **nothing** | `seisin scan` finds them so you know what is not covered; or keep it in a vault and name it by [reference](#a-key-can-be-a-reference-instead-of-a-file) instead of by path |
 
 ```toml
 [keys]
@@ -46,7 +46,7 @@ key_mode  = "env"                     # per role, and it wins over the provider'
 ```
 
 A provider is **a command with a placeholder**, on purpose: adding Vault or `sops` is three
-lines of TOML and no code. The value arrives as `NETLIFY_TOKEN` — last segment, uppercased —
+lines of TOML and no code. The value arrives as `NETLIFY_TOKEN` (last segment, uppercased)
 or under a name you give it: `keys = ["NETLIFY_AUTH_TOKEN=keychain://netlify-token"]`.
 
 #### `file://` ships with it, because a secret in a file is the common case
@@ -60,19 +60,19 @@ keys = [
 ]
 ```
 
-No provider to declare. The path resolves against the policy file's directory — not the
+No provider to declare. The path resolves against the policy file's directory, not the
 current one, because a key that resolves differently depending on where you were standing
 works in your shell and fails in the agent's.
 
 A fragment reads one value out of **an env file or a JSON object**, whichever the file turns
-out to be — sniffed from the content, because the name lies often enough to matter. In an env
+out to be (sniffed from the content, because the name lies often enough to matter). In an env
 file, `export` and surrounding quotes come off; in JSON, `#a.b` reaches a nested key and a
 literal `a.b` beats that reading. An object or an array is not a credential and is refused
 rather than stringified. A fragment naming something the file does not have is an error,
 never an empty value.
 
-**Those two formats, and no more.** A secret sitting inside a document — a runbook, a table,
-a page of notes — is not reachable by a fragment and should not be: extracting from prose is
+**Those two formats, and no more.** A secret sitting inside a document (a runbook, a table,
+a page of notes) is not reachable by a fragment and should not be: extracting from prose is
 guessing, and a tool that guesses at credentials hands over the wrong one instead of failing.
 The error says so, and says the fix is to move the secret out of the document.
 
@@ -80,7 +80,7 @@ The error says so, and says the fix is to move the secret out of the document.
 hands the role every variable in the file and lets it read them. `file://…#ONE` hands over one
 value and grants no read at all. Verified against the kernel.
 
-`file://` is the only built-in and it cannot be redefined — one scheme meaning two things in
+`file://` is the only built-in and it cannot be redefined; one scheme meaning two things in
 two repos is the failure this feature exists to remove.
 
 #### The provider contract
@@ -91,17 +91,17 @@ is stable:
 | | |
 |---|---|
 | **input** | your `command`, with every `{ref}` replaced by the text after `://`. No shell: the array is the `argv`, so a reference cannot inject one |
-| **success** | exit `0`, the value on **stdout**. The answer is what it printed by the time it exited — a background process it left holding stdout is not waited for. With `mode = "env"` exactly one trailing newline is stripped; with `mode = "run-file"` the file holds the value exactly as printed |
+| **success** | exit `0`, the value on **stdout**. The answer is what it printed by the time it exited; a background process it left holding stdout is not waited for. With `mode = "env"` exactly one trailing newline is stripped; with `mode = "run-file"` the file holds the value exactly as printed |
 | **failure** | any non-zero exit, or empty output. The run stops; nothing is substituted |
 | **limits** | 60 s, then the provider is killed with `SIGKILL`; 1 MiB of stdout, then it is stopped. A value with a NUL byte is refused. Each says so, without the value |
-| **diagnostics** | neither stream of a failed provider is shown — a provider can print the secret on either. The error gives the exit status, how many bytes went to stderr, and the command to run by hand to read them |
-| **where it runs** | the parent, outside the sandbox, before the child starts — it holds your vault's credential and the confined side must not reach it |
+| **diagnostics** | neither stream of a failed provider is shown; a provider can print the secret on either. The error gives the exit status, how many bytes went to stderr, and the command to run by hand to read them |
+| **where it runs** | the parent, outside the sandbox, before the child starts; it holds your vault's credential and the confined side must not reach it |
 | **what it must not do** | prompt on a tty an agent does not have. Cache your session first (`op signin`, `gpg-agent`, an unlocked keychain) |
 
 #### Recipes
 
 Two of these were run against the real thing on macOS 15; the rest follow each tool's
-documented CLI and are **not measured here** — the contract above is what they have to meet.
+documented CLI and are **not measured here**; the contract above is what they have to meet.
 
 ```toml
 [keys.providers.keychain]   # ✅ measured
@@ -136,8 +136,8 @@ If one of these is wrong, a pull request fixing it is worth more than an issue: 
 the part of this that ages.
 
 **The keychain recipe answers in hexadecimal for some values, and exits 0.** `security
-find-generic-password -w` prints a password that has anything outside printable ASCII in it — a
-newline, a tab, an `ñ` — as hex (`SYNTH-a⏎b` comes back as `5359…0a62`). Measured on macOS 15
+find-generic-password -w` prints a password that has anything outside printable ASCII in it (a
+newline, a tab, an `ñ`) as hex (`SYNTH-a⏎b` comes back as `5359…0a62`). Measured on macOS 15
 with a throwaway keychain. The role then receives a wrong credential with no error, and seisin
 does not decode it for you: a genuine hex token looks exactly the same. For a multi-line value
 (a PEM or ssh key) store it base64-encoded and decode it in a script provider:
@@ -148,7 +148,7 @@ security find-generic-password -w -s "$1" | base64 -D
 ```
 
 **Put anything with a pipe or a quote in a script.** The config format has no escapes, so a
-command cannot contain a `"` — and a shell pipeline inside a TOML array is unreadable in a
+command cannot contain a `"`, and a shell pipeline inside a TOML array is unreadable in a
 diff, which is what this feature exists to fix. A script is also how you compose:
 
 ```sh
@@ -157,14 +157,14 @@ diff, which is what this feature exists to fix. A script is also how you compose
 gpg --batch --quiet --passphrase "$(security find-generic-password -w -s master)" -d "$1"
 ```
 
-Scripts named by a provider are **denied to every role**, the same way `seisin.toml` is — the
+Scripts named by a provider are **denied to every role**, the same way `seisin.toml` is; the
 parent executes them, so a role that could rewrite one would decide what runs outside the sandbox.
 
 | | |
 |---|---|
 | **`mode = "env"`** | resolved and passed as a variable |
-| **`mode = "run-file"`** | written to a file in the **run directory** (private to the run), removed when the run ends. The file holds the value exactly as the provider printed it, or for `file://` exactly the file's bytes — trailing newline included, which an ssh key needs. The path arrives **both** as `NETLIFY_TOKEN` and as `NETLIFY_TOKEN_FILE` — `_FILE` is the Docker-secrets convention, while `KUBECONFIG` and `GOOGLE_APPLICATION_CREDENTIALS` already expect a path in the plain name. Neither holds the value. Called `scratch` before 0.6.0, when the file still sat in shared scratch; a policy that says `scratch` is refused with the line to change |
-| **`mode = "inject"`** | the agent never sees the value — it gets a sentinel, and the runtime substitutes the real token on egress to the hosts you declare. **On Linux, and on macOS under tartaros** (see below), and it is not free: masking does not load without terminating that role's TLS with a CA of seisin's own — MITM over the injected hosts, which `check` prices and names. Declare the hosts per credential: |
+| **`mode = "run-file"`** | written to a file in the **run directory** (private to the run), removed when the run ends. The file holds the value exactly as the provider printed it, or for `file://` exactly the file's bytes, trailing newline included, which an ssh key needs. The path arrives **both** as `NETLIFY_TOKEN` and as `NETLIFY_TOKEN_FILE`; `_FILE` is the Docker-secrets convention, while `KUBECONFIG` and `GOOGLE_APPLICATION_CREDENTIALS` already expect a path in the plain name. Neither holds the value. Called `scratch` before 0.6.0, when the file still sat in shared scratch; a policy that says `scratch` is refused with the line to change |
+| **`mode = "inject"`** | the agent never sees the value; it gets a sentinel, and the runtime substitutes the real token on egress to the hosts you declare. **On Linux, and on macOS under tartaros** (see below), and it is not free: masking does not load without terminating that role's TLS with a CA of seisin's own: MITM over the injected hosts, which `check` prices and names. Declare the hosts per credential: |
 
 ```toml
 [roles.deploy]
@@ -177,16 +177,16 @@ GH_TOKEN = ["api.github.com"]     # exact hosts, one list per credential
 ```
 
 Each injected credential needs a host and each host needs a credential, or the policy is
-refused — a masked token that injects nowhere, or a host list guarding nothing, is a
+refused: a masked token that injects nowhere, or a host list guarding nothing, is a
 mistake, not a default. TLS is terminated **only** for the injected hosts; every other
 allowed domain is left alone. A wildcard allow (`*.github.com`) that covers an injected
-host is terminated whole — the runtime cannot intercept one host out of a wildcard — and
+host is terminated whole (the runtime cannot intercept one host out of a wildcard) and
 `check` says so.
 
 **What inject does and does not close.** It stops the agent from reading the token directly
 and from sending it to any host you did not declare. It does **not** stop *reflection*: if an
-injected host stores what the agent sends and returns it later — an issue, a gist, a comment,
-a note — the agent can post the sentinel, let the host keep the real value, and read it back.
+injected host stores what the agent sends and returns it later (an issue, a gist, a comment,
+a note), the agent can post the sentinel, let the host keep the real value, and read it back.
 Use a least-scope token. `check` prints this per credential.
 
 **Which sandbox masks.** The sandbox does the masking, so it is the sandbox that says whether it
@@ -213,7 +213,7 @@ how much a leak costs you.
 - **The value never enters the `.toml`, the log or the console.** What is written, recorded
   and granted is the reference. That is what makes a key policy reviewable in a diff. Each
   resolution is a line in the log (`event: "key"`: the variable's name, its provider, the mode,
-  whether it resolved — not the reference, which can carry what it points at) and `seisin log` shows it.
+  whether it resolved, not the reference, which can carry what it points at) and `seisin log` shows it.
 - **An unknown scheme is refused, not ignored.** `keys = ["vault://x"]` with no
   `[keys.providers.vault]` is a configuration error, never a key that quietly never arrives.
 - **The parent runs the provider, never the confined process.** The provider command holds
@@ -222,26 +222,26 @@ how much a leak costs you.
 - **A provider that fails does not degrade.** Not to empty, not to a file of the same name,
   not to a skipped key. The run stops and says so.
 
-`seisin check` validates all of this **without resolving anything** — the scheme, the
-provider, the mode, and whether the provider's command is even on `PATH` — so a broken
+`seisin check` validates all of this **without resolving anything** (the scheme, the
+provider, the mode, and whether the provider's command is even on `PATH`) so a broken
 policy is visible without asking anyone's keychain for a password. It also **prints the
 provider commands**, because of the next paragraph.
 
 > ⚠️ **A provider command is the one thing in a `seisin.toml` that executes.** Everything
 > else in the file describes a boundary; this runs, in the parent, outside the sandbox, as you. So
-> a `seisin.toml` that came with a repository you cloned is code you are about to run —
+> a `seisin.toml` that came with a repository you cloned is code you are about to run;
 > the same trust you already extend to a `Makefile` or a `package.json` script, and worth
 > saying out loud precisely because the rest of this tool invites the opposite assumption.
 > `seisin check` runs nothing and lists them; read it first on a config you did not write.
 
 **A provider that is a script in your repo is denied to every role**, the same way
 `seisin.toml` is. The parent executes it, so a role that could rewrite it would decide what
-runs outside the sandbox — not a wider boundary, no boundary, arriving disguised as an ordinary
+runs outside the sandbox: not a wider boundary, no boundary, arriving disguised as an ordinary
 file in somebody's territory. A provider found on `PATH` (`security`, `op`, `gpg`) is left
 alone: that is a machine, not a repo.
 
 **The config format has no escapes, so a command cannot contain a `"`.** Put a shell
-pipeline in a script and name the script — which is also how it stops being unreadable, and
+pipeline in a script and name the script, which is also how it stops being unreadable, and
 is why the examples below are scripts:
 
 ```sh
@@ -262,17 +262,17 @@ the same file, and cannot read the file.
 
 **A key's name may not collide with one the child already needs.** `keys =
 ["keychain://path"]` would arrive as `PATH`, and `SEISIN_ROLE` is how the hook inside the
-sandbox learns which role it is — a policy that could set it could tell the hook it is somebody
+sandbox learns which role it is; a policy that could set it could tell the hook it is somebody
 else. Both are refused when the config loads, as is one name claimed by two keys.
 
 **And what it does not do, in the same breath:** this resolves the secret **at rest**, not
 in the agent's context. The value still reaches the process and the agent can still read it.
-The secret stops living on your disk and the policy holds a reference you can review — a
-strict improvement — but "the agent never sees it" is `inject` (above), on Linux, and on macOS under tartaros.
+The secret stops living on your disk and the policy holds a reference you can review (a
+strict improvement), but "the agent never sees it" is `inject` (above), on Linux, and on macOS under tartaros.
 
 ### A database is four files, and you declare it once
 
-`data/app.sqlite` is not a database — it is one of the files a database is made of.
+`data/app.sqlite` is not a database; it is one of the files a database is made of.
 Writing to it also writes `-wal` and `-shm`, or `-journal`, so *"this role writes this
 database"* used to take four lines. Measured on one real policy: **744 of 1,248 write lines,
 60%, were sidecars**, and every single one had its `.sqlite` declared beside it.
@@ -288,20 +288,20 @@ writes = ["data/app.sqlite"]         # -wal, -shm and -journal come with it
 asking: the `-wal` holds that database's pending transactions, so whoever can write the
 database can already empty it. The sidecar is not a second resource, it is the same one.
 
-The expansion is visible to `whose` and `explain`, not just to the kernel — the owner of a
+The expansion is visible to `whose` and `explain`, not just to the kernel; the owner of a
 database is the owner of its `-wal` everywhere, or the boundary and the sentence would
 disagree. `seisin check` prints it back collapsed, because four lines of one name is what
 this removed.
 
 **The suffix list is closed on purpose:** `-wal`, `-shm`, `-journal`, and only after a name
-ending in `.sqlite` or `.sqlite3`. `.db` is not included — plenty of things are called that,
+ending in `.sqlite` or `.sqlite3`. `.db` is not included; plenty of things are called that,
 and a grant to create `whatever.db-wal` inside somebody else's directory would be new
 authority arriving quietly. A database with another name declares its sidecars by hand.
 
-**If your agent runs hooks of its own, they need a line here too.** Whatever a hook reads to learn which role it is gets dropped with everything else, and the symptom is two layers disagreeing about one file — your hook denying a write that seisin just allowed, and the lower one is the one that is right — until the variable is named in `env`.
+**If your agent runs hooks of its own, they need a line here too.** Whatever a hook reads to learn which role it is gets dropped with everything else, and the symptom is two layers disagreeing about one file (your hook denying a write that seisin just allowed, and the lower one is the one that is right) until the variable is named in `env`.
 
-**What this bought, measured rather than argued.** Over the same production window — four
-teams of agents, ~370 confined runs, three days — **every denied read was a read of something
+**What this bought, measured rather than argued.** Over the same production window (four
+teams of agents, ~370 confined runs, three days) **every denied read was a read of something
 the policy had declared a key.** 148 of them, no exceptions, from five different roles, and
 not one was doing anything unusual: they were running searches that swept a repository root.
 That is how a key gets read without anyone deciding it should, and it is the whole case for
@@ -312,7 +312,7 @@ ordinary collisions between roles, the boundary keeping two agents out of each o
 It is the reads where the policy was the only thing there.
 
 **Two things this deliberately does not claim.** Redaction masks a literal value on the way
-through the launcher — a key written straight to a file never passes through it, and neither
+through the launcher; a key written straight to a file never passes through it, and neither
 does one the agent base64'd first. It narrows a careless print; it is not a containment
 boundary. And to mask a value seisin must read it, so a role's own keys pass through this
 process in memory. `[runtime] redact = false` turns that off.

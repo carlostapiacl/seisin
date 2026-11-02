@@ -1,6 +1,6 @@
 # Field notes: what running agents behind a boundary actually measured
 
-> Everything on this page is a number from one real deployment — four teams of coding
+> Everything on this page is a number from one real deployment: four teams of coding
 > agents working on their author's own repositories, on one machine, for months. Where a
 > number comes from someone else's instrument and not from seisin, it says so. Where it did
 > not reproduce when I went back to check, it says that too, because a page of only the
@@ -13,7 +13,7 @@ it.
 
 **Why publish it.** Everyone in this space publishes the mechanism and nobody publishes the
 cost. That makes every write-up sound the same and leaves the one question a person running it has
-— *what will this actually do to my day* — answered by anecdote. The numbers below are the
+(*what will this actually do to my day*) answered by anecdote. The numbers below are the
 answer for one deployment. They will not be yours. They are at least somebody's.
 
 ---
@@ -48,8 +48,8 @@ Six days, every denial the kernel recorded:
 | | |
 |---:|---|
 | **1,422** | reads and writes denied |
-| **1,080** | of them on `.git/index.lock` — **75.9%** |
-| **1,094** | on any path under `.git/` — 76.9% |
+| **1,080** | of them on `.git/index.lock`: **75.9%** |
+| **1,094** | on any path under `.git/`: 76.9% |
 | **10** | distinct roles hit the boundary |
 
 The top six targets were the same file in six different repositories. One role produced
@@ -62,8 +62,8 @@ a mutex.
 
 The fix was not a wider grant. It was `GIT_OPTIONAL_LOCKS=0`, which turns the courtesy off:
 `status` stops touching the index, while `add`, `commit` and `checkout -b` still take the
-locks they need. It removes the need for the grant instead of widening one — the
-boundary does not move — and it deletes three quarters of the noise.
+locks they need. It removes the need for the grant instead of widening one (the
+boundary does not move) and it deletes three quarters of the noise.
 
 > The lesson generalises past git. Before you design a mechanism to handle a flood of
 > requests, find out what the flood is made of. Ours was one file.
@@ -83,7 +83,7 @@ read in ten seconds.
 
 ## 3 · A denial that is correct and unheard still costs you
 
-Measured by the deployment's own pre-flight checker, not by seisin: of **345 denials, 88 — 25% — were a
+Measured by the deployment's own pre-flight checker, not by seisin: of **345 denials, 88 (25%) were a
 repeat of something that role had already been denied.** One role spent 37 tool calls on
 two walls, hitting one of them nineteen times.
 
@@ -96,23 +96,23 @@ would most expect to generalise: every permission layer measures precision and n
 measures whether the agent understood.
 
 **And the counter's effect is still unmeasured, for a reason worth copying down.** The test
-would be repeats before and after — but 86% of the repeats in the kernel log were one lock
+would be repeats before and after, but 86% of the repeats in the kernel log were one lock
 file, and the previous release removed that wall entirely. Repeats fell from 684 in a day to
 18; almost all of that is the wall going away. Two improvements landed days apart and the
 larger one ate the other's test case. What is left to measure the sentence against is the
 remaining 24%, spread thin, in teams where the hook is not always wired. So: built, shipped,
-and not yet shown to work — which is a different sentence from the one a changelog usually
+and not yet shown to work, which is a different sentence from the one a changelog usually
 writes.
 
 ## 4 · The cost of not knowing whose it was, in requests
 
 Also from the deployment's pre-flight checker. Its ownership map only covered the team it ran in, so for
-a file owned by a role in another team it reported `owner: —` — the same string it used for
+a file owned by a role in another team it reported `owner: —`: the same string it used for
 a file nobody owned. Those two need opposite responses: one means *claim it*, the other
 means *go ask*.
 
 **294 of 915 denials carried that empty owner.** The visible cost: one role asked another to
-edit a single file **45 times — 23% of every request the team made in the window** — when
+edit a single file **45 times, 23% of every request the team made in the window**, when
 the owner was in a different team entirely and was never asked.
 
 That is the whole argument for answering *whose is it* rather than just *no*, priced.
@@ -128,7 +128,7 @@ The most uncomfortable number on this page, and the reason `file://` is now buil
 | **134** | of those readable by any process on the machine |
 | **13** | flagged by `seisin scan` as certainly a credential |
 
-*Method: the 151 and 134 are `find` by name — `.env`, `*.env`, `*.pem`, `*.key` — excluding
+*Method: the 151 and 134 are `find` by name (`.env`, `*.env`, `*.pem`, `*.key`) excluding
 `node_modules`, `.git` and the declared key directories, with `-perm -o+r` for the second.
 The 13 is `seisin scan`, which then read content shapes rather than names; since 0.5.0 it also
 lists files whose names usually hold secrets, apart from the certain hits and without
@@ -152,13 +152,13 @@ the same policy, it does not reproduce. What does, on that machine, as a median 
 
 | | median |
 |---|---:|
-| `node -e ''` — the runtime starting, nothing else | 144 ms |
-| `seisin --version` — plus loading seisin's modules | 356 ms |
-| `seisin whose <path>` — plus reading and evaluating the 106 KB policy | 536 ms |
+| `node -e ''`: the runtime starting, nothing else | 144 ms |
+| `seisin --version`: plus loading seisin's modules | 356 ms |
+| `seisin whose <path>`: plus reading and evaluating the 106 KB policy | 536 ms |
 
 So roughly 210 ms of module loading and 180 ms of policy work, on a laptop that was not
-idle. The original figure may have come from a quieter machine or a smaller policy — the
-policy has grown since — but I cannot reproduce it, so it does not get to stand.
+idle. The original figure may have come from a quieter machine or a smaller policy (the
+policy has grown since), but I cannot reproduce it, so it does not get to stand.
 
 The conclusion the old number supported does survive, and it is the useful part: put the
 question on the denial path, not on every call. At one query per tool call this would be
@@ -199,7 +199,7 @@ quarters of your denials are also one file, you did not need a new concept eithe
 
 It is one deployment, one person, one machine, one toolchain, and every number is from a
 system whose author also wrote the tool being measured. Nothing here is a controlled
-comparison and none of it says seisin is better than an alternative — no alternative was run
+comparison and none of it says seisin is better than an alternative; no alternative was run
 against the same work. Treat it as a case, not as evidence.
 
 If you run something similar and your numbers differ, that is worth more to this repository

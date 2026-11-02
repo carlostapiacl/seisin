@@ -40,11 +40,11 @@ planned on 2026-04-01: the maintainers treat it as a Landlock invariant working
 as intended and suggest inverting the layout (a read-only parent with writable
 children listed one by one). At `0.1.2` the filesystem schema is still
 `read_only` and `read_write` only; the `deny_rules` it now has apply to network
-endpoints, not to paths. So this is not a gap waiting on a fix — it is the
+endpoints, not to paths. So this is not a gap waiting on a fix; it is the
 design.
 
 That means translating a role with `writes = ["**"]` would make protected files
-writable, while translating the protected files honestly would require
+writable, while translating the protected files faithfully would require
 enumerating every other path in the repo and rebuilding the sandbox whenever
 the tree changes. Neither is the same boundary. seisin refuses translations
 that widen authority, so the backend fails closed.
@@ -77,7 +77,7 @@ minimal controlled Alpine image, and with both a custom policy and OpenShell's
 default. It appears separate from the policy-model incompatibility: repairing
 it would not make the unsafe filesystem translation exact.
 
-## A future integration that would be honest
+## A future integration that would hold the same boundary
 
 A future `seisin target openshell` could deliberately adopt the remote-workspace
 model. It would need to exclude policy, audit, Git metadata and secrets from the

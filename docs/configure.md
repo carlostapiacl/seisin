@@ -3,7 +3,7 @@
 The whole of `seisin.toml`. The README has the short version.
 
 
-One file at the root of your repo. Anything not listed is denied — there is no permissive default.
+One file at the root of your repo. Anything not listed is denied; there is no permissive default.
 
 ```toml
 [keys]
@@ -67,11 +67,11 @@ role, including the ones whose whole job is to have nothing to reach.
 > ⚠️ **HTTP(S) works on both platforms. SSH does not work on macOS.** The allow list is
 > enforced by proxies the runtime starts, and although one of them is a SOCKS5 proxy that could
 > carry SSH, on macOS the chain breaks at its last link: it requires authentication and the
-> `ProxyCommand` the runtime wires up cannot send any. Measured on macOS — `curl
+> `ProxyCommand` the runtime wires up cannot send any. Measured on macOS: `curl
 > https://github.com` returns `200`, `ssh -T git@github.com` cannot resolve the hostname, and
 > `git ls-remote git@github.com:…` reaches the proxy and dies at the handshake. **On Linux** the
 > runtime routes git's SSH through its HTTP proxy with credentials instead, so it is expected to
-> pass — read from the runtime's source, not measured here.
+> pass (read from the runtime's source, not measured here).
 >
 > **Use an HTTPS remote for git**, and on macOS run SSH deploys outside the confined run.
 > [Why, exactly, and whose gap it is →](https://github.com/carlostapiacl/seisin/blob/main/docs/decisions.md#ssh-does-not-work-and-it-is-not-seisin-that-decided-that)
@@ -85,7 +85,7 @@ writes       = ["services/api/**"]
 never_writes = ["services/api/.git/index.lock"]   # works in a worktree; the canonical index is not its business
 ```
 
-It is per role on purpose — there is no global version, because a global deny on a lock file
+It is per role on purpose; there is no global version, because a global deny on a lock file
 breaks every role that legitimately commits there. A denial it causes says so by name and
 leaves **no request** in the queue: granting one would undo a subtraction somebody wrote. An
 entry that no `writes` of the same role covers, or a misspelling like `never_write`, is named
@@ -113,7 +113,7 @@ bubblewrap cannot deny a path that does not exist without placing something ther
 role sees an empty folder in its place, where a write succeeds into memory that is discarded with
 the run and never reaches the real one. On macOS the write is denied.
 
-A role that starts a server — a dev server, the backend an end-to-end test drives — needs
+A role that starts a server (a dev server, the backend an end-to-end test drives) needs
 `local_binding = true`. Listening is off by default and per role: most roles never start one.
 It is wider than the name: the role can also listen on every interface and **connect to every
 port on localhost**, so anything listening there without authentication is within its reach.
@@ -136,7 +136,7 @@ key means the policy doesn't say. seisin declares this and `explain` answers it
 launcher has to apply it. With Claude Code: `--mcp-config` holding only those servers, plus
 `--strict-mcp-config`.
 
-A role that drives a headless Chromium — Playwright, `@playwright/mcp` — needs
+A role that drives a headless Chromium (Playwright, `@playwright/mcp`) needs
 `browsers = ["chromium"]` on macOS. Without it the browser exits as it starts: its first act
 is to register a Mach service (`org.chromium.Chromium.MachPortRendezvousServer.<pid>`) that its
 own child processes look up, and the sandbox denies both. The preset allows exactly those two,
@@ -173,9 +173,9 @@ control_files = ["ide"]           # keeps apps/web/.vscode/launch.json current
 instructions = true               # CLAUDE.md, AGENTS.md… only for roles handed "instructions"
 ```
 
-- **`ide`** — `.vscode/`, `.cursor/`, `.windsurf/`. Your editor applies them as soon as they
+- **`ide`**: `.vscode/`, `.cursor/`, `.windsurf/`. Your editor applies them as soon as they
   change, which is how an injected agent turns on tool auto-approval. **Protected by default.**
-- **`instructions`** — `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, Cursor and Windsurf rules, Copilot
+- **`instructions`**: `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, Cursor and Windsurf rules, Copilot
   instructions. Nothing runs them; the next agent session reads them as its instructions, so
   one role writing them reaches another role's context. **Off unless `[protect]` turns it on**:
   keeping them current is ordinary work for most teams.
@@ -197,5 +197,5 @@ name per run, and never as a request. Most are the sandbox doing its job and the
 carrying on; one of them is how a browser dies at start, and `seisin run` names the preset
 that answers it. macOS only.
 
-`seisin init` will propose this from whatever your repo already says: `.claude/agents/`, then `CODEOWNERS` (one role per owner, with all of that owner's paths), then one role per top-level folder that holds code. It declares `[keys] dir` when `.secrets/`, `secrets/` or `.keys/` is there, and adds `.seisin/` to an existing `.gitignore`. It **proposes** — a generated policy you did not read is not a policy — and a second `init` changes nothing without `--force`, which keeps the old one as `seisin.toml.bak`.
+`seisin init` will propose this from whatever your repo already says: `.claude/agents/`, then `CODEOWNERS` (one role per owner, with all of that owner's paths), then one role per top-level folder that holds code. It declares `[keys] dir` when `.secrets/`, `secrets/` or `.keys/` is there, and adds `.seisin/` to an existing `.gitignore`. It **proposes** (a generated policy you did not read is not a policy) and a second `init` changes nothing without `--force`, which keeps the old one as `seisin.toml.bak`.
 

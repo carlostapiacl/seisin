@@ -3,7 +3,7 @@
 
 The package is ESM. Import policy decisions from `seisin`; the same functions
 back the CLI. TypeScript declarations ship with the package. Install it in the project that
-imports it — a global install puts the CLI on your PATH, not the package where `import` looks:
+imports it; a global install puts the CLI on your PATH, not the package where `import` looks:
 
 ```bash
 npm install seisin

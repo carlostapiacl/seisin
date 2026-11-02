@@ -21,7 +21,7 @@ $ seisin log
 
 `[kernel]` marks a line the kernel reported; the others came from the hook.
 
-One append-only JSONL under `.seisin/`, and that is the whole storage design — no daemon, no
+One append-only JSONL under `.seisin/`, and that is the whole storage design: no daemon, no
 database, and `watch` is a tail. A run started with a W3C `TRACEPARENT` (a launcher's trace)
 stamps its `trace_id` and `span_id` on every line, so the log joins that trace in any
 OpenTelemetry tool.
@@ -50,26 +50,26 @@ from inside the sandbox is *append one line*. A hostile agent can still add nois
 history; what it cannot do is change what is already there.
 
 **Two writers, and they see different things.** The **hook** reports the attempt before it
-happens — which is how an *allowed* action gets recorded at all — and it is text-based and
+happens (which is how an *allowed* action gets recorded at all) and it is text-based and
 evadable, on purpose. The **kernel** reports what it actually denied, and is not fooled by
 anything. What escapes the hook goes unexplained, never unenforced.
 
 ![the console: requests waiting on a person, a grant that needs a reason and a second click for another role's path, the line it wrote, the denials grouped by path with the kind of each unowned one, the walls each role keeps hitting, the roles, and a control-files change shown before it is saved](https://raw.githubusercontent.com/carlostapiacl/seisin/main/docs/img/console.gif)
 
-It opens on what needs a decision, not on the policy. Four numbers sit on top — waiting on
-you, denied, the **top cause**, and calls **spent retrying** walls — each a link to the page
+It opens on what needs a decision, not on the policy. Four numbers sit on top (waiting on
+you, denied, the **top cause**, and calls **spent retrying** walls), each a link to the page
 that explains it, and the last two are recomputed against the policy, which a log alone cannot
 do: something granted since stops counting.
 
 **A decision needs a reason.** Grant without one asks for it; Decline without one fills in
 a default and asks again, so what is recorded is on screen first. The request says what a
-grant covers before the click — *asked for `src/api/routes.ts` → granting
+grant covers before the click: *asked for `src/api/routes.ts` → granting
 covers all of `src/api/**`*, and whose it is today. Sharing another role's territory takes a
 second click that names it. After it, the console shows the line it wrote to `seisin.toml`
 and where.
 
 **Denied and Walls say the same thing about one path.** A path no role owns says what kind
-of thing it is — *ownable*, or git's, temporary, build output, a credential — and the move
+of thing it is (*ownable*, or git's, temporary, build output, a credential) and the move
 that fits each, which for all but the first is not an owner.
 
 **Live, the roles are read-only:** territories and keys change in `seisin.toml`. The two
@@ -120,13 +120,13 @@ $ seisin review
 
 `--since 2026-10-01` or `--since 7d` reads only that stretch of the log: on a log months long,
 "Denied repeatedly" is otherwise led by paths fixed long ago. A denial that is correct and needs
-nothing — Claude Code updating its plugins from inside the sandbox — is listed apart as "Denied as
+nothing (Claude Code updating its plugins from inside the sandbox) is listed apart as "Denied as
 expected" and does not make `review` exit 1.
 
 Three questions, and the middle one matters most. **Every
 permission file only ever grows**, in every system, and always for the same
 reason: nobody can prove a line is dead, so the safe move is to leave it. Here
-the log can prove it — `public/**` was granted and nothing was written there in
+the log can prove it: `public/**` was granted and nothing was written there in
 three weeks. That is the only direction that makes a policy *smaller*.
 
 The first is the one that changes how a denial reads. Forty denials on one
@@ -140,7 +140,7 @@ over, because *never used* means nothing without *in how long*.
 
 ## When the boundary is right and the agent cannot hear it
 
-seisin answers *whose is this* at the moment of the denial — once, mid-turn — and then the
+seisin answers *whose is this* at the moment of the denial (once, mid-turn) and then the
 sentence is gone. Nothing carries it forward, so the agent tries again.
 
 Measured in the author's own multi-agent setup: of **345 denials, 88 (25%) were a repeat of something that same role
@@ -183,7 +183,7 @@ wall where the chain stops is listed without its owner: a person decides it, and
 to pass on the one sentence its denial gives ([where a request goes](https://github.com/carlostapiacl/seisin/blob/main/docs/requests.md#where-a-request-goes)).
 
 **A wall is recomputed against the policy, not read out of the log.** If the role would be
-allowed today, it is not a wall — whatever happened yesterday. The obvious implementation is a
+allowed today, it is not a wall, whatever happened yesterday. The obvious implementation is a
 time window, on the argument that an old wall may have been granted since; the window is a
 proxy for the question, and seisin has the policy right there, so it asks the question. A grant
 makes its wall disappear on the next run instead of when a window expires. Same move as
@@ -193,7 +193,7 @@ Silent on the first denial, by design. A counter that reads `1×` every time is 
 turn where the sentence is already doing its job.
 
 **Whether it makes an agent stop is not demonstrated, and will not be for a while.** The
-obvious way to check is to compare repeats before and after — but the repeats were 86% one
+obvious way to check is to compare repeats before and after, but the repeats were 86% one
 lock file, and the release before this one deleted that wall outright with
 `GIT_OPTIONAL_LOCKS=0`. Repeats did fall, by a lot, and **the fall is the wall going away,
 not the sentence landing**: both shipped within days of each other and the bigger cause is the
@@ -209,15 +209,15 @@ and no git locks in the way), not the history.
 
 > *who owns src/api, and what is frontend waiting on?*
 
-Seven tools. Four answer about the policy — `state`, `explain`, `requests`, `draft_grant` —
+Seven tools. Four answer about the policy (`state`, `explain`, `requests`, `draft_grant`)
 and three about what has happened: `activity` is the raw log, and **`causes` and `walls` are
 the two an agent actually wants.** `activity` hands over events and leaves the assistant to
 re-derive the shape without the policy; `causes` returns the day grouped by path and by name
 with how many are on paths nobody owns, and `walls` returns what a role keeps being denied
 *and would still be denied today*. Both are recomputed against the policy, so something
-granted since stops counting — which is the part a log cannot know.
+granted since stops counting, which is the part a log cannot know.
 
-Read-only **by construction** — the server opens nothing for writing, and a test
+Read-only **by construction**: the server opens nothing for writing, and a test
 asserts that no tool in it mutates anything. It can draft the exact change a
 request would make; applying it is a command a person runs. Zero dependencies:
 the official SDK wanted 91 packages for a server that speaks JSON on two file

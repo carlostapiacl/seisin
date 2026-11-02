@@ -19,7 +19,7 @@ writes = ["~/.claude", "~/.codex", "~/.local/share", "~/.local/state",
 ```
 
 `~/.claude` and `~/.codex` are each one agent's: a run gets the one whose agent its command
-runs — `claude …` or `codex …`, through `env`, `node`/`npx` and `sh -c "…"` — and neither when
+runs (`claude …` or `codex …`, through `env`, `node`/`npx` and `sh -c "…"`) and neither when
 it runs something else. Every run is also denied the other agents' sign-in files, read and write
 (`~/.codex/auth.json`, `~/.claude/.credentials.json`). Before 2026-09-30 every role got both
 directories, and a `cat` run as any role read the ChatGPT tokens Codex keeps in `auth.json`. A
@@ -45,7 +45,7 @@ Three things follow, and all are the kind of thing you want to hear from the too
 discover:
 
 - **Scratch is shared.** Every role can write it, so two agents can reach each other's temp
-  files. If your repo lives inside the temp dir, territory does not hold at all — `seisin check`
+  files. If your repo lives inside the temp dir, territory does not hold at all; `seisin check`
   says so out loud (`scratch`: *every role can write the whole repo*), and the same for one
   `writes` entry whose real path is in scratch through a symlink or `..`
   (`territory-in-scratch`). Both are measured against the scratch the policy really gives: this
@@ -56,8 +56,8 @@ discover:
   in it. There is a test that fails if that ever changes.
 - **Reading your home is a different question, and by default it is open.** None of the above
   stops a role from *reading* `~/.ssh`, `~/.aws/credentials`, `~/.npmrc` or
-  `~/.config/gh/hosts.yml`. That is a deliberate trade — an agent that
-  cannot read the machine cannot work — and `seisin check` now says it on every run rather than
+  `~/.config/gh/hosts.yml`. That is a deliberate trade (an agent that
+  cannot read the machine cannot work) and `seisin check` now says it on every run rather than
   leaving you to find out.
 
 Set `writes = []` to opt out and find out why it is there.
@@ -68,7 +68,7 @@ Scratch is the space beside the territory; the space beside a *file* in the terr
 Claude Code's Edit and Write do not write the file they edit: they write
 `<file>.tmp.<pid>.<12 hex>` beside it and rename it over the original. A role whose `writes` names
 the file (`BACKLOG.md`) and not its folder is denied the temporary file, and every Edit or Write
-of it fails with `EPERM` — measured: 4 in one real run, each followed by the agent writing the
+of it fails with `EPERM`; measured: 4 in one real run, each followed by the agent writing the
 file through its shell instead.
 
 No grant can name only the temporary file. Its name changes on every edit, and a write grant
@@ -76,7 +76,7 @@ takes no glob: the sandbox runtime drops globs from its write list, and `seisin 
 one as a policy that cannot be enforced. So there are two answers, and `seisin check` names the
 role that has to choose:
 
-- **Grant the folder** — `notes/**` instead of `notes/BACKLOG.md`. For a file at the root of the
+- **Grant the folder**: `notes/**` instead of `notes/BACKLOG.md`. For a file at the root of the
   repo the folder is the whole repo, so the move is to put the file in a folder of its own.
 - **Accept the shell.** A redirect (`>`, `>>`) writes the file itself and goes through; the
   agent's Edit does not. The file stays the only thing the role can write there.
@@ -99,7 +99,7 @@ Measured, on the same machine, same policy, same command:
 `"home"` also gives each role its own `HOME`, `TMPDIR` and XDG directories, so one role cannot
 read the session another's CLI just wrote. It is the stronger claim and it has a real price:
 **every CLI in the sandbox sees an empty home and asks you to log in again.** That is not this
-sandbox being strict — on macOS the agent's credential is in the login keychain, the keychain is
+sandbox being strict; on macOS the agent's credential is in the login keychain, the keychain is
 found through `$HOME`, and `HOME=/empty claude -p` reproduces the same message with no sandbox
 involved at all.
 
@@ -126,7 +126,7 @@ verify    = ["python", "-m", "pytest", "--version"]
 keys      = ["CLAUDE_CODE_OAUTH_TOKEN=file://.secrets/claude.env#TOKEN"]
 ```
 
-The places data lives are denied — homes, temp directories, mounted volumes — and the role
+The places data lives are denied (homes, temp directories, mounted volumes) and the role
 reads its repo, what it writes, its `reads`, its `toolchain`, its run, and the program it was
 started with. The system (`/usr`, `/bin`, `/opt/homebrew` but its `var`) stays readable: there is
 nobody's data there, and every interpreter is.
@@ -137,7 +137,7 @@ nobody's data there, and every interpreter is.
 | `+ read = "territory"` | **closed** | **closed** | **closed** | open | open if declared |
 
 Measured against an outside test battery of 14 cases, positive controls included: 14 of 14 on
-macOS; on Linux (Debian 12, bubblewrap 0.8.0, in Docker) every case holds — two of them read as
+macOS; on Linux (Debian 12, bubblewrap 0.8.0, in Docker) every case holds; two of them read as
 failures to that battery only because bubblewrap shows a denied directory as an empty one, and
 the files in it do not open. On Linux Claude Code keeps its sign-in in `~/.claude/.credentials.json`,
 and a Claude run keeps that file readable while a Codex run or a plain command does not
@@ -145,17 +145,17 @@ and a Claude run keeps that file readable while a Codex run or a plain command d
 
 - **`seisin check`** names every PATH entry the mode shuts, a `toolchain` that does not exist, and
   a role with no `verify`. **`seisin check --verify`** runs each role's `verify` inside its sandbox
-  — the one thing `check` executes. An agent asked to verify its work with nothing to verify
+ ; the one thing `check` executes. An agent asked to verify its work with nothing to verify
   with retries, installs and works around instead: measured at +80% cost per task, and no
   verification.
 - **Claude Code is signed out on macOS.** Its sign-in is in the login keychain, under the home.
   Hand it a token as a key (`claude setup-token`, or `ANTHROPIC_API_KEY`). Putting
   `~/Library/Keychains` in `reads` signs it in and gives the role every password in the keychain.
 - **What is created later is closed too.** Each data root is one deny and what the role keeps is
-  allowed back inside it, so an entry made beside the repo during the run — another run's
-  directory, its config, its transcript — is shut the moment it exists. `ls ~/work` lists
+  allowed back inside it, so an entry made beside the repo during the run (another run's
+  directory, its config, its transcript) is shut the moment it exists. `ls ~/work` lists
   nothing on macOS; on Linux it lists only the mount points of what is kept.
 - **What it costs on Linux.** A kept directory that holds a write path (the repo around
   `src/**`) is allowed back entry by entry, because the runtime would mount it read-only over the
   territory. An entry created during the run in such a directory is not visible to the role until
-  the next run, and one with more than 1,000 entries is refused — keep repos out of `$TMPDIR`.
+  the next run, and one with more than 1,000 entries is refused; keep repos out of `$TMPDIR`.

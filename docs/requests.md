@@ -12,7 +12,7 @@ A permission tool that can only say no is a tool people uninstall.
 
 The loop without it: the agent is denied, its turn stops, you go and edit a config,
 you run it again. That is three context switches for one line of policy, and it
-happens most often at exactly the wrong moment — mid-task, when you were
+happens most often at exactly the wrong moment: mid-task, when you were
 watching something else.
 
 Worse, it teaches the wrong reflex. The cheapest way to make the error go away
@@ -54,17 +54,17 @@ So the channels are split, and the split is the feature:
 An agent can ask, and can even write the exact diff it wants. Turning that into
 policy requires a person acting in a channel the agent does not have.
 
-This is also why the console is not where granting is *hosted* — it is one of two
+This is also why the console is not where granting is *hosted*; it is one of two
 places where a person can do it. The other is a terminal, which matters because
 the tool has to work for someone who never opens the console.
 
 ### Why the console may grant and the MCP server may not
 
 Both run on the machine of the person deciding, so the distinction has to be more than
-intent. It is: **a confined role cannot reach the console** — by default.
+intent. It is: **a confined role cannot reach the console**, by default.
 
 Measured, not assumed. From inside the sandbox, `curl` against the console's own
-port on loopback gets exactly what it gets from a domain outside its allowlist —
+port on loopback gets exactly what it gets from a domain outside its allowlist;
 the egress proxy makes no exception for `127.0.0.1`:
 
 ```
@@ -78,7 +78,7 @@ stdio. Anything it can do, the agent can cause. So the split is not a policy
 about who *should* grant, it is a fact about who *can* reach the channel.
 
 One more thing had to be true, and was not for free. Loopback is no boundary
-against the browser — any page the person has open can POST to `127.0.0.1`.
+against the browser; any page the person has open can POST to `127.0.0.1`.
 So `seisin ui` mints a token per run and demands it back on every route under
 `/api/`, reads included. Asking for it in a custom header also forces a preflight
 this server never answers.
@@ -86,7 +86,7 @@ this server never answers.
 The token is not in any response. `seisin ui` prints a link that carries it in the URL
 fragment, which a browser never sends to a server; the page takes it from there and
 removes it from the address bar. It used to be inlined into the page, which was fine while
-no role could reach loopback — and a role with `local_binding = true` can, on macOS,
+no role could reach loopback, and a role with `local_binding = true` can, on macOS,
 because the runtime then lets it connect to every localhost port. A review on 2026-09-22
 read the token off `GET /` that way and granted its own request; now anything that
 fetches `/` gets a page with no token in it. `local_binding` stays a decision `seisin check`
@@ -101,8 +101,8 @@ First, it would need a tool to do it, and giving the confined process a channel
 to the thing confining it is the shape of every sandbox escape ever written.
 
 Second, a motive supplied by the requester is the least reliable field in the
-record. The useful motive is the one written by whoever grants — *"yes,
-frontend owns the checkout flow now"* — because that is the sentence someone
+record. The useful motive is the one written by whoever grants (*"yes,
+frontend owns the checkout flow now"*) because that is the sentence someone
 will need in three months.
 
 So the hook records facts it already has: role, action, path, owners, when, how
@@ -147,7 +147,7 @@ this without adopting a process.
 The last line under each request is its **handoff**: where the work goes, decided from the
 policy as it stands every time the queue is read (`src/handoff.js`). A write owned by one role
 is *handed to* that role. Nobody owns it, more than one role does, or it is a key or a read:
-*a person decides*. A role with `handoff = false` — a pipeline phase, not a worker — owns its
+*a person decides*. A role with `handoff = false` (a pipeline phase, not a worker) owns its
 territory and is never handed work: with one other owner that takes work, that one gets it;
 with several, a person decides between them; with none, *a person decides: prepare owns this and
 takes no handed work*. The asker owns it by now: *no handoff needed*. The same decision is in
@@ -180,7 +180,7 @@ seisin: backend took frontend:write:src/api — handoff chain frontend → backe
 Every request that run files belongs to the same **handoff chain**, so work that would go back
 to a role it came from, or more than four hops deep, stops in front of a person instead of
 bouncing. The request it took shows *a run of backend took it*, and once a request in its chain
-has stopped, *its handoff chain stopped at backend:write:src/web, which needs a person* — the
+has stopped, *its handoff chain stopped at backend:write:src/web, which needs a person*; the
 same ids in `chainStopped` in the JSON. seisin cannot know whether backend finished its part;
 it knows the chain did not end in a handoff, so the request stays pending until a person
 decides it. How many receivers may run at
@@ -207,9 +207,9 @@ of the rows below:
 | depth | `test/a.ts is not backend's to change, and its handoff chain stops here: 5 of 4 deep. A person decides. … About this file, tell whoever sent you one sentence … The sentence, word for word and whole, …: "Not written: test/a.ts. …"` |
 
 The hook's denial, the only one of the three that files a request, then says so, and for whom. A
-route ends *"Already queued as a handoff to backend: a run of backend, or a person, picks it up —
+route ends *"Already queued as a handoff to backend: a run of backend, or a person, picks it up;
 retrying or waiting will not move it."*; every other decision ends *"Already queued for a person
-to answer — …"*, except where a chain stops (below). Measured before, when every denial ended on a
+to answer: …"*, except where a chain stops (below). Measured before, when every denial ended on a
 person: in a cycle the agent said the work was going to the role the chain had just come from.
 
 A repeated denial says how many times. Inside `seisin run` the count starts at the run's canary,
@@ -231,7 +231,7 @@ the owner on the map, an agent added it after the sentence anyway.
 "Word for word" is about the words. An agent that sets the path in bold or in backticks has passed
 the sentence on; one that drops the path, or adds to it, has not. The path is not the sentence's
 subject: measured, an agent that headed its line with the path dropped it from a sentence that
-began with it ("src/x — Not written. …").
+began with it ("src/x: Not written. …").
 
 It informs and offers nothing to answer with: every role it names is one the policy named, and
 nothing the agent says back changes who takes the work. The chain behind a cycle reaches the
@@ -245,7 +245,7 @@ delivered under that name.
 Something that starts roles may probe the sandbox itself: write a file it knows the role may not
 write and check it was refused, beside seisin's own canary. That denial is the answer it wanted,
 and filed as a request it was noise in the queue, a notification, and a handoff decision that
-routed the probe to whichever role owns the root — which a caller obeying the decision would
+routed the probe to whichever role owns the root, which a caller obeying the decision would
 then have started. So it says which paths it will probe:
 
 ```
@@ -265,14 +265,14 @@ directory around it, a file next to it and anything under it are requests as usu
 stops the run before it starts.
 
 Only the caller can say it. The list is read from `seisin run`'s own argv and applied in the
-parent, to both sources of requests — the kernel's denials and the hook's. Nothing in the
+parent, to both sources of requests: the kernel's denials and the hook's. Nothing in the
 environment, the repo or the hook's messages adds to it, so a confined process cannot keep a
 denial of its own out of the queue. The hook still tells the agent its denial was queued; it does
 not know the list, and does not need to ([why](decisions.md#an-expected-denial-is-the-callers-to-declare-and-the-parents-to-apply)).
 
 ## Provenance
 
-A grant records who asked, how many times, and why it was granted — in the config,
+A grant records who asked, how many times, and why it was granted, in the config,
 as a comment, next to the line it added.
 
 ```toml
@@ -311,17 +311,17 @@ seisin that opens such a queue as a person rewrites those lines once and keeps t
 
 And "append-only" is now enforced rather than asserted. It was not, for a while:
 `.seisin/` sat in every role's allowWrite because the hook runs inside the sandbox
-and has to record what it decided — so the queue was writable by the processes
+and has to record what it decided, so the queue was writable by the processes
 it is a record of, and a request could be truncated, rewritten or invented. The
 file said the word and nothing held it up.
 
 The directory left the territory and a socket took its place. The hook sends a
 line to `seisin run`, which holds the file; `allowUnixSockets` grants that one
 socket path, so it is a channel rather than an opening. From inside, the only
-verb is *send one line* — there is no descriptor, so no seek, truncate or
+verb is *send one line*; there is no descriptor, so no seek, truncate or
 unlink.
 
-The honest limit: a hostile agent can still send lines, so it can pad its own
+The limit: a hostile agent can still send lines, so it can pad its own
 queue. It cannot erase or alter what is already there. Forgery and tampering are
 different problems and only the second one is closed here: the agent cannot reach the file.
 
@@ -350,7 +350,7 @@ to a person in a channel the agent does not have.
 | `seisin_activity` | recent log entries, allowed, denied or observed |
 | `seisin_causes` | the denials grouped by path and by name, read against the policy |
 | `seisin_walls` | what a role keeps being denied and would still be denied today |
-| `seisin_draft_grant` | the change a request would make — as text, not applied |
+| `seisin_draft_grant` | the change a request would make, as text, not applied |
 
 A test asserts that no tool name in that list mutates anything. If somebody adds
 `seisin_grant`, the suite goes red before it reaches a release, which is the
@@ -359,13 +359,13 @@ difference between an invariant and a paragraph.
 ### Why it has no SDK
 
 The official MCP SDK pulls **91 packages and 26 MB** (measured against 1.30.0)
-— express, hono, cors, jose
-— for a server that exchanges line-delimited JSON on two file descriptors. In a
+(express, hono, cors, jose)
+for a server that exchanges line-delimited JSON on two file descriptors. In a
 tool people install to *reduce* their attack surface, every transitive
 dependency is the thing they were trying to avoid.
 
-The cost is honest and worth stating: the protocol is tracked by hand, and it
-moves — the 2026-07-28 revision made the core stateless and moved the handshake
+The cost: the protocol is tracked by hand, and it
+moves: the 2026-07-28 revision made the core stateless and moved the handshake
 into `_meta`. For a stdio server with read-only tools the shape of
 `tools/list` and `tools/call` did not change, which is the only reason this is
 defensible. `PROTOCOLS` in `src/mcp.js` is where a break would surface first.
