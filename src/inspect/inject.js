@@ -29,15 +29,17 @@ export function injectWarnings(config, roles) {
     const allowed = r.network ?? config.allowedDomains ?? [];
 
     // Which sandbox masks is the sandbox's to say (sandboxes/, `masks`): on macOS
-    // only tartaros does, so a provider list without it cannot run the role here.
+    // only tartaros does without leaving the real value where the agent can read
+    // it, so a provider list without it cannot run the role here.
     const names = sandboxesOf(config).map((s) => s.name);
     if (process.platform === "darwin" && !names.includes("tartaros"))
       out.push({
         kind: "inject-platform",
         role: r.name,
         headline: `${r.name}: key_mode = "inject" needs tartaros on macOS — [sandbox] provider is ${names.join(", ")}`,
-        detail: `On macOS sandbox-runtime does not mask credentials yet (anthropics/sandbox-runtime#593), so ` +
-          `this role will not run here. Add tartaros: [sandbox] provider = ["tartaros", "srt"]. Or run it on ` +
+        detail: `On macOS sandbox-runtime masks credentials, but it holds the real value in its own environment, ` +
+          `which the agent can read from inside the sandbox (anthropics/sandbox-runtime#593 takes it out of ` +
+          `there). So this role will not run here. Add tartaros: [sandbox] provider = ["tartaros", "srt"]. Or run it on ` +
           `Linux, or use "env"/"run-file" here.`,
       });
     else if (process.platform !== "linux" && process.platform !== "darwin")
