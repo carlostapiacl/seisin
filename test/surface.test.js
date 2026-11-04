@@ -132,6 +132,31 @@ test("explain's protection matches control files in any case, at any depth", () 
     assert.equal(protectedBy(config, p), null, p);
 });
 
+test("handoff_exempt: the patterns leave out what packages ship, only for the root holding the folder", () => {
+  const dir = repo('[roles.prep]\nwrites = ["**"]\nhandoff_exempt = ["app/vendor"]\n\n[roles.dev]\nwrites = ["**"]\n');
+  const config = loadConfig(join(dir, "seisin.toml"));
+  const shipped = [`${dir}/**/.envrc`, `${dir}/**/.mcp.json`, `${dir}/**/.codex`, `${dir}/**/.codex/**`, `${dir}/**/.claude`, `${dir}/**/.claude/**`];
+  const paths = (role) => denyFor(config, config.roles[role], { platform: "darwin", env: { PATH: "/usr/bin" } }).map((e) => e.path);
+  for (const p of shipped) {
+    assert.ok(paths("dev").includes(p), `dev keeps ${p}`);
+    assert.ok(!paths("prep").includes(p), `prep drops ${p}`);
+  }
+  // What git runs stays, and each project's .claude stays whole by its literal.
+  assert.ok(paths("prep").includes(`${dir}/**/.git/hooks/**`));
+  assert.ok(paths("prep").includes(join(dir, ".claude")));
+});
+
+test("handoff_exempt: explain says what the kernel does, for that role and inside that folder", () => {
+  const dir = repo('[roles.prep]\nwrites = ["**"]\nhandoff_exempt = ["app/vendor"]\n\n[roles.dev]\nwrites = ["**"]\n');
+  const config = loadConfig(join(dir, "seisin.toml"));
+  const at = (p, role) => protectedBy(config, p, { platform: "darwin", role });
+  assert.equal(at("app/vendor/x/.envrc", "prep"), null);
+  assert.equal(at("app/vendor/x/.claude/settings.json", "prep"), null);
+  assert.ok(at("app/vendor/x/.envrc", "dev"));
+  assert.ok(at("app/.envrc", "prep"));
+  assert.ok(at("app/vendor/x/.git/hooks/pre-commit", "prep"));
+});
+
 test("check lists what a protection takes from a territory, not the old always-denied", () => {
   const dir = repo('[keys]\ndir = ".secrets"\n\n[roles.a]\nwrites = ["**"]\n');
   mkdirSync(join(dir, ".secrets"));

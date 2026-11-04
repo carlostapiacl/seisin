@@ -171,6 +171,22 @@ test("handoff_exempt: validated, handed to tartaros only, and a role srt cannot 
   assert.equal(tartarosSettings(plain, {}), plain);
 });
 
+test("handoff_exempt: the kernel lets a package's .envrc into the folder and nowhere else", { skip }, () => {
+  const dir = boxed("orch-exempt-run-");
+  mkdirSync(join(dir, "app/vendor/pkg"), { recursive: true });
+  mkdirSync(join(dir, "app/other"), { recursive: true });
+  const write = (p) => `echo x > ${p}; `;
+  const policy = join(folder, "exempt.toml");
+  writeFileSync(policy, '[sandbox]\nprovider = "tartaros"\n\n[roles.prep]\nwrites = ["**"]\nhandoff_exempt = ["app/vendor"]\n');
+  const inside = ["app/vendor/pkg/.envrc", "app/vendor/pkg/.mcp.json"];
+  const outside = [".envrc", "app/.envrc", "app/other/.envrc", "app/other/.mcp.json"];
+  const r = seisin(["run", "prep", "--policy", policy, "--state-dir", join(folder, "exempt-state"), "--agent", "none",
+    "--", "sh", "-c", [...inside, ...outside].map(write).join("") + "true"], dir);
+  assert.equal(r.status, 0, r.stderr);
+  for (const p of inside) assert.ok(existsSync(join(dir, p)), `written: ${p}`);
+  for (const p of outside) assert.equal(existsSync(join(dir, p)), false, `refused: ${p}`);
+});
+
 test("requests: parsed, the host must be in network, handed to tartaros only", async () => {
   const { loadConfig } = await import("../src/config.js");
   const { tartarosSettings } = await import("../src/sandboxes/tartaros.js");

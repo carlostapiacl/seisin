@@ -8,6 +8,15 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## Unreleased
+
+- **`handoff_exempt` opens the folder for the names packages ship.** `composer install` under a role
+  with `handoff_exempt = ["vendor"]` failed with "Operation not permitted" on the `.envrc` that
+  `fidry/cpu-core-counter` carries, because seisin's own `**/.envrc` pattern won over the exemption;
+  `.mcp.json`, `.codex` and `.claude` had the same problem. For a root holding an exempt folder those
+  four patterns are gone. tartaros still refuses them outside the folder, except `.claude` files
+  that run nothing, deeper than a project seisin finds. *What to do:* nothing.
+
 ## 0.7.2 — 2026-11-04
 
 - **`seisin ui --runs` names the sandbox of every run.** A run under the default sandbox left the
