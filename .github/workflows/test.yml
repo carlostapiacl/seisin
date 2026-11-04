@@ -6,10 +6,11 @@
 # re-checking, so the file drifted from the fact. A README can go stale; a job
 # that runs on every push cannot.
 #
-# The sandbox tests need the real runtime and the real kernel. They skip
-# themselves when `srt` is missing rather than passing vacuously — so the step
-# below installs it first, and the job fails if the suite reports no sandbox
-# tests at all.
+# The sandbox tests need the real sandbox and the real kernel: tartaros (the
+# default, a dependency, so `npm ci` brings it) and sandbox-runtime (the
+# fallback, a devDependency since 0.7, installed below too). They skip
+# themselves when a sandbox is missing rather than passing vacuously, and the
+# job fails if the suite reports no sandbox tests at all.
 name: test
 
 on:
@@ -59,11 +60,11 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           sudo sysctl -w kernel.unprivileged_userns_clone=1 || true
 
-      # Pinned to the version package.json pins. Unpinned, CI tested whatever the
-      # registry served that day while users ran the version in the lockfile —
-      # for the one dependency that IS the enforcement.
+      # Pinned to the version package.json pins (devDependencies since 0.7, when
+      # srt stopped being installed with seisin). Unpinned, CI tested whatever
+      # the registry served that day while users ran the version in the lockfile.
       - name: install the sandbox runtime
-        run: npm install -g @anthropic-ai/sandbox-runtime@$(node -p "require('./package.json').dependencies['@anthropic-ai/sandbox-runtime']")
+        run: npm install -g @anthropic-ai/sandbox-runtime@$(node -p "require('./package.json').devDependencies['@anthropic-ai/sandbox-runtime']")
 
       - run: npm ci
 

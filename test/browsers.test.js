@@ -29,7 +29,7 @@ import { tartaros, tartarosSettings, resolveTartaros } from "../src/sandboxes/ta
 import { parseChunk } from "../src/violations.js";
 import { intake } from "../src/intake.js";
 import { pending, requestsPath } from "../src/requests.js";
-import { scratch, repoWith, srtSkip, CLI } from "./_tmp.js";
+import { scratch, repoWith, sandboxSkip, CLI } from "./_tmp.js";
 
 const PREFIX = "org.chromium.Chromium.MachPortRendezvousServer.";
 const cfg = (role) => {
@@ -85,7 +85,7 @@ test("a profile not shaped as expected, or a name that is not a prefix, fails cl
   assert.throws(() => withRules(LINE(PROFILE), ["org.chromium"]), /not a Mach name prefix/);
 });
 
-test("srt is run with the preload only for a role that registers something", { skip: srtSkip() }, () => {
+test("srt is run with the preload only for a role that registers something", { skip: sandboxSkip() }, () => {
   const bin = resolveSrt();
   assert.deepEqual(srt.wrap(bin, "/r/settings.json", {}, ["sh"]), [bin, "--settings", "/r/settings.json", "--", "sh"]);
   const argv = srt.wrap(bin, "/r/settings.json", {}, ["sh"], { machRegister: [PREFIX] });
@@ -192,7 +192,7 @@ function playwright() {
 }
 const PW = playwright();
 const browserSkip = process.platform !== "darwin" ? "macOS only: the Mach rules are Seatbelt's"
-  : srtSkip() || (PW ? false : "no Playwright: set SEISIN_TEST_PLAYWRIGHT to a directory that has it installed");
+  : sandboxSkip() || (PW ? false : "no Playwright: set SEISIN_TEST_PLAYWRIGHT to a directory that has it installed");
 
 const BROWSERS_PATH = process.env.PLAYWRIGHT_BROWSERS_PATH || join(homedir(), "Library", "Caches", "ms-playwright");
 

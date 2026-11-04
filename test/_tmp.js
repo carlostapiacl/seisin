@@ -11,7 +11,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { resolveSrt } from "../src/commands/run.js";
+import { BUILTIN_SANDBOXES, DEFAULT_SANDBOX } from "../src/sandboxes/index.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -19,14 +19,20 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 export const CLI = join(HERE, "..", "src", "cli.js");
 
 /**
- * The skip reason for a test that needs the real sandbox, or false.
+ * The skip reason for a test that needs the real sandbox (the default,
+ * tartaros), or false.
  *
- * Decided the way `seisin run` decides it (resolveSrt), never with
- * `command -v srt`: a checkout whose bundled runtime was right there once
+ * Decided the way `seisin run` decides it (the sandbox's own locate), never
+ * with `command -v`: a checkout whose bundled runtime was right there once
  * skipped fourteen tests and reported green.
  */
-export function srtSkip() {
-  return resolveSrt() !== null ? false : "sandbox runtime not installed";
+export function sandboxSkip() {
+  return BUILTIN_SANDBOXES[DEFAULT_SANDBOX].locate() ? false : `${DEFAULT_SANDBOX} not installed`;
+}
+
+/** The same, for a test about sandbox-runtime itself (a devDependency since 0.7). */
+export function srtOnlySkip() {
+  return BUILTIN_SANDBOXES.srt.locate() ? false : "sandbox-runtime (srt) not installed";
 }
 
 const made = [];

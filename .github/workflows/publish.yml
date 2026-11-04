@@ -54,7 +54,7 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           sudo sysctl -w kernel.unprivileged_userns_clone=1 || true
       - name: install the sandbox runtime
-        run: npm install -g @anthropic-ai/sandbox-runtime@$(node -p "require('./package.json').dependencies['@anthropic-ai/sandbox-runtime']")
+        run: npm install -g @anthropic-ai/sandbox-runtime@$(node -p "require('./package.json').devDependencies['@anthropic-ai/sandbox-runtime']")
       - run: npm ci
       # The tag has to be the version, or the provenance points at a commit that
       # does not say what it claims to be.

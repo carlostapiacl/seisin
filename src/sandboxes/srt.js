@@ -1,10 +1,15 @@
 /**
  * `srt`: @anthropic-ai/sandbox-runtime, the sandbox seisin was built on.
  *
- * The default, and the reference every other provider is measured against:
- * the settings seisin generates (srt-settings.js, one level up) ARE this runtime's
- * settings file, so it enforces all of them by construction and `unmet` is
- * always empty. What a run hands it is the file and the command, nothing else.
+ * The reference every other provider is measured against: the settings seisin
+ * generates (srt-settings.js, one level up) ARE this runtime's settings file, so
+ * it enforces all of them by construction and `unmet` is always empty. What a
+ * run hands it is the file and the command, nothing else.
+ *
+ * Not a dependency since 0.7: tartaros is the default and installs with seisin.
+ * srt is used where it is installed apart (globally, or in the project), after
+ * tartaros or where `[sandbox] provider` names it, and the version it is tested
+ * with is the one in seisin's devDependencies.
  */
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join, dirname, delimiter } from "node:path";
@@ -47,6 +52,15 @@ export function resolveSrt({ from = HERE, path = process.env.PATH } = {}) {
 }
 
 const RUNTIME = "@anthropic-ai/sandbox-runtime";
+export const SRT_PACKAGE = RUNTIME;
+/** The srt seisin is tested with (its devDependency), for the install hint. */
+export const SRT_VERSION = (() => {
+  try {
+    return JSON.parse(readFileSync(join(HERE, "..", "..", "package.json"), "utf8")).devDependencies?.[RUNTIME] ?? "latest";
+  } catch {
+    return "latest";
+  }
+})();
 
 /**
  * The `srt` of the sandbox-runtime that resolves from `from`, or null.
@@ -148,7 +162,8 @@ export function withMachPreload(bin, file, inner) {
 export const srt = {
   name: "srt",
   locate: () => resolveSrt(),
-  missing: () => `sandbox runtime not found. ${installHint()}`,
+  missing: () => `sandbox-runtime (srt) not found: it is not installed with seisin since 0.7. ` +
+    `Install it with: npm install -g ${RUNTIME}@${SRT_VERSION}`,
   unmet: () => [],
   // Masked credentials: on Linux. On macOS srt masks too, but it reads the real
   // value from its own environment, and from inside its sandbox the agent can

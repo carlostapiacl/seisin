@@ -11,7 +11,7 @@ import { loadConfig } from "../src/config.js";
 import { inspect } from "../src/inspect.js";
 import { explain, explainFileRead } from "../src/owners.js";
 import { settingsFor } from "../src/srt-settings.js";
-import { boxed, CLI, srtSkip } from "./_tmp.js";
+import { boxed, CLI, sandboxSkip } from "./_tmp.js";
 
 const policy = (writes, extra = "") =>
   `[runtime]\nwrites = []\n${extra}\n[roles.dev]\nwrites = ["${writes}"]\nkeys = []\n`;
@@ -44,7 +44,7 @@ test("an explicit .claude territory never starts a command or writes", () => {
 });
 
 test("against the kernel: writes = ** still cannot write .claude", {
-  skip: srtSkip(),
+  skip: sandboxSkip(),
 }, () => {
   for (const grant of ["**"]) {
     const root = boxed("pre060-kernel-");
@@ -77,7 +77,7 @@ test("read = territory makes file explanation match what is kept", () => {
 });
 
 test("against the kernel: one explain matches six kinds of read", {
-  skip: srtSkip(),
+  skip: sandboxSkip(),
 }, () => {
   const base = boxed("pre060-read-kernel-");
   const root = join(base, "repo");

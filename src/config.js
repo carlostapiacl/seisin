@@ -526,7 +526,7 @@ const BUILTIN_SANDBOXES = ["srt", "tartaros"];
  * `[sandbox]`: which sandbox enforces the roles, and any declared by command.
  *
  * `provider` is one name or a list in order of preference; absent, it is
- * `srt`, as it always was. A name is one seisin ships or one declared under
+ * `["tartaros", "srt"]` (DEFAULT_PROVIDERS; `srt` alone before 0.7). A name is one seisin ships or one declared under
  * `[sandbox.providers.<name>]` — an unknown one is refused here, never read as
  * the default, because "the config asks for tartaros and the run used srt"
  * without a word is the silent substitution sandboxes/index.js exists to stop.

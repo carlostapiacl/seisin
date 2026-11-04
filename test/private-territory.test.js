@@ -20,7 +20,7 @@ import { inspect } from "../src/inspect.js";
 import { decide } from "../src/hook.js";
 import { refuseIfBarred } from "../src/requests.js";
 import { atSessionStart } from "../src/diagnose.js";
-import { srtSkip, repoWith, CLI } from "./_tmp.js";
+import { sandboxSkip, repoWith, CLI } from "./_tmp.js";
 
 const POLICY = (runtime = "writes = []") =>
   `[runtime]\n${runtime}\n\n` +
@@ -155,7 +155,7 @@ test("the session-start map tells each role what is private, to it and to others
 
 /* ── the kernel ─────────────────────────────────────────────────────── */
 
-const skip = srtSkip();
+const skip = sandboxSkip();
 const run = (cwd, role, script) => new Promise((ok) => {
   let out = "";
   const p = spawn(process.execPath, [CLI, "run", role, "--agent", "none", "--", "/bin/sh", "-c", script], { cwd });
@@ -178,12 +178,11 @@ for (const runtime of ["writes = []", 'read = "territory"\nwrites = []', 'isolat
     assert.equal(other.code, 0, other.out);
     assert.doesNotMatch(other.out, /PRIVATE-CONTENT/, "other cannot read the private file");
     assert.doesNotMatch(other.out, /LISTED/, "other cannot list the private folder");
-    // What reaches the folder is the measure. macOS refuses the write; Linux
-    // answers a read-denied directory with an empty tmpfs (the runtime's
-    // shape), so the shell's write succeeds there into memory that is thrown
-    // away with the run — and the folder on disk is untouched either way.
-    if (LINUX) assert.match(other.out, /WROTE-VAULT/, "Linux: the write lands in a throwaway tmpfs");
-    else assert.doesNotMatch(other.out, /WROTE-VAULT|APPENDED/, "macOS: other cannot write into it");
+    // What reaches the folder is the measure. tartaros, the default since 0.7,
+    // refuses the write on both OS. (srt on Linux answered a read-denied
+    // directory with an empty tmpfs, so the shell's write succeeded there into
+    // memory thrown away with the run.) The folder on disk is untouched either way.
+    assert.doesNotMatch(other.out, /WROTE-VAULT|APPENDED/, "other cannot write into it");
     assert.ok(!existsSync(join(root, "vault", "new")), "nothing other wrote reaches the folder");
     assert.equal(readFileSync(join(root, "vault", "secret.md"), "utf8"), "PRIVATE-CONTENT\n", "nor changes what is in it");
     assert.match(other.out, /OPEN-CONTENT/, "positive control: other reads outside it");

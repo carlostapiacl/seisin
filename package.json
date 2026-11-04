@@ -42,10 +42,10 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@anthropic-ai/sandbox-runtime": "0.0.81"
+    "@carlostapiacl/tartaros": "0.1.0-alpha.23"
   },
-  "optionalDependencies": {
-    "@carlostapiacl/tartaros": "0.1.0-alpha.18"
+  "devDependencies": {
+    "@anthropic-ai/sandbox-runtime": "0.0.81"
   },
   "scripts": {
     "test": "node --test test/*.test.js",

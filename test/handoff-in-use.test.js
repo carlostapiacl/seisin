@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { spawnSync, spawn } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
-import { CLI, boxed, srtSkip } from "./_tmp.js";
+import { CLI, boxed, sandboxSkip } from "./_tmp.js";
 
 import { loadConfig, policyId } from "../src/config.js";
 import { decideHandoff } from "../src/handoff.js";
@@ -220,7 +220,7 @@ test("run --handoff refuses a role the request is not handed to, and starts noth
   assert.equal(readFileSync(file, "utf8"), before, "a refused --handoff wrote to the queue");
 });
 
-const skip = srtSkip() || (process.platform !== "darwin" && "macOS: the kernel's refusal is what files the request there");
+const skip = sandboxSkip() || (process.platform !== "darwin" && "macOS: the kernel's refusal is what files the request there");
 
 test("end to end: the receiver takes the work, and reaching back is stopped as a cycle", { skip }, () => {
   const { dir, file } = repo();

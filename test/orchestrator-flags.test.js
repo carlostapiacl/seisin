@@ -10,10 +10,10 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { boxed, CLI, srtSkip } from "./_tmp.js";
+import { boxed, CLI, sandboxSkip } from "./_tmp.js";
 import { runIdOf } from "../src/commands/run.js";
 
-const skip = srtSkip();
+const skip = sandboxSkip();
 
 let repo, folder;
 before(() => {

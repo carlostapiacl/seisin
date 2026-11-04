@@ -4,11 +4,13 @@ seisin decides what each role may do; a sandbox enforces it. Three can do that:
 
 | sandbox | what it is | how seisin talks to it |
 |---|---|---|
-| `srt` (built in, the default) | `@anthropic-ai/sandbox-runtime`: Seatbelt on macOS, bubblewrap on Linux | the settings file, as is |
-| `tartaros` (built in) | Seatbelt on macOS; Landlock, seccomp and cgroups on Linux | the settings file, as is (`--settings`) |
+| `tartaros` (built in, the default) | Seatbelt on macOS; Landlock, seccomp and cgroups on Linux. Installed with seisin | the settings file, as is (`--settings`) |
+| `srt` (built in) | `@anthropic-ai/sandbox-runtime`: Seatbelt on macOS, bubblewrap on Linux. Installed apart since 0.7 | the settings file, as is |
 | any name you declare | a command of yours | the settings file, through the contract below |
 
-Without a `[sandbox]` table every role runs under `srt`, as it always has.
+Without a `[sandbox]` table the list is `["tartaros", "srt"]`: tartaros, and srt
+for a role tartaros cannot hold, where srt is installed. Before 0.7 it was `srt`
+alone.
 
 ## Choosing one
 

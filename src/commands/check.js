@@ -11,7 +11,7 @@ const say = out;
 import { measureSystemLog } from "../violations.js";
 import { join } from "node:path";
 import { settingsFor } from "../srt-settings.js";
-import { weigh } from "../sandboxes/index.js";
+import { weigh, DEFAULT_PROVIDERS } from "../sandboxes/index.js";
 import { runsRoot } from "../rundir.js";
 import { channelName } from "../spool.js";
 
@@ -81,7 +81,7 @@ export function sandboxes(config, only = null, { platform = process.platform, qu
   const out = quiet ? () => {} : say;
   const sock = join(runsRoot(), "check", channelName(platform));
   const rows = [];
-  out(`\n${C.b}sandboxes${C.off} (${(config.sandbox?.provider ?? ["srt"]).join(" → ")})\n`);
+  out(`\n${C.b}sandboxes${C.off} (${(config.sandbox?.provider ?? DEFAULT_PROVIDERS).join(" → ")})\n`);
   for (const r of Object.values(config.roles)) {
     if (only && r.name !== only) continue;
     let settings;

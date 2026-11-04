@@ -7,9 +7,9 @@
  * `commands/` and every decision lives in a module beside it, so that a change
  * to how something is printed cannot change what is allowed.
  *
- * Enforcement is not ours. @anthropic-ai/sandbox-runtime asks the operating
- * system — Seatbelt on macOS, bubblewrap on Linux — and the kernel does not
- * care how a command was spelled. What seisin adds is the part a kernel can
+ * Enforcement is not ours. The sandbox (tartaros by default, or
+ * sandbox-runtime) asks the operating system — Seatbelt on macOS, Landlock or
+ * bubblewrap on Linux — and the kernel does not care how a command was spelled. What seisin adds is the part a kernel can
  * never know: which role a path belongs to, and therefore who to ask next.
  */
 import { readFileSync } from "node:fs";
@@ -105,7 +105,7 @@ Any command takes --policy <file> (the policy, rooted at the working directory) 
 both outside the repo (docs/runs.md).
 seisin help limits says what seisin cannot do, in any repo.
 
-Enforcement comes from the sandbox (sandbox-runtime by default, or tartaros), which asks the OS.
+Enforcement comes from the sandbox (tartaros by default, or sandbox-runtime), which asks the OS.
 seisin decides what to ask for, and says whose file it was when the answer is no.
 `;
 
