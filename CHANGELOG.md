@@ -8,7 +8,7 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
-## Unreleased
+## 0.7.0 — 2026-11-04
 
 - **tartaros is the default sandbox, and seisin installs nothing else.** It was
   sandbox-runtime (`srt`), with tartaros optional. tartaros is now a dependency
