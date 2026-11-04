@@ -12,7 +12,7 @@ changed rather than failing on the old spelling.
 
 - **tartaros is the default sandbox, and seisin installs nothing else.** It was
   sandbox-runtime (`srt`), with tartaros optional. tartaros is now a dependency
-  (0.1.0-alpha.22, prebuilt for macOS and Linux) and srt is not: it is used where
+  (0.1.0-alpha.23, prebuilt for macOS and Linux) and srt is not: it is used where
   it is installed apart, after tartaros, for a role tartaros cannot hold (a blanket
   `local_binding`, `deny_addresses`, a Linux host without Landlock), or wherever
   `[sandbox] provider` names it. A role neither one can hold does not run, and
