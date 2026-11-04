@@ -137,18 +137,21 @@ test("check names the wildcard that interception drags in whole", () => {
   clean(dir);
 });
 
-test("on macOS without tartaros, check says the role will not run here; with it, nothing", () => {
+test("on macOS a provider list without tartaros says the role will not run here; the default has it", () => {
+  // Since 0.7 tartaros is the default, so a policy that names no sandbox is fine.
   const { cfg, dir } = repo();
   const plat = injectWs(cfg).find((w) => w.kind === "inject-platform");
-  if (process.platform === "linux") assert.equal(plat, undefined);
-  else { assert.ok(plat); assert.match(plat.detail, process.platform === "darwin" ? /593[\s\S]*tartaros/ : /Linux or macOS/); }
+  if (process.platform === "linux" || process.platform === "darwin") assert.equal(plat, undefined);
+  else { assert.ok(plat); assert.match(plat.detail, /Linux or macOS/); }
   clean(dir);
   if (process.platform !== "darwin") return;
-  const d2 = mkdtempSync(join(tmpdir(), "seisin-inject-tt-"));
+  const d2 = mkdtempSync(join(tmpdir(), "seisin-inject-srt-"));
   writeFileSync(join(d2, "seisin.toml"),
-    `[sandbox]\nprovider = ["tartaros", "srt"]\n\n[keys.providers.op]\ncommand = ["op", "read", "op://{ref}"]\nmode = "env"\n\n` +
+    `[sandbox]\nprovider = ["srt"]\n\n[keys.providers.op]\ncommand = ["op", "read", "op://{ref}"]\nmode = "env"\n\n` +
     `[roles.r]\nwrites = ["src/**"]\nnetwork = ["api.github.com"]\nkey_mode = "inject"\nkeys = ["GH_TOKEN=op://v/gh"]\n\n` +
     `[roles.r.inject_hosts]\nGH_TOKEN = ["api.github.com"]\n`);
-  assert.equal(injectWs(loadConfig(join(d2, "seisin.toml"))).find((w) => w.kind === "inject-platform"), undefined);
+  const only = injectWs(loadConfig(join(d2, "seisin.toml"))).find((w) => w.kind === "inject-platform");
+  assert.ok(only);
+  assert.match(only.detail, /593[\s\S]*tartaros/);
   clean(d2);
 });

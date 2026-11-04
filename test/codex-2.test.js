@@ -27,7 +27,7 @@ import { explain, explainFileRead } from "../src/owners.js";
 import { denyFor, protectedBy } from "../src/surface.js";
 import { inspect, codexSignIn } from "../src/inspect.js";
 import { loadConfig } from "../src/config.js";
-import { boxed, CLI, scratch, srtSkip } from "./_tmp.js";
+import { boxed, CLI, scratch, sandboxSkip } from "./_tmp.js";
 
 /* ── a home of our own, so the files exist on every platform ─────────── */
 
@@ -252,7 +252,7 @@ function loadPolicy(toml) {
   return loadConfig(join(dir, "seisin.toml"));
 }
 
-const skip = srtSkip();
+const skip = sandboxSkip();
 function runAs(args, line) {
   return spawnSync(process.execPath, [CLI, "run", "dev", ...args, "--", "sh", "-c", line],
     { cwd: repo, encoding: "utf8", env: { ...process.env, HOME: home } });

@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
-import { CLI, boxed, srtSkip } from "./_tmp.js";
+import { CLI, boxed, sandboxSkip } from "./_tmp.js";
 
 import { loadConfig } from "../src/config.js";
 import { decide } from "../src/hook.js";
@@ -222,7 +222,7 @@ test("seisin whose, asked from inside a run, says where the work goes", () => {
 
 /* ── the run sets it, and only a handed run ───────────────────────────── */
 
-const skip = srtSkip();
+const skip = sandboxSkip();
 
 test("a --handoff run carries its chain to the hook; any other run never does", { skip }, () => {
   const { dir } = repo();

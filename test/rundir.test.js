@@ -9,11 +9,11 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdi
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runsRoot, runsRootOf, openRun } from "../src/rundir.js";
-import { boxed, CLI, srtSkip } from "./_tmp.js";
+import { boxed, CLI, sandboxSkip } from "./_tmp.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SPOOL = join(HERE, "..", "src", "spool.js");
-const skip = srtSkip();
+const skip = sandboxSkip();
 
 let repo;
 before(() => {

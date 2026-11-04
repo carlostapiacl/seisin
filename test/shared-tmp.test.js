@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
 import { loadConfig } from "../src/config.js";
 import { settingsFor, SHARED_TMP } from "../src/srt-settings.js";
-import { srtSkip } from "./_tmp.js";
+import { sandboxSkip } from "./_tmp.js";
 
 // Under the home, not /tmp: with /tmp writable as scratch, a write into
 // /tmp/claude would say nothing about the deny.
@@ -61,7 +61,7 @@ test("a temp directory passed in is granted to the run", () => {
   assert.ok(!settingsFor(config, "dev").filesystem.allowWrite.includes(tmp));
 });
 
-const skip = srtSkip();
+const skip = sandboxSkip();
 
 for (const runtime of ["writes = []", 'read = "territory"\nwrites = []', 'isolate = "home"', ""]) {
   test(`against the kernel: /tmp/claude is not writable, and the run's TMPDIR is (${runtime.replace(/\n/g, ", ") || "default"})`, { skip }, async () => {

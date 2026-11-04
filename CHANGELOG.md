@@ -10,6 +10,23 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **tartaros is the default sandbox, and seisin installs nothing else.** It was
+  sandbox-runtime (`srt`), with tartaros optional. tartaros is now a dependency
+  (0.1.0-alpha.20, prebuilt for macOS and Linux) and srt is not: it is used where
+  it is installed apart, after tartaros, for a role tartaros cannot hold (a blanket
+  `local_binding`, `deny_addresses`, a Linux host without Landlock), or wherever
+  `[sandbox] provider` names it. A role neither one can hold does not run, and
+  says what each one lacked, with the command that installs srt. *What to do:*
+  nothing, if your roles run today under tartaros or `check` shows them under it.
+  If a role needs srt, `npm install -g @anthropic-ai/sandbox-runtime@0.0.81`. On
+  Linux, tartaros needs neither bubblewrap nor unprivileged user namespaces.
+- **A role given `control_files = ["ide"]` is not handed to tartaros**, which
+  protects `.vscode` and `.idea` at any depth whatever the policy says. It runs
+  under srt where it is installed; `check` says so.
+- **`local_ports` reach a client that skips the proxy** (a database driver, `psql`)
+  under tartaros, which grants the listed port in the kernel. Under srt they still
+  do not.
+
 - **Why srt cannot hold an `inject` role on macOS, said right.** `check` and the refusal said
   sandbox-runtime does not mask there. It does; the reason is that it holds the real value in its
   own environment, which the agent can read from inside the sandbox. Nothing changes in which

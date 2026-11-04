@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync, existsSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
-import { CLI, boxed, scratch, repoWith, srtSkip } from "./_tmp.js";
+import { CLI, boxed, scratch, repoWith, sandboxSkip } from "./_tmp.js";
 
 const TOML = `[keys]
 dir = ".secrets"
@@ -138,7 +138,7 @@ test("grant and decline with no argument point at seisin requests", () => {
 
 /* ── 4 and 14. what a run says ─────────────────────────────────────────────── */
 
-test("run: the header names the territory and keys; the end lists only what this run added", { skip: srtSkip() }, () => {
+test("run: the header names the territory and keys; the end lists only what this run added", { skip: sandboxSkip() }, () => {
   const dir = demo("ux-run-");
   ask(dir, { role: "qa", action: "write", target: "frontend/old.js" });
   const r = sh(dir, "run", "frontend", "--", "sh", "-c", "echo x > backend/new.py");
@@ -157,7 +157,7 @@ test("run: the header names the territory and keys; the end lists only what this
   assert.doesNotMatch(quiet.err, /request|pending/, "nothing new, nothing said");
 });
 
-test("run: a command that is not there is said as that, with 127", { skip: srtSkip() }, () => {
+test("run: a command that is not there is said as that, with 127", { skip: sandboxSkip() }, () => {
   const dir = demo("ux-run-");
   const r = sh(dir, "run", "frontend", "--", "nosuchcmd-seisin");
   assert.equal(r.code, 127);

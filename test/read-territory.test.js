@@ -21,7 +21,7 @@ import { loadConfig, readReadMode } from "../src/config.js";
 import { settingsFor } from "../src/srt-settings.js";
 import { inspect } from "../src/inspect.js";
 import { mkdtempSync, rmSync } from "node:fs";
-import { srtSkip } from "./_tmp.js";
+import { sandboxSkip } from "./_tmp.js";
 
 // Under the home, not /tmp: /tmp is writable scratch and would make an
 // out-of-territory write appear allowed. Keep this fixture outside scratch.
@@ -225,7 +225,7 @@ test("check: a PATH entry under a data root and not kept is shut", () => {
 
 /* ── against the kernel ───────────────────────────────────────────────── */
 
-const skip = srtSkip();
+const skip = sandboxSkip();
 
 const run = (cwd, role, script) => new Promise((ok) => {
   let out = "", err = "";

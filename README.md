@@ -168,12 +168,14 @@ own fixtures:
 
 Others are the sandbox's, and differ between the two built in:
 
-| | `srt` (the default) | `tartaros` |
+| | `tartaros` (the default) | `srt` |
 |---|---|---|
-| a process the agent leaves running | **macOS:** it outlives the run, whether it double-forks, ignores signals under `nohup` or calls `setsid` (measured 2026-10-16). **Linux:** the PID namespace ends with the run (read from its source) | **macOS:** the run's process group is killed; one that calls `setsid` outlives it (measured 2026-10-16). **Linux:** the run's cgroup is killed whole (read from its source) |
-| deleting inside the territory | write includes delete; the ask is upstream as [issue #545](https://github.com/anthropics/sandbox-runtime/issues/545) | not measured here |
-| `[network] deny_addresses` | enforced | not yet: a role that has it runs under `srt`, and `check` says why |
-| what it is | Anthropic's, described by its authors as a research preview | by the author of seisin, alpha |
+| a process the agent leaves running | **macOS:** the run's process group is killed; one that calls `setsid` outlives it (measured 2026-10-16). **Linux:** the run's cgroup is killed whole (read from its source) | **macOS:** it outlives the run, whether it double-forks, ignores signals under `nohup` or calls `setsid` (measured 2026-10-16). **Linux:** the PID namespace ends with the run (read from its source) |
+| deleting inside the territory | not measured here | write includes delete; the ask is upstream as [issue #545](https://github.com/anthropics/sandbox-runtime/issues/545) |
+| `[network] deny_addresses` | not yet: a role that has it runs under `srt` where it is installed, and `check` says why | enforced |
+| `local_binding = true` | refused (it grants ports one at a time): a role that has it runs under `srt` where it is installed | enforced |
+| `local_ports`, a client that skips the proxy (a database driver) | reaches the listed port: the kernel grants it | refused: only a client that honours the proxy gets there |
+| what it is | by the author of seisin, alpha | Anthropic's, described by its authors as a research preview |
 
 `seisin check` says which sandbox each role gets before anything runs.
 
@@ -196,18 +198,22 @@ or more.
 npm install -g seisin
 ```
 
-That pulls in [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropics/sandbox-runtime), the default sandbox: Seatbelt on macOS, bubblewrap on Linux. No containers, no VMs, no daemon. Its one other dependency is optional: [tartaros](https://github.com/carlostapiacl/tartaros), prebuilt for macOS and Linux, which can enforce instead, as can a sandbox of your own ([docs/sandboxes.md](https://github.com/carlostapiacl/seisin/blob/main/docs/sandboxes.md)).
+That pulls in [tartaros](https://github.com/carlostapiacl/tartaros), the default sandbox, prebuilt for macOS and Linux: Seatbelt on macOS, Landlock and seccomp on Linux. No containers, no VMs, no daemon, and no other dependency. [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropics/sandbox-runtime) (`srt`) is used where you install it apart, after tartaros: for a role tartaros cannot hold (a blanket `local_binding`, `deny_addresses`, a Linux host without Landlock), or anywhere `[sandbox] provider` names it. A sandbox of your own can enforce too ([docs/sandboxes.md](https://github.com/carlostapiacl/seisin/blob/main/docs/sandboxes.md)).
 
-**On Linux you also need three system packages.** Without them the runtime refuses to start
+```bash
+npm install -g @anthropic-ai/sandbox-runtime@0.0.81   # optional: srt, for what tartaros cannot hold
+```
+
+**For srt on Linux you also need three system packages.** Without them srt refuses to start
 rather than run unconfined:
 
 ```bash
 apt install bubblewrap ripgrep socat      # or your distro's equivalent
 ```
 
-**On Ubuntu 24.04 and newer**, unprivileged user namespaces are off by default and
-bubblewrap needs one. Every run dies with `bwrap: No permissions to create new
-namespace`:
+**On Ubuntu 24.04 and newer**, unprivileged user namespaces are off by default. tartaros
+runs without them (with the limits in its docs/limits.md); bubblewrap, and so srt, needs one.
+Every srt run dies with `bwrap: No permissions to create new namespace`:
 
 ```bash
 sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
@@ -472,8 +478,8 @@ its own situation. **[The log, `review`, the console, the MCP server and walls â
                                     explanation â€” never the boundary
 ```
 
-`sandbox-runtime` is the default enforcer, not the only one. `[sandbox] provider` picks another
-(`tartaros`, or any sandbox declared as a command) per role, and only where it enforces the whole
+tartaros is the default enforcer, not the only one. `[sandbox] provider` picks another
+(`srt`, or any sandbox declared as a command) per role, and only where it enforces the whole
 policy: see [docs/sandboxes.md](https://github.com/carlostapiacl/seisin/blob/main/docs/sandboxes.md).
 
 That split keeps seisin small. Because the kernel is the boundary, seisin does not have to be airtight, only *legible*. A leaky explainer costs you a confusing log line. A leaky enforcer costs you the repo.
@@ -508,7 +514,8 @@ writable: each run gets a temp directory of its own instead.
 
 ## Prior art
 
-[`sandbox-runtime`](https://github.com/anthropics/sandbox-runtime) is the enforcement seisin sits on.
+[tartaros](https://github.com/carlostapiacl/tartaros) is the enforcement seisin sits on, and
+[`sandbox-runtime`](https://github.com/anthropics/sandbox-runtime) the one it was built on.
 OpenShell, hazmat and nono isolate the agent from your machine; containers and microVMs isolate a
 process from the host. seisin separates roles from each other inside one repository, and names the
 owner when the kernel denies something. They compose: the agent seisin confines can run inside any

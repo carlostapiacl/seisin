@@ -9,7 +9,7 @@ import { createServer } from "node:http";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { boxed, CLI, srtSkip } from "./_tmp.js";
+import { boxed, CLI, sandboxSkip } from "./_tmp.js";
 
 import { loadConfig } from "../src/config.js";
 import { notifier, message } from "../src/notify.js";
@@ -75,7 +75,7 @@ test("the notify URL never reaches the role, even when it names it", () => {
   assert.ok(dropped.includes("SEISIN_NOTIFY_URL"));
 });
 
-const skip = srtSkip();
+const skip = sandboxSkip();
 
 test("a role can neither read nor rewrite the URL file", { skip }, () => {
   const dir = repo();

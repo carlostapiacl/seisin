@@ -20,7 +20,7 @@ import { runCanary } from "../src/canary.js";
 import { seccompDir } from "../src/sandboxes/srt.js";
 import { settingsFor } from "../src/srt-settings.js";
 import { resolveSrt } from "../src/commands/run.js";
-import { scratch, repoWith, srtSkip, CLI } from "./_tmp.js";
+import { scratch, repoWith, sandboxSkip, CLI } from "./_tmp.js";
 
 const ROLE = '[roles.dev]\nwrites = ["src/**"]\n';
 const cfg = (toml) => {
@@ -32,9 +32,10 @@ const fails = (toml, re) => assert.throws(() => cfg(toml), re);
 
 /* ── [sandbox] in seisin.toml ──────────────────────────────────────────── */
 
-test("no [sandbox] is srt, as before; a name or a list is read in order", () => {
+test("no [sandbox] is tartaros, then srt (0.7); a name or a list is read in order", () => {
   assert.equal(cfg(ROLE).sandbox, null);
-  assert.deepEqual(sandboxesOf(cfg(ROLE)).map((s) => s.name), [DEFAULT_SANDBOX]);
+  assert.deepEqual(sandboxesOf(cfg(ROLE)).map((s) => s.name), ["tartaros", "srt"]);
+  assert.equal(DEFAULT_SANDBOX, "tartaros");
   assert.deepEqual(cfg(`[sandbox]\nprovider = "tartaros"\n${ROLE}`).sandbox.provider, ["tartaros"]);
   assert.deepEqual(cfg(`[sandbox]\nprovider = ["tartaros", "srt"]\n${ROLE}`).sandbox.provider, ["tartaros", "srt"]);
 });
@@ -245,7 +246,7 @@ const run = (cwd, ...args) => {
   return spawnSync(process.execPath, [CLI, ...args], { cwd, env, encoding: "utf8", timeout: 60_000 });
 };
 
-test("srt declared as a command is a sandbox like any other: the territory holds under it", { skip: srtSkip() }, () => {
+test("srt declared as a command is a sandbox like any other: the territory holds under it", { skip: sandboxSkip() }, () => {
   const dir = repoWith("sbx-cmd-",
     `[sandbox]\nprovider = "viacommand"\n[sandbox.providers.viacommand]\ncommand = ["${resolveSrt()}", "--settings", "{policy}", "--"]\n` +
     '[roles.dev]\nwrites = ["src/**"]\n', ["src/", "web/"]);
@@ -258,7 +259,7 @@ test("srt declared as a command is a sandbox like any other: the territory holds
   assert.ok(!existsSync(join(dir, "web/b")), "a write outside the territory went through under a declared sandbox");
 });
 
-test("a declared sandbox that tags its denials has them recorded, and is not warned about", { skip: srtSkip() || (process.platform !== "darwin" && "macOS only: no denial stream elsewhere") }, () => {
+test("a declared sandbox that tags its denials has them recorded, and is not warned about", { skip: sandboxSkip() || (process.platform !== "darwin" && "macOS only: no denial stream elsewhere") }, () => {
   const dir = repoWith("sbx-tagged-",
     `[sandbox]\nprovider = "viacommand"\n[sandbox.providers.viacommand]\ncommand = ["${resolveSrt()}", "--settings", "{policy}", "--"]\n` +
     'tags_denials = true\n[roles.dev]\nwrites = ["src/**"]\n', ["src/", "web/"]);
@@ -269,7 +270,7 @@ test("a declared sandbox that tags its denials has them recorded, and is not war
   assert.match(log, /"source":"kernel","action":"write","kind":"file","target":"web\/b","verdict":"denied"/);
 });
 
-test("a declared sandbox that ignores the policy starts nothing: the canary stops it", { skip: srtSkip() }, () => {
+test("a declared sandbox that ignores the policy starts nothing: the canary stops it", { skip: sandboxSkip() }, () => {
   const dir = repoWith("sbx-naive-", "", ["src/", "web/"]);
   const naive = join(dir, "naive.sh");
   writeFileSync(naive, '#!/bin/sh\nshift 2\nexec "$@"\n');
@@ -298,17 +299,18 @@ function pinnedTartarosSkip() {
   return r.status === 0 ? false : `the pinned tartaros cannot run here: ${(r.stderr || r.stdout).trim().split("\n").pop()}`;
 }
 
-test("a role runs under tartaros through its own --settings, and the territory holds", { skip: srtSkip() || pinnedTartarosSkip() }, () => {
+test("a role runs under tartaros through its own --settings, and the territory holds", { skip: sandboxSkip() || pinnedTartarosSkip() }, () => {
   const tt = fakeTartaros();
   const dir = repoWith("sbx-tt-", `[sandbox]\nprovider = "tartaros"\n[roles.dev]\nwrites = ["src/**"]\n`, ["src/", "web/"]);
   const r = onPath(tt.dir, () => run(dir, "run", "dev", "--agent", "none", "--", "sh", "-c", "echo ok > src/a; echo no > web/b 2>/dev/null; true"));
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stderr, /dev runs under tartaros/);
+  // tartaros is the default since 0.7, so the run does not name it.
+  assert.doesNotMatch(r.stderr, /runs under/);
   assert.ok(existsSync(join(dir, "src/a")), "a write inside the territory did not go through");
   assert.ok(!existsSync(join(dir, "web/b")), "a write outside the territory went through under tartaros");
 });
 
-test("a declared sandbox whose check says no falls back to the next, instead of stopping at the canary", { skip: srtSkip() }, () => {
+test("a declared sandbox whose check says no falls back to the next, instead of stopping at the canary", { skip: sandboxSkip() }, () => {
   const dir = repoWith("sbx-fallback-", "", ["src/", "web/"]);
   const no = join(dir, "no.sh");
   writeFileSync(no, '#!/bin/sh\necho "cannot do this one" >&2\nexit 1\n');
@@ -324,7 +326,7 @@ test("a declared sandbox whose check says no falls back to the next, instead of 
   assert.match(c.stdout, /mybox: its check .* says it cannot hold this policy: cannot do this one/);
 });
 
-test("runCanary takes the sandbox's own command line", { skip: srtSkip() }, async () => {
+test("runCanary takes the sandbox's own command line", { skip: sandboxSkip() }, async () => {
   const d = scratch("seisin-sbx-canary-");
   mkdirSync(join(d, "runs", "r"), { recursive: true });
   // No sandbox at all: everything the canary checks for goes through.
@@ -369,7 +371,7 @@ test("seccompDir: from the srt that runs, through its links, to the runtime's ve
   assert.equal(seccompDir(null), null);
 });
 
-test("on Linux, read = \"territory\" keeps the runtime's apply-seccomp readable", { skip: process.platform !== "linux" || srtSkip() }, () => {
+test("on Linux, read = \"territory\" keeps the runtime's apply-seccomp readable", { skip: process.platform !== "linux" || sandboxSkip() }, () => {
   const root = repoWith("seccomp-territory-", `[runtime]\nread = "territory"\nwrites = []\n\n[roles.dev]\nwrites = ["src/**"]\n`);
   const fs = settingsFor(loadConfig(join(root, "seisin.toml")), "dev").filesystem;
   const seccomp = seccompDir();

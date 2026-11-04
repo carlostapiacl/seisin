@@ -182,7 +182,7 @@ test("the launcher drains redacted pipes after the runtime exits", () => {
   const root = scratch("seisin-output-audit-");
   cpSync(fileURLToPath(new URL("../src", import.meta.url)), join(root, "src"), { recursive: true });
   writeFileSync(join(root, "package.json"), '{"type":"module","version":"0.0.0"}\n');
-  writeFileSync(join(root, "seisin.toml"), '[roles.dev]\nwrites = []\nkeys = ["TOKEN=file://token.txt"]\nkey_mode = "env"\n');
+  writeFileSync(join(root, "seisin.toml"), '[sandbox]\nprovider = ["srt"]\n\n[roles.dev]\nwrites = []\nkeys = ["TOKEN=file://token.txt"]\nkey_mode = "env"\n');
   const secret = "synthetic-output-credential";
   writeFileSync(join(root, "token.txt"), secret + "\n");
   const runtime = join(root, "node_modules", "@anthropic-ai", "sandbox-runtime");

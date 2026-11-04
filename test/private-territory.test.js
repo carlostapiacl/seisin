@@ -20,7 +20,7 @@ import { inspect } from "../src/inspect.js";
 import { decide } from "../src/hook.js";
 import { refuseIfBarred } from "../src/requests.js";
 import { atSessionStart } from "../src/diagnose.js";
-import { srtSkip, repoWith, CLI } from "./_tmp.js";
+import { sandboxSkip, repoWith, CLI } from "./_tmp.js";
 
 const POLICY = (runtime = "writes = []") =>
   `[runtime]\n${runtime}\n\n` +
@@ -155,7 +155,7 @@ test("the session-start map tells each role what is private, to it and to others
 
 /* ── the kernel ─────────────────────────────────────────────────────── */
 
-const skip = srtSkip();
+const skip = sandboxSkip();
 const run = (cwd, role, script) => new Promise((ok) => {
   let out = "";
   const p = spawn(process.execPath, [CLI, "run", role, "--agent", "none", "--", "/bin/sh", "-c", script], { cwd });

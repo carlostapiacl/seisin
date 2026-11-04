@@ -12,9 +12,9 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { boxed, CLI, srtSkip } from "./_tmp.js";
+import { boxed, CLI, sandboxSkip } from "./_tmp.js";
 
-const skip = srtSkip();
+const skip = sandboxSkip();
 
 let repo;
 before(() => {

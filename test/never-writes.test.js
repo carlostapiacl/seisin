@@ -14,7 +14,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, symlinkSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { boxed, CLI, srtSkip, repoWith as shared } from "./_tmp.js";
+import { boxed, CLI, sandboxSkip, repoWith as shared } from "./_tmp.js";
 
 import { loadConfig } from "../src/config.js";
 import { explain, ownersOf } from "../src/owners.js";
@@ -127,7 +127,7 @@ for (const [bad, why] of [["/etc/passwd", /absolute/], ["app/../x", /\.\./], [""
 }
 
 // End to end: the one test that can tell the subtraction actually lands.
-const skip = srtSkip();
+const skip = sandboxSkip();
 
 test("the real sandbox refuses the write, and the rest of the territory still works", { skip }, () => {
   const dir = repoWith(WORKTREE_ROLE, LOCK);

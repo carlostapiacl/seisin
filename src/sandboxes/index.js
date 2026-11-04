@@ -3,8 +3,9 @@
  *
  * seisin decides the policy; a sandbox enforces it. There are three ways in:
  *
- *   - `srt` (built in, the default): @anthropic-ai/sandbox-runtime;
- *   - `tartaros` (built in): reads the settings file itself (`--settings`);
+ *   - `tartaros` (built in, the default, installed with seisin): reads the
+ *     settings file itself (`--settings`);
+ *   - `srt` (built in, installed apart): @anthropic-ai/sandbox-runtime;
  *   - any name declared under `[sandbox.providers.<name>]`: a command that
  *     takes the settings file (command.js, docs/sandboxes.md).
  *
@@ -23,17 +24,25 @@
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { srt } from "./srt.js";
+import { srt, SRT_PACKAGE, SRT_VERSION } from "./srt.js";
 import { machOf } from "../browsers.js";
 import { tartaros } from "./tartaros.js";
 import { commandSandbox } from "./command.js";
 
 export const BUILTIN_SANDBOXES = { srt, tartaros };
-export const DEFAULT_SANDBOX = "srt";
+export const DEFAULT_SANDBOX = "tartaros";
+/**
+ * Without `[sandbox] provider`: tartaros, which installs with seisin, then srt
+ * where it is installed apart (it is not a dependency since 0.7). A role
+ * tartaros cannot hold (a blanket local binding, a host's missing Landlock)
+ * runs under srt if it is there and holds all of it, and otherwise does not
+ * run, with what each one lacked.
+ */
+export const DEFAULT_PROVIDERS = [DEFAULT_SANDBOX, "srt"];
 
 /** The sandboxes the config names, in its order, as provider objects. */
 export function sandboxesOf(config) {
-  const names = config.sandbox?.provider ?? [DEFAULT_SANDBOX];
+  const names = config.sandbox?.provider ?? DEFAULT_PROVIDERS;
   return names.map((n) => BUILTIN_SANDBOXES[n] ?? commandSandbox(n, config.sandbox.providers[n].command, config.sandbox.providers[n].check, { tagsDenials: config.sandbox.providers[n].tagsDenials }));
 }
 
@@ -91,7 +100,15 @@ export function weigh(config, settings, { platform = process.platform, role = nu
       const ruled = requests.length && !sandbox.requestRules
         ? [`requests (${requests.map((q) => q.host).join(", ")}): ${sandbox.name} cannot limit the methods and paths of a host from its settings, tartaros can`]
         : [];
-      return { sandbox, bin, unmet: [...(masking ? [masking] : []), ...unmet, ...browser, ...exemption, ...ruled], warnings, missing: bin ? null : sandbox.missing() };
+      // `control_files`: a family the policy hands a role that this sandbox
+      // protects whatever the settings say (tartaros's trust-handoff set holds
+      // `.vscode` at any depth), so the role could not do what it was given.
+      const families = role ? (config.roles?.[role]?.controlFiles ?? []) : [];
+      const kept = families.filter((f) => (sandbox.keepsControlFiles ?? []).includes(f));
+      const control = kept.length
+        ? [`control_files (${kept.join(", ")}): ${sandbox.name} protects those files at any depth whatever the policy says, so the role could not edit them`]
+        : [];
+      return { sandbox, bin, unmet: [...(masking ? [masking] : []), ...unmet, ...browser, ...exemption, ...ruled, ...control], warnings, missing: bin ? null : sandbox.missing() };
     });
     const chosen = options.find((o) => o.bin && o.unmet.length === 0) ?? null;
     return { chosen, options };
@@ -114,7 +131,7 @@ export function chooseSandbox(config, settings, { platform = process.platform, r
   const { chosen, options } = weigh(config, settings, { platform, role, file });
   if (chosen) return { sandbox: chosen.sandbox, bin: chosen.bin, options };
   // The one sandbox there is, missing: said exactly as it always was.
-  if (options.length === 1 && options[0].missing && options[0].sandbox.name === DEFAULT_SANDBOX)
+  if (options.length === 1 && options[0].missing)
     return { error: new Error(options[0].missing), options };
   return { error: new Error(refusal(role, options)), options };
 }
@@ -125,6 +142,6 @@ export function refusal(role, options) {
     : `  - ${o.sandbox.name} cannot enforce all of it:\n${o.unmet.map((u) => `      ${u}`).join("\n")}`);
   return `no sandbox in [sandbox] provider can hold ${role ? `role ${role}` : "this role"} as its policy is written, so it was not started:\n` +
     `${lines.join("\n")}\n` +
-    `  A sandbox that enforces less than the policy is never used in its place. Add one that can (provider = [..., "srt"]), ` +
-    `or change the role.`;
+    `  A sandbox that enforces less than the policy is never used in its place. Install one that can ` +
+    `(srt: npm install -g ${SRT_PACKAGE}@${SRT_VERSION}), name it in [sandbox] provider, or change the role.`;
 }

@@ -17,10 +17,10 @@ import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { resolveRef } from "../src/keys.js";
-import { boxed, CLI, srtSkip } from "./_tmp.js";
+import { boxed, CLI, sandboxSkip } from "./_tmp.js";
 
 const macOnly = process.platform === "darwin" ? false : "glob and rename semantics measured on macOS";
-const skip = srtSkip();
+const skip = sandboxSkip();
 
 let repo, trusted, outside;
 before(() => {

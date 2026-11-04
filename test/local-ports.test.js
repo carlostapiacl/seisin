@@ -10,7 +10,7 @@ import { createRequire } from "node:module";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { boxed, CLI, srtSkip, repoWith as shared } from "./_tmp.js";
+import { boxed, CLI, sandboxSkip, srtOnlySkip, repoWith as shared } from "./_tmp.js";
 
 import { loadConfig } from "../src/config.js";
 import { settingsFor, loopbackVia, localPortDomains, NO_PROXY_WITHOUT_LOOPBACK } from "../src/srt-settings.js";
@@ -140,7 +140,7 @@ test("under tartaros a listed port takes a POST, directly, and the next port is 
   assert.match(out, new RegExp(`${other} refused`), `an unlisted port answered: ${out}`);
 });
 
-const skip = srtSkip();
+const skip = sandboxSkip();
 
 test("against the kernel: the named port answers, the next one does not", { skip }, async (t) => {
   const servers = await Promise.all([0, 1].map(() => new Promise((ok) => {
@@ -172,45 +172,55 @@ test("against the kernel: the named port answers, the next one does not", { skip
   assert.match(docs, new RegExp(`${allowed} refused`), `a role without the key reached it: ${docs}`);
 });
 
-test("against the kernel: a client that skips the proxy is refused on a listed port too", { skip }, async (t) => {
-  // The limit, pinned. A database driver, psql or redis-cli dials 127.0.0.1:N
-  // itself; the runtime offers the kernel no rule for one loopback port (see
-  // docs/decisions.md), so a listed port is closed to it like any other. If a
-  // runtime upgrade turns this green for the listed port, local_ports can move
-  // to the kernel. Controls: the same role's curl reaches the listed port
-  // through the proxy, and on macOS local_binding lets the same probe in.
-  const servers = await Promise.all([0, 1].map(() => new Promise((ok) => {
-    const s = createServer((q, r) => r.end("open")).listen(0, "127.0.0.1", () => ok(s));
-  })));
-  t.after(() => servers.forEach((s) => s.close()));
-  const [listed, other] = servers.map((s) => s.address().port);
-  const dir = repoWith(`[roles.e2e]\nwrites = ["app/**"]\nlocal_ports = [${listed}]\n\n` +
-    `[roles.wide]\nwrites = ["app/**"]\nlocal_binding = true\n`);
-  writeFileSync(join(dir, "app", "dial.cjs"),
-    'const net = require("net");\n' +
-    "for (const p of process.argv.slice(2)) {\n" +
-    '  const c = net.connect(Number(p), "127.0.0.1", () => { console.log(p, "direct open"); c.destroy(); });\n' +
-    '  c.on("error", (e) => console.log(p, "direct refused", e.code));\n' +
-    "}\n");
-  const script = `"${process.execPath}" app/dial.cjs ${listed} ${other};` +
-    ` o=$(curl -s --max-time 8 --retry 5 --retry-connrefused "http://127.0.0.1:${listed}/" 2>/dev/null);` +
-    ` [ "$o" = open ] && echo "${listed} proxy open" || echo "${listed} proxy refused"`;
-  const as = (role) => new Promise((ok) => {
-    let out = "";
-    const p = spawn(process.execPath, [CLI, "run", role, "--", "sh", "-c", script], { cwd: dir });
-    p.stdout.on("data", (d) => (out += d));
-    p.on("close", () => ok(out));
+/**
+ * A client that skips the proxy (a database driver, psql, redis-cli dials
+ * 127.0.0.1:N itself), under each sandbox. sandbox-runtime offers the kernel no
+ * rule for one loopback port (see docs/decisions.md), so a listed port is closed
+ * to it like any other: the limit, pinned, so a runtime upgrade that turns it
+ * green is seen. tartaros grants the listed port in the kernel, so the same dial
+ * reaches it there, and only there. Controls: the same role's curl reaches the
+ * listed port through the proxy, and on macOS local_binding lets the probe in.
+ */
+for (const [name, provider, skipIt, direct] of [
+  ["sandbox-runtime", "srt", srtOnlySkip(), "refused"],
+  ["tartaros", "tartaros", skip, "open"],
+]) {
+  test(`against the kernel under ${name}: a client that skips the proxy, on a listed port: ${direct}`, { skip: skipIt }, async (t) => {
+    const servers = await Promise.all([0, 1].map(() => new Promise((ok) => {
+      const s = createServer((q, r) => r.end("open")).listen(0, "127.0.0.1", () => ok(s));
+    })));
+    t.after(() => servers.forEach((s) => s.close()));
+    const [listed, other] = servers.map((s) => s.address().port);
+    const dir = repoWith(`[sandbox]\nprovider = ["${provider}"]\n\n[roles.e2e]\nwrites = ["app/**"]\nlocal_ports = [${listed}]\n\n` +
+      `[roles.wide]\nwrites = ["app/**"]\nlocal_binding = true\n`);
+    writeFileSync(join(dir, "app", "dial.cjs"),
+      'const net = require("net");\n' +
+      "for (const p of process.argv.slice(2)) {\n" +
+      '  const c = net.connect(Number(p), "127.0.0.1", () => { console.log(p, "direct open"); c.destroy(); });\n' +
+      '  c.on("error", (e) => console.log(p, "direct refused", e.code));\n' +
+      "}\n");
+    const script = `"${process.execPath}" app/dial.cjs ${listed} ${other};` +
+      ` o=$(curl -s --max-time 8 --retry 5 --retry-connrefused "http://127.0.0.1:${listed}/" 2>/dev/null);` +
+      ` [ "$o" = open ] && echo "${listed} proxy open" || echo "${listed} proxy refused"`;
+    const as = (role) => new Promise((ok) => {
+      let out = "";
+      const p = spawn(process.execPath, [CLI, "run", role, "--", "sh", "-c", script], { cwd: dir });
+      p.stdout.on("data", (d) => (out += d));
+      p.stderr.on("data", (d) => (out += d));
+      p.on("close", () => ok(out));
+    });
+    const e2e = await as("e2e");
+    assert.match(e2e, new RegExp(`${listed} proxy open`), `positive control failed: ${e2e}`);
+    assert.match(e2e, new RegExp(`${other} direct refused`), e2e);
+    assert.match(e2e, new RegExp(`${listed} direct ${direct}`), e2e);
+    // local_binding is srt's alone (tartaros refuses a blanket binding), so the
+    // probe's own control runs where srt does.
+    if (process.platform === "darwin" && provider === "srt") {
+      const wide = await as("wide");
+      assert.match(wide, new RegExp(`${listed} direct open`), `the probe cannot succeed at all: ${wide}`);
+    }
   });
-  const e2e = await as("e2e");
-  assert.match(e2e, new RegExp(`${listed} proxy open`), `positive control failed: ${e2e}`);
-  assert.match(e2e, new RegExp(`${other} direct refused`), e2e);
-  assert.match(e2e, new RegExp(`${listed} direct refused`),
-    `a direct dial reached a listed port; the runtime may now enforce ports in the kernel: ${e2e}`);
-  if (process.platform === "darwin") {
-    const wide = await as("wide");
-    assert.match(wide, new RegExp(`${listed} direct open`), `the probe cannot succeed at all: ${wide}`);
-  }
-});
+}
 
 /* ── refused connections, in the record ─────────────────────────────── */
 

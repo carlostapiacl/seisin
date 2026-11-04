@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { boxed, CLI, srtSkip, repoWith as shared } from "./_tmp.js";
+import { boxed, CLI, sandboxSkip, repoWith as shared } from "./_tmp.js";
 const require_ = createRequire(import.meta.url);
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -51,7 +51,7 @@ test("check shows it and does not call it an unknown setting", () => {
   assert.match(renderReport(report), /listen.*local_binding/);
 });
 
-const skip = srtSkip();
+const skip = sandboxSkip();
 
 // A server that answers once and exits, and a client in the same box. Both
 // halves matter: an e2e test that can listen but cannot reach its own server
