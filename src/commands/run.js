@@ -416,7 +416,7 @@ export async function run(config, argv) {
   if (!probe.ok) {
     append(logPath(config.root), {
       event: "canary", role, run: runLabel, ...trace, agent: agent ?? null, confined: false, reasons: probe.failed,
-      ...(sandbox.name === DEFAULT_SANDBOX ? {} : { sandbox: sandbox.name }),
+      sandbox: sandbox.name,
     });
     if (probe.exposed) {
       err(`${C.red}seisin: ${role} was NOT started — another process holds a real value the agent would see:${C.off}\n` +
@@ -435,7 +435,7 @@ export async function run(config, argv) {
   }
   append(logPath(config.root), {
     event: "canary", role, run: runLabel, ...trace, agent: agent ?? null, confined: true, reasons: [],
-    ...(sandbox.name === DEFAULT_SANDBOX ? {} : { sandbox: sandbox.name }),
+    sandbox: sandbox.name,
   });
   // Said once, only when it is not the default: which sandbox holds this run
   // is a fact a reader of the terminal would otherwise have to guess.
