@@ -8,6 +8,18 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## Unreleased
+
+- **Codex starts under tartaros on macOS.** It stopped within seconds with "Failed to
+  synchronize managed preferences": the profile denied the shared memory macOS reads
+  to keep preferences current. tartaros now allows reading those three segments, by
+  exact name. *What to do:* nothing; a role that fell back to `provider = "srt"` for
+  this can go back.
+- **`seisin run` says when the repo sits inside scratch.** A repo under `/tmp` is writable by
+  every role, whatever the territories say. `check` said so and the run did not, and the
+  banner read as if the role's `writes` held. *What to do:* move the repo out of scratch, or
+  set `[runtime] writes` to a list that leaves that directory out.
+
 ## 0.7.0 — 2026-11-04
 
 - **tartaros is the default sandbox, and seisin installs nothing else.** It was

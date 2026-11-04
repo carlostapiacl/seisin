@@ -463,3 +463,11 @@ test("a flag that takes a value and has none is refused, and --min is a whole nu
   assert.equal(sh(dir, "log", "--limit", "5").code, 0);
   assert.equal(sh(dir, "walls", "frontend", "--min", "3").code, 0);
 });
+
+test("run: a repo inside scratch is said when it runs, and one outside is not", { skip: sandboxSkip() }, () => {
+  const inside = scratch("ux-inscratch-");
+  writeFileSync(join(inside, "seisin.toml"), TOML);
+  const r = sh(inside, "run", "qa", "--", "sh", "-c", "true");
+  assert.match(r.err, /every role can write the whole repo: it lives inside /);
+  assert.doesNotMatch(sh(demo("ux-outscratch-"), "run", "qa", "--", "sh", "-c", "true").err, /every role can write the whole repo/);
+});

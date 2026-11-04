@@ -32,6 +32,7 @@ import { EXPECTED } from "../kinds.js";
 import { toolchainBins } from "../territory.js";
 import { writePathsOf, realOrSelf, SOCKET_MAX } from "../grants.js";
 import { runCanary, CANARY_EXIT } from "../canary.js";
+import { scratchWarnings } from "../inspect/machine.js";
 import { append, logPath } from "../log.js";
 import { flagsOf } from "../help.js";
 import { WILD } from "../paths.js";
@@ -317,6 +318,12 @@ export async function run(config, argv) {
     `env ${Object.keys(env).length} kept, ${dropped.length} dropped · read ${config.read}` +
     `${observe ? ` · ${C.yellow}OBSERVING — the repo is writable, the network is NOT${C.off}${C.dim}` : ""}${C.off}\n`
   );
+  // `check` says this, and a run is where it costs: the role writes another role's
+  // files and the banner above reads as if it could not.
+  if (!observe) {
+    const around = scratchWarnings(config).find((w) => w.kind === "scratch");
+    if (around) err(`${C.yellow}seisin: ${around.headline}. ${around.detail}${C.off}\n`);
+  }
 
   // Redaction needs the output to pass through this process, and piping breaks
   // anything that draws its own screen. So it turns itself off on a terminal
