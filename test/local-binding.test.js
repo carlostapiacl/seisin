@@ -67,13 +67,10 @@ test("the real sandbox lets that role serve and reach a local port, and refuses 
   const as = (role) => spawnSync(process.execPath, [CLI, "run", role, "--", "sh", "-c", SERVE_AND_ASK],
     { cwd: dir, encoding: "utf8" }).status;
   assert.equal(as("e2e"), 0, "local_binding = true and still no server");
-  if (process.platform === "darwin")
-    assert.notEqual(as("docs"), 0, "a role without the key could listen");
-  else
-    // Linux: the runtime drops the network namespace, so every role has a
-    // private loopback and serving inside it reaches nobody else. Measured:
-    // Debian 12, bwrap 0.8.0 — both roles serve, neither reaches the host.
-    assert.equal(as("docs"), 0, "a private loopback should work without the key");
+  // A role without the key cannot listen, under tartaros on both OS. (srt on
+  // Linux gave every role a private loopback in its own network namespace, so
+  // serving there worked and reached nobody else.)
+  assert.notEqual(as("docs"), 0, "a role without the key could listen");
 });
 
 test("check warns about local_binding and trustd only where they mean something", () => {

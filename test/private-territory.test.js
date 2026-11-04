@@ -178,12 +178,11 @@ for (const runtime of ["writes = []", 'read = "territory"\nwrites = []', 'isolat
     assert.equal(other.code, 0, other.out);
     assert.doesNotMatch(other.out, /PRIVATE-CONTENT/, "other cannot read the private file");
     assert.doesNotMatch(other.out, /LISTED/, "other cannot list the private folder");
-    // What reaches the folder is the measure. macOS refuses the write; Linux
-    // answers a read-denied directory with an empty tmpfs (the runtime's
-    // shape), so the shell's write succeeds there into memory that is thrown
-    // away with the run — and the folder on disk is untouched either way.
-    if (LINUX) assert.match(other.out, /WROTE-VAULT/, "Linux: the write lands in a throwaway tmpfs");
-    else assert.doesNotMatch(other.out, /WROTE-VAULT|APPENDED/, "macOS: other cannot write into it");
+    // What reaches the folder is the measure. tartaros, the default since 0.7,
+    // refuses the write on both OS. (srt on Linux answered a read-denied
+    // directory with an empty tmpfs, so the shell's write succeeded there into
+    // memory thrown away with the run.) The folder on disk is untouched either way.
+    assert.doesNotMatch(other.out, /WROTE-VAULT|APPENDED/, "other cannot write into it");
     assert.ok(!existsSync(join(root, "vault", "new")), "nothing other wrote reaches the folder");
     assert.equal(readFileSync(join(root, "vault", "secret.md"), "utf8"), "PRIVATE-CONTENT\n", "nor changes what is in it");
     assert.match(other.out, /OPEN-CONTENT/, "positive control: other reads outside it");
