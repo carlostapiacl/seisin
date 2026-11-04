@@ -8,6 +8,12 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## Unreleased
+
+- **`seisin ui --runs` names the sandbox of every run.** A run under the default sandbox left the
+  field empty, so since 0.7.0 a launcher read `null` for every run under tartaros. The canary line in
+  the log now always names it. *What to do:* nothing; runs already archived keep the empty field.
+
 ## 0.7.1 — 2026-11-04
 
 - **Codex starts under tartaros on macOS.** It stopped within seconds with "Failed to
