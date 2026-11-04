@@ -14,7 +14,7 @@ changed rather than failing on the old spelling.
   synchronize managed preferences": the profile denied the shared memory macOS reads
   to keep preferences current. tartaros now allows reading those three segments, by
   exact name. *What to do:* nothing; a role that fell back to `provider = "srt"` for
-  this can go back.
+  this can go back. tartaros is now 0.1.0-alpha.24.
 - **`seisin run` says when the repo sits inside scratch.** A repo under `/tmp` is writable by
   every role, whatever the territories say. `check` said so and the run did not, and the
   banner read as if the role's `writes` held. *What to do:* move the repo out of scratch, or
