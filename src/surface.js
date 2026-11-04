@@ -631,10 +631,21 @@ function computeDenies(config, role, { env, platform, observe }) {
    * none) and cover what the literals cannot: a `.claude` deeper than the walk,
    * or one a role creates where there was none. The home's
    * files stay literal (homeControls).
+   *
+   * A pattern cannot leave a folder out, and a deny wins over any exemption, so
+   * `**\/.envrc` kept `handoff_exempt` from opening `vendor/`: `composer install`
+   * failed on the `.envrc` that fidry/cpu-core-counter ships (measured
+   * 2026-11-04), and `resolve` ships a `.claude` in `node_modules`. A root holding
+   * an exempt folder does without the names packages ship. Only tartaros is handed
+   * such a role, and outside the folder it still refuses `.envrc`, `.mcp.json`,
+   * `.codex` and the `.claude` files that run, at any depth (measured the same day
+   * on alpha.24); the literals in `controls` keep each project's `.claude` whole.
    */
+  const holes = (role.handoffExempt ?? []).map((e) => join(config.root, e));
+  const opened = (d) => holes.some((h) => under(h, d) || under(d, h));
   const globs = platform === "darwin"
     ? roots.flatMap((d) => [
-        `${d}/**/.claude`, `${d}/**/.claude/**`,
+        ...(opened(d) ? [] : [`${d}/**/.claude`, `${d}/**/.claude/**`]),
         `${d}/**/.git/hooks/**`, `${d}/**/.git/config`,
         // What git runs that lives beside, not in, `.git/config`: a submodule's
         // own config and hooks, and the files that redirect a worktree to
@@ -645,7 +656,7 @@ function computeDenies(config, role, { env, platform, observe }) {
         `${d}/**/.git/config.worktree`,
         `${d}/**/.git/modules/**/config`, `${d}/**/.git/modules/**/hooks/**`,
         `${d}/**/.git/worktrees/**/config.worktree`, `${d}/**/.git/worktrees/**/commondir`,
-        `${d}/**/.mcp.json`, `${d}/**/.envrc`, `${d}/**/.codex`, `${d}/**/.codex/**`,
+        ...(opened(d) ? [] : [`${d}/**/.mcp.json`, `${d}/**/.envrc`, `${d}/**/.codex`, `${d}/**/.codex/**`]),
       ]).map((path) => ({ path, why: "any project's control files in this territory, by pattern" }))
     : [];
   // A profile created after the walk: `codex -p x` reads `~/.codex/x.config.toml`.
@@ -719,7 +730,11 @@ export function protectedBy(config, target, { platform = process.platform, role 
     ? ".claude"
     : CONTROL_RES.find(([, re]) => re.test(target))?.[0];
   const re = f === ".claude" ? CLAUDE_DIR : CONTROL_RES.find(([name]) => name === f)?.[1];
-  if (f && (platform !== "linux" || heldOnLinux(config, target, re))) {
+  // Inside a role's `handoff_exempt` the kernel lets these through (computeDenies).
+  const whole = isAbsolute(target) ? target : join(config.root, target);
+  const exempt = (config.roles?.[role]?.handoffExempt ?? []).some((e) => under(whole, join(config.root, e))) &&
+    [".claude", ".mcp.json", ".envrc", ".codex"].includes(f);
+  if (f && !exempt && (platform !== "linux" || heldOnLinux(config, target, re))) {
     const why = f === ".claude"
       ? ".claude, whose settings, hooks and skills Claude Code runs outside the sandbox"
       : controlWhy(f);
