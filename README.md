@@ -174,7 +174,7 @@ Others are the sandbox's, and differ between the two built in:
 | deleting inside the territory | not measured here | write includes delete; the ask is upstream as [issue #545](https://github.com/anthropics/sandbox-runtime/issues/545) |
 | `[network] deny_addresses` | not yet: a role that has it runs under `srt` where it is installed, and `check` says why | enforced |
 | `local_binding = true` | refused (it grants ports one at a time): a role that has it runs under `srt` where it is installed | enforced |
-| `local_ports`, a client that skips the proxy (a database driver) | reaches the listed port: the kernel grants it | refused: only a client that honours the proxy gets there |
+| `local_ports`, a client that skips the proxy (a database driver) | reaches the listed port: the kernel grants it | denied: only a client that honours the proxy gets there |
 | what it is | by the author of seisin, alpha | Anthropic's, described by its authors as a research preview |
 
 `seisin check` says which sandbox each role gets before anything runs.
