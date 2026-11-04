@@ -8,7 +8,7 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
-## Unreleased
+## 0.7.2 — 2026-11-04
 
 - **`seisin ui --runs` names the sandbox of every run.** A run under the default sandbox left the
   field empty, so since 0.7.0 a launcher read `null` for every run under tartaros. The canary line in
