@@ -1203,7 +1203,8 @@
         var out = await r.json();
         if (!r.ok) { var err = new Error(out.error || "the console did not accept that"); err.status = r.status; throw err; }
         decided("Declined " + plural(out.declined, "request") + " · reason «" + esc(why.value.trim()) +
-                "», recorded in the request queue. The policy was not changed.");
+                "», recorded in the request queue. The policy was not changed." +
+                (out.stillAllowed ? " The policy already gives " + out.stillAllowed.toLocaleString() + " of them, and that stays." : ""));
         why.value = "";
         await reload();
       } catch (e) {
@@ -1299,7 +1300,8 @@
           '<a href="#configfile">see Config file' + (out.line ? ", line " + out.line.number : "") + "</a>");
       } else {
         decided("Declined <b>" + esc(out.role) + "</b>’s request for <code>" + esc(out.grant) + "</code> · reason «" + esc(why) +
-                "», recorded in the request queue. The policy was not changed.");
+                "», recorded in the request queue. The policy was not changed." +
+                (out.stillAllowed ? " <b>" + esc(out.role) + " keeps it:</b> " + esc(out.stillAllowed) : ""));
       }
       // Re-read rather than patch: the grant rewrote seisin.toml, so the
       // territory on screen is stale too, not just the queue.

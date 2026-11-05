@@ -177,16 +177,20 @@ export function decline(config, argv = []) {
 
   // The policy is not edited, but the lock is still the policy's: it is the one
   // every decision takes, so a decline cannot settle what a grant is applying.
-  const { request: req } = underLock(() => decideRequest(config, {
+  const { request: req, stillAllowed } = underLock(() => decideRequest(config, {
     decision: "declined", reason, reload: false, includeOnly: false,
     select: (current) => pick(current, argv[0], "decline"),
   }));
   out(
     `\n  ${C.yellow}declined${C.off}  ${req.role} ✕ ${req.grant}\n` +
-    `  ${C.dim}${reason || "no reason recorded"}${C.off}\n\n`
+    `  ${C.dim}${reason || "no reason recorded"}${C.off}\n` +
+    (stillAllowed
+      ? `  ${C.yellow}${req.role} keeps it: declining closes the request and does not edit ${config.path}.${C.off}\n` +
+        `  ${C.dim}${safe(stillAllowed)}${C.off}\n`
+      : "") + "\n"
   );
   out(remaining(config));
-  return { request: req, reason };
+  return { request: req, reason, ...(stillAllowed && { stillAllowed }) };
 }
 
 /**

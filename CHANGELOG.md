@@ -10,6 +10,12 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **A decision is recorded, or seisin says it was not.** `seisin grant` and `decline` and the console
+  reported success when the request queue could not be written: a decline left nothing behind, and a grant
+  stayed open beside a policy that already gave it. Now a queue that cannot take the line refuses the
+  decision before the policy changes, and if the line alone fails, the error says the policy changed and
+  that the same grant closes it. Exit 2 from the CLI, an error from the console. Declining something the
+  policy already gives now says the role keeps it. *What to do:* nothing.
 - **One policy, a role per agent, and a run that narrows its role.** `seisin run <role> --only <glob>
   --deny <glob>` takes away from what the role may write and can never add to it: an `--only` outside
   the role is refused before anything starts. A role can leave a path or a port open as `$NAME` in

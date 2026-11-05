@@ -8,7 +8,9 @@ import assert from "node:assert/strict";
 import { parseToml, loadConfig } from "../src/config.js";
 import { tomlString, tomlName } from "../src/layout.js";
 import { covers, ownersOf, keyHolders, explain } from "../src/owners.js";
-import { realpathSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync, existsSync } from "node:fs";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+import { chmodSync, realpathSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildEnv, DEFAULTS as ENV_DEFAULTS } from "../src/env.js";
@@ -1347,6 +1349,64 @@ test("the page never carries the token, and every /api/ route asks for it", asyn
   assert.equal((await fetch(`http://127.0.0.1:${port}/api/state`)).status, 403);
   const ok = await fetch(`http://127.0.0.1:${port}/api/state`, { headers: { "x-seisin-token": token } });
   assert.equal(ok.status, 200);
+});
+
+test("the console answers an error, not ok, for a decision the queue could not take", { skip: process.getuid?.() === 0 }, async (t) => {
+  const { box, port, token } = await startConsole(t);
+  const q = join(box, ".seisin", "requests.jsonl");
+  record(q, { role: "backend", action: "write", target: "src/web/b.ts", owners: ["frontend"] });
+  const [{ key }] = pending(q);
+  const before = readFileSync(join(box, "seisin.toml"), "utf8");
+  chmodSync(q, 0o444);
+  t.after(() => chmodSync(q, 0o644));
+  const post = (route, body) => fetch(`http://127.0.0.1:${port}/api/${route}`, {
+    method: "POST", headers: { "content-type": "application/json", "x-seisin-token": token }, body: JSON.stringify(body),
+  });
+  for (const r of [
+    await post("decide", { key, decision: "granted", reason: "why" }),
+    await post("decide", { key, decision: "declined", reason: "why" }),
+    await post("decline-all", { keys: [key], reason: "why" }),
+  ]) {
+    assert.equal(r.status, 500);
+    assert.equal((await r.json()).ok, undefined);
+  }
+  assert.equal(readFileSync(join(box, "seisin.toml"), "utf8"), before);
+});
+
+test("decline all that stops partway says how many it had already closed", async (t) => {
+  const { box, port, token } = await startConsole(t);
+  const q = join(box, ".seisin", "requests.jsonl");
+  record(q, { role: "backend", action: "write", target: "src/web/b.ts", owners: ["frontend"] });
+  const keys = pending(q).map((p) => p.key);
+  assert.equal(keys.length, 2);
+  const real = fs.appendFileSync;
+  let lines = 0;
+  fs.appendFileSync = (file, ...rest) => {
+    if (file === q && ++lines === 2) throw Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC", syscall: "write" });
+    return real(file, ...rest);
+  };
+  syncBuiltinESMExports();
+  t.after(() => { fs.appendFileSync = real; syncBuiltinESMExports(); });
+  const r = await fetch(`http://127.0.0.1:${port}/api/decline-all`, {
+    method: "POST", headers: { "content-type": "application/json", "x-seisin-token": token },
+    body: JSON.stringify({ keys, reason: "why" }),
+  });
+  assert.equal(r.status, 500);
+  assert.match((await r.json()).error, /1 already declined/);
+  assert.equal(pending(q).length, 1);
+});
+
+test("the console says when what was declined stays in the policy", async (t) => {
+  const { box, port, token } = await startConsole(t);
+  const q = join(box, ".seisin", "requests.jsonl");
+  record(q, { role: "frontend", action: "write", target: "src/web/owned.ts", owners: ["frontend"] });
+  record(q, { role: "frontend", action: "write", target: "src/web/deep/also.ts", owners: ["frontend"] });
+  const [first, second] = pending(q).filter((p) => p.grant.startsWith("src/web"));
+  const post = (route, body) => fetch(`http://127.0.0.1:${port}/api/${route}`, {
+    method: "POST", headers: { "content-type": "application/json", "x-seisin-token": token }, body: JSON.stringify(body),
+  });
+  assert.ok((await (await post("decide", { key: first.key, decision: "declined", reason: "why" })).json()).stillAllowed);
+  assert.equal((await (await post("decline-all", { keys: [second.key], reason: "why" })).json()).stillAllowed, 1);
 });
 
 test("decline all refuses exactly what the page showed, grants nothing, and asks for the token", async (t) => {
