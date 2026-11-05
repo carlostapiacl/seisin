@@ -32,9 +32,9 @@ import { decideHandoff, chainOf, isKeyRequest } from "./handoff.js";
 import { protectedBy } from "./surface.js";
 import { appendFileSync, chmodSync, closeSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tomlString } from "./layout.js";
-import { stateDir } from "./state.js";
+import { defaultStateDir, stateDir } from "./state.js";
 import { send } from "./spool.js";
 import { withLock, readEntries } from "./log.js";
 import { loadConfig, policyId } from "./config.js";
@@ -691,7 +691,10 @@ export function editPolicy(config, mutate, { waitMs = 10000, after = null } = {}
  * nothing confined can hold this one. withLock adds the `.lock`.
  */
 export function policyLockBase(config) {
-  const dir = stateDir(config.root);
+  // Beside the policy, whatever `--state-dir` this process was given: one policy
+  // read by many runs with a folder each is one file to edit, and a lock per
+  // folder let two grants read the same text and the second lose the first.
+  const dir = defaultStateDir(dirname(resolve(config.path)));
   mkdirSync(dir, { recursive: true });
   return join(dir, "policy");
 }

@@ -5,7 +5,7 @@
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { boxed, CLI, sandboxSkip } from "./_tmp.js";
 import { coveredBy, effectiveConfig, narrowingOf } from "../src/narrow.js";
@@ -13,6 +13,7 @@ import { expandVars, setVars } from "../src/vars.js";
 import { loadConfig } from "../src/config.js";
 import { sameAcrossRuns } from "../src/runs.js";
 import { setStateDir } from "../src/state.js";
+import { editPolicy, policyLockBase } from "../src/requests.js";
 
 const skip = sandboxSkip();
 const POLICY = `
@@ -298,6 +299,27 @@ test("a policy in a folder inside a worktree keeps its record beside it, and wri
   assert.equal(r.status, 0, r.stderr);
   assert.equal(existsSync(join(main, "sub")), false);
   assert.equal(existsSync(join(sub, ".seisin")), true);
+});
+
+/* ── one policy is one thing to lock ── */
+
+test("two grants on one policy take one lock, whatever state folder each was given", () => {
+  const dir = boxed("narrow-lock-");
+  const policy = join(dir, "seisin.toml");
+  writeFileSync(policy, '[roles.a]\nwrites = ["a/**"]\n[roles.b]\nwrites = ["b/**"]\n');
+  const mine = loadConfig(policy, undefined, { root: boxed("narrow-lock-a-") });
+  const other = loadConfig(policy, undefined, { root: boxed("narrow-lock-b-") });
+  setStateDir(boxed("narrow-lock-sa-"));
+  const a = policyLockBase(mine);
+  setStateDir(boxed("narrow-lock-sb-"));
+  const b = policyLockBase(other);
+  delete process.env.SEISIN_STATE_DIR;
+  assert.equal(a, b);
+  assert.equal(a, join(dir, ".seisin", "policy"));
+  writeFileSync(`${a}.lock`, `${process.pid} holder\n`);
+  assert.throws(() => editPolicy(other, (t) => ({ toml: t + "\n", changed: true }), { waitMs: 50 }), /lock|in progress|busy/i);
+  rmSync(`${a}.lock`);
+  assert.equal(readFileSync(policy, "utf8").endsWith("\n\n"), false, "nothing written while another edit held it");
 });
 
 /* ── the MCP server ── */

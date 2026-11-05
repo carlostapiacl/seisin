@@ -33,7 +33,7 @@ import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { writePathsOf, realOrSelf } from "./grants.js";
 import { CONFIG_NAME } from "./layout.js";
-import { stateDir } from "./state.js";
+import { defaultStateDir, stateDir } from "./state.js";
 
 /** seisin's own package: the code the next `seisin run` executes. */
 const SEISIN_HOME = realOrSelf(join(dirname(fileURLToPath(import.meta.url)), ".."));
@@ -272,6 +272,8 @@ function computeParentInputs(config, env) {
     // could plant a policy the operator then promotes in good faith.
     { path: policy + ".observed", why: "the policy", always: true },
     { path: stateDir(config.root), why: "seisin's log and request queue", always: true },
+    // The lock on the policy lives beside it (requests.js, policyLockBase).
+    { path: defaultStateDir(dirname(policy)), why: "seisin's lock on the policy", always: true },
     // A narrowed run holds under a file in the state directory, and the policy
     // it came from is still what the next run will read.
     ...(config.sourcePolicy ? [

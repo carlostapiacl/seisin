@@ -25,6 +25,9 @@ export function stateDir(root) {
   return override ?? join(homeOf(root), STATE_DIR);
 }
 
+/** Where a folder keeps seisin's files when nobody said otherwise. */
+export const defaultStateDir = (root) => join(homeOf(root), STATE_DIR);
+
 const homes = new Map();
 
 /** Where a root keeps its state: itself, or the main checkout when it is a worktree's root. */

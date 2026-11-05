@@ -22,6 +22,8 @@ changed rather than failing on the old spelling.
   log and its request queue to `.seisin/` in the main checkout, so what a role asked for in a worktree can
   be seen and granted from there, and is still there once the worktree is gone. `--state-dir` still wins.
   *What to do:* nothing. What an old worktree has in its own `.seisin/` stays there and is no longer read.
+- **Two grants on one policy take one lock.** The lock was kept in the state directory, so runs with a
+  `--state-dir` each could edit the same file at once and lose a grant. It now lives in `.seisin/` beside the policy.
 - **`seisin mcp --policy <file>` serves that policy.** The flag was ignored, and the server looked for a
   `seisin.toml` from the working directory up.
 - **`seisin review --runs <dir> --json`** gives a program what `seisin ui --runs` shows.
