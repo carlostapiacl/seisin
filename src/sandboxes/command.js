@@ -30,6 +30,7 @@
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join, delimiter, isAbsolute, basename } from "node:path";
+import { resolveExecutable, trustedPath } from "../surface.js";
 
 export const POLICY_PLACEHOLDER = "{policy}";
 
@@ -54,8 +55,8 @@ const withPolicy = (args, file) => args.map((a) => a.split(POLICY_PLACEHOLDER).j
  * way the role might expect (tartaros on Linux, a repo root it cannot let the
  * role create entries in) — for `seisin check` to show.
  */
-export function assessCheck(argv, file, label) {
-  const r = spawnSync(argv[0], withPolicy(argv.slice(1), file), { encoding: "utf8", timeout: CHECK_TIMEOUT_MS, stdio: ["ignore", "pipe", "pipe"] });
+export function assessCheck(argv, file, label, { env = undefined } = {}) {
+  const r = spawnSync(argv[0], withPolicy(argv.slice(1), file), { env, encoding: "utf8", timeout: CHECK_TIMEOUT_MS, stdio: ["ignore", "pipe", "pipe"] });
   // Its own name off the front: "mybox: no domains" reads twice after "mybox says".
   // stdout before stderr, so a report on stdout does not bury a refusal on stderr.
   const self = `${basename(argv[0])}:`;
@@ -73,12 +74,35 @@ export function assessCheck(argv, file, label) {
 }
 
 
-export function commandSandbox(name, command, check = null, { tagsDenials = false } = {}) {
-  const assess = (_settings, { file } = {}) => (check ? assessCheck(check, file, `its check (${check[0]})`) : { unmet: [], warnings: [] });
+/**
+ * With a policy to read, a declared sandbox is found the way a key provider is:
+ * where no role can write. Its command and its check run outside any sandbox,
+ * before the canary and whether or not it ends up chosen, so a program of that
+ * name in a folder on PATH that a role writes is passed over and never started.
+ */
+export function commandSandbox(name, command, check = null, { tagsDenials = false, config = null } = {}) {
+  const find = (cmd) => {
+    if (!config) return { bin: onPath(cmd) };
+    try {
+      const bin = resolveExecutable(cmd, config);
+      return { bin: existsSync(bin) ? bin : null };
+    } catch (e) {
+      return { bin: null, why: e.message.split("\n")[0] };
+    }
+  };
+  const assess = (_settings, { file } = {}) => {
+    if (!check) return { unmet: [], warnings: [] };
+    const found = find(check[0]);
+    if (config && !found.bin)
+      return { unmet: [`its check (${check[0]}) was not run: ${found.why ?? "not found"}`], warnings: [] };
+    const argv = config ? [found.bin, ...check.slice(1)] : check;
+    const env = config ? { ...process.env, PATH: trustedPath(config).join(delimiter) } : undefined;
+    return assessCheck(argv, file, `its check (${check[0]})`, { env });
+  };
   return {
     name,
-    locate: () => onPath(command[0]),
-    missing: () => `${command[0]} (the command of [sandbox.providers.${name}]) was not found${command[0].includes("/") ? "" : " on PATH"}.`,
+    locate: () => find(command[0]).bin,
+    missing: () => find(command[0]).why ?? `${command[0]} (the command of [sandbox.providers.${name}]) was not found${command[0].includes("/") ? "" : " on PATH"}.`,
     asksFile: Boolean(check),
     assess,
     unmet: (settings, ctx) => assess(settings, ctx).unmet,

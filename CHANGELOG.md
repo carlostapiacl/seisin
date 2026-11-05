@@ -24,6 +24,12 @@ changed rather than failing on the old spelling.
   *What to do:* nothing. What an old worktree has in its own `.seisin/` stays there and is no longer read.
 - **Two grants on one policy take one lock.** The lock was kept in the state directory, so runs with a
   `--state-dir` each could edit the same file at once and lose a grant. It now lives in `.seisin/` beside the policy.
+- **What the parent runs is found where no role can write, for sandboxes too.** A declared sandbox and its
+  `check`, and a built-in one looked up on PATH, now follow the rule key providers already had: a program
+  of that name in a folder a role writes is passed over and never started. Once a sandbox can hold the role,
+  the next ones are not asked. A file a provider's command names (`/bin/sh tools/read-key.sh`) is closed to
+  every role. *What to do:* if `check` now says a provider is only found where a role can write, install it
+  outside every territory or give its absolute path.
 - **`seisin mcp --policy <file>` serves that policy.** The flag was ignored, and the server looked for a
   `seisin.toml` from the working directory up.
 - **`seisin review --runs <dir> --json`** gives a program what `seisin ui --runs` shows.

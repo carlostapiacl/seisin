@@ -49,6 +49,11 @@ A provider is **a command with a placeholder**, on purpose: adding Vault or `sop
 lines of TOML and no code. The value arrives as `NETLIFY_TOKEN` (last segment, uppercased)
 or under a name you give it: `keys = ["NETLIFY_AUTH_TOKEN=keychain://netlify-token"]`.
 
+
+A provider runs outside the sandbox, as you. seisin finds its program where no role can write, and closes
+to every role the file its command names (`/bin/sh tools/read-key.sh {ref}`). What that program loads by
+itself (a Python import, a `source`) cannot be read off the line, so keep it outside every territory.
+
 #### `file://` ships with it, because a secret in a file is the common case
 
 ```toml

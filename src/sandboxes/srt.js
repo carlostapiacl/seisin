@@ -161,7 +161,7 @@ export function withMachPreload(bin, file, inner) {
 
 export const srt = {
   name: "srt",
-  locate: () => resolveSrt(),
+  locate: (options) => resolveSrt(options),
   missing: () => `sandbox-runtime (srt) not found: it is not installed with seisin since 0.7. ` +
     `Install it with: npm install -g ${RUNTIME}@${SRT_VERSION}`,
   unmet: () => [],

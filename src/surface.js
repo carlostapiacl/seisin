@@ -128,6 +128,20 @@ export function resolveExecutable(cmd, config, env = process.env) {
       : `"${cmd}" is not on PATH.`);
 }
 
+/**
+ * A built-in sandbox found on PATH, under the same rule as anything else the
+ * parent runs. `{ bin }` when it is where no role can write, `{ shadow }` when
+ * that is the only place it is. A sandbox installed with seisin is not looked
+ * up here: it is as trusted as the seisin running it.
+ */
+export function trustedOnPath(name, config, env = process.env) {
+  try {
+    return { bin: resolveExecutable(name, config, env) };
+  } catch (e) {
+    return /a role can write/.test(e.message) ? { shadow: e.message } : {};
+  }
+}
+
 /** The target of a `file://` key, as written and resolved against the policy. */
 function fileRefTargets(config) {
   const out = [];
@@ -257,6 +271,28 @@ export function parentInputs(config, { env = process.env } = {}) {
 }
 
 /**
+ * What a command the parent runs is made of, as far as its words say: the
+ * program, and any file it is told to run (`/bin/sh tools/read-key.sh {ref}`).
+ * A trusted interpreter handed a script a role can rewrite runs what the role
+ * wrote, so both are closed to every role. A word that is a flag or holds a
+ * placeholder is not a file. What the program goes on to load by itself (a
+ * Python import, a `source`) cannot be read off the line: docs/keys.md says so.
+ */
+function parentProgram(command, why, config, env, abs) {
+  if (!Array.isArray(command) || !command[0]) return [];
+  const out = [];
+  // A provider that does not resolve here is not denied here: the run that
+  // needs it fails at resolution, with the message resolveExecutable gives.
+  try { out.push({ path: resolveExecutable(command[0], config, env), why }); } catch {}
+  for (const word of command.slice(1)) {
+    if (typeof word !== "string" || word.startsWith("-") || word.includes("{")) continue;
+    const path = abs(word);
+    if (word.includes("/") || existsSync(path)) out.push({ path, why: `${why}: the file it is told to run` });
+  }
+  return out;
+}
+
+/**
  * `always` marks the three that are denied whatever the territory — the
  * policy, `.seisin/` and the key directories. It is a field, not a comparison
  * against the wording of `why`: that sentence is for people, and rewording it
@@ -282,14 +318,11 @@ function computeParentInputs(config, env) {
     ] : []),
     ...(config.keyDirs ?? []).map((d) => ({ path: abs(d), why: "a key directory", always: true })),
   ];
-  for (const [scheme, p] of Object.entries(config.keyProviders ?? {})) {
-    const cmd = p.command?.[0];
-    if (!cmd) continue;
-    let path;
-    // A provider that does not resolve here is not denied here: the run that
-    // needs it fails at resolution, with the message resolveExecutable gives.
-    try { path = resolveExecutable(cmd, config, env); } catch { continue; }
-    out.push({ path, why: `the ${scheme}:// key provider, run outside the sandbox` });
+  for (const [scheme, p] of Object.entries(config.keyProviders ?? {}))
+    out.push(...parentProgram(p.command, `the ${scheme}:// key provider, run outside the sandbox`, config, env, abs));
+  for (const [name, p] of Object.entries(config.sandbox?.providers ?? {})) {
+    out.push(...parentProgram(p.command, `the ${name} sandbox, run outside itself`, config, env, abs));
+    out.push(...parentProgram(p.check, `the check of the ${name} sandbox, run outside it`, config, env, abs));
   }
   for (const { path, raw } of fileRefTargets(config))
     out.push({ path, why: `read by the parent for key "${raw}"` });
