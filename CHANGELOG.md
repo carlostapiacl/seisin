@@ -8,8 +8,45 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
-## Unreleased
+## 0.8.0 — 2026-11-05
 
+- **A decision is recorded, or seisin says it was not.** `seisin grant` and `decline` and the console
+  reported success when the request queue could not be written: a decline left nothing behind, and a grant
+  stayed open beside a policy that already gave it. Now a queue that cannot take the line refuses the
+  decision before the policy changes, and if the line alone fails, the error says the policy changed and
+  that the same grant closes it. Exit 2 from the CLI, an error from the console. Declining something the
+  policy already gives now says the role keeps it, and granting what the role's writes already cover closes
+  the request without adding a line. *What to do:* nothing.
+- **One policy, a role per agent, and a run that narrows its role.** `seisin run <role> --only <glob>
+  --deny <glob>` takes away from what the role may write and can never add to it: an `--only` outside
+  the role is refused before anything starts. A role can leave a path or a port open as `$NAME` in
+  `reads`, `toolchain`, `local_ports`, `verify` and `[runtime] writes`, and the run gives it with
+  `--var NAME=value`. A launcher no longer has to generate a policy per run (docs/runs.md). The log says
+  what each run took away, and the policy it held under is kept in `.seisin/policies/`, named by the
+  hash on its log lines. A denial that only the run's narrowing caused goes to the log and not to the request
+  queue, because no grant can answer it. `--only` refuses to start when the repo sits in scratch every
+  role can write, because it could not hold there. *What to do:* nothing. A policy with a `$NAME` in one of those fields now reads
+  it as a variable.
+- **A worktree keeps its record in the main checkout.** A policy at the root of a git worktree writes its
+  log and its request queue to `.seisin/` in the main checkout, so what a role asked for in a worktree can
+  be seen and granted from there, and is still there once the worktree is gone. `--state-dir` still wins.
+  *What to do:* nothing. What an old worktree has in its own `.seisin/` stays there and is no longer read.
+- **Two grants on one policy take one lock.** The lock was kept in the state directory, so runs with a
+  `--state-dir` each could edit the same file at once and lose a grant. It now lives in `.seisin/` beside the policy.
+- **What the parent runs is found where no role can write, for sandboxes too.** A declared sandbox and its
+  `check`, and a built-in one looked up on PATH, now follow the rule key providers already had: a program
+  of that name in a folder a role writes is passed over and never started. Once a sandbox can hold the role,
+  the next ones are not asked. A file a provider's command names (`/bin/sh tools/read-key.sh`) is closed to
+  every role. *What to do:* if `check` now says a provider is only found where a role can write, install it
+  outside every territory or give its absolute path.
+- **A run with no evidence is no longer `clean`.** In `seisin ui --runs` and `review --runs --json`, a run with no
+  log, or no passed canary in its log, was listed as `clean`. It now reads `no-record`. *What to do:* a launcher that
+  filters on `outcome=clean` keeps seeing only runs whose canary passed.
+- **`seisin mcp --policy <file>` serves that policy.** The flag was ignored, and the server looked for a
+  `seisin.toml` from the working directory up.
+- **`seisin review --runs <dir> --json`** gives a program what `seisin ui --runs` shows.
+- **`seisin ui --runs` puts one wall on one line.** A path under the run's own folder read differently in
+  every run, so a denial in 364 runs showed as 364 rows, and now it reads `$RUN/home/…`.
 - **`handoff_exempt` opens the folder for the names packages ship.** `composer install` under a role
   with `handoff_exempt = ["vendor"]` failed with "Operation not permitted" on the `.envrc` that
   `fidry/cpu-core-counter` carries, because seisin's own `**/.envrc` pattern won over the exemption;

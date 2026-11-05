@@ -33,7 +33,7 @@ import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { writePathsOf, realOrSelf } from "./grants.js";
 import { CONFIG_NAME } from "./layout.js";
-import { stateDir } from "./state.js";
+import { defaultStateDir, stateDir } from "./state.js";
 
 /** seisin's own package: the code the next `seisin run` executes. */
 const SEISIN_HOME = realOrSelf(join(dirname(fileURLToPath(import.meta.url)), ".."));
@@ -126,6 +126,20 @@ export function resolveExecutable(cmd, config, env = process.env) {
         `  seisin runs it outside the sandbox, so it would run whatever a role last put ` +
         `there. Install it outside every territory, or give its absolute path.`
       : `"${cmd}" is not on PATH.`);
+}
+
+/**
+ * A built-in sandbox found on PATH, under the same rule as anything else the
+ * parent runs. `{ bin }` when it is where no role can write, `{ shadow }` when
+ * that is the only place it is. A sandbox installed with seisin is not looked
+ * up here: it is as trusted as the seisin running it.
+ */
+export function trustedOnPath(name, config, env = process.env) {
+  try {
+    return { bin: resolveExecutable(name, config, env) };
+  } catch (e) {
+    return /a role can write/.test(e.message) ? { shadow: e.message } : {};
+  }
 }
 
 /** The target of a `file://` key, as written and resolved against the policy. */
@@ -257,6 +271,28 @@ export function parentInputs(config, { env = process.env } = {}) {
 }
 
 /**
+ * What a command the parent runs is made of, as far as its words say: the
+ * program, and any file it is told to run (`/bin/sh tools/read-key.sh {ref}`).
+ * A trusted interpreter handed a script a role can rewrite runs what the role
+ * wrote, so both are closed to every role. A word that is a flag or holds a
+ * placeholder is not a file. What the program goes on to load by itself (a
+ * Python import, a `source`) cannot be read off the line: docs/keys.md says so.
+ */
+function parentProgram(command, why, config, env, abs) {
+  if (!Array.isArray(command) || !command[0]) return [];
+  const out = [];
+  // A provider that does not resolve here is not denied here: the run that
+  // needs it fails at resolution, with the message resolveExecutable gives.
+  try { out.push({ path: resolveExecutable(command[0], config, env), why }); } catch {}
+  for (const word of command.slice(1)) {
+    if (typeof word !== "string" || word.startsWith("-") || word.includes("{")) continue;
+    const path = abs(word);
+    if (word.includes("/") || existsSync(path)) out.push({ path, why: `${why}: the file it is told to run` });
+  }
+  return out;
+}
+
+/**
  * `always` marks the three that are denied whatever the territory — the
  * policy, `.seisin/` and the key directories. It is a field, not a comparison
  * against the wording of `why`: that sentence is for people, and rewording it
@@ -265,23 +301,36 @@ export function parentInputs(config, { env = process.env } = {}) {
 function computeParentInputs(config, env) {
   const abs = (p) => (isAbsolute(p) ? p : join(config.root, p));
   const policy = abs(config.path ?? CONFIG_NAME);
+  // A narrowed run's policy lives in the state directory, which is closed whole.
+  // Named again it is a deny inside a deny, and on Linux that opened the folder
+  // between them: measured in CI, a role created a file beside the policy it held
+  // under. What is inside a closed folder stays out of this list.
+  const state = stateDir(config.root);
+  const outside = (e) => !under(e.path, state) || e.path === state;
+  const source = abs(config.sourcePolicy ?? config.path ?? CONFIG_NAME);
   const out = [
     { path: policy, why: "the policy", always: true },
     // `seisin.toml.observed` is the proposal `init --from-observations` writes
     // for a person to diff and move onto the policy; a role that could write it
     // could plant a policy the operator then promotes in good faith.
     { path: policy + ".observed", why: "the policy", always: true },
-    { path: stateDir(config.root), why: "seisin's log and request queue", always: true },
+    { path: state, why: "seisin's log and request queue", always: true },
+    // The lock on the policy lives beside it (requests.js, policyLockBase), and
+    // for a narrowed run that means the policy it came from.
+    { path: defaultStateDir(dirname(source)), why: "seisin's lock on the policy", always: true },
+    // A narrowed run holds under a file in the state directory, and the policy
+    // it came from is still what the next run will read.
+    ...(config.sourcePolicy ? [
+      { path: abs(config.sourcePolicy), why: "the policy", always: true },
+      { path: abs(config.sourcePolicy) + ".observed", why: "the policy", always: true },
+    ] : []),
     ...(config.keyDirs ?? []).map((d) => ({ path: abs(d), why: "a key directory", always: true })),
   ];
-  for (const [scheme, p] of Object.entries(config.keyProviders ?? {})) {
-    const cmd = p.command?.[0];
-    if (!cmd) continue;
-    let path;
-    // A provider that does not resolve here is not denied here: the run that
-    // needs it fails at resolution, with the message resolveExecutable gives.
-    try { path = resolveExecutable(cmd, config, env); } catch { continue; }
-    out.push({ path, why: `the ${scheme}:// key provider, run outside the sandbox` });
+  for (const [scheme, p] of Object.entries(config.keyProviders ?? {}))
+    out.push(...parentProgram(p.command, `the ${scheme}:// key provider, run outside the sandbox`, config, env, abs));
+  for (const [name, p] of Object.entries(config.sandbox?.providers ?? {})) {
+    out.push(...parentProgram(p.command, `the ${name} sandbox, run outside itself`, config, env, abs));
+    out.push(...parentProgram(p.check, `the check of the ${name} sandbox, run outside it`, config, env, abs));
   }
   for (const { path, raw } of fileRefTargets(config))
     out.push({ path, why: `read by the parent for key "${raw}"` });
@@ -289,7 +338,7 @@ function computeParentInputs(config, env) {
   // Both spellings of every entry: the one written, and the one the kernel
   // meets when a symlink sits on the way. A deny on the written path alone let
   // writes through once already (never_writes, 2026-09-22).
-  return out.flatMap((e) => {
+  return out.filter(outside).flatMap((e) => {
     const real = realOrSelf(e.path);
     return real === e.path ? [e] : [e, { ...e, path: real }];
   });

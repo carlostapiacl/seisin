@@ -1203,7 +1203,8 @@
         var out = await r.json();
         if (!r.ok) { var err = new Error(out.error || "the console did not accept that"); err.status = r.status; throw err; }
         decided("Declined " + plural(out.declined, "request") + " · reason «" + esc(why.value.trim()) +
-                "», recorded in the request queue. The policy was not changed.");
+                "», recorded in the request queue. The policy was not changed." +
+                (out.stillAllowed ? " The policy already gives " + out.stillAllowed.toLocaleString() + " of them, and that stays." : ""));
         why.value = "";
         await reload();
       } catch (e) {
@@ -1299,7 +1300,8 @@
           '<a href="#configfile">see Config file' + (out.line ? ", line " + out.line.number : "") + "</a>");
       } else {
         decided("Declined <b>" + esc(out.role) + "</b>’s request for <code>" + esc(out.grant) + "</code> · reason «" + esc(why) +
-                "», recorded in the request queue. The policy was not changed.");
+                "», recorded in the request queue. The policy was not changed." +
+                (out.stillAllowed ? " <b>" + esc(out.role) + " keeps it:</b> " + esc(out.stillAllowed) : ""));
       }
       // Re-read rather than patch: the grant rewrote seisin.toml, so the
       // territory on screen is stale too, not just the queue.
@@ -1702,7 +1704,7 @@
     return bits.join(" · ");
   }
   function outcomeTag(o, dropped){
-    var says = { clean: "clean", denied: "denied", refused: "canary failed", unread: "policy unreadable" };
+    var says = { clean: "clean", denied: "denied", refused: "canary failed", unread: "policy unreadable", "no-record": "no record" };
     // A run whose system log dropped kernel messages: its walls may be missing some.
     var lost = dropped ? ' <span class="oc refused" title="the system log dropped ' + escA(String(dropped)) +
       ' batch(es) of kernel messages during this run: denials may be missing from its record">record incomplete</span>' : "";
@@ -1743,6 +1745,7 @@
     document.getElementById("rn-kpis").innerHTML =
       card("b", "runs", t.runs, (t.outcome.denied || 0) + " denied something · " + (t.outcome.clean || 0) + " clean") +
       card(t.outcome.refused ? "a" : "g", "canary failed", t.outcome.refused || 0, "runs that never started") +
+      (t.outcome["no-record"] ? card("a", "no record", t.outcome["no-record"], "runs with nothing that says the boundary held") : "") +
       (t.incomplete ? card("a", "record incomplete", t.incomplete, "runs whose system log dropped kernel messages") : "") +
       card(t.denied ? "a" : "g", "denied", t.denied, (k.file || 0).toLocaleString() + " files · " + (k.network || 0).toLocaleString() + " network") +
       card(t.retried ? "a" : "g", "spent retrying", t.retried, "calls after the first denial of the same thing");

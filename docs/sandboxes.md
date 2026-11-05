@@ -82,6 +82,10 @@ the kernel's denials under it are recorded and attributed exactly as under
 
 ## The contract for a sandbox of your own
 
+Your sandbox and its `check` run outside any sandbox, so they are found where no role can write: a program
+of that name only in a folder a role writes is passed over and never started. Once a sandbox can hold the
+role, the ones after it in `provider` are not asked.
+
 ```toml
 [sandbox]
 provider = "mybox"

@@ -114,7 +114,7 @@ export function tartarosSettings(settings, { machRegister = [], handoffExempt = 
 
 export const tartaros = {
   name: "tartaros",
-  locate: () => resolveTartaros(),
+  locate: (options) => resolveTartaros(options),
   missing: () => `tartaros not found: neither ${TARTAROS_PACKAGE}, which installs with seisin (it has no binary for ${process.platform}-${process.arch}), nor tartaros on PATH.`,
   // Its trust-handoff set holds the editors' folders (`.vscode`, `.idea`) at any
   // depth, whatever the settings say: a role given them cannot edit them here.

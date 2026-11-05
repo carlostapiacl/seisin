@@ -32,9 +32,9 @@ import { decideHandoff, chainOf, isKeyRequest } from "./handoff.js";
 import { protectedBy } from "./surface.js";
 import { appendFileSync, chmodSync, closeSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tomlString } from "./layout.js";
-import { stateDir } from "./state.js";
+import { defaultStateDir, stateDir } from "./state.js";
 import { send } from "./spool.js";
 import { withLock, readEntries } from "./log.js";
 import { loadConfig, policyId } from "./config.js";
@@ -208,9 +208,50 @@ export function record(file, { role, action, target, owners, chain = null }) {
  * folder the request is keyed by. The key stays the folder's, so the queue
  * needs to know: a later ask for a sibling is a new question, not this one
  * asked again (see reduce).
+ *
+ * Not `write`, whose rule is the agent's: never take a turn down over
+ * bookkeeping, so it drops a failure and hands the line to the spool when one is
+ * set. A decision is the opposite case. Dropped, the person read "declined"
+ * about something nothing recorded; through the spool it never lands at all,
+ * because the parent keeps only reads and writes (intake.js). This one throws.
  */
 export function settle(file, key, decision, reason = "", { only = null } = {}) {
-  return write(file, { kind: decision, key, reason, ...(only ? { only } : {}) });
+  mkdirSync(dirname(file), { recursive: true });
+  const at = new Date().toISOString();
+  const line = JSON.stringify({ at, kind: decision, key, reason, ...(only ? { only } : {}) }) + "\n";
+  // After a line a full disk cut short, on a line of its own: glued to the
+  // fragment it would not parse, and "run this grant again" would report a close
+  // the queue never sees. The fragment is skipped when read.
+  withLock(file, () => appendFileSync(file, (endsMidLine(file) ? "\n" : "") + line));
+  return true;
+}
+
+function endsMidLine(file) {
+  let fd;
+  try { fd = openSync(file, "r"); } catch (e) { if (e.code === "ENOENT") return false; throw e; }
+  try {
+    const { size } = fstatSync(fd);
+    if (!size) return false;
+    const last = Buffer.alloc(1);
+    readSync(fd, last, 0, 1, size - 1);
+    return last[0] !== 0x0a;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * Throws unless a decision could be written to the queue now. Asked before a
+ * grant changes the policy, so a queue that cannot take the line refuses the
+ * grant with nothing changed.
+ *
+ * The lock is released again. Held across the policy write, it would make every
+ * line a running agent files wait on that write, and `write` drops a line it
+ * waited too long for.
+ */
+export function checkQueue(file) {
+  mkdirSync(dirname(file), { recursive: true });
+  withLock(file, () => closeSync(openSync(file, "a")));
 }
 
 /**
@@ -691,7 +732,10 @@ export function editPolicy(config, mutate, { waitMs = 10000, after = null } = {}
  * nothing confined can hold this one. withLock adds the `.lock`.
  */
 export function policyLockBase(config) {
-  const dir = stateDir(config.root);
+  // Beside the policy, whatever `--state-dir` this process was given: one policy
+  // read by many runs with a folder each is one file to edit, and a lock per
+  // folder let two grants read the same text and the second lose the first.
+  const dir = defaultStateDir(dirname(resolve(config.path)));
   mkdirSync(dir, { recursive: true });
   return join(dir, "policy");
 }

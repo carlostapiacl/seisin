@@ -22,12 +22,13 @@
  * never ends up somewhere else without having said so.
  */
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { tmpdir } from "node:os";
 import { srt, SRT_PACKAGE, SRT_VERSION } from "./srt.js";
 import { machOf } from "../browsers.js";
 import { tartaros } from "./tartaros.js";
 import { commandSandbox } from "./command.js";
+import { trustedOnPath, trustedPath } from "../surface.js";
 
 export const BUILTIN_SANDBOXES = { srt, tartaros };
 export const DEFAULT_SANDBOX = "tartaros";
@@ -43,7 +44,30 @@ export const DEFAULT_PROVIDERS = [DEFAULT_SANDBOX, "srt"];
 /** The sandboxes the config names, in its order, as provider objects. */
 export function sandboxesOf(config) {
   const names = config.sandbox?.provider ?? DEFAULT_PROVIDERS;
-  return names.map((n) => BUILTIN_SANDBOXES[n] ?? commandSandbox(n, config.sandbox.providers[n].command, config.sandbox.providers[n].check, { tagsDenials: config.sandbox.providers[n].tagsDenials }));
+  return names.map((n) => (BUILTIN_SANDBOXES[n] ? builtin(BUILTIN_SANDBOXES[n], config) : declared(n, config)));
+}
+
+/**
+ * A built-in sandbox, looked for on the part of PATH no role can write. Without
+ * this a program called `tartaros` in a folder a role writes was found and run
+ * when the package was missing. The one installed with seisin comes first, and
+ * what it resolves to is not asked about: it is as trusted as seisin itself.
+ */
+function builtin(sandbox, config) {
+  const path = () => trustedPath(config).join(delimiter);
+  return {
+    ...sandbox,
+    locate: () => sandbox.locate({ path: path() }),
+    missing: () => {
+      const { shadow } = sandbox.locate({ path: path() }) ? {} : trustedOnPath(sandbox.name, config);
+      return shadow ?? sandbox.missing();
+    },
+  };
+}
+
+function declared(n, config) {
+  const p = config.sandbox.providers[n];
+  return commandSandbox(n, p.command, p.check, { tagsDenials: p.tagsDenials, config });
 }
 
 /**
@@ -72,8 +96,12 @@ export function weigh(config, settings, { platform = process.platform, role = nu
     return f;
   };
   try {
+    let settled = false;
     const options = list.map((sandbox) => {
       const bin = locate ? sandbox.locate() : "(not looked up)";
+      // One that can hold the role has been found: the rest are not asked. Each
+      // answer starts a program, for a run that will never use it.
+      if (settled) return { sandbox, bin, unmet: [], warnings: [], notAsked: true, missing: bin ? null : sandbox.missing() };
       const own = settingsOf(sandbox, settings, { machRegister: register, handoffExempt: exempt, requests });
       const asked = sandbox.asksFile && locate && bin;
       const ctx = { platform, role, bin, file: asked ? fileFor(own) : null };
@@ -108,7 +136,9 @@ export function weigh(config, settings, { platform = process.platform, role = nu
       const control = kept.length
         ? [`control_files (${kept.join(", ")}): ${sandbox.name} protects those files at any depth whatever the policy says, so the role could not edit them`]
         : [];
-      return { sandbox, bin, unmet: [...(masking ? [masking] : []), ...unmet, ...browser, ...exemption, ...ruled, ...control], warnings, missing: bin ? null : sandbox.missing() };
+      const option = { sandbox, bin, unmet: [...(masking ? [masking] : []), ...unmet, ...browser, ...exemption, ...ruled, ...control], warnings, missing: bin ? null : sandbox.missing() };
+      settled = Boolean(option.bin) && option.unmet.length === 0;
+      return option;
     });
     const chosen = options.find((o) => o.bin && o.unmet.length === 0) ?? null;
     return { chosen, options };

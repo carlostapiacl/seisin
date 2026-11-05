@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { entriesOf } from "../keys.js";
 import { resolveExecutable } from "../surface.js";
+import { ownersOf } from "../owners.js";
 
 /**
  * Would the parent find this command? The same lookup `run` makes
@@ -21,6 +22,19 @@ export function providerInTerritoryWarnings(config) {
   const warnings = [];
   // A provider the parent could not find where no role writes. `run` refuses
   // it with the same sentence; here it is found before anybody runs anything.
+  // A file a provider's command names is closed to every role (surface.js). What
+  // sits beside it is not, and a program can load that by itself.
+  for (const [scheme, p] of Object.entries(config.keyProviders ?? {}))
+    for (const word of (p.command ?? []).slice(1)) {
+      if (typeof word !== "string" || word.startsWith("-") || word.includes("{") || !word.includes("/")) continue;
+      const owners = ownersOf(config, word);
+      if (!owners.length) continue;
+      warnings.push({
+        kind: "provider-in-territory",
+        headline: `the ${scheme}:// provider runs ${word}, inside what ${owners.join(", ")} can write`,
+        detail: "That file is closed to them, but what it imports or sources is not, and it runs outside the sandbox. Move it outside every territory.",
+      });
+    }
   for (const [scheme, p] of Object.entries(config.keyProviders ?? {})) {
     const cmd = p.command?.[0];
     if (!cmd || cmd.includes("/")) continue;

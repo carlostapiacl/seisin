@@ -24,6 +24,10 @@ import { scratch, CLI } from "./_tmp.js";
 
 const haveGit = spawnSync("git", ["--version"]).status === 0;
 
+// The rm retries: on the Linux runner under Node 18 one cleanup hit ENOTEMPTY in
+// .git/worktrees/<name>, with every assertion passed. seisin starts no git and nothing
+// detached, so something outside it was still writing there.
+
 /* ── fixtures ─────────────────────────────────────────────────────────── */
 
 /** A temp directory with symlinks resolved, so paths compare the way git writes them. */
@@ -89,7 +93,7 @@ test("a .git directory is the canonical checkout, a .git file is a worktree of o
     assert.deepEqual(checkoutOf(join(b, "trees", "fix", "src", "a.ts")),
       { root: join(b, "trees", "fix"), canonical: join(b, "repo"), worktree: true });
   } finally {
-    rmSync(b, { recursive: true, force: true });
+    rmSync(b, { recursive: true, force: true, maxRetries: 5 });
   }
 });
 
@@ -101,7 +105,7 @@ test("the file asked about need not exist — it is usually the one that was ref
     assert.equal(c.root, join(b, "trees", "fix"));
     assert.equal(c.worktree, true);
   } finally {
-    rmSync(b, { recursive: true, force: true });
+    rmSync(b, { recursive: true, force: true, maxRetries: 5 });
   }
 });
 
@@ -113,7 +117,7 @@ test("a submodule's .git file is stepped over to the enclosing checkout", () => 
     writeFileSync(join(b, "trees", "fix", "lib", ".git"), "gitdir: ../.git/modules/lib\n");
     assert.equal(checkoutOf(join(b, "trees", "fix", "lib", "x.c")).root, join(b, "trees", "fix"));
   } finally {
-    rmSync(b, { recursive: true, force: true });
+    rmSync(b, { recursive: true, force: true, maxRetries: 5 });
   }
 });
 
@@ -127,7 +131,7 @@ test("the canonical side lists the worktrees it has registered", () => {
     assert.deepEqual(worktreesOf(join(b, "repo")).sort(), [join(b, "trees", "one"), join(b, "trees", "two")]);
     assert.deepEqual(worktreesOf(join(b, "nowhere")), []);
   } finally {
-    rmSync(b, { recursive: true, force: true });
+    rmSync(b, { recursive: true, force: true, maxRetries: 5 });
   }
 });
 
@@ -143,7 +147,7 @@ test("a registration whose worktree is gone, or points elsewhere, is not a workt
     writeFileSync(join(b, "trees", "reused", ".git"), `gitdir: ${join(b, "other", ".git", "worktrees", "reused")}\n`);
     assert.deepEqual(worktreesOf(join(b, "repo")), []);
   } finally {
-    rmSync(b, { recursive: true, force: true });
+    rmSync(b, { recursive: true, force: true, maxRetries: 5 });
   }
 });
 
@@ -169,7 +173,7 @@ test("a policy above both checkouts sees the twin from either side", () => {
     assert.equal(here.worktree, true);
     assert.deepEqual(twins.map((t) => [t.rel, t.worktree]), [["repo/src/a.ts", false]]);
   } finally {
-    rmSync(b, { recursive: true, force: true });
+    rmSync(b, { recursive: true, force: true, maxRetries: 5 });
   }
 });
 
@@ -183,7 +187,7 @@ test("the checkout the process is standing in is marked, and comes first", () =>
     assert.deepEqual(twins.map((t) => [t.rel, t.standing]),
       [["trees/two/src/a.ts", true], ["trees/one/src/a.ts", false]]);
   } finally {
-    rmSync(b, { recursive: true, force: true });
+    rmSync(b, { recursive: true, force: true, maxRetries: 5 });
   }
 });
 
@@ -194,7 +198,7 @@ test("a path with .. in it finds the same twin as its flat spelling", () => {
     const cfg = policy(b, ABOVE);
     assert.equal(twinsOf(cfg, "repo/src/../src/a.ts", b).twins[0].rel, "trees/fix/src/a.ts");
   } finally {
-    rmSync(b, { recursive: true, force: true });
+    rmSync(b, { recursive: true, force: true, maxRetries: 5 });
   }
 });
 
@@ -213,7 +217,7 @@ test("a worktree that carries its own policy is another policy's business", () =
     const inner = loadConfig(join(b, "trees", "fix", "seisin.toml"));
     assert.deepEqual(twinsOf(inner, "src/a.ts", join(b, "trees", "fix")).twins, []);
   } finally {
-    rmSync(b, { recursive: true, force: true });
+    rmSync(b, { recursive: true, force: true, maxRetries: 5 });
   }
 });
 
@@ -225,7 +229,7 @@ test("a worktree outside the policy root is not a twin — a process there would
     const cfg = policy(b, ABOVE);
     assert.deepEqual(twinsOf(cfg, "repo/src/a.ts", b).twins, []);
   } finally {
-    rmSync(b, { recursive: true, force: true });
+    rmSync(b, { recursive: true, force: true, maxRetries: 5 });
     rmSync(elsewhere, { recursive: true, force: true });
   }
 });
@@ -238,7 +242,7 @@ test("a path in no checkout at all has no twins", () => {
     const { twins } = twinsOf(cfg, "qa/report.md", b);
     assert.deepEqual(twins, []);
   } finally {
-    rmSync(b, { recursive: true, force: true });
+    rmSync(b, { recursive: true, force: true, maxRetries: 5 });
   }
 });
 
@@ -262,7 +266,7 @@ test("the sentence names the two places relative to the policy, and the root as 
     assert.equal(whereIs(atRoot, canonical, { root: wt.root, worktree: true, standing: false }),
       `this repo has a worktree at ${join(b, "trees", "fix")}`);
   } finally {
-    rmSync(b, { recursive: true, force: true });
+    rmSync(b, { recursive: true, force: true, maxRetries: 5 });
   }
 });
 
@@ -346,7 +350,7 @@ test("explain and whose say so from both checkouts, and change no verdict", { sk
     assert.equal(stale.status, 0);
     assert.ok(!stale.stdout.includes("worktree"), `stale registration named:\n${stale.stdout}`);
   } finally {
-    rmSync(b, { recursive: true, force: true });
+    rmSync(b, { recursive: true, force: true, maxRetries: 5 });
   }
 });
 
@@ -369,6 +373,6 @@ test("a repo that tracks its policy gives every worktree its own, and nothing is
       assert.ok(!w.stdout.includes("worktree"), `noise from ${cwd}:\n${w.stdout}`);
     }
   } finally {
-    rmSync(b, { recursive: true, force: true });
+    rmSync(b, { recursive: true, force: true, maxRetries: 5 });
   }
 });

@@ -16,7 +16,7 @@ import { readFileSync, existsSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
-import { decideRequest } from "./decide-request.js";
+import { decideRequest, policyNow, stillAllowed as stillAllowedBy } from "./decide-request.js";
 import { read, logPath, logSegments } from "./log.js";
 import { settingsFor } from "./srt-settings.js";
 import { describeHandoff } from "./handoff.js";
@@ -285,6 +285,7 @@ function decide(configPath, { key, decision, reason, scope = "folder" }) {
     // changed instead of "done". Null when nothing was written (a decline, or
     // a grant the policy already held).
     line: decision === "granted" && result?.changed ? grantLine(result.toml, req.grant) : null,
+    ...(result?.stillAllowed && { stillAllowed: result.stillAllowed }),
   };
 }
 
@@ -433,21 +434,32 @@ function declineAll(configPath, { keys, reason }) {
   const file = requestsPath(cfg.root);
   const wanted = new Set(keys.map(String));
   let declined = 0;
+  let stillAllowed = 0;
   try {
-    editPolicy(cfg, (before) => ({ toml: before, changed: false }), {
+    let now = cfg;
+    editPolicy(cfg, (before) => {
+      now = policyNow(cfg, before);
+      return { toml: before, changed: false };
+    }, {
       after: () => {
         for (const req of pending(file)) {
           if (!wanted.has(req.key)) continue;
           settle(file, req.key, "declined", reason);
           declined++;
+          if (stillAllowedBy(now, req)) stillAllowed++;
         }
       },
     });
   } catch (e) {
-    if (e.code === "ELOCKED") throw Object.assign(new Error("another grant is in progress — try again in a moment"), { status: 503 });
+    // Stopped partway, the ones already closed stay closed and the page says so.
+    const done = declined
+      ? ` ${declined} already declined${stillAllowed ? `, ${stillAllowed} of them still given by the policy` : ""}.`
+      : "";
+    if (e.code === "ELOCKED") throw Object.assign(new Error(`another grant is in progress — try again in a moment.${done}`), { status: 503 });
+    if (done) throw Object.assign(new Error(`${e.message}.${done}`), { status: statusOf(e) });
     throw e;
   }
-  return { ok: true, declined };
+  return { ok: true, declined, ...(stillAllowed && { stillAllowed }) };
 }
 
 /**

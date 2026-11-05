@@ -154,7 +154,15 @@ const TOOLS = [
 
 /* ── the tools ────────────────────────────────────────────────────────── */
 
+let given = null;
+
+/** `seisin mcp --policy <file>`: this policy, rooted at the working directory, whatever is around it. */
+export function usePolicy(path, root) {
+  given = { path, root };
+}
+
 function config() {
+  if (given) return loadConfig(given.path, undefined, { root: given.root });
   const path = findConfig();
   if (!path) throw new Error('no seisin.toml found. Run "seisin init" in the repo first.');
   return loadConfig(path);
