@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { loadConfig } from "../src/config.js";
 import { intake, policyId } from "../src/intake.js";
+import { effectiveConfig } from "../src/narrow.js";
 import { markStale, runsAfter, pending, requestsPath } from "../src/requests.js";
 import { scratch } from "./_tmp.js";
 
@@ -124,4 +125,22 @@ test("SEC-19 seisin.toml.observed is protected from every role", async () => {
   const { protectedBy } = await import("../src/surface.js");
   // dev writes ** — the .observed proposal a person promotes must still be denied.
   assert.ok(protectedBy(config, "seisin.toml.observed"), ".observed was writable");
+});
+
+test("what only the run's narrowing denied is logged and asks nobody", () => {
+  const { dir, config, lines, queue } = setup();
+  const held = effectiveConfig(config, "dev", { only: ["web/**"], deny: [] });
+  const take = intake({ config: held.config, role: "dev", runId: "r", settings, ceiling: config });
+  take.fromKernel({ action: "write", path: join(dir, "api", "x.ts"), operation: "file-write-create" });
+  take.fromHook("requests", { action: "write", target: "api/y.ts" });
+  assert.deepEqual(queue(), []);
+  assert.ok(lines().some((l) => l.target === "api/x.ts" && l.verdict === "denied"));
+});
+
+test("a narrowed run still asks for what its role does not have at all", () => {
+  const { dir, config, queue } = setup();
+  const held = effectiveConfig(config, "web", { only: ["web/a/**"], deny: [] });
+  const take = intake({ config: held.config, role: "web", runId: "r", settings, ceiling: config });
+  take.fromKernel({ action: "write", path: join(dir, "api", "x.ts"), operation: "file-write-create" });
+  assert.equal(queue().length, 1);
 });

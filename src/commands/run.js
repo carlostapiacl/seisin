@@ -147,6 +147,7 @@ export async function run(config, argv) {
   if (!config.roles[role]) throw unknownRole(config, role);
   // What this run takes away from its role, and the values its role left open.
   // From here on `config` is the policy the run holds under (narrow.js).
+  const ceiling = config;
   const held = effectiveConfig(config, role, { ...narrowingOf(mine), observe: mine.includes("--observe") });
   config = held.config;
   const agent = agentFor(mine, cmd);
@@ -277,7 +278,7 @@ export async function run(config, argv) {
   // The launcher's W3C trace, read from the parent's environment once: every line
   // this run writes carries it, so the log joins the launcher's trace (trace.js).
   const trace = traceFields(process.env);
-  const take = intake({ config, role, runId: theRun.id, label: runLabel, observe, settings, notify, chain: handed?.chain ?? null, expectDenied, trace });
+  const take = intake({ config, role, runId: theRun.id, label: runLabel, observe, settings, notify, chain: handed?.chain ?? null, expectDenied, trace, ceiling: held.narrowed ? ceiling : null });
   // The channel is a unix socket on macOS, and a socket path is capped. Past
   // the cap the listen dies on `EINVAL` and a path, which says nothing about
   // TMPDIR — the one thing that decides how long it is.

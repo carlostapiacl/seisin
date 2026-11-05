@@ -170,3 +170,14 @@ test("a decision after a line cut short lands on its own line, and closes the re
   assert.equal(out.code, 0, out.text);
   assert.deepEqual(pending(r.queue), []);
 });
+
+test("granting what the role's writes already cover closes it and adds no line", () => {
+  const r = repo();
+  const wide = '[roles.a]\nwrites = ["**"]\n';
+  writeFileSync(join(r.dir, "seisin.toml"), wide);
+  const out = seisin(r.dir, ["grant", "1", "--reason", "x"]);
+  assert.equal(out.code, 0, out.text);
+  assert.match(out.text, /already granted/);
+  assert.equal(r.toml(), wide);
+  assert.deepEqual(r.kinds(), ["asked", "granted"]);
+});

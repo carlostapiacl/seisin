@@ -15,14 +15,16 @@ changed rather than failing on the old spelling.
   stayed open beside a policy that already gave it. Now a queue that cannot take the line refuses the
   decision before the policy changes, and if the line alone fails, the error says the policy changed and
   that the same grant closes it. Exit 2 from the CLI, an error from the console. Declining something the
-  policy already gives now says the role keeps it. *What to do:* nothing.
+  policy already gives now says the role keeps it, and granting what the role's writes already cover closes
+  the request without adding a line. *What to do:* nothing.
 - **One policy, a role per agent, and a run that narrows its role.** `seisin run <role> --only <glob>
   --deny <glob>` takes away from what the role may write and can never add to it: an `--only` outside
   the role is refused before anything starts. A role can leave a path or a port open as `$NAME` in
   `reads`, `toolchain`, `local_ports`, `verify` and `[runtime] writes`, and the run gives it with
   `--var NAME=value`. A launcher no longer has to generate a policy per run (docs/runs.md). The log says
   what each run took away, and the policy it held under is kept in `.seisin/policies/`, named by the
-  hash on its log lines. *What to do:* nothing. A policy with a `$NAME` in one of those fields now reads
+  hash on its log lines. A denial that only the run's narrowing caused goes to the log and not to the request
+  queue, because no grant can answer it. *What to do:* nothing. A policy with a `$NAME` in one of those fields now reads
   it as a variable.
 - **A worktree keeps its record in the main checkout.** A policy at the root of a git worktree writes its
   log and its request queue to `.seisin/` in the main checkout, so what a role asked for in a worktree can

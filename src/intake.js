@@ -47,7 +47,7 @@ export { policyId };
  * (`seisin run --expect-denied`): taken from the parent's own argv, never from
  * anything the sandbox can reach. See expectedByCaller below.
  */
-export function intake({ config, role, runId, label = null, observe = false, settings, notify, chain = null, expectDenied = [], trace = {} }) {
+export function intake({ config, role, runId, label = null, observe = false, settings, notify, chain = null, expectDenied = [], trace = {}, ceiling = null }) {
   // `trace` is the launcher's (trace.js), read by the parent: in the stamp, so a
   // line the sandbox sends cannot claim another run's trace.
   // The name the rest of the run's lines carry (the launcher's --run-id when it gave one).
@@ -59,7 +59,15 @@ export function intake({ config, role, runId, label = null, observe = false, set
   const log = (entry) => append(logPath(config.root), { ...entry, ...stamp });
   // The chain is this run's (run.js, --handoff), the same for every request it
   // files; nothing the sandbox sends can set or change it.
-  const ask = (asked) => { record(requestsPath(config.root), { ...asked, chain }); notify?.maybe(asked); };
+  const ask = (asked) => {
+    // What only this run took away (`--only`, `--deny`) is no question for a
+    // person: the role already has it in the policy, so a grant would change
+    // nothing and the next run with the same narrowing would be refused again.
+    // The denial stays in the log; the launcher decides what a run may touch.
+    if (ceiling && asked.action === "write" && explain(ceiling, role, "write", asked.target).allowed) return;
+    record(requestsPath(config.root), { ...asked, chain });
+    notify?.maybe(asked);
+  };
 
   const scope = scopeOf(settings, config.root);
   const keyDirs = (config.keyDirs ?? []).map((d) => (d.startsWith("/") ? d : join(config.root, d)));

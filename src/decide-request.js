@@ -2,6 +2,7 @@
 import { loadConfig } from "./config.js";
 import { explain, keyHolders } from "./owners.js";
 import { isKeyRequest } from "./handoff.js";
+import { coveredBy } from "./narrow.js";
 import { editPolicy, requestsPath, asFileGrant, refuseIfBarred, applyGrant, checkQueue, settle } from "./requests.js";
 
 /**
@@ -40,6 +41,10 @@ export function decideRequest(config, { decision, reason, only = false, select, 
     }
     if (only) request = asFileGrant(request);
     refuseIfBarred(current, request);
+    // Nothing to write when the role's writes already cover it: the line would
+    // read as access given and open nothing. The request is answered all the same.
+    if (request.action === "write" && (current.roles[request.role]?.writes ?? []).some((w) => coveredBy(request.grant, w)))
+      return { toml: before, changed: false };
     const edited = applyGrant(before, request, reason);
     if (edited.changed) unrecorded(file, () => checkQueue(file), "Nothing changed.");
     return edited;

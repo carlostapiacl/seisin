@@ -172,6 +172,9 @@ with `event: "narrowed"` names the policy it came from, what it took away and wh
 by name. A folder with no `seisin.toml` or `seisin.json` of its own is read from there, so these runs need
 nothing else to appear in this console.
 
+A write refused only because of `--only` or `--deny` is in the log and not in the request queue: the role
+already has it in the policy, so no grant could answer it. What the role does not have at all is still asked.
+
 ## Links
 
 The console's link, as `seisin ui --runs` prints it:
