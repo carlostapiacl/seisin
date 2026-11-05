@@ -30,6 +30,9 @@ changed rather than failing on the old spelling.
   the next ones are not asked. A file a provider's command names (`/bin/sh tools/read-key.sh`) is closed to
   every role. *What to do:* if `check` now says a provider is only found where a role can write, install it
   outside every territory or give its absolute path.
+- **A run with no evidence is no longer `clean`.** In `seisin ui --runs` and `review --runs --json`, a run with no
+  log, or no passed canary in its log, was listed as `clean`. It now reads `no-record`. *What to do:* a launcher that
+  filters on `outcome=clean` keeps seeing only runs whose canary passed.
 - **`seisin mcp --policy <file>` serves that policy.** The flag was ignored, and the server looked for a
   `seisin.toml` from the working directory up.
 - **`seisin review --runs <dir> --json`** gives a program what `seisin ui --runs` shows.

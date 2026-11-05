@@ -114,8 +114,10 @@ function metaOf(dir, id) {
  * `outcome` is seisin's word, beside the launcher's `status`:
  *   refused — its canary failed, so nothing ran;
  *   denied  — it ran and was denied a file or a host;
- *   clean   — it ran and was denied neither (system denials, the OS's own
- *             housekeeping, and the canary's expected probes do not count);
+ *   clean   — its canary passed and it was denied neither (system denials, the
+ *             OS's own housekeeping, and the canary's expected probes do not count);
+ *   no-record — nothing says the boundary held: no log, or no passed canary in it.
+ *             Nothing denied in a log that is not there says nothing about the run;
  *   unread  — its policy could not be read.
  */
 function summarize(dir, id) {
@@ -173,7 +175,10 @@ function summarize(dir, id) {
   const dropped = all.filter((e) => e.event === "log-dropped").reduce((n, e) => n + (Number(e.batches) || 0), 0);
   const canaries = all.filter((e) => e.event === "canary");
   const canary = canaries.length ? canaries[canaries.length - 1] : null;
-  const outcome = canaries.some((e) => e.confined === false) ? "refused" : denied ? "denied" : "clean";
+  const outcome = canaries.some((e) => e.confined === false) ? "refused"
+    : denied ? "denied"
+    : canaries.some((e) => e.confined === true) ? "clean"
+    : "no-record";
   return {
     ...base,
     // A run.json that did not say when it started: the log's first line did.
@@ -190,7 +195,7 @@ function summarize(dir, id) {
     hosts,
     // Kept whole for the sum across runs, cut to RUN_CAUSES when sent.
     causes,
-    canary: canary ? { confined: canary.confined !== false, reasons: canary.reasons ?? [] } : null,
+    canary: canary ? { confined: canary.confined === true, reasons: canary.reasons ?? [] } : null,
     dropped,
   };
 }

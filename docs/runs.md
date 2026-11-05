@@ -70,7 +70,8 @@ Beside the launcher's `status`, each run gets seisin's own `outcome`:
 |---|---|
 | `refused` | its canary failed: the boundary did not hold, nothing ran |
 | `denied` | it ran, and was denied at least one file or host |
-| `clean` | it ran, and was denied neither. The OS's own housekeeping (`kind: "system"`) and the canary's expected probes do not count |
+| `clean` | its canary passed, and it was denied neither. The OS's own housekeeping (`kind: "system"`) and the canary's expected probes do not count |
+| `no-record` | nothing says the boundary held: no log, or no passed canary in it. It was not found clean, there is nothing to tell |
 
 A run whose system log dropped kernel messages (macOS, a flooded unified log) also says
 **record incomplete**: the boundary held, but some of its denials may be missing from the log.
@@ -81,8 +82,7 @@ A run whose system log dropped kernel messages (macOS, a flooded unified log) al
 - **No `run.json`**, or one that is not a JSON object: the run is listed under its folder's
   name, with no team, role, work item or status. Its start and end come from the first and
   last line of its log.
-- **`.seisin/` missing or empty**: the run is listed as `clean` with nothing denied. A log is
-  what says otherwise.
+- **`.seisin/` missing or empty**: the run is listed as `no-record`, with nothing denied.
 - **No `seisin.toml`**, or one that does not parse: the run is listed as `unread`, with the
   reason, and does not open.
 

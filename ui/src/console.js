@@ -1702,7 +1702,7 @@
     return bits.join(" · ");
   }
   function outcomeTag(o, dropped){
-    var says = { clean: "clean", denied: "denied", refused: "canary failed", unread: "policy unreadable" };
+    var says = { clean: "clean", denied: "denied", refused: "canary failed", unread: "policy unreadable", "no-record": "no record" };
     // A run whose system log dropped kernel messages: its walls may be missing some.
     var lost = dropped ? ' <span class="oc refused" title="the system log dropped ' + escA(String(dropped)) +
       ' batch(es) of kernel messages during this run: denials may be missing from its record">record incomplete</span>' : "";
@@ -1743,6 +1743,7 @@
     document.getElementById("rn-kpis").innerHTML =
       card("b", "runs", t.runs, (t.outcome.denied || 0) + " denied something · " + (t.outcome.clean || 0) + " clean") +
       card(t.outcome.refused ? "a" : "g", "canary failed", t.outcome.refused || 0, "runs that never started") +
+      (t.outcome["no-record"] ? card("a", "no record", t.outcome["no-record"], "runs with nothing that says the boundary held") : "") +
       (t.incomplete ? card("a", "record incomplete", t.incomplete, "runs whose system log dropped kernel messages") : "") +
       card(t.denied ? "a" : "g", "denied", t.denied, (k.file || 0).toLocaleString() + " files · " + (k.network || 0).toLocaleString() + " network") +
       card(t.retried ? "a" : "g", "spent retrying", t.retried, "calls after the first denial of the same thing");

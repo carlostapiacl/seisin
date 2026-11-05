@@ -73,6 +73,26 @@ async function console_(dir) {
   return { server, port, get };
 }
 
+test("clean takes a passed canary: nothing denied in a log with none says nothing", () => {
+  const dir = boxed("ui-runs-evidence-");
+  const denied = { role: "agent", source: "kernel", action: "write", kind: "file", target: "x", verdict: "denied" };
+  run(dir, "empty-log");
+  run(dir, "no-canary", { log: [{ role: "agent", source: "kernel", action: "write", kind: "file", target: "x", verdict: "allowed" }] });
+  run(dir, "odd-canary", { log: [{ event: "canary", role: "agent", run: "o" }] });
+  run(dir, "passed", { log: [{ event: "canary", role: "agent", run: "p", confined: true, reasons: [] }] });
+  run(dir, "failed", { log: [{ event: "canary", role: "agent", run: "f", confined: false, reasons: ["r"] }] });
+  run(dir, "denied-no-canary", { log: [denied] });
+  const v = runsView(dir);
+  const of = (id) => v.runs.find((r) => r.id === id);
+  for (const id of ["empty-log", "no-canary", "odd-canary"]) assert.equal(of(id).outcome, "no-record", id);
+  assert.equal(of("odd-canary").canary.confined, false, "a canary that does not say it passed did not");
+  assert.equal(of("passed").outcome, "clean");
+  assert.equal(of("failed").outcome, "refused");
+  assert.equal(of("denied-no-canary").outcome, "denied", "a denial is on the record whatever else is missing");
+  assert.equal(v.totals.outcome["no-record"], 3);
+  assert.deepEqual(runsView(dir, filtersOf("outcome=clean")).runs.map((r) => r.id), ["passed"]);
+});
+
 test("every run is listed, newest first, with what it was denied", () => {
   const v = runsView(threeRuns());
   assert.equal(v.total, 3);
@@ -113,7 +133,7 @@ test("a run without run.json is still listed, and one without a policy says so",
   assert.equal(bare.run_id, "bare", "the folder name stands for the run id");
   assert.equal(bare.outcome, "denied");
   assert.equal(v.runs.find((r) => r.id === "empty").outcome, "unread");
-  assert.equal(v.runs.find((r) => r.id === "no-log").outcome, "clean");
+  assert.equal(v.runs.find((r) => r.id === "no-log").outcome, "no-record");
   assert.equal(v.total, 6, "a file beside the runs is not a run");
 });
 
