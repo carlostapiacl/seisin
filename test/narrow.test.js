@@ -176,6 +176,9 @@ test("the role a run names is the one it gets: a planner writes nothing", { skip
 test("a role that may write everything cannot write the policy it came from, nor what the run holds under", { skip }, () => {
   const dir = boxed("narrow-self-");
   mkdirSync(join(dir, "src"));
+  // There already: on Linux a path has to exist to be closed, and Landlock cannot
+  // let a role create entries beside one that is.
+  for (const p of ["src/held.ts", "src/ok.ts"]) writeFileSync(join(dir, p), "");
   writeFileSync(join(dir, "seisin.toml"), '[runtime]\nwrites = []\n[roles.all]\nwrites = ["**"]\n');
   const r = seisin(["run", "all", "--deny", "src/held.ts", "--var", "A=/x", "--agent", "none", "--", "/bin/sh", "-c",
     [OUT("seisin.toml"), OUT(".seisin/policies/x.json"), OUT("src/ok.ts")].join("; ")], dir);
