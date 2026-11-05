@@ -9,6 +9,7 @@ import { CONFIG_NAME } from "./layout.js";
 import { parseKey, MODES, checkNames, BUILTIN, unknownMode } from "./keys.js";
 import { readNotify } from "./notify-config.js";
 import { FORBIDDEN, dict, isTable, own, LINES, parseToml } from "./toml.js";
+import { expandVars } from "./vars.js";
 
 export { own, parseToml, closesArray, stripComment } from "./toml.js";
 import {
@@ -130,6 +131,9 @@ export function loadConfig(path, text = readFileSync(path, "utf8"), { root = nul
   // previews a policy that does not exist on disk yet, against the real root.
   const parsed = String(path).endsWith(".json") ? parseJsonPolicy(text, path) : parseToml(text);
   checkShape(parsed, SHAPE, "", path, LINES.get(parsed));
+  // `--var`: what a role names and this process was given. What nobody gave is
+  // left out here, and `check` says so; `seisin run` refuses it (narrow.js).
+  const unbound = expandVars(parsed);
   // Read only what the file actually declared. The parser refuses the names
   // that make inheritance possible, and this is the second half of the same
   // rule: if one of them ever gets through, a role still cannot pick up a
@@ -208,7 +212,7 @@ export function loadConfig(path, text = readFileSync(path, "utf8"), { root = nul
     // The root is the policy's folder, unless the policy was read from elsewhere
     // (`--policy`): then it is the folder the command runs in, and the policy
     // stays outside the repo it governs.
-    root: root ? resolve(root) : dirname(path), path, keyDirs, keyProviders,
+    root: root ? resolve(root) : dirname(path), path, keyDirs, keyProviders, unbound,
     // Through asArray like every other list: `allow = "github.com"` was kept as
     // a string, and a string iterated is its characters.
     allowedDomains: asArray(own(own(parsed, "network"), "allow"), "network.allow"),

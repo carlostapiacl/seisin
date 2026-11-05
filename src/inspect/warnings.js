@@ -15,6 +15,12 @@ export function warningsFor(config, roles, shared = sharedPaths(config, roles), 
   const warnings = [];
 
   warnings.push(...enforceWarnings(config, roles));
+  if (config.unbound?.length)
+    warnings.push({
+      kind: "unbound-var",
+      headline: `no value for ${[...new Set(config.unbound.map((u) => `$${u.name}`))].join(" ")} here: left out of what this shows`,
+      detail: "A run gives them with --var NAME=value, and does not start without them.",
+    });
   warnings.push(...roleKeyWarnings(roles, config));
 
   warnings.push(...providerInTerritoryWarnings(config));

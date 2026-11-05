@@ -187,6 +187,10 @@ export function renderEntry(e) {
     const why = e.reasons?.length ? `  ${C.dim}${e.reasons.join("; ")}${C.off}` : "";
     return `  ${C.dim}${(e.at ?? "").slice(11, 19)}${C.off}  ${mark}  ${C.b}${e.role}${C.off}${why}\n`;
   }
+  if (e.event === "narrowed") {
+    const what = [...(e.only ?? []).map((g) => `only ${g}`), ...(e.deny ?? []).map((g) => `not ${g}`)].map(safe).join(", ");
+    return `  ${C.dim}${(e.at ?? "").slice(11, 19)}${C.off}  ${C.dim}narrowed${C.off}  ${C.b}${e.role}${C.off} ${C.dim}${what || "as written"}${C.off}\n`;
+  }
   if (e.event === "log-dropped") {
     const mark = `${C.yellow}log dropped${C.off}`;
     return `  ${C.dim}${(e.at ?? "").slice(11, 19)}${C.off}  ${mark}  ${C.b}${e.role}${C.off} ${C.dim}${e.batches} batch(es) of system log messages lost — kernel denials may be missing${C.off}\n`;

@@ -125,6 +125,52 @@ seisin run agent --policy <dir>/<run_id>/seisin.json --state-dir <dir>/<run_id>/
 `--policy` and `--state-dir` work with any command (`seisin whose`, `seisin walls`…), the same
 way.
 
+## One policy for every run: `--only`, `--deny`, `--var`
+
+Most of what a launcher writes per run is the same every time. Measured on a pilot over 275 runs: four
+of its five kinds of agent never wrote anything, and what changed between runs of the fifth was which
+folders that task could write and which tests it could not touch. So a launcher can keep one policy with
+a role per kind of agent, and say the rest on the line:
+
+```toml
+[runtime]
+read = "territory"
+isolate = "credentials"
+writes = ["$RUN/home", "$RUN/tmp"]
+
+[roles.planner]
+writes = []
+reads = ["$RUN/config", "$AGENT_BIN"]
+local_ports = ["$MCP_PORT"]
+
+[roles.executor]
+writes = ["**"]
+reads = ["$RUN/config", "$AGENT_BIN"]
+local_ports = ["$MCP_PORT"]
+```
+
+```bash
+cd <worktree>
+seisin run executor --policy <dir>/seisin.toml --state-dir <dir>/runs/<run_id>/.seisin --run-id <run_id> \
+  --var RUN=<run folder> --var AGENT_BIN=<agent's folder> --var MCP_PORT=8769 \
+  --only "src/api/**" --deny "src/api/held.test.ts" -- claude -p "…"
+```
+
+- **`--only <glob>`** is all this run may write. Each one has to be inside what the role may write, or the
+  run does not start. It is worked out only when the answer is certain: the same text, `**`, or a subtree
+  that holds it. Under a ceiling with a wildcard in the middle, name the same glob or widen the ceiling.
+- **`--deny <glob>`** is added to the role's `never_writes` for this run.
+- **`--var NAME=value`** fills `$NAME` in `reads`, `toolchain`, `local_ports`, `verify` and `[runtime]
+  writes`. Nowhere else: a variable cannot name a territory, a host, a key, or anything seisin executes.
+  A run with a value missing for its role does not start. `check`, `explain` and the MCP server have no run
+  to ask, so they leave that entry out, and `check` says which.
+
+The role in the file is the most a run can have, and that is what a person reviews. What a run held under
+is written to `<state-dir>/policies/<hash>.json`, and `<hash>` is the `policy` on its log lines. A line
+with `event: "narrowed"` names the policy it came from, what it took away and which variables it was given,
+by name. A folder with no `seisin.toml` or `seisin.json` of its own is read from there, so these runs need
+nothing else to appear in this console.
+
 ## Links
 
 The console's link, as `seisin ui --runs` prints it:

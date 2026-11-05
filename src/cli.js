@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 import { findConfig, loadConfig } from "./config.js";
 import { CONFIG_NAME } from "./layout.js";
 import { setStateDir } from "./state.js";
+import { setVars } from "./vars.js";
 import { C, out, err } from "./render.js";
 import { COMMAND_HELP, flagsOf, renderHelp, renderLimits } from "./help.js";
 import { nearest, checkFlags } from "./suggest.js";
@@ -52,7 +53,7 @@ function ownEnd() {
   if (split !== -1) return split;
   if (command !== "run") return argv.length;
   let i = 1;
-  const values = new Set([...(flagsOf("run")?.values ?? []), "--policy", "--state-dir"]);
+  const values = new Set([...(flagsOf("run")?.values ?? []), "--policy", "--state-dir", "--var"]);
   while (i < argv.length && argv[i].startsWith("-")) i += values.has(argv[i]) ? 2 : 1;
   return i;
 }
@@ -70,6 +71,15 @@ function takeGlobal(name) {
 const policyFlag = takeGlobal("--policy");
 const stateFlag = takeGlobal("--state-dir");
 if (stateFlag) setStateDir(stateFlag);
+{
+  // `--var NAME=value`, as many as it takes (vars.js).
+  const given = [];
+  for (let v = takeGlobal("--var"); v !== null; v = takeGlobal("--var")) given.push(v);
+  try { setVars(given); } catch (e) {
+    err(`${C.red}seisin:${C.off} ${e.message}\n`);
+    process.exit(2);
+  }
+}
 const rootFlag = policyFlag ? process.cwd() : null;
 if (policyFlag) {
   process.env.SEISIN_ROOT = rootFlag;
@@ -102,7 +112,8 @@ ${C.b}seisin${C.off}: give each agent its own folders and its own keys
 seisin <command> --help lists a command's flags, examples and exit codes.
 Any command takes --policy <file> (the policy, rooted at the working directory) and
 --state-dir <dir> (where the log and the request queue go) for a launcher that keeps
-both outside the repo (docs/runs.md).
+both outside the repo (docs/runs.md), and --var NAME=value for a path or port a role
+leaves open as $NAME.
 seisin help limits says what seisin cannot do, in any repo.
 
 Enforcement comes from the sandbox (tartaros by default, or sandbox-runtime), which asks the OS.
@@ -153,7 +164,14 @@ const COMMANDS = {
   ui: async () => (await import("./commands/ui.js")).ui(argv.includes("--link") || argv.includes("--runs") ? maybeConfig() : config(), argv),
   whose: async () => void (await import("./commands/whose.js")).whose(config(), argv),
   wire: async () => void (await import("./commands/wire.js")).wire(config()),
-  review: async () => ((await import("./commands/review.js")).reviewCommand(config(), argv).friction.length ? 1 : 0),
+  review: async () => {
+    const runs = argv.indexOf("--runs");
+    if (runs === -1) return (await import("./commands/review.js")).reviewCommand(config(), argv).friction.length ? 1 : 0;
+    const dir = argv[runs + 1];
+    if (!dir || !argv.includes("--json")) throw new Error("usage: seisin review --runs <dir> --json");
+    out(JSON.stringify((await import("./runs.js")).runsView(resolve(dir)), null, 2) + "\n");
+    return 0;
+  },
   walls: async () => ((await import("./commands/walls.js")).wallsCommand(config(), argv).some((w) => !w.expected) ? 1 : 0),
   requests: async () => ((await import("./commands/requests.js")).requests(config(), argv).length ? 1 : 0),
   grant: async () => void (await import("./commands/requests.js")).grant(config(), argv),
@@ -165,7 +183,9 @@ const COMMANDS = {
    */
   decline: async () => void (await import("./commands/requests.js")).decline(config(), argv),
   mcp: async () => {
-    await (await import("./mcp.js")).serveMcp(version());
+    const server = await import("./mcp.js");
+    if (policyFlag) server.usePolicy(resolve(policyFlag), rootFlag);
+    await server.serveMcp(version());
     return 0;
   },
   // Always 0. Claude Code reads a non-zero exit from a PreToolUse hook as

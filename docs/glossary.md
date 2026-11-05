@@ -386,6 +386,9 @@ ours is decided by ownership, not by the model.
 role that is a pipeline phase, not a worker. What it owns goes to another owner, or to a person
 (`no-receiver`).
 
+**narrowed**: a run that takes away from its role with `--only` or `--deny`. It can never add to it. A
+line with `event: "narrowed"` in the log says what it took away. *Where:* `seisin run`, `seisin log`, docs/runs.md.
+
 **`handoff_exempt`**: a role key: folders of the repo where the trust-handoff set is not
 protected, for a setup phase that fills a dependency tree whose packages ship their own `.git/`,
 `.github/` or `.gitattributes` (`handoff_exempt = ["vendor", "node_modules"]`). Relative, no `..`,

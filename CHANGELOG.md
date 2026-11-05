@@ -10,6 +10,23 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+- **One policy, a role per agent, and a run that narrows its role.** `seisin run <role> --only <glob>
+  --deny <glob>` takes away from what the role may write and can never add to it: an `--only` outside
+  the role is refused before anything starts. A role can leave a path or a port open as `$NAME` in
+  `reads`, `toolchain`, `local_ports`, `verify` and `[runtime] writes`, and the run gives it with
+  `--var NAME=value`. A launcher no longer has to generate a policy per run (docs/runs.md). The log says
+  what each run took away, and the policy it held under is kept in `.seisin/policies/`, named by the
+  hash on its log lines. *What to do:* nothing. A policy with a `$NAME` in one of those fields now reads
+  it as a variable.
+- **A worktree keeps its record in the main checkout.** A policy at the root of a git worktree writes its
+  log and its request queue to `.seisin/` in the main checkout, so what a role asked for in a worktree can
+  be seen and granted from there, and is still there once the worktree is gone. `--state-dir` still wins.
+  *What to do:* nothing. What an old worktree has in its own `.seisin/` stays there and is no longer read.
+- **`seisin mcp --policy <file>` serves that policy.** The flag was ignored, and the server looked for a
+  `seisin.toml` from the working directory up.
+- **`seisin review --runs <dir> --json`** gives a program what `seisin ui --runs` shows.
+- **`seisin ui --runs` puts one wall on one line.** A path under the run's own folder read differently in
+  every run, so a denial in 364 runs showed as 364 rows, and now it reads `$RUN/home/…`.
 - **`handoff_exempt` opens the folder for the names packages ship.** `composer install` under a role
   with `handoff_exempt = ["vendor"]` failed with "Operation not permitted" on the `.envrc` that
   `fidry/cpu-core-counter` carries, because seisin's own `**/.envrc` pattern won over the exemption;

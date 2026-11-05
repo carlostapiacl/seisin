@@ -65,7 +65,17 @@ export function runFolders(dir) {
 export function runPolicy(dir, id) {
   const toml = join(dir, id, "seisin.toml");
   const json = join(dir, id, "seisin.json");
-  return existsSync(toml) || !existsSync(json) ? toml : json;
+  if (existsSync(toml)) return toml;
+  if (existsSync(json)) return json;
+  // A run that was narrowed from one policy keeps what it held under in its
+  // state directory, named by its hash (narrow.js). The newest is the last it ran.
+  const held = join(dir, id, STATE_DIR, "policies");
+  try {
+    const files = readdirSync(held).filter((f) => f.endsWith(".json"))
+      .map((f) => ({ f, at: statSync(join(held, f)).mtimeMs })).sort((a, b) => b.at - a.at);
+    if (files.length) return join(held, files[0].f);
+  } catch {}
+  return toml;
 }
 
 /**
@@ -124,7 +134,7 @@ function summarize(dir, id) {
     meta: meta !== null,
   };
   let cfg;
-  try { cfg = loadConfig(runPolicy(dir, id)); }
+  try { cfg = loadConfig(runPolicy(dir, id), undefined, { root: join(dir, id) }); }
   catch (e) {
     return { ...base, outcome: "unread", error: e.code === "ENOENT" ? "no seisin.toml (or seisin.json) in this run's folder" : e.message,
       roles: [], denied: 0, byKind: {}, expected: 0, retried: 0, causes: [], hosts: [], entries: 0, canary: null, dropped: 0 };
@@ -240,6 +250,18 @@ function facetsOf(runs) {
 }
 
 /**
+ * A path under the run's own folder, in the form every run shares: a launcher
+ * gives each run a home named after it, so one wall in 364 runs read as 364
+ * different paths, and none of them came near the top of the list.
+ */
+export function sameAcrossRuns(target, id) {
+  const mark = `/${id}`;
+  const at = String(target).indexOf(mark + "/");
+  if (at !== -1) return `$RUN${target.slice(at + mark.length)}`;
+  return String(target).endsWith(mark) ? "$RUN" : target;
+}
+
+/**
  * The same refusal across runs is one cause: summed by what was refused, with
  * how many runs hit it and which teams and roles they were.
  */
@@ -247,8 +269,9 @@ function causesAcross(runs) {
   const by = new Map();
   for (const r of runs) {
     for (const c of r.causes) {
-      const k = `${c.action}\u0000${c.target}`;
-      const g = by.get(k) ?? { action: c.action, target: c.target, about: c.about, owners: c.owners, times: 0, runs: 0, teams: new Set(), roles: new Set(), last: null };
+      const target = sameAcrossRuns(c.target, r.id);
+      const k = `${c.action}\u0000${target}`;
+      const g = by.get(k) ?? { action: c.action, target, about: c.about, owners: c.owners, times: 0, runs: 0, teams: new Set(), roles: new Set(), last: null };
       g.times += c.times;
       g.runs++;
       if (r.team) g.teams.add(r.team);

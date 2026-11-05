@@ -12,8 +12,8 @@ import { LIMITS } from "./inspect/limits.js";
 
 export const COMMAND_HELP = {
   run: {
-    usage: ["seisin run <role> [--observe] [--debug-env] [--agent <name>] [--handoff <id>] [--expect-denied <path>]... [--run-id <id>] -- <command...>"],
-    values: ["--agent", "--handoff", "--expect-denied", "--run-id"],
+    usage: ["seisin run <role> [--observe] [--debug-env] [--agent <name>] [--handoff <id>] [--expect-denied <path>]... [--run-id <id>] [--only <glob>]... [--deny <glob>]... -- <command...>"],
+    values: ["--agent", "--handoff", "--expect-denied", "--run-id", "--only", "--deny"],
     flags: [
       ["--observe", "open the repo for this run and record what the agent writes; keys and network stay shut"],
       ["--debug-env", "print the environment variables the role does not get"],
@@ -21,9 +21,11 @@ export const COMMAND_HELP = {
       ["--handoff <id>", "this run takes a pending request handed to this role, and starts only if the policy routes that request here. Its own requests join the handoff chain"],
       ["--expect-denied <path>", "a path the caller will probe and expects to be denied (its own canary). That exact path is logged as expected and files no request; repeatable. Any other path is asked as usual"],
       ["--run-id <id>", "the launcher's own id for this run, used in the log instead of a random one, so an orchestrator's records and seisin's join on it"],
+      ["--only <glob>", "this run writes only here; repeatable. Each one has to be inside what the role may write: a run takes away from its role, never adds"],
+      ["--deny <glob>", "this run may not write here, on top of the role's never_writes; repeatable"],
     ],
     notes: ["Everything after -- is the command's own, flags included: `-- claude --settings x.json` goes to claude."],
-    examples: ['seisin run frontend -- claude', 'seisin run backend --observe -- claude -p "…"'],
+    examples: ['seisin run frontend -- claude', 'seisin run backend --observe -- claude -p "…"', 'seisin run executor --only "src/api/**" --deny "src/api/held.test.ts" -- claude'],
     exits: [["n", "the command's own exit status"], ["127", "the command is not on the role's PATH"],
       ["86", "the canary proved the generated boundary does not hold; the command was not started"],
       ["128+n", "killed by signal n (130 for ctrl-c)"], ["2", "seisin could not start it (usage, policy, runtime)"]],
@@ -59,9 +61,10 @@ export const COMMAND_HELP = {
     exits: [["0", "no certain credential outside the key dirs"], ["1", "at least one certain credential"], ["2", "usage error"]],
   },
   review: {
-    usage: ["seisin review [--all] [--min <n>] [--since <date|duration>]"],
-    values: ["--min", "--since"],
-    flags: [["--all", "every row, not the first ten per section"], ["--min <n>", "denials before a place counts as repeated (default 3)"],
+    usage: ["seisin review [--all] [--min <n>] [--since <date|duration>]", "seisin review --runs <dir> --json"],
+    values: ["--min", "--since", "--runs"],
+    flags: [["--runs <dir>", "every run in a directory of runs (docs/runs.md), summed, for a program: what `seisin ui --runs` shows"], ["--json", "with --runs, the only form it has"],
+      ["--all", "every row, not the first ten per section"], ["--min <n>", "denials before a place counts as repeated (default 3)"],
       ["--since <when>", "only what was recorded since a date (2026-10-01) or a duration back from now (7d, 12h, 2w)"]],
     examples: ["seisin review", "seisin review --since 7d", "seisin review --min 5 --all"],
     exits: [["0", "no role denied repeatedly"], ["1", "a role was denied repeatedly"], ["2", "usage error"]],

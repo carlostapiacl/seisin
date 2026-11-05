@@ -272,6 +272,12 @@ function computeParentInputs(config, env) {
     // could plant a policy the operator then promotes in good faith.
     { path: policy + ".observed", why: "the policy", always: true },
     { path: stateDir(config.root), why: "seisin's log and request queue", always: true },
+    // A narrowed run holds under a file in the state directory, and the policy
+    // it came from is still what the next run will read.
+    ...(config.sourcePolicy ? [
+      { path: abs(config.sourcePolicy), why: "the policy", always: true },
+      { path: abs(config.sourcePolicy) + ".observed", why: "the policy", always: true },
+    ] : []),
     ...(config.keyDirs ?? []).map((d) => ({ path: abs(d), why: "a key directory", always: true })),
   ];
   for (const [scheme, p] of Object.entries(config.keyProviders ?? {})) {

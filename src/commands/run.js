@@ -38,6 +38,8 @@ import { flagsOf } from "../help.js";
 import { WILD } from "../paths.js";
 import { chooseSandbox, settingsOf, DEFAULT_SANDBOX } from "../sandboxes/index.js";
 import { machOf } from "../browsers.js";
+import { effectiveConfig, narrowingOf } from "../narrow.js";
+import { policyId } from "../config.js";
 import { MACH_FILE } from "../sandboxes/mach-profile.js";
 
 
@@ -143,6 +145,10 @@ export async function run(config, argv) {
   }
   if (!role || cmd.length === 0) throw new Error("usage: seisin run <role> -- <command...>");
   if (!config.roles[role]) throw unknownRole(config, role);
+  // What this run takes away from its role, and the values its role left open.
+  // From here on `config` is the policy the run holds under (narrow.js).
+  const held = effectiveConfig(config, role, { ...narrowingOf(mine), observe: mine.includes("--observe") });
+  config = held.config;
   const agent = agentFor(mine, cmd);
 
   /**
@@ -437,6 +443,7 @@ export async function run(config, argv) {
     event: "canary", role, run: runLabel, ...trace, agent: agent ?? null, confined: true, reasons: [],
     sandbox: sandbox.name,
   });
+  if (held.narrowed) append(logPath(config.root), { event: "narrowed", role, run: runLabel, ...trace, policy: policyId(config), ...held.narrowed });
   // Said once, only when it is not the default: which sandbox holds this run
   // is a fact a reader of the terminal would otherwise have to guess.
   if (sandbox.name !== DEFAULT_SANDBOX) err(`${C.dim}seisin: ${role} runs under ${sandbox.name}${C.off}\n`);

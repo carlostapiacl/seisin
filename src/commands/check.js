@@ -23,7 +23,7 @@ import { channelName } from "../spool.js";
  */
 export const CAPABILITIES = [
   "policy-flag", "state-dir", "run-id", "expect-denied", "agent-flag", "handoff", "handoff-false",
-  "browsers", "local-ports", "key-mode-inject", "check-json", "ui-runs",
+  "browsers", "local-ports", "key-mode-inject", "check-json", "ui-runs", "narrow", "vars",
 ];
 
 export async function check(config, argv = []) {
