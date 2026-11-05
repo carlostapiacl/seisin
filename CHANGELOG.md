@@ -8,7 +8,7 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
-## Unreleased
+## 0.8.0 — 2026-11-05
 
 - **A decision is recorded, or seisin says it was not.** `seisin grant` and `decline` and the console
   reported success when the request queue could not be written: a decline left nothing behind, and a grant
@@ -24,8 +24,8 @@ changed rather than failing on the old spelling.
   `--var NAME=value`. A launcher no longer has to generate a policy per run (docs/runs.md). The log says
   what each run took away, and the policy it held under is kept in `.seisin/policies/`, named by the
   hash on its log lines. A denial that only the run's narrowing caused goes to the log and not to the request
-  queue, because no grant can answer it. `--only` refuses to start when the repo sits in scratch every role can write, because it
-  could not hold there. *What to do:* nothing. A policy with a `$NAME` in one of those fields now reads
+  queue, because no grant can answer it. `--only` refuses to start when the repo sits in scratch every
+  role can write, because it could not hold there. *What to do:* nothing. A policy with a `$NAME` in one of those fields now reads
   it as a variable.
 - **A worktree keeps its record in the main checkout.** A policy at the root of a git worktree writes its
   log and its request queue to `.seisin/` in the main checkout, so what a role asked for in a worktree can
