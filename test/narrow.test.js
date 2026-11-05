@@ -145,6 +145,9 @@ test("--observe and a narrowing are refused together: one opens what the other c
 const OUT = (p) => `(echo x > ${p}) 2>/dev/null && echo "yes ${p}" || echo "no ${p}"`;
 
 test("the kernel holds a narrowed run to what it was narrowed to", { skip }, () => {
+  // All of them there already: on Linux a path has to exist to be closed, and
+  // Landlock cannot let a role create entries beside one that is.
+  for (const p of ["src/api/a.ts", "src/api/held.ts", "src/never.ts", "src/web/w.ts", "docs/d.md"]) writeFileSync(join(repo, p), "");
   const r = run("executor", ["--only", "src/api/**", "--deny", "src/api/held.ts"],
     [OUT("src/api/a.ts"), OUT("src/api/held.ts"), OUT("src/never.ts"), OUT("src/web/w.ts"), OUT("docs/d.md")].join("; "));
   assert.equal(r.status, 0, r.stderr);
@@ -154,8 +157,15 @@ test("the kernel holds a narrowed run to what it was narrowed to", { skip }, () 
 
 test("without --only the run has its whole role, and nothing else", { skip }, () => {
   const r = run("executor", [], [OUT("src/web/w2.ts"), OUT("docs/d2.md")].join("; "));
-  assert.match(r.stdout, /yes src\/web\/w2\.ts/);
+  assert.match(r.stdout, /yes src\/web\/w2\.ts/, r.stderr);
   assert.match(r.stdout, /no docs\/d2\.md/);
+});
+
+test("on Linux a --deny on a path that is not there does not start the run", { skip: process.platform !== "linux" && "Linux only: mounts" }, () => {
+  const r = run("executor", ["--deny", "src/api/not-there.ts"], "touch src/api/started");
+  assert.equal(r.status, 2, r.stderr);
+  assert.match(r.stderr, /has to exist/);
+  assert.equal(existsSync(join(repo, "src/api/started")), false);
 });
 
 test("the role a run names is the one it gets: a planner writes nothing", { skip }, () => {
@@ -170,9 +180,10 @@ test("a role that may write everything cannot write the policy it came from, nor
   const r = seisin(["run", "all", "--deny", "src/held.ts", "--var", "A=/x", "--agent", "none", "--", "/bin/sh", "-c",
     [OUT("seisin.toml"), OUT(".seisin/policies/x.json"), OUT("src/ok.ts")].join("; ")], dir);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /no seisin\.toml/);
-  assert.match(r.stdout, /no \.seisin\/policies\/x\.json/);
-  assert.match(r.stdout, /yes src\/ok\.ts/);
+  const seen = `${r.stdout}\n${r.stderr}\n${spawnSync("ls", ["-la", ".seisin", ".seisin/policies"], { cwd: dir, encoding: "utf8" }).stdout}`;
+  assert.match(r.stdout, /no seisin\.toml/, seen);
+  assert.match(r.stdout, /no \.seisin\/policies\/x\.json/, seen);
+  assert.match(r.stdout, /yes src\/ok\.ts/, seen);
   assert.match(readFileSync(join(dir, "seisin.toml"), "utf8"), /roles\.all/);
 });
 
@@ -194,8 +205,11 @@ test("the log says what the run came from, what it took away, and which variable
   assert.equal(JSON.stringify(n).includes(join(inst, "run")), false, "the log names a variable, not its value");
   const files = readdirSync(join(state, "policies"));
   assert.deepEqual(files, [`${n.policy}.json`]);
-  const denied = lines.find((e) => e.verdict === "denied" && e.target === "docs/refused");
-  assert.equal(denied?.policy, n.policy, "a denial joins to the file that held at the time");
+  // The kernel's denials are read on macOS; Linux has no such log to read.
+  if (process.platform === "darwin") {
+    const denied = lines.find((e) => e.verdict === "denied" && e.target === "docs/refused");
+    assert.equal(denied?.policy, n.policy, "a denial joins to the file that held at the time");
+  }
   assert.deepEqual(JSON.parse(readFileSync(join(state, "policies", files[0]), "utf8")).roles.executor.writes, ["src/api/**"]);
   assert.equal(seisin(["log", "verify", "--policy", join(inst, "seisin.toml"), "--state-dir", state]).status, 0);
 });
@@ -249,8 +263,7 @@ test("review --runs --json sums the runs for a program, and a narrowed run reads
   const view = JSON.parse(r.stdout);
   assert.equal(view.total, 2);
   assert.equal(view.runs.every((x) => x.outcome !== "unread"), true, JSON.stringify(view.runs.map((x) => x.error)));
-  const wall = view.causes.find((c) => c.target === "docs/wall.md");
-  assert.equal(wall?.runs, 2);
+  if (process.platform === "darwin") assert.equal(view.causes.find((c) => c.target === "docs/wall.md")?.runs, 2);
   assert.equal(seisin(["review", "--runs", dir]).status, 2, "only for a program");
 });
 
@@ -277,10 +290,11 @@ test("what a role asked for in a worktree is there from the checkout, and outliv
   const r = seisin(["run", "api", "--agent", "none", "--", "/bin/sh", "-c", "echo x > docs/d; true"], wt);
   assert.equal(r.status, 0, r.stderr);
   assert.equal(existsSync(join(wt, ".seisin")), false, "nothing of seisin's in the worktree");
-  assert.match(seisin(["requests"], main).stdout, /api wants write on docs/);
+  const darwin = process.platform === "darwin";    // the kernel's denials are read on macOS
+  if (darwin) assert.match(seisin(["requests"], main).stdout, /api wants write on docs/);
   git("worktree", "remove", "--force", wt);
-  assert.match(seisin(["requests"], main).stdout, /api wants write on docs/);
-  assert.match(seisin(["log"], main).stdout, /docs\/d/);
+  if (darwin) assert.match(seisin(["requests"], main).stdout, /api wants write on docs/);
+  assert.match(seisin(["log"], main).stdout, darwin ? /docs\/d/ : /canary passed/);
 });
 
 test("a role in a worktree cannot write the record it now shares with the checkout", { skip }, () => {

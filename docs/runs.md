@@ -159,7 +159,8 @@ seisin run executor --policy <dir>/seisin.toml --state-dir <dir>/runs/<run_id>/.
 - **`--only <glob>`** is all this run may write. Each one has to be inside what the role may write, or the
   run does not start. It is worked out only when the answer is certain: the same text, `**`, or a subtree
   that holds it. Under a ceiling with a wildcard in the middle, name the same glob or widen the ceiling.
-- **`--deny <glob>`** is added to the role's `never_writes` for this run.
+- **`--deny <glob>`** is added to the role's `never_writes` for this run. On Linux a path has to exist to be
+  closed, so a `--deny` on one that does not exist stops the run.
 - **`--var NAME=value`** fills `$NAME` in `reads`, `toolchain`, `local_ports`, `verify` and `[runtime]
   writes`. Nowhere else: a variable cannot name a territory, a host, a key, or anything seisin executes.
   A run with a value missing for its role does not start. `check`, `explain` and the MCP server have no run

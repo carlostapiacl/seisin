@@ -15,7 +15,7 @@
  * runs can never overwrite each other's.
  */
 import { createHash, randomBytes } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, normalize } from "node:path";
 import { loadConfig, parseJsonPolicy, parseToml, policyId } from "./config.js";
 import { WILD } from "./paths.js";
@@ -99,6 +99,13 @@ export function effectiveConfig(config, role, { only, deny, observe = false }) {
   const mine = parsed.roles[role];
   if (only.length) narrowWrites(mine, role, only);
   if (deny.length) {
+    // On Linux a path has to exist to be mounted over. `never_writes` in a file
+    // says so in `check`; a run asked for this on its line, and starting without
+    // it would be a run with more than it was asked to have.
+    if (process.platform === "linux")
+      for (const g of deny.map((d) => clean(d, "--deny")))
+        if (!existsSync(join(config.root, g.replace(/\/\*\*$/, ""))))
+          throw new Error(`--deny ${g}: it does not exist, and on Linux a path has to exist to be closed. The run did not start.`);
     const had = Array.isArray(mine.never_writes) ? mine.never_writes : [];
     mine.never_writes = [...new Set([...had, ...deny.map((g) => clean(g, "--deny"))])];
   }
