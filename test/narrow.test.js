@@ -183,11 +183,26 @@ test("a role that may write everything cannot write the policy it came from, nor
   const r = seisin(["run", "all", "--deny", "src/held.ts", "--var", "A=/x", "--agent", "none", "--", "/bin/sh", "-c",
     [OUT("seisin.toml"), OUT(".seisin/policies/x.json"), OUT("src/ok.ts")].join("; ")], dir);
   assert.equal(r.status, 0, r.stderr);
-  const seen = `${r.stdout}\n${r.stderr}\n${spawnSync("ls", ["-la", ".seisin", ".seisin/policies"], { cwd: dir, encoding: "utf8" }).stdout}`;
+  const seen = `${r.stdout}\n${r.stderr}\n${seisin(["check", "--json"], dir).stdout.slice(0, 600)}`;
   assert.match(r.stdout, /no seisin\.toml/, seen);
   assert.match(r.stdout, /no \.seisin\/policies\/x\.json/, seen);
   assert.match(r.stdout, /yes src\/ok\.ts/, seen);
   assert.match(readFileSync(join(dir, "seisin.toml"), "utf8"), /roles\.all/);
+});
+
+test("a role that may write everything cannot write seisin's own folder, on a run with nothing to narrow", { skip }, () => {
+  const dir = boxed("narrow-plain-state-");
+  mkdirSync(join(dir, "src"));
+  writeFileSync(join(dir, "src/ok.ts"), "");
+  writeFileSync(join(dir, "seisin.toml"), '[runtime]\nwrites = []\n[roles.all]\nwrites = ["**"]\n');
+  seisin(["run", "all", "--agent", "none", "--", "/usr/bin/true"], dir);
+  mkdirSync(join(dir, ".seisin/sub"), { recursive: true });
+  const r = seisin(["run", "all", "--agent", "none", "--", "/bin/sh", "-c",
+    [OUT(".seisin/new"), OUT(".seisin/log.jsonl"), OUT(".seisin/sub/new"), OUT("src/ok.ts")].join("; ")], dir);
+  const json = seisin(["check", "--json"], dir).stdout;
+  const seen = `${r.stdout}\n${r.stderr}\n${json.slice(0, 600)}\n${process.env.TMPDIR ?? "no TMPDIR"} ${dir}`;
+  for (const p of [".seisin/new", ".seisin/log.jsonl", ".seisin/sub/new"]) assert.match(r.stdout, new RegExp(`no ${p}`), seen);
+  assert.match(r.stdout, /yes src\/ok\.ts/, seen);
 });
 
 /* ── what is left behind ── */
