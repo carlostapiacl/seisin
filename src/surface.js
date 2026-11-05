@@ -301,19 +301,12 @@ function parentProgram(command, why, config, env, abs) {
 function computeParentInputs(config, env) {
   const abs = (p) => (isAbsolute(p) ? p : join(config.root, p));
   const policy = abs(config.path ?? CONFIG_NAME);
-  // A narrowed run's policy lives in the state directory, which is closed whole.
-  // Named again it is a deny inside a deny, and Landlock, which has no way to
-  // subtract, opened the folder between them to reach it: measured in CI, a role
-  // created a file beside the policy it held under.
-  const inState = under(policy, stateDir(config.root));
   const out = [
-    ...(inState ? [] : [
-      { path: policy, why: "the policy", always: true },
-      // `seisin.toml.observed` is the proposal `init --from-observations` writes
-      // for a person to diff and move onto the policy; a role that could write it
-      // could plant a policy the operator then promotes in good faith.
-      { path: policy + ".observed", why: "the policy", always: true },
-    ]),
+    { path: policy, why: "the policy", always: true },
+    // `seisin.toml.observed` is the proposal `init --from-observations` writes
+    // for a person to diff and move onto the policy; a role that could write it
+    // could plant a policy the operator then promotes in good faith.
+    { path: policy + ".observed", why: "the policy", always: true },
     { path: stateDir(config.root), why: "seisin's log and request queue", always: true },
     // The lock on the policy lives beside it (requests.js, policyLockBase).
     { path: defaultStateDir(dirname(policy)), why: "seisin's lock on the policy", always: true },
