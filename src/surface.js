@@ -301,15 +301,23 @@ function parentProgram(command, why, config, env, abs) {
 function computeParentInputs(config, env) {
   const abs = (p) => (isAbsolute(p) ? p : join(config.root, p));
   const policy = abs(config.path ?? CONFIG_NAME);
+  // A narrowed run's policy lives in the state directory, which is closed whole.
+  // Named again it is a deny inside a deny, and on Linux that opened the folder
+  // between them: measured in CI, a role created a file beside the policy it held
+  // under. What is inside a closed folder stays out of this list.
+  const state = stateDir(config.root);
+  const outside = (e) => !under(e.path, state) || e.path === state;
+  const source = abs(config.sourcePolicy ?? config.path ?? CONFIG_NAME);
   const out = [
     { path: policy, why: "the policy", always: true },
     // `seisin.toml.observed` is the proposal `init --from-observations` writes
     // for a person to diff and move onto the policy; a role that could write it
     // could plant a policy the operator then promotes in good faith.
     { path: policy + ".observed", why: "the policy", always: true },
-    { path: stateDir(config.root), why: "seisin's log and request queue", always: true },
-    // The lock on the policy lives beside it (requests.js, policyLockBase).
-    { path: defaultStateDir(dirname(policy)), why: "seisin's lock on the policy", always: true },
+    { path: state, why: "seisin's log and request queue", always: true },
+    // The lock on the policy lives beside it (requests.js, policyLockBase), and
+    // for a narrowed run that means the policy it came from.
+    { path: defaultStateDir(dirname(source)), why: "seisin's lock on the policy", always: true },
     // A narrowed run holds under a file in the state directory, and the policy
     // it came from is still what the next run will read.
     ...(config.sourcePolicy ? [
@@ -330,7 +338,7 @@ function computeParentInputs(config, env) {
   // Both spellings of every entry: the one written, and the one the kernel
   // meets when a symlink sits on the way. A deny on the written path alone let
   // writes through once already (never_writes, 2026-09-22).
-  return out.flatMap((e) => {
+  return out.filter(outside).flatMap((e) => {
     const real = realOrSelf(e.path);
     return real === e.path ? [e] : [e, { ...e, path: real }];
   });

@@ -12,6 +12,7 @@ import { coveredBy, effectiveConfig, narrowingOf } from "../src/narrow.js";
 import { expandVars, setVars } from "../src/vars.js";
 import { loadConfig } from "../src/config.js";
 import { sameAcrossRuns } from "../src/runs.js";
+import { settingsFor } from "../src/srt-settings.js";
 import { setStateDir } from "../src/state.js";
 import { editPolicy, policyLockBase } from "../src/requests.js";
 
@@ -203,6 +204,22 @@ test("a role that may write everything cannot write seisin's own folder, on a ru
   const seen = `${r.stdout}\n${r.stderr}\n${json.slice(0, 600)}\n${process.env.TMPDIR ?? "no TMPDIR"} ${dir}`;
   for (const p of [".seisin/new", ".seisin/log.jsonl", ".seisin/sub/new"]) assert.match(r.stdout, new RegExp(`no ${p}`), seen);
   assert.match(r.stdout, /yes src\/ok\.ts/, seen);
+});
+
+test("a narrowed run names nothing inside the folder it closes whole: a deny inside a deny opened it on Linux", () => {
+  const dir = boxed("narrow-nested-");
+  mkdirSync(join(dir, "src"));
+  writeFileSync(join(dir, "src/held.ts"), "");
+  writeFileSync(join(dir, "seisin.toml"), '[runtime]\nwrites = []\n[roles.all]\nwrites = ["**"]\n');
+  const r = seisin(["run", "all", "--deny", "src/held.ts", "--agent", "none", "--", "/usr/bin/true"], dir);
+  assert.equal(r.status, 0, r.stderr);
+  const policies = join(dir, ".seisin/policies");
+  const cfg = loadConfig(join(policies, readdirSync(policies)[0]), undefined, { root: dir });
+  cfg.sourcePolicy = join(dir, "seisin.toml");
+  const deny = settingsFor(cfg, "all", "/tmp/s", false, { agent: null }).filesystem.denyWrite;
+  assert.ok(deny.includes(join(dir, ".seisin")));
+  assert.ok(deny.includes(join(dir, "seisin.toml")));
+  assert.deepEqual(deny.filter((p) => p.startsWith(join(dir, ".seisin") + "/")), []);
 });
 
 /* ── what is left behind ── */
