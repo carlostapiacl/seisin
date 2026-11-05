@@ -5,7 +5,8 @@
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { boxed, CLI, sandboxSkip } from "./_tmp.js";
 import { coveredBy, effectiveConfig, narrowingOf } from "../src/narrow.js";
@@ -381,4 +382,22 @@ test("seisin mcp --policy serves that policy, from wherever it was started", () 
   const answer = JSON.parse(r.stdout.trim().split("\n")[0]);
   assert.equal(answer.result.isError, undefined, r.stdout);
   assert.equal(answer.result.structuredContent.allowed, false);
+});
+
+test("--only does not start in a repo inside scratch, where it could not hold", () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "seisin-only-scratch-")));
+  writeFileSync(join(dir, "seisin.toml"), '[roles.dev]\nwrites = ["**"]\n');
+  const r = spawnSync(process.execPath, [CLI, "run", "dev", "--only", "src/**", "--", "/usr/bin/true"],
+    { cwd: dir, encoding: "utf8", input: "", env: (({ SEISIN_STATE_DIR, SEISIN_SPOOL, ...e }) => e)(process.env) });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /--only cannot hold here/);
+  assert.match(r.stderr, /The run did not start/);
+});
+
+test("--only gets past that check once the runtime leaves the repo out of scratch", () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "seisin-only-scratch-")));
+  writeFileSync(join(dir, "seisin.toml"), '[runtime]\nwrites = []\n\n[roles.dev]\nwrites = ["**"]\n');
+  const r = spawnSync(process.execPath, [CLI, "run", "dev", "--only", "src/**", "--", "/usr/bin/true"],
+    { cwd: dir, encoding: "utf8", input: "", env: (({ SEISIN_STATE_DIR, SEISIN_SPOOL, ...e }) => e)(process.env) });
+  assert.doesNotMatch(r.stderr, /--only cannot hold here/);
 });

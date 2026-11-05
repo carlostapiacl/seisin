@@ -24,7 +24,8 @@ changed rather than failing on the old spelling.
   `--var NAME=value`. A launcher no longer has to generate a policy per run (docs/runs.md). The log says
   what each run took away, and the policy it held under is kept in `.seisin/policies/`, named by the
   hash on its log lines. A denial that only the run's narrowing caused goes to the log and not to the request
-  queue, because no grant can answer it. *What to do:* nothing. A policy with a `$NAME` in one of those fields now reads
+  queue, because no grant can answer it. `--only` refuses to start when the repo sits in scratch every role can write, because it
+  could not hold there. *What to do:* nothing. A policy with a `$NAME` in one of those fields now reads
   it as a variable.
 - **A worktree keeps its record in the main checkout.** A policy at the root of a git worktree writes its
   log and its request queue to `.seisin/` in the main checkout, so what a role asked for in a worktree can

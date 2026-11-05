@@ -150,6 +150,18 @@ export async function run(config, argv) {
   const ceiling = config;
   const held = effectiveConfig(config, role, { ...narrowingOf(mine), observe: mine.includes("--observe") });
   config = held.config;
+  /**
+   * `--only` promises all this run may write, and scratch is written around it.
+   *
+   * Measured with a real agent: a repo in `~/.cache`, `--only compras/back/**`,
+   * and the agent wrote `compras/front/` with one warning among the run's lines.
+   * A launcher does not read those. `--deny` is not refused: a deny closes the
+   * path inside scratch too (measured in the same run).
+   */
+  if (narrowingOf(mine).only.length) {
+    const leak = scratchWarnings(config).find((w) => w.kind === "scratch" || (w.kind === "territory-in-scratch" && w.role === role));
+    if (leak) throw new Error(`--only cannot hold here: ${leak.headline}.\n  ${leak.detail}\n  The run did not start.`);
+  }
   const agent = agentFor(mine, cmd);
 
   /**

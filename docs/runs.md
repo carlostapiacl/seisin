@@ -172,6 +172,10 @@ with `event: "narrowed"` names the policy it came from, what it took away and wh
 by name. A folder with no `seisin.toml` or `seisin.json` of its own is read from there, so these runs need
 nothing else to appear in this console.
 
+`--only` is refused before anything starts when the repo, or a path of the role, sits inside what `[runtime] writes`
+gives every role as scratch (`/tmp` and `~/.cache` by default), because scratch is written around it. Move the repo,
+or set `[runtime] writes` to a list that leaves it out. `--deny` closes its path inside scratch too.
+
 A write refused only because of `--only` or `--deny` is in the log and not in the request queue: the role
 already has it in the policy, so no grant could answer it. What the role does not have at all is still asked.
 

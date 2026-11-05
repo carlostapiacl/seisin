@@ -524,8 +524,8 @@ of them. **[Each one, and why not a container →](https://github.com/carlostapi
 ## Status
 
 CI runs the full suite on macOS and `ubuntu-latest`, Node 18/20/22/24, on every pull request and
-push to `main`. On 2026-11-05, on Node 24: macOS **1195 tests, 1185 passing, 10 skipped**;
-Linux **1194, 1165 passing, 29 skipped**. The skips are platform tests; the job fails if the 26
+push to `main`. On 2026-11-05, on Node 24: macOS **1197 tests, 1187 passing, 10 skipped**;
+Linux **1196, 1167 passing, 29 skipped**. The skips are platform tests; the job fails if the 26
 core boundary tests in `test/sandbox.test.js` skip. A release is published only from CI, after
 that passes, with npm provenance. [Which claim was measured where](https://github.com/carlostapiacl/seisin/blob/main/docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),
 and [what running agents behind it cost](https://github.com/carlostapiacl/seisin/blob/main/docs/field-notes.md).

@@ -68,6 +68,7 @@ export function scratchWarnings(config) {
       seen.add(real);
       warnings.push({
         kind: "territory-in-scratch",
+        role: r.name,
         headline: `every role can write ${r.name}'s ${g}: it resolves to ${real}, inside ${s}, which every role gets as scratch`,
         detail: `That part of ${r.name}'s territory does not hold — the kernel enforces on the real path. ${fix(s)}`,
       });
