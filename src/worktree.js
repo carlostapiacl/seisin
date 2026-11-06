@@ -34,6 +34,7 @@ import { statSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve, relative, isAbsolute } from "node:path";
 import { findConfig } from "./config.js";
 import { realOrSelf } from "./grants.js";
+import { trimEnd } from "./lines.js";
 
 const GITDIR = /^gitdir:\s*(.+?)\s*$/;
 const WORKTREE = /^(.+)\/\.git\/worktrees\/[^/]+$/;
@@ -50,7 +51,7 @@ const WORKTREE = /^(.+)\/\.git\/worktrees\/[^/]+$/;
 export function parseGitdir(text, at = "/") {
   const m = GITDIR.exec(text.trim());
   if (!m) return null;
-  const target = resolve(at, m[1]).replace(/\\/g, "/").replace(/\/+$/, "");
+  const target = trimEnd(resolve(at, m[1]).replace(/\\/g, "/"));
   const w = WORKTREE.exec(target);
   return w ? w[1] : null;
 }

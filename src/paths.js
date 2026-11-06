@@ -13,6 +13,7 @@
  */
 import { realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, normalize, relative, sep } from "node:path";
+import { trimEnd } from "./lines.js";
 
 /**
  * `p` with its deepest existing ancestor resolved through symlinks and the rest
@@ -69,8 +70,8 @@ export function toRepoRelative(config, target) {
 export function samePath(config, target) {
   if (typeof target !== "string" || !target.trim()) return null;
   const rel = toRepoRelative(config, isAbsolute(target) ? normalize(target) : target);
-  if (isAbsolute(rel)) return realAncestor(normalize(rel)).replace(/(.)\/+$/, "$1");
-  return normalize(rel).replace(/\/+$/, "") || ".";
+  if (isAbsolute(rel)) return (trimEnd(realAncestor(normalize(rel))) || "/");
+  return trimEnd(normalize(rel)) || ".";
 }
 
 /**

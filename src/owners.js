@@ -18,6 +18,7 @@ import { entriesOf, parseKey, BUILTIN } from "./keys.js";
 import { WILD, fromCwd, toRepoRelative } from "./paths.js";
 import { AGENTS, AGENT_CREDENTIALS, CREDENTIAL_HOMES, expand } from "./grants.js";
 import { keptFor, shutByTerritory } from "./territory.js";
+import { trimEnd } from "./lines.js";
 
 /**
  * Does this glob cover this path? Supports `**`, `*`, `?` and a trailing `/`.
@@ -129,7 +130,7 @@ const climbs = (p) => p === ".." || p.startsWith("../");
  * names that place explicitly.
  */
 export function normalize(s) {
-  const flat = s.replace(/\\/g, "/").replace(/\/+/g, "/").replace(/\/+$/, "");
+  const flat = trimEnd(s.replace(/\\/g, "/").replace(/\/+/g, "/"));
   const up = [];
   for (const part of flat.split("/")) {
     if (part === "" || part === ".") continue;
@@ -411,7 +412,7 @@ export function neverWrites(role, path, config = null) {
 }
 
 /** A key dir as the policy's paths spell it: no leading `./`, no trailing `/`. */
-const dirSpelling = (d) => String(d).replace(/^\.\/+/, "").replace(/\/+$/, "");
+const dirSpelling = (d) => trimEnd(String(d).replace(/^\.\/+/, ""));
 
 /** Is the repo-relative `rel` one of the key directories, or inside one? */
 export function inKeyDir(config, rel) {
