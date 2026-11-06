@@ -299,7 +299,10 @@ test("review --runs --json sums the runs for a program, and a narrowed run reads
   const view = JSON.parse(r.stdout);
   assert.equal(view.total, 2);
   assert.equal(view.runs.every((x) => x.outcome !== "unread"), true, JSON.stringify(view.runs.map((x) => x.error)));
-  if (process.platform === "darwin") assert.equal(view.causes.find((c) => c.target === "docs/wall.md")?.runs, 2);
+  // The sum, against what the two logs hold. Not a fixed 2: the kernel's line
+  // comes through `log stream`, and a loaded runner has missed one.
+  const denied = ["R1", "R2"].filter((id) => /"target":"docs\/wall\.md"/.test(readFileSync(join(dir, id, ".seisin", "log.jsonl"), "utf8")));
+  if (process.platform === "darwin") assert.equal(view.causes.find((c) => c.target === "docs/wall.md")?.runs ?? 0, denied.length);
   assert.equal(seisin(["review", "--runs", dir]).status, 2, "only for a program");
 });
 

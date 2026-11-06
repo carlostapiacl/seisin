@@ -326,3 +326,13 @@ test("throttling ps does not lose a denial from a process younger than the snaps
   assert.equal(calls, before + 1, "one snapshot for the deferred look");
   w.close();
 });
+
+test("a Bash command names each file it writes once, and no flag as a file", () => {
+  assert.deepEqual(targetsOf("Bash", { command: "echo a > out.txt; echo b > out.txt" }), [{ action: "write", path: "out.txt" }]);
+  assert.deepEqual(targetsOf("Bash", { command: "echo a > --force" }), []);
+});
+
+test("a word of shell in a Bash command is not a file it writes", () => {
+  assert.deepEqual(targetsOf("Bash", { command: "rm test" }), []);
+  assert.deepEqual(targetsOf("Bash", { command: "rm true && rm notes.txt" }).map((t) => t.path), ["notes.txt"]);
+});

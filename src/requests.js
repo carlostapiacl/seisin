@@ -36,6 +36,7 @@ import { dirname, join, resolve } from "node:path";
 import { tomlString } from "./layout.js";
 import { defaultStateDir, stateDir } from "./state.js";
 import { send } from "./spool.js";
+import { trimEnd } from "./lines.js";
 import { withLock, readEntries } from "./log.js";
 import { loadConfig, policyId } from "./config.js";
 
@@ -87,7 +88,7 @@ export function grantFor({ action, target }, keyDir = null) {
   // way every hand-written key is. Granting the long form put two spellings of
   // one key in the same file.
   if (action === "read") {
-    const first = keyDir ? String(keyDir).replace(/^\.\/+/, "").replace(/\/+$/, "") : null;
+    const first = keyDir ? trimEnd(String(keyDir).replace(/^\.\/+/, "")) : null;
     if (first && t.startsWith(first + "/") && !t.slice(first.length + 1).includes("/")) return t.slice(first.length + 1);
     return t.includes("/") ? t : t.replace(/^.*\//, "");
   }
