@@ -55,6 +55,7 @@ export interface SeisinConfig {
   redact: boolean | undefined;
   scanIgnore: string[];
   protect: Record<string, unknown>;
+  console: { runs?: string; launcher?: string };
   roles: Record<string, RolePolicy>;
   [key: string]: unknown;
 }

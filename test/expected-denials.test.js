@@ -115,6 +115,20 @@ test("--expect-denied: repeatable, a path and not a pattern, and it needs a valu
   assert.throws(() => expectedDenials(["--expect-denied", "--observe"]), /usage/);
 });
 
+test("--expect-denied tcp:<port>: that port is expected, another is still a denial", () => {
+  const { config } = (() => { const box = boxed("exp-tcp-"); writeFileSync(join(box, "seisin.toml"), '[roles.web]\nwrites = ["src/**"]\n'); return { config: loadConfig(join(box, "seisin.toml")) }; })();
+  const lines = [];
+  const take = intake({ config, role: "web", runId: "r", settings: {}, notify: { maybe() {} }, expectDenied: ["tcp:52970"], write: (e) => lines.push(e) });
+  take.fromKernel({ action: "connect", path: "tcp:52970", operation: "network-outbound" });
+  take.fromKernel({ action: "connect", path: "tcp:3306", operation: "network-outbound" });
+  assert.equal(take.stats.probes, 1);
+  const read = readFileSync(join(config.root, ".seisin", "log.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  assert.equal(read.find((e) => e.target === "tcp:52970").expected, true);
+  assert.equal(read.find((e) => e.target === "tcp:3306").expected, undefined);
+  assert.deepEqual(expectedDenials(["--expect-denied", "tcp:52970"]), ["tcp:52970"]);
+  for (const bad of ["tcp:0", "tcp:70000", "tcp:abc", "tcp:"]) assert.throws(() => expectedDenials(["--expect-denied", bad]), /tcp:<1-65535>/, bad);
+});
+
 test("CLI: run --help names --expect-denied, and a pattern is refused before anything starts", () => {
   const { dir } = setup('[roles.web]\nwrites = ["web/**"]\n');
   const help = cli(["run", "--help"], dir);

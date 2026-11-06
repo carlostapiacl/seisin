@@ -1030,8 +1030,15 @@
           : waiting ? (waiting === 1 ? "decision" : "decisions") : "nothing to decide");
     set("k-open", off ? "alarm" : "calm", off,
         off ? (off === 1 ? "role running unconfined" : "roles running unconfined") : "every role confined");
-    set("k-ref", f.total ? "live" : "calm", f.total.toLocaleString(),
-        (f.total ? (f.distinct || f.causes.length).toLocaleString() + " distinct things" : "nothing was denied") +
+    // The same count the list of runs gives: what the OS does at start and the
+    // expected housekeeping are said beside it, never left out without a word.
+    var quiet = ((f.about && f.about.system && f.about.system.denials) || 0) + ((f.expected && f.expected.denials) || 0);
+    var quietPaths = ((f.about && f.about.system && f.about.system.paths) || 0) + ((f.expected && f.expected.paths) || 0);
+    (f.causes || []).forEach(function(c){ if (c.about === "system" && c.expected) { quiet -= c.times; quietPaths--; } });
+    var real = Math.max(0, f.total - quiet);
+    set("k-ref", real ? "live" : "calm", real.toLocaleString(),
+        (real ? Math.max(1, (f.distinct || f.causes.length) - quietPaths).toLocaleString() + " distinct things" : f.total ? "nothing but housekeeping" : "nothing was denied") +
+        (quiet ? " · +" + quiet.toLocaleString() + " housekeeping" : "") +
         (RANGE === "all" ? "" : " · " + rangeLabel()));
     // Under 40% no name is "the" cause, and the Denied page says so in words. The card said
     // "18% is index.lock" beside a lede saying nothing dominates.
@@ -1043,7 +1050,7 @@
     set("k-retry", retry ? "live" : "calm", retry.toLocaleString(),
         retry ? "retries on walls already denied" : "nothing retried");
 
-    pill("dn-pin", f.total, f.total === 1 ? "denial" : "denials");
+    pill("dn-pin", real, real === 1 ? "denial" : "denials");
     pill("wl-pin", retry, retry === 1 ? "retry on a wall" : "retries on walls");
   }
 
@@ -1354,6 +1361,11 @@
   /** "policy" — one seisin.toml, the console as it always was — or "runs", read only. */
   var MODE = "policy";
   var READONLY = false;
+  /** `[console] launcher`: who lends the territory, so nothing is granted here. */
+  var LAUNCHER = null;
+  var HAS_RUNS = false;
+  /** Who a denial is asked of, when it is not asked here. */
+  function askedOf(){ var who = (RUNINFO && RUNINFO.launcher) || LAUNCHER; return who ? "in " + who : "where the run was launched"; }
 
   /** What to tell a person when a request to this server fails. */
   function whyFailed(e, status){
@@ -1420,7 +1432,7 @@
   }
   function stateUrl(){
     var s = sinceIso();
-    if (MODE === "runs" && RUN)
+    if (RUN)
       return "/api/run?run=" + encodeURIComponent(RUN) + (s ? "&since=" + encodeURIComponent(s) : "");
     return "/api/state" + (s ? "?since=" + encodeURIComponent(s) : "");
   }
@@ -1578,8 +1590,12 @@
       if (location.protocol === "file:") throw new Error("no server");
       var info = await fetch("/api/info", { cache: "no-store", headers: { "x-seisin-token": TOKEN } });
       if (info.ok) {
-        var mode = (await info.json()).mode;
-        if (mode === "runs") { MODE = "runs"; READONLY = true; }
+        var said = await info.json();
+        HAS_RUNS = true;
+        if (said.mode === "runs") { MODE = "runs"; READONLY = true; }
+        if (said.readOnly) READONLY = true;
+        LAUNCHER = said.launcher || null;
+        if (RUN) READONLY = true;
       }
       if (MODE === "runs" && !RUN) { await bootRuns(); return; }
       got = await fetchState(true);
@@ -1630,10 +1646,9 @@
     LIVE = true;
     applyState(s);
     LIVE_LABEL = s.config.replace(/^.*\//, "") + " · live";
-    if (MODE === "runs") {
+    if (RUN) {
       RUNINFO = s.run || null; LIVE_LABEL = "run " + RUN + " · read only"; drawRunBanner();
-      document.getElementById("req-note").textContent = "read only · asked for where the run was launched, not here";
-    }
+    } else if (LAUNCHER) LIVE_LABEL += " · read only";
     label.textContent = LIVE_LABEL;
     label.title = LIVE_LABEL;
     label.style.color = "var(--green)";
@@ -1646,21 +1661,24 @@
     // And so does the card that counts what the button would do: live it could only say 0.
     document.getElementById("k-open").style.display = "none";
     // Read only nothing waits on the person here: what the run asked for is asked for where it was launched.
+    // So the queue and its card go, and the denials say where to ask.
     if (READONLY) {
-      var nav = document.getElementById("nav-req");
-      nav.childNodes[1].textContent = "Asked for";
-      document.querySelector("#k-wait h2").textContent = "asked for";
-      document.getElementById("req-h").textContent = "What this run asked for";
+      document.getElementById("nav-req").hidden = true;
+      document.getElementById("k-wait").style.display = "none";
     }
-    document.getElementById("toml-note").textContent = READONLY ? "this run's policy, as its launcher archived it" : "the file on disk, as it stands";
+    document.getElementById("toml-note").textContent = RUN ? "this run's policy, as it was kept" : "the file on disk, as it stands";
     document.getElementById("foot-mode").textContent = READONLY ? "Live, read only." : "Live.";
-    document.getElementById("foot-text").innerHTML = READONLY
-      ? "This page reads <b>" + esc(s.config) + "</b>, one archived run's policy, and its log. Nothing is written from here: " +
-        "the run's territory was lent by whoever launched it, and access is asked for there."
+    document.getElementById("foot-text").innerHTML = RUN
+      ? "This page reads <b>" + esc(s.config) + "</b> and one run's log. Nothing is written from here: " +
+        "what a run was lent is asked for where it was launched."
+      : READONLY
+      ? "This page reads <b>" + esc(s.config) + "</b> and the log on disk. Nothing is written from here: " +
+        "the territory is lent by " + esc(LAUNCHER) + ", and access is asked for there."
       : "This page reads <b>" + esc(s.config) + "</b> and the log on disk. Two actions write, each in place and stamped " +
       "with its reason: a decision on a request, and saving a control-files change after its preview. Territories " +
       "and keys are changed in seisin.toml itself.";
     draw();
+    if (!RUN && HAS_RUNS) await addRuns();
     show(route());
     poll();
   }
@@ -1718,9 +1736,9 @@
     var b = document.getElementById("run-banner");
     var r = RUNINFO || { id: RUN };
     b.innerHTML = "<b>Run " + esc(r.run_id || r.id) + "</b> " + outcomeTag(r.outcome || "", r.dropped) +
-      ' · <a href="./">all runs</a>' +
+      ' · <a href="./#runs">all runs</a>' +
       '<div class="meta">' + (runMeta(r) || "no run.json: only what its policy and log say") +
-      " · read only: nothing is granted from here</div>";
+      " · read only: access is asked for " + esc(askedOf()) + "</div>";
     b.hidden = false;
     document.getElementById("nav-runs").hidden = false;
   }
@@ -1770,7 +1788,7 @@
         "<th class=num>denied</th><th class=num>retried</th><th>hosts denied</th></tr></thead><tbody>" +
         runs.slice(0, SHOWN).map(function(r){
           var w = when(r.started_at || "");
-          return "<tr><td><a href=\"./?run=" + encodeURIComponent(r.id) + "#requests\"><code>" + esc(r.run_id || r.id) + "</code></a></td>" +
+          return "<tr><td><a href=\"./?run=" + encodeURIComponent(r.id) + "#denied\"><code>" + esc(r.run_id || r.id) + "</code></a></td>" +
             '<td title="' + escA(w.title || "") + '">' + esc(w.text || "") + "</td><td>" + esc(r.team || "") + "</td><td>" + esc(r.role || "") +
             "</td><td>" + esc(r.work_item || "") + "</td><td>" + esc(r.status || "") + "</td><td>" + outcomeTag(r.outcome, r.dropped) +
             "</td><td class=num>" + r.denied + "</td><td class=num>" + r.retried + "</td><td>" +
@@ -1790,6 +1808,41 @@
     fetchRuns(true).then(function(g){ if (g.v) drawRunsView(g.v); }).catch(function(){});
   }
 
+  /** The filters, once. */
+  function wireRuns(){
+    document.querySelectorAll("#rn-filters select").forEach(function(sel){
+      sel.addEventListener("change", function(){ setRunFilter(sel.dataset.f, sel.value); });
+    });
+    var q = document.getElementById("rn-q");
+    q.value = RFILTER.q || "";
+    var tq = null;
+    q.addEventListener("input", function(){ clearTimeout(tq); tq = setTimeout(function(){ setRunFilter("q", q.value.trim()); }, 250); });
+  }
+  /** Read while they are on screen: a directory of hundreds has nothing to say to another view. */
+  function pollRuns(){
+    setTimeout(async function(){
+      if (route() === "runs") try {
+        var g = await fetchRuns(false);
+        if (g.v) drawRunsView(g.v);
+        if (MODE === "runs") {
+          if (g.v || g.same) { FAILS = 0; if (OFFLINE) setOffline(null); }
+          else if (++FAILS >= 2) setOffline(g.status === 403 ? "expired" : "down");
+        }
+      } catch (_) { if (MODE === "runs" && ++FAILS >= 2) setOffline("down"); }
+      pollRuns();
+    }, 2000);
+  }
+  /** Runs beside a policy: one more item in the menu. */
+  async function addRuns(){
+    var got = await fetchRuns(true);
+    if (!got.v || !got.v.total) { HAS_RUNS = false; return; }
+    document.getElementById("nav-runs").hidden = false;
+    wireRuns();
+    drawRunsView(got.v);
+    pollRuns();
+  }
+
+  /** Runs with no policy (`seisin ui --runs`): the rest of the menu has nothing to show. */
   async function bootRuns(){
     var label = document.getElementById("source");
     var got = await fetchRuns(true);
@@ -1803,34 +1856,16 @@
     label.textContent = LIVE_LABEL;
     label.style.color = "var(--green)";
     document.getElementById("nav-runs").hidden = false;
-    document.getElementById("nav-all").classList.add("on");
-    document.getElementById("nav-cap").hidden = true;
     document.querySelectorAll(".side .list > a[href^='#']").forEach(function(a){ a.hidden = true; });
     // Inline, not `hidden`: the cards' own display rules outrank the attribute.
     ["kpis", "range", "kill"].forEach(function(id){ var e = document.getElementById(id); if (e) { e.hidden = true; e.style.display = "none"; } });
     document.getElementById("foot-mode").textContent = "Live, read only.";
     document.getElementById("foot-text").innerHTML = "This page reads the runs in <b>" + esc(got.v.dir) +
       "</b>, one folder each, as their launcher archived them. Nothing is written from here.";
-    document.querySelectorAll("#rn-filters select").forEach(function(sel){
-      sel.addEventListener("change", function(){ setRunFilter(sel.dataset.f, sel.value); });
-    });
-    var q = document.getElementById("rn-q");
-    q.value = RFILTER.q || "";
-    var tq = null;
-    q.addEventListener("input", function(){ clearTimeout(tq); tq = setTimeout(function(){ setRunFilter("q", q.value.trim()); }, 250); });
+    wireRuns();
     drawRunsView(got.v);
     show("runs");
-    (function again(){
-      setTimeout(async function(){
-        try {
-          var g = await fetchRuns(false);
-          if (g.v) drawRunsView(g.v);
-          if (g.v || g.same) { FAILS = 0; if (OFFLINE) setOffline(null); }
-          else if (++FAILS >= 2) setOffline(g.status === 403 ? "expired" : "down");
-        } catch (_) { if (++FAILS >= 2) setOffline("down"); }
-        again();
-      }, 2000);
-    })();
+    pollRuns();
   }
 
   /** Every two seconds after the last answer, not every two seconds regardless. */
@@ -1846,16 +1881,15 @@
   function views(){
     return {
       runs:       {view:"runs",     title:"Runs",
-                   sub:"Every run in the directory, read only: what each was denied and what the denials cost. Open one for its policy and its log."},
+                   sub:"Every run, newest first: what each was denied and what the denials cost. Open one for its policy and its log."},
       policy:     {view:"roles",    title:"Roles",
                    sub:"Each role's territory — the folders it may write — and the keys it may read. " +
                        (LIVE ? "Read-only here: the policy is seisin.toml." : "In this example you can edit them; nothing is saved.")},
-      requests:   {view:"requests", title: READONLY ? "Asked for" : "Waiting on you",
-                   sub: READONLY
-                     ? "Requests: access this run asked for and did not have. Read only: they are asked for where the run was launched."
-                     : "Requests: access an agent asked for and cannot have. Granting one adds a line to seisin.toml."},
+      requests:   {view:"requests", title:"Waiting on you",
+                   sub:"Requests: access an agent asked for and cannot have. Granting one adds a line to seisin.toml."},
       denied:     {view:"denied",   title:"Denied", tab:"path",
-                   sub:"Everything an agent tried in the window and the OS denied, grouped by what it was about."},
+                   sub:"Everything an agent tried in the window and the OS denied, grouped by what it was about." +
+                       (READONLY ? " Not granted here: access is asked for " + askedOf() + "." : "")},
       causes:     {view:"denied",   title:"Denied", tab:"name",
                    sub:"The same denials grouped by file name — the cut that says whether a day was a tooling problem or a territory question."},
       walls:      {view:"walls",    title:"Walls",
@@ -1887,6 +1921,9 @@
     document.getElementById("kpis").classList.toggle("compact", v.view !== "requests");
     var kill = document.getElementById("kill");
     if (kill) kill.hidden = (v.view !== "roles") || kill.dataset.live === "1";
+    document.getElementById("nav-all").classList.toggle("on", route === "runs");
+    // The list has its own numbers; the policy's window and cards would sit above them saying 0.
+    document.body.classList.toggle("on-runs", v.view === "runs");
     var navRoute = route === "causes" ? "denied" : route;
     document.querySelectorAll(".side .list a[href^='#']").forEach(function(a){
       var on = a.getAttribute("href").slice(1) === navRoute;
@@ -1900,7 +1937,15 @@
   }
 
   /** The landing view is what is waiting on you, not the policy table. */
-  function route(){ return MODE === "runs" && !RUN ? "runs" : (location.hash || "#requests").slice(1); }
+  function route(){
+    if (MODE === "runs" && !RUN) return "runs";
+    var h = (location.hash || "").slice(1);
+    // Nothing waits on a person in a run, or under a lent territory.
+    if (h && !(h === "requests" && READONLY)) return h;
+    if (RUN) return "denied";
+    if (HAS_RUNS && !document.getElementById("nav-runs").hidden && (READONLY || !REQS.length)) return "runs";
+    return READONLY ? "denied" : "requests";
+  }
   window.addEventListener("hashchange", function(){ show(route()); });
   show(route());
 

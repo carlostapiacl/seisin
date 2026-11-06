@@ -30,14 +30,11 @@
       </div>
     </div>
     <div class="list">
-      <!-- Over a directory of runs (seisin ui --runs) the first item is every run, and the
-           rest is the one run that is open; with none open, only this one is shown. -->
-      <div id="nav-runs" hidden>
-        <div class="cap">Runs</div>
-        <a href="./" id="nav-all" title="Every run in the directory, read only"><i>☰</i>All runs<span class="pin" id="runs-pin"></span></a>
-      </div>
-      <div class="cap" id="nav-cap">Policy</div>
       <a class="on" href="#requests" id="nav-req" aria-current="page" title="Requests: access an agent asked for and cannot have"><i>⚖</i>Waiting on you<span class="pin" id="req-pin"></span></a>
+      <!-- One menu, with or without a directory of runs: a run opens as these same views. -->
+      <div id="nav-runs" hidden>
+        <a href="#runs" id="nav-all" title="Every run, newest first"><i>☰</i>Runs<span class="pin" id="runs-pin"></span></a>
+      </div>
       <a href="#denied" title="Every denial in the window: what an agent tried and the OS denied"><i>⊘</i>Denied<span class="pin" id="dn-pin"></span></a>
       <a href="#walls" title="A wall: something a role was denied twice or more and would still be denied today"><i>▦</i>Walls<span class="pin" id="wl-pin"></span></a>
       <a href="#policy" title="Each role's territory (the folders it may write) and the keys it may read"><i>⚷</i>Roles<span class="pin" id="pin"></span></a>

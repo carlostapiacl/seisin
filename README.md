@@ -238,8 +238,7 @@ seisin run frontend -- claude -p "…"     # run an agent as that role
 seisin explain frontend write src/api/x  # ask one question, exit 0 or 1
 seisin review --since 7d                 # what the log says about the policy, this week
 seisin wire                              # install the PreToolUse hook in this repo
-seisin ui                                # a console for deciding what is waiting
-seisin ui --runs <dir>                   # read only, over many runs a launcher archived (docs/runs.md)
+seisin ui                                # the console: what is waiting, the runs, what was denied
 ```
 
 **Three ways in, and they say the same thing.** The **CLI** is what a person types and what
@@ -524,8 +523,8 @@ of them. **[Each one, and why not a container →](https://github.com/carlostapi
 ## Status
 
 CI runs the full suite on macOS and `ubuntu-latest`, Node 18/20/22/24, on every pull request and
-push to `main`. On 2026-11-06, on Node 24: macOS **1215 tests, 1205 passing, 10 skipped**;
-Linux **1214, 1185 passing, 29 skipped**. The skips are platform tests; the job fails if the 26
+push to `main`. On 2026-11-06, on Node 24: macOS **1221 tests, 1211 passing, 10 skipped**;
+Linux **1220, 1191 passing, 29 skipped**. The skips are platform tests; the job fails if the 26
 core boundary tests in `test/sandbox.test.js` skip. A release is published only from CI, after
 that passes, with npm provenance. [Which claim was measured where](https://github.com/carlostapiacl/seisin/blob/main/docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),
 and [what running agents behind it cost](https://github.com/carlostapiacl/seisin/blob/main/docs/field-notes.md).

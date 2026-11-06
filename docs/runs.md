@@ -1,38 +1,50 @@
-# A console over many runs: `seisin ui --runs`
+# The console's runs
 
-`seisin ui` reads one `seisin.toml` and its log. A launcher that lends every run a
-territory of its own (an agent orchestrator that writes a policy per task, runs the agent
-under it and then throws the worktree away) has no single policy to point it at. What it can
-keep is each run's policy and log, copied out before the worktree goes. `seisin ui --runs`
-reads a directory of those, read only:
+`seisin ui` is one console: what is waiting on you, the runs, what was denied, the roles and
+the log. **Runs** is one more item in its menu, and it gets its runs from one of three places:
+
+- **A repository with no launcher:** from its own log. Every line `seisin run` writes names its
+  run, so there is nothing to set up.
+- **A launcher that keeps a folder per run:** a policy names the directory, relative to the
+  policy file, and the launcher it is lent by:
+
+  ```toml
+  [console]
+  runs = ".wapentake/seisin/runs"
+  launcher = "wapentake"
+  ```
+
+- **No policy at hand:** `seisin ui --runs <dir>` is the same console over the directory alone,
+  on port 4179 unless told otherwise.
 
 ```bash
-seisin ui --runs <dir>                       # every run in <dir>, on 127.0.0.1:4179
-seisin ui --runs <dir> --port 4300           # elsewhere
-seisin ui --runs <dir> --link                # the link of the one already running
-seisin ui --runs <dir> --link --json         # the same, for a program: nothing opened
+seisin ui                                    # the policy, and its runs, on 127.0.0.1:4178
+seisin ui --link                             # the link of the one already running
+seisin ui --runs <dir>                       # the directory alone, on 127.0.0.1:4179
+seisin ui --runs <dir> --link --json         # its link, for a program: nothing opened
 ```
 
 The page lists every run, newest first, filtered by team, role, work item, status and
 outcome. It sums what the shown runs were denied and what that cost in retries, and puts the
-same denial in many runs on one line. A run opens as the console always looked: its policy,
-its pending requests, its denials, its walls and its log.
+same denial in many runs on one line. A run opens as the same views, over that run: its denials, its
+walls, its policy and its log.
 
 ## Read only
 
-Nothing is written from this console. The territory was lent by whoever launched the run,
-and a grant written into an archived `seisin.toml` would change nothing anywhere. So:
+A run is never granted from. What it was lent is the launcher's to lend, and a grant written
+into an archived policy would change nothing anywhere. With `[console] launcher` the whole
+console reads this way, because two places that approve the same thing are one too many:
 
 - every route that writes (`/api/decide`, `/api/decline-all`, `/api/control-files`) answers
-  **405**, as does any method but `GET` and `HEAD`;
-- the page draws no Grant, Decline or Decline all, and no control-files switch you can press.
-  Where a request's buttons would be it says *Not granted here, ask for it in
-  `<launcher>`*, with the path or the host;
-- a request queue an older seisin left in the old form is shown as an error, never
-  migrated. The console over one policy rewrites such a queue once; this one does not touch
-  files that are not its own.
+  **405**, as does any method but `GET` and `HEAD`, when there is no policy or a launcher lends it;
+- the page has no **Waiting on you**. A denial says *Not granted here: access is asked for in
+  `<launcher>`*. A request the run asked for stays in `/api/run`, for a program that reads it;
+- a request queue an older seisin left in the old form is shown as an error, never migrated.
 
-The token works as it does for `seisin ui`: it travels only in the link's fragment, never in
+`[console] launcher` closes the console, not the CLI: `seisin grant` still does what a person
+at a terminal tells it.
+
+The token travels only in the link's fragment, never in
 a response, and every `/api/` route asks for it.
 
 ## The directory: the contract

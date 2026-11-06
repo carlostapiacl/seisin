@@ -4,6 +4,7 @@
  */
 import { createHash } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { resolve, dirname, join } from "node:path";
 import { CONFIG_NAME } from "./layout.js";
 import { parseKey, MODES, checkNames, BUILTIN, unknownMode } from "./keys.js";
@@ -235,6 +236,7 @@ export function loadConfig(path, text = readFileSync(path, "utf8"), { root = nul
     redact: readBoolean(own(runtime, "redact"), `${path}: runtime.redact`),
     scanIgnore: asArray(own(own(parsed, "scan"), "ignore"), "scan.ignore"),
     protect: readProtect(own(parsed, "protect"), path),
+    console: readConsole(own(parsed, "console"), path),
     roles: {},
   };
 
@@ -645,11 +647,32 @@ export function withSidecars(paths) {
  * off for every role and nothing on screen said so. The same "fail open by
  * typo" that was closed for roles, closed harder because it covers them all.
  */
+/**
+ * `[console]`: what `seisin ui` opens beside the policy. `runs` is a directory
+ * of runs, relative to this file. `launcher` names who lends the territory:
+ * then nothing is granted from the console, and it says to ask there.
+ */
+function readConsole(table, path) {
+  if (table === undefined) return {};
+  const out = {};
+  for (const k of ["runs", "launcher"]) {
+    const v = own(table, k);
+    if (v === undefined) continue;
+    if (typeof v !== "string" || !v.trim()) throw new Error(`${path}: console.${k} must be a non-empty string, not ${JSON.stringify(v)}.`);
+    out[k] = v;
+  }
+  if (out.runs) out.runs = resolve(dirname(resolve(path)), expandHome(out.runs));
+  return out;
+}
+
+const expandHome = (p) => (p === "~" || p.startsWith("~/") ? join(homedir(), p.slice(2)) : p);
+
 const SHAPE = {
   roles: null,                            // validated where roles are read
   keys: { dir: true, providers: { "*": { command: true, mode: true } } },
   network: { allow: true, deny_addresses: true },
   runtime: { writes: true, isolate: true, redact: true, read: true },
+  console: { runs: true, launcher: true },
   scan: { ignore: true },
   protect: { instructions: true },
   notify: { url: true, url_file: true, format: true },

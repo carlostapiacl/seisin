@@ -14,7 +14,7 @@
  * failing. See uilink.js.
  */
 import { spawnSync } from "node:child_process";
-import { statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { serve } from "../serve.js";
 import { writeUiLink, readUiLink, clearUiLink } from "../uilink.js";
@@ -42,10 +42,16 @@ function runsDirOf(argv) {
 }
 
 export async function ui(config, argv = []) {
-  const runsDir = runsDirOf(argv);
-  const mode = runsDir ? "runs" : "policy";
+  // `--runs`: the same console with no policy to open, for a launcher that asks
+  // for it by directory. A policy that names its runs brings them along.
+  const runsOnly = runsDirOf(argv);
+  const declared = runsOnly ? null : config?.console?.runs ?? null;
+  const missing = declared && !existsSync(declared);
+  const servedRuns = runsOnly ?? (missing ? null : declared);
+  const runsDir = runsOnly;
+  const mode = runsOnly ? "runs" : "policy";
   const i = argv.indexOf("--port");
-  const port = i === -1 ? (runsDir ? 4179 : 4178) : Number(argv[i + 1]);
+  const port = i === -1 ? (runsOnly ? 4179 : 4178) : Number(argv[i + 1]);
   const json = argv.includes("--json");
 
   // `seisin ui --link`: print the live link a running console left, and open
@@ -76,7 +82,7 @@ export async function ui(config, argv = []) {
 
   let server;
   try {
-    server = await serve(runsDir ? null : config.path, port, { runsDir });
+    server = await serve(runsOnly ? null : config.path, port, { runsDir: servedRuns });
   } catch (e) {
     // A console is already on this port: hand back its live link rather than
     // erroring, which is the case that sends people digging in the terminal.
@@ -102,7 +108,7 @@ export async function ui(config, argv = []) {
   const bound = server.address().port;
   const url = `http://127.0.0.1:${bound}/#t=${server.seisinToken}`;
   // Recorded before we print, so `--link` and a second `seisin ui` can find it.
-  writeUiLink(bound, url, undefined, runsDir ? null : config.path, { mode, dir: runsDir });
+  writeUiLink(bound, url, undefined, runsOnly ? null : config.path, { mode, dir: servedRuns });
 
   // local_binding opens every port (macOS); local_ports opens the ones it
   // names, on every platform — so only a role that names THIS port counts.
@@ -115,7 +121,8 @@ export async function ui(config, argv = []) {
     (runsDir
       ? `  ${C.dim}reading the runs in ${runsDir}, live and read only: nothing is granted from here. ctrl-c to stop.${C.off}\n` +
         `  ${C.dim}one run: add &run=<run_id> to the link.${C.off}\n`
-      : `  ${C.dim}reading ${config.path} and the log, live. ctrl-c to stop.${C.off}\n`) +
+      : `  ${C.dim}reading ${config.path} and the log${servedRuns ? `, and the runs in ${servedRuns}` : ""}, live. ctrl-c to stop.${C.off}\n` +
+        (missing ? `  ${C.yellow}[console] runs: ${declared} does not exist yet; the runs in the log are shown instead.${C.off}\n` : "")) +
     `  ${C.dim}the link carries this run's token: open it here, do not paste it anywhere.${C.off}\n` +
     `  ${C.dim}lost it? this terminal has it above, or run: seisin ui${runsDir ? ` --runs ${runsDir}` : ""} --link${bound === (runsDir ? 4179 : 4178) ? "" : ` --port ${bound}`}${C.off}\n` +
     (reach.length

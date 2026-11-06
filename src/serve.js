@@ -24,7 +24,7 @@ import { pending, requestsPath, editPolicy, settle, cleanReason, lastAgentOf, fi
 import { causesOf, describeWalls, parseSince, queue, verdicts, wallsByRole } from "./views.js";
 import { planEdit, hashOf } from "./controls.js";
 import { inspect } from "./inspect.js";
-import { scanRuns, runsView, runOf, runPolicy, filtersOf, isRunId } from "./runs.js";
+import { scanRuns, runsView, runOf, runPolicy, filtersOf, isRunId, logRunsView, logRunOf } from "./runs.js";
 
 // Moved to views.js, which the MCP server shares; kept importable from here.
 export { causesOf } from "./views.js";
@@ -111,14 +111,16 @@ function remember(map, key, value, max = 4) {
  * page downloaded every two seconds and it drew none of them. One role's are
  * served on demand by /api/settings.
  */
-export function state(configPath, { since = null, snap = snapshot(configPath), readOnly = false } = {}) {
-  const { cfg, text, all } = snap;
+export function state(configPath, { since = null, snap = snapshot(configPath), readOnly = false, run = null } = {}) {
+  const { cfg, text } = snap;
+  // One run of this log: the same views, over that run's lines.
+  const all = run ? snap.all.filter((e) => e.run === run) : snap.all;
 
   // The date filter narrows everything read from the log: activity, causes,
   // walls and the per-role counts. Not the request queue, which is what is
   // waiting now whatever the window. (An entry with no `at` is kept, as
   // read({ since }) always did.)
-  const derived = memo.derived.get(since) ?? remember(memo.derived, since, (() => {
+  const derived = memo.derived.get(`${run}|${since}`) ?? remember(memo.derived, `${run}|${since}`, (() => {
     const win = since ? all.filter((e) => !(e.at < since)) : all;
     const blocks = new Map();
     for (const e of win) if (e.verdict === "denied") blocks.set(e.role, (blocks.get(e.role) ?? 0) + 1);
@@ -206,14 +208,14 @@ export function state(configPath, { since = null, snap = snapshot(configPath), r
  * moved — and a tag naming it, so a poll that already has it gets a 304 and
  * no body at all.
  */
-function stateBody(configPath, since, { readOnly = false, root = null } = {}) {
+function stateBody(configPath, since, { readOnly = false, root = null, run = null } = {}) {
   // One snapshot for the tag and the body. Each used to take its own, so a
   // file that moved between the two calls got a body filed under the tag of
   // what was there before — and a 304 for it until something else moved.
   const snap = snapshot(configPath, root);
-  const k = `${snap.key}|${since}|${readOnly}`;
+  const k = `${snap.key}|${since}|${readOnly}|${run}`;
   return memo.bodies.get(k) ?? remember(memo.bodies, k, {
-    body: JSON.stringify(state(configPath, { since, snap, readOnly })),
+    body: JSON.stringify(state(configPath, { since, snap, readOnly, run })),
     etag: `"${createHash("sha256").update(k).digest("hex").slice(0, 24)}"`,
   });
 }
@@ -497,6 +499,35 @@ function runBody(dir, id, since) {
   };
 }
 
+/** The runs of the policy's own log, for a repository with no directory of them. */
+function logRunsBody(configPath, query) {
+  const { cfg, all, key } = snapshot(configPath);
+  const filters = filtersOf(query);
+  const k = `${key}|${JSON.stringify(filters)}`;
+  return logRunsMemo.get(k) ?? remember(logRunsMemo, k, {
+    body: JSON.stringify(logRunsView(cfg.path, all, filters, Object.keys(cfg.roles))),
+    etag: `"${createHash("sha256").update(k).digest("hex").slice(0, 24)}"`,
+  });
+}
+const logRunsMemo = new Map();
+
+/** One run of the policy's own log, read only: what happened in it does not change. */
+function logRunBody(configPath, id, since) {
+  const { cfg, all } = snapshot(configPath);
+  const run = logRunOf(all, id, Object.keys(cfg.roles));
+  const got = stateBody(configPath, since, { readOnly: true, run: id });
+  return {
+    body: `${got.body.slice(0, -1)},"mode":"runs","readOnly":true,"run":${JSON.stringify(run)}}`,
+    etag: `"${createHash("sha256").update(`${got.etag}|${JSON.stringify(run)}`).digest("hex").slice(0, 24)}"`,
+  };
+}
+
+/** `[console] launcher`: the territory is lent by someone else, and nothing is granted here. */
+function launcherOf(configPath) {
+  if (!configPath) return null;
+  try { return snapshot(configPath).cfg.console?.launcher ?? null; } catch { return null; }
+}
+
 export function serve(configPath, port = 4178, { lockWaitMs = 10000, runsDir = null } = {}) {
   const page = join(HERE, "..", "ui", "index.html");
   if (!existsSync(page)) throw new Error("the console is missing from this install");
@@ -593,10 +624,13 @@ export function serve(configPath, port = 4178, { lockWaitMs = 10000, runsDir = n
       }
     };
     const query = (req.url ?? "").split("?")[1] ?? "";
-    // Over runs, nothing is written: not a decision, not a control file.
-    if (runsDir && req.method !== "GET" && req.method !== "HEAD") {
+    // Over runs alone, or a territory someone else lends, nothing is written.
+    const lent = launcherOf(configPath);
+    if ((!configPath || lent) && req.method !== "GET" && req.method !== "HEAD") {
       res.writeHead(405, { allow: "GET", "content-type": "application/json" });
-      return res.end(JSON.stringify({ error: "read only: this console shows archived runs. Access is asked for where the run was launched, not here." }));
+      return res.end(JSON.stringify({ error: lent
+        ? `read only: the territory is lent by ${lent}. Access is asked for there, not here.`
+        : "read only: this console shows archived runs. Access is asked for where the run was launched, not here." }));
     }
     // ~85 bytes per key: 1 MB is ten thousand requests on one screen.
     if (req.method === "POST" && pathOf(req.url) === "/api/decline-all")
@@ -617,15 +651,19 @@ export function serve(configPath, port = 4178, { lockWaitMs = 10000, runsDir = n
         return res.end();
       }
       if (pathOf(req.url) === "/api/info")
-        return answer(200, runsDir ? { mode: "runs", dir: runsDir, readOnly: true } : { mode: "policy", config: configPath, readOnly: false });
-      const routes = runsDir
-        ? { "/api/runs": () => runsBody(runsDir, query),
-            "/api/run": () => {
-              const id = new URLSearchParams(query).get("run");
-              if (!isRunId(id)) throw bad("run must name one of the runs: ?run=<run_id>");
-              return runBody(runsDir, id, sinceOf(req.url));
-            } }
-        : { "/api/state": () => stateBody(configPath, sinceOf(req.url)) };
+        return answer(200, !configPath
+          ? { mode: "runs", dir: runsDir, readOnly: true }
+          : { mode: "policy", config: configPath, readOnly: !!lent, launcher: lent, ...(runsDir && { dir: runsDir }) });
+      const runId = () => {
+        const id = new URLSearchParams(query).get("run");
+        if (!isRunId(id)) throw bad("run must name one of the runs: ?run=<run_id>");
+        return id;
+      };
+      const routes = {
+        "/api/runs": () => (runsDir ? runsBody(runsDir, query) : logRunsBody(configPath, query)),
+        "/api/run": () => (runsDir ? runBody(runsDir, runId(), sinceOf(req.url)) : logRunBody(configPath, runId(), sinceOf(req.url))),
+        ...(configPath && { "/api/state": () => stateBody(configPath, sinceOf(req.url), { readOnly: !!lent }) }),
+      };
       const route = routes[pathOf(req.url)];
       if (route) {
         let got;
@@ -646,7 +684,8 @@ export function serve(configPath, port = 4178, { lockWaitMs = 10000, runsDir = n
           const params = new URLSearchParams(query);
           const role = params.get("role");
           let policy = configPath, root = null;
-          if (runsDir) {
+          // A run's own policy where it keeps one. Without `run`, the policy being served.
+          if (runsDir && (params.get("run") || !configPath)) {
             const id = params.get("run");
             if (!isRunId(id)) throw bad("run must name one of the runs: ?run=<run_id>");
             runOf(runsDir, id);

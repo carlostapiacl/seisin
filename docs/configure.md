@@ -197,6 +197,17 @@ name per run, and never as a request. Most are the sandbox doing its job and the
 carrying on; one of them is how a browser dies at start, and `seisin run` names the preset
 that answers it. macOS only.
 
+## The console
+
+```toml
+[console]
+runs = ".wapentake/seisin/runs"   # a directory of runs, relative to this file
+launcher = "wapentake"            # who lends the territory: nothing is granted from the console
+```
+
+Both are optional. Without them `seisin ui` lists the runs in this repository's log and grants
+from its queue. **[The console's runs →](runs.md)**
+
 ## Notifications
 
 `[notify]` sends one message per new request (the role, the path, whose it is, and

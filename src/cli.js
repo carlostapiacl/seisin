@@ -106,7 +106,7 @@ ${C.b}seisin${C.off}: give each agent its own folders and its own keys
   seisin init [--force]                 propose a ${CONFIG_NAME} for this repo
   seisin init --from-observations       write ${CONFIG_NAME}.observed from observed runs
   seisin ui [--port n] [--link]         open the console, live (--link reopens a running one)
-  seisin ui --runs <dir> [--link --json]  a read-only console over a directory of runs (docs/runs.md)
+  seisin ui --runs <dir> [--link --json]  the console with no policy, over a directory of runs (docs/runs.md)
   seisin mcp                            an MCP server on stdio — read-only
 
 seisin <command> --help lists a command's flags, examples and exit codes.
