@@ -113,6 +113,10 @@ isolate = "home"          # the above, plus a HOME, TMPDIR and XDG set of the ro
 
 `true` still means `"home"`, so a config written before the split reads the same.
 
+These close the account's homes, found in the user database, whatever `$HOME` says. When an
+orchestrator gives a run its own `HOME`, the same names are closed there too, except what the role
+may write: that home belongs to the run, and a tool has to read back what it wrote.
+
 **Why they had to come apart, measured rather than argued.** With a home of its
 own, `claude -p` answers `Not logged in - please run /login`. The cause is not
 this sandbox: Claude Code keeps its credential in the macOS **Keychain**, the

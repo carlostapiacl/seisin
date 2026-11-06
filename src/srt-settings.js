@@ -30,7 +30,7 @@ import { territoryReads, outlastAllows, dataRoots, keptFor } from "./territory.j
 import { seccompDir } from "./sandboxes/srt.js";
 import {
   SOCKET_MAX, isLink, realOrSelf, expand, homeFits, roleHome, roleHomeRoot,
-  CREDENTIAL_HOMES, toWritePath, writePathsOf, otherAgentsCredentials,
+  CREDENTIAL_HOMES, credentialHomes, accountHome, toWritePath, writePathsOf, otherAgentsCredentials,
 } from "./grants.js";
 
 // Re-exported: these were srt-settings.js's exports before grants.js existed, and
@@ -243,7 +243,7 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
    * denied, the system stays readable, and what a toolchain needs from a home
    * is declared and checked before the run. decisions.md has both halves.
    */
-  if (shielded) denyRead.push(...CREDENTIAL_HOMES.map(expand));
+  if (shielded) denyRead.push(...credentialHomes(writePathsOf(config, role, { observe, agent })));
 
   /**
    * The other agents' sign-in, closed to this run both ways. See AGENT_HOMES
@@ -256,7 +256,8 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
    * nothing in the run can create it either — except under `isolate = "home"`,
    * where the whole role home is writable and a missing one stays creatable.
    */
-  const notMine = otherAgentsCredentials(agent, isolated ? roleHome(config, roleName) : homedir())
+  const notMine = [...new Set([isolated ? roleHome(config, roleName) : homedir(), accountHome()])]
+    .flatMap((h) => otherAgentsCredentials(agent, h))
     .filter((p) => process.platform !== "linux" || existsSync(p));
   denyRead.push(...notMine);
 

@@ -18,7 +18,7 @@ import { traceFields } from "../trace.js";
 import { resolveKeys } from "../keys.js";
 import { nestedSandboxWarning } from "../nested.js";
 import { spool, SOCK_ENV, FIFO_SUFFIX } from "../spool.js";
-import { openRun } from "../rundir.js";
+import { openRun, runsRootOf, TMP_NAME } from "../rundir.js";
 import { secretsOf, redactor } from "../redact.js";
 import { C, err } from "../render.js";
 import { pending, requestsPath, queueOf, recordHandoff } from "../requests.js";
@@ -29,13 +29,13 @@ import { unknownRole } from "../suggest.js";
 import { watchDenials } from "../violations.js";
 import { intake } from "../intake.js";
 import { EXPECTED } from "../kinds.js";
-import { toolchainBins } from "../territory.js";
+import { toolchainBins, writableButUnreadable } from "../territory.js";
 import { writePathsOf, realOrSelf, SOCKET_MAX } from "../grants.js";
 import { runCanary, CANARY_EXIT } from "../canary.js";
 import { scratchWarnings } from "../inspect/machine.js";
 import { append, logPath } from "../log.js";
 import { flagsOf } from "../help.js";
-import { WILD } from "../paths.js";
+import { WILD, realAncestor } from "../paths.js";
 import { chooseSandbox, settingsOf, DEFAULT_SANDBOX } from "../sandboxes/index.js";
 import { machOf } from "../browsers.js";
 import { effectiveConfig, narrowingOf } from "../narrow.js";
@@ -344,6 +344,17 @@ export async function run(config, argv) {
   if (!observe) {
     const around = scratchWarnings(config).find((w) => w.kind === "scratch");
     if (around) err(`${C.yellow}seisin: ${around.headline}. ${around.detail}${C.off}\n`);
+  }
+
+  // A tool that creates one of these and looks again fails on EPERM, and the
+  // refused stat leaves no line in the log.
+  // The runs' shared roots are shut to every run on purpose, and no tool goes there.
+  const ownRoots = runsRootOf(sockPath) ? [runsRootOf(sockPath), join(dirname(runsRootOf(sockPath)), TMP_NAME)] : [];
+  const blind = writableButUnreadable(settings.filesystem, realAncestor)
+    .filter((p) => !ownRoots.some((o) => p === realAncestor(o) || p.startsWith(realAncestor(o) + "/")));
+  if (blind.length) {
+    const named = blind.slice(0, 3).join(", ") + (blind.length > 3 ? ` and ${blind.length - 3} more` : "");
+    err(`${C.yellow}seisin: ${role} can write but not read ${named}. A tool that creates a directory there and checks it again fails with EPERM, and the refused stat is not logged.${C.off}\n`);
   }
 
   // Redaction needs the output to pass through this process, and piping breaks

@@ -8,6 +8,11 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## Unreleased
+
+- `isolate = "credentials"` closes the credential homes of the account, from the user database, as well as those under `$HOME`. A `$HOME` an orchestrator moved is the run's own: the parts of it the role may write stay readable, so a tool can read back the settings it wrote.
+- `seisin run` warns once before the run when a role may write a path it may not read. A tool that creates a directory there and looks again fails with EPERM, and the refused `stat` is not in the log.
+
 ## 0.8.3 — 2026-11-05
 
 - **An agent does not outlive a killed `seisin run`, unless it has double-forked.** A SIGKILL to seisin or its group left

@@ -50,8 +50,9 @@
  * nothing else in a data root is.
  */
 import { readdirSync, lstatSync } from "node:fs";
-import { homedir, tmpdir, userInfo } from "node:os";
-import { realOrSelf, writePathsOf, expand } from "./grants.js";
+import { homedir, tmpdir } from "node:os";
+import { realOrSelf, writePathsOf, expand, accountHome } from "./grants.js";
+export { accountHome };
 import { realAncestor } from "./paths.js";
 
 export const READ_MODES = ["all", "territory"];
@@ -69,11 +70,6 @@ export const AGENT_FILES = { claude: ["~/.claude.json"], codex: [] };
  * (measured), so these resolve against the account, see `accountHome`.
  */
 export const PLATFORM_FILES = { darwin: ["~/.CFUserTextEncoding"], linux: [] };
-
-/** The home directory of the account, from the user database, whatever `$HOME` says. */
-export function accountHome() {
-  try { return userInfo().homedir || homedir(); } catch { return homedir(); }
-}
 
 const expandAccount = (p) => (p.startsWith("~/") ? `${accountHome()}/${p.slice(2)}` : expand(p));
 
@@ -278,3 +274,38 @@ export function readPath(root, p) {
   return `${root}/${trimmed}`.replace(/\/\.$/, "");
 }
 
+
+/**
+ * What this run may write and may not read back.
+ *
+ * Both rules are right on their own, and together they make a directory a tool
+ * can create and then not find. `stat` is refused, so the tool sees nothing
+ * there, tries to create it again and dies on EPERM, far from the cause. A
+ * refused `stat` is not logged either (see violations.js: a directory walk
+ * produces hundreds), so nothing afterwards points back here. Said once, before
+ * the run, it costs a line.
+ *
+ * A path under denyWrite is left out: the key directories are shut both ways,
+ * and that is not a contradiction.
+ */
+export function writableButUnreadable({ denyRead = [], allowRead = [], allowWrite = [], denyWrite = [] }, real = (p) => p) {
+  const writes = allowWrite.map(real);
+  const shutToWrites = denyWrite.map(real);
+  const reopened = allowRead.map(real);
+  const writable = (p) => !shutToWrites.some((n) => under(p, n));
+  const found = new Set();
+  for (const written of denyRead) {
+    // outlastAllows spells a deny with one bracketed letter: the same path.
+    const spelt = written.replace(/\[([^\]])\]/, "$1");
+    if (GLOB.test(spelt)) continue;
+    const d = real(spelt);
+    if (reopened.includes(d)) continue;
+    if (writes.some((w) => under(d, w))) {
+      if (writable(d)) found.add(d);
+      continue;
+    }
+    for (const w of writes)
+      if (inside(w, d) && writable(w) && !reopened.some((a) => under(w, a))) found.add(w);
+  }
+  return [...found].sort();
+}
