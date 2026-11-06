@@ -227,10 +227,13 @@ export function kindsOf(targets, opts = {}) {
  * what Claude Code runs outside the sandbox. So every screen says it apart, as
  * expected, and none counts it as friction. It changes no verdict.
  *
- * Only the cache: the rest of `~/.claude/plugins` (which plugins are installed,
- * which marketplaces are trusted) is not housekeeping, and a write there stays
- * an ordinary protected refusal, said in full.
+ * Only the cache and `store/`, where it locks its built-in plugins on start (seen
+ * in every run of a pilot): the rest of `~/.claude/plugins` (which plugins are
+ * installed, which marketplaces are trusted) is not housekeeping, and a write
+ * there stays an ordinary protected refusal, said in full.
  */
+const PLUGIN_HOUSEKEEPING = ["cache", "store"];
+
 export const EXPECTED = {
   plugins:
     "Claude Code updating its plugins from inside the sandbox: plugins run outside it and update there, so the denial is expected — nothing to grant",
@@ -263,6 +266,6 @@ export function expectedOf(target, { home = homedir(), env = process.env } = {})
     env.CLAUDE_CONFIG_DIR,
     home && `${home.replace(/\/+$/, "")}/.claude`,
     "~/.claude",
-  ].filter(Boolean).map((r) => `${String(r).replace(/\/+$/, "")}/plugins/cache`);
+  ].filter(Boolean).flatMap((r) => PLUGIN_HOUSEKEEPING.map((d) => `${String(r).replace(/\/+$/, "")}/plugins/${d}`));
   return roots.some((r) => t === r || t.startsWith(r + "/")) ? { kind: "plugins", hint: EXPECTED.plugins } : null;
 }
