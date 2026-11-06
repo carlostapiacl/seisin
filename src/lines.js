@@ -24,3 +24,10 @@ export function lineReader(consume, { maxBytes = 1_000_000, onTooLong } = {}) {
     }
   };
 }
+
+/** `s` without the `ch` it ends in, as many as there are. A loop: `/\/+$/` is quadratic on a run of them. */
+export function trimEnd(s, ch = "/") {
+  let end = s.length;
+  while (end > 0 && s[end - 1] === ch) end--;
+  return s.slice(0, end);
+}

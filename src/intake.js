@@ -365,6 +365,12 @@ function temporary(action, target) {
  * and the general `<file>.tmp.<anything>`; null for any other temporary file.
  */
 export function destinationOf(target) {
-  const m = /^(.+[^/])\.tmp\.[^/]+$/.exec(target);
-  return m ? m[1] : null;
+  // Within the last path segment; the last `.tmp.` with something after it.
+  const base = target.lastIndexOf("/") + 1;
+  let at = target.lastIndexOf(".tmp.");
+  while (at >= base) {
+    if (at > base && at >= 2 && at + ".tmp.".length < target.length) return target.slice(0, at);
+    at = at > 0 ? target.lastIndexOf(".tmp.", at - 1) : -1;
+  }
+  return null;
 }

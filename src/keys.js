@@ -47,6 +47,7 @@ import { resolve, isAbsolute, delimiter } from "node:path";
 import { BASE, DEFAULTS } from "./env.js";
 import { SOCK_ENV } from "./spool.js";
 import { resolveExecutable, trustedPath } from "./surface.js";
+import { trimEnd } from "./lines.js";
 
 /**
  * How long a provider may take. A minute, because the slow case is a person:
@@ -83,7 +84,7 @@ const RE_NAMED = /^([A-Za-z_][A-Za-z0-9_]*)=(.+)$/;
  */
 export function defaultName(ref) {
   const last = ref.split("/").filter(Boolean).pop() ?? ref;
-  const name = last.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "").toUpperCase();
+  const name = trimEnd(last.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+/, ""), "_").toUpperCase();
   // A reference of punctuation only would otherwise derive the empty string and
   // produce an unsettable variable. It is not reachable from a sane vault name;
   // it is here because an unnamed failure at spawn time is worse than a refusal.

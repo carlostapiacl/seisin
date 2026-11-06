@@ -61,6 +61,14 @@ export const channelName = (platform = process.platform) => (platform === "linux
 /** The most a FIFO write carries atomically on Linux (PIPE_BUF). */
 const PIPE_BUF = 4096;
 
+/**
+ * The longest line the parent takes from inside the sandbox. A line of the
+ * hook's is a path and a reason; the kernel will not open a path past 4096 bytes.
+ * What is on it is worked out on the parent's one thread, where a run's signals
+ * are handled too, so the cost of a line is capped here.
+ */
+const MAX_LINE = 16 * 1024;
+
 /** Parses newline-separated JSON messages and hands each to `sink`. */
 function lineReader(sink, onTooLong) {
   return readLines((line) => {
@@ -70,7 +78,7 @@ function lineReader(sink, onTooLong) {
     } catch {
       // Garbage from inside the sandbox is not the parent's emergency.
     }
-  }, { onTooLong });
+  }, { maxBytes: MAX_LINE, onTooLong });
 }
 
 /**

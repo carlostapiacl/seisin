@@ -51,7 +51,7 @@ export const TOOL_MATCHER = `^(${[...Object.keys(FILE_TOOLS), "Bash", "apply_pat
  * shell line they can be read exactly: Add, Update and Delete name the file,
  * and `Move to` names where an update lands.
  */
-const PATCH_HEADER = /^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+?)\s*$/gm;
+const PATCH_HEADER = /^\*\*\* (?:Add File|Update File|Delete File|Move to): /;
 
 /**
  * Paths a shell command is going to write.
@@ -72,8 +72,9 @@ const WRITERS = /(?:^|\s|;|&&|\|\|)(?:cp|mv|install|tee|touch|mkdir|rm|rmdir|tru
  * which recomputes the same verdict rather than trusting the line from the sandbox.
  */
 export function mcpServer(tool) {
-  const m = typeof tool === "string" && /^mcp__(.+?)__(.+)$/.exec(tool);
-  return m ? m[1] : null;
+  if (typeof tool !== "string" || !tool.startsWith("mcp__") || /[\n\r\u2028\u2029]/.test(tool)) return null;
+  const end = tool.indexOf("__", "mcp__".length + 1);
+  return end !== -1 && end + 2 < tool.length ? tool.slice("mcp__".length, end) : null;
 }
 
 export function targetsOf(tool, input = {}) {
@@ -104,7 +105,10 @@ export function targetsOf(tool, input = {}) {
   }
   if (tool === "apply_patch") {
     const body = typeof input.command === "string" ? input.command : typeof input.patch === "string" ? input.patch : "";
-    const paths = [...new Set([...body.matchAll(PATCH_HEADER)].map((m) => m[1]))];
+    const paths = [...new Set(body.split("\n").map((line) => {
+      const m = PATCH_HEADER.exec(line);
+      return m ? line.slice(m[0].length).trimEnd() : "";
+    }).filter(Boolean))];
     return paths.map((path) => ({ action: "write", path }));
   }
   if (tool !== "Bash" || typeof input.command !== "string") return [];
