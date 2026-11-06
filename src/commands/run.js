@@ -354,7 +354,7 @@ export async function run(config, argv) {
     .filter((p) => !ownRoots.some((o) => p === realAncestor(o) || p.startsWith(realAncestor(o) + "/")));
   if (blind.length) {
     const named = blind.slice(0, 3).join(", ") + (blind.length > 3 ? ` and ${blind.length - 3} more` : "");
-    err(`${C.yellow}seisin: ${role} can write but not read ${named}. A tool that creates a directory there and checks it again fails with EPERM, and the refused stat is not logged.${C.off}\n`);
+    err(`${C.yellow}seisin: ${role} can write but not read ${named}. A tool that creates a directory there and checks it again fails with EPERM, and the denied stat is not logged.${C.off}\n`);
   }
 
   // Redaction needs the output to pass through this process, and piping breaks
