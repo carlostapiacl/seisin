@@ -8,6 +8,13 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## Unreleased
+
+- **An `--only` another one covers no longer costs anything.** Every path takes rules in the macOS profile, and a run
+  with 53 of them stopped with `sandbox-exec: profile too large`, nothing started. What another path already covers is
+  now left out of the policy, which changes nothing the run may write. Distinct paths still have a limit, measured at
+  45 with paths of about 100 characters (docs/runs.md). *What to do:* nothing.
+
 ## 0.8.2 — 2026-11-05
 
 - **The parent limits what it takes per line from the sandbox.** The audit channel took lines of up to 1 MB. It

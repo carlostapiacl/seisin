@@ -315,6 +315,22 @@ test("a run with --only tells the hook what its role has; a run without it does 
   assert.match(deny.stdout, /\[none\]/);
 });
 
+test("an --only another --only covers adds nothing to the policy, and the run still writes only that", { skip }, () => {
+  const state = join(boxed("narrow-compact-"), ".seisin");
+  const paths = [];
+  for (let i = 0; i < 60; i++) paths.push("--only", `src/api/deep/f${i}.ts`);
+  const r = seisin(["run", "executor", "--policy", join(inst, "seisin.toml"), "--state-dir", state,
+    "--var", `RUN=${join(inst, "run")}`, ...paths, "--only", "src/api/**", "--only", "src/api/**", "--only", "src/web/one.ts",
+    "--agent", "none", "--", "/bin/sh", "-c", "mkdir -p src/api/deep; echo x > src/api/deep/new.ts; echo y > src/web/other.ts; true"]);
+  assert.equal(r.status, 0, r.stderr);
+  const dir = join(state, "policies");
+  const written = JSON.parse(readFileSync(join(dir, readdirSync(dir)[0]), "utf8")).roles.executor.writes;
+  assert.deepEqual(written, ["src/api/**", "src/web/one.ts"]);
+  assert.equal(existsSync(join(repo, "src/api/deep/new.ts")), true);
+  assert.equal(existsSync(join(repo, "src/web/other.ts")), false);
+  rmSync(join(repo, "src/api/deep"), { recursive: true });
+});
+
 /* ── one repo, one record ── */
 
 function repoWithWorktree(prefix) {
