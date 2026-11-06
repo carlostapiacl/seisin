@@ -15,6 +15,8 @@ import { loadConfig } from "../src/config.js";
 import { notifier, message } from "../src/notify.js";
 import { record, requestsPath } from "../src/requests.js";
 import { buildEnv } from "../src/env.js";
+import { symlinkSync } from "node:fs";
+import { scratch } from "./_tmp.js";
 
 
 const BASE = '[keys]\ndir = ".secrets"\n\n[roles.web]\nwrites = ["src/web/**"]\n\n[roles.api]\nwrites = ["src/api/**"]\n';
@@ -106,4 +108,98 @@ test("a real refusal sends one message, from the parent, saying whose it is", { 
   assert.notEqual(code, 0, "the kernel let it through");
   assert.equal(got.length, 1, `expected one message, got ${got.length}`);
   assert.match(got[0], /web was denied write on src\/api\/real\.ts\. It belongs to api/);
+});
+
+function notificationPolicy(root, keys, urlFile = ".secrets/endpoint.txt", keyDir = ".secrets") {
+  return loadConfig(join(root, "seisin.toml"),
+    `[keys]\ndir = ${JSON.stringify(keyDir)}\n[roles.dev]\nwrites = []\nkeys = ${JSON.stringify(keys)}\n` +
+    `[notify]\nurl_file = ${JSON.stringify(urlFile)}\n`);
+}
+
+function notificationRoot() {
+  const root = scratch("seisin-notify-audit-");
+  mkdirSync(join(root, ".secrets"));
+  writeFileSync(join(root, ".secrets", "endpoint.txt"), "https://notify.example.test/synthetic-topic\n");
+  return root;
+}
+
+test("notification validation recognises path aliases on either side of a file declaration", () => {
+  const root = notificationRoot();
+  for (const key of [".secrets/./endpoint.txt", ".secrets//endpoint.txt", ".secrets/sub/../endpoint.txt"])
+    assert.throws(() => notificationPolicy(root, [key]), /declared as a key by dev/);
+  assert.throws(() => notificationPolicy(root, ["endpoint.txt"], ".secrets/./endpoint.txt"), /declared as a key by dev/);
+});
+
+test("notification files cannot be delivered to a role through a builtin file reference", () => {
+  const root = notificationRoot();
+  for (const key of ["N=file://.secrets/endpoint.txt", "file://.secrets/./endpoint.txt", "N=file://.secrets/endpoint.txt#TOPIC"])
+    assert.throws(() => notificationPolicy(root, [key]), /declared as a key by dev/);
+  assert.equal(notificationPolicy(root, ["N=file://.secrets/other.txt"]).notify.urlFile, ".secrets/endpoint.txt");
+});
+
+test("a directory read declaration cannot include the notification file", () => {
+  const root = notificationRoot();
+  for (const key of [".", ".secrets/", ".secrets/."])
+    assert.throws(() => notificationPolicy(root, [key]), /declared as a key by dev/);
+  assert.equal(notificationPolicy(root, [".secrets"]).notify.urlFile, ".secrets/endpoint.txt");
+});
+
+test("notification files must resolve inside a protected directory", () => {
+  const root = notificationRoot();
+  writeFileSync(join(root, "readable.txt"), "https://notify.example.test/synthetic-topic\n");
+  symlinkSync(join(root, "readable.txt"), join(root, ".secrets", "outside.txt"));
+  assert.throws(() => notificationPolicy(root, [], ".secrets/outside.txt"), /not inside a key directory/);
+  symlinkSync(join(root, ".secrets", "endpoint.txt"), join(root, ".secrets", "alias.txt"));
+  assert.throws(() => notificationPolicy(root, ["alias.txt"]), /declared as a key by dev/);
+});
+
+test("an absolute protected directory inside the repo can hold a private notification file", () => {
+  const root = notificationRoot();
+  const cfg = notificationPolicy(root, [], ".secrets/endpoint.txt", join(root, ".secrets"));
+  assert.equal(cfg.notify.urlFile, ".secrets/endpoint.txt");
+});
+
+test("a failed notification does not return a credential-bearing URL in its diagnostic", async () => {
+  const root = notificationRoot();
+  const cfg = notificationPolicy(root, []);
+  const n = notifier(cfg, { env: { SEISIN_NOTIFY_URL: "https://notify.example.test:bad/synthetic-secret-topic" } });
+  const request = { role: "dev", action: "write", target: "docs/a.md", owners: [] };
+  record(requestsPath(root), request);
+  assert.equal(n.maybe(request), true);
+  const failures = await n.settle();
+  assert.equal(failures.length, 1);
+  assert.doesNotMatch(failures[0], /synthetic-secret-topic|notify\.example/);
+});
+
+test("a completed notification does not keep its process alive until the settlement cap", () => {
+  const root = scratch("seisin-notify-drain-");
+  const module = new URL("../src/notify.js", import.meta.url).href;
+  const requests = new URL("../src/requests.js", import.meta.url).href;
+  const script = `import {notifier} from ${JSON.stringify(module)};
+import {record,requestsPath} from ${JSON.stringify(requests)};
+const config = {root: ${JSON.stringify(root)}};
+const req = {role:'dev',action:'write',target:'docs/a.md',owners:[]};
+const n = notifier(config,{env:{SEISIN_NOTIFY_URL:'https://notify.example.test/topic'},fetchImpl:async()=>({ok:true})});
+record(requestsPath(config.root),req);
+if (!n.maybe(req)) throw new Error('notification was not queued');
+await n.settle();process.stdout.write('done');`;
+  // The old, referenced timer kept even a completed request alive for 3.5 s.
+  const r = spawnSync(process.execPath, ["--input-type=module", "-e", script],
+    { encoding: "utf8", timeout: 3000 });
+  assert.equal(r.error, undefined, r.error?.message);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, "done");
+});
+
+/* ── Slack's markup is not the agent's to use ──────────────────────────── */
+
+test("a slack message escapes & < > in what the agent chose", () => {
+  const cfg = { root: "/repo" };
+  const req = { role: "web", action: "write", target: "src/<https://evil.example|approve here>&<!channel>.ts", owners: ["api"] };
+  const { body } = message(cfg, req, 1, "slack");
+  const { text } = JSON.parse(body);
+  assert.ok(!/[<>]/.test(text), text);
+  assert.match(text, /&lt;https:\/\/evil\.example\|approve here&gt;&amp;&lt;!channel&gt;/);
+  // The other formats are not Slack's and stay as they were.
+  assert.match(message(cfg, req, 1, "text").body, /<https:\/\/evil/);
 });

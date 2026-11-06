@@ -13,6 +13,8 @@ import { tmpdir } from "node:os";
 import { walls, render, timesHit } from "../src/walls.js";
 import { decide } from "../src/hook.js";
 import { scratch } from "./_tmp.js";
+import { loadConfig } from "../src/config.js";
+import { wallsCommand, renderForPerson } from "../src/commands/walls.js";
 
 const cfg = {
   root: "/repo",
@@ -183,4 +185,53 @@ test("an owned wall says whose it is, without the path a second time", () => {
   const text = render([{ action: "write", target: "deploy/a.yml", times: 2, owners: ["infra"], reason: "deploy/a.yml belongs to infra" }]);
   assert.match(text, /belongs to infra/);
   assert.equal(text.split("deploy/a.yml").length - 1, 1, "the path appears once");
+});
+
+function repo(toml, files = []) {
+  const root = scratch("seisin-fix051-");
+  for (const f of files) {
+    mkdirSync(join(root, f, ".."), { recursive: true });
+    writeFileSync(join(root, f), "");
+  }
+  writeFileSync(join(root, "seisin.toml"), toml);
+  return { root, cfg: loadConfig(join(root, "seisin.toml")) };
+}
+
+/* ── 4. `seisin walls` says what kind of thing an unowned path is ─────── */
+
+test("walls in the terminal gives an unowned path the console's kind and hint", () => {
+  const { root, cfg } = repo('[roles.dev]\nwrites = ["src/**"]\n[roles.ops]\nwrites = ["deploy/**"]\n');
+  mkdirSync(join(root, ".seisin"), { recursive: true });
+  const line = (t) => JSON.stringify({ at: "2026-09-30T10:00:00.000Z", role: "dev", action: "write", target: t, verdict: "denied" });
+  writeFileSync(join(root, ".seisin", "log.jsonl"),
+    ["dist/app.js", "dist/app.js", ".env", ".env", "notes/plan.md", "notes/plan.md", "deploy/x.yml", "deploy/x.yml"]
+      .map(line).join("\n") + "\n");
+  const shown = wallsCommand(cfg, ["dev"]);
+  const said = renderForPerson("dev", shown).replace(/\x1b\[[0-9;]*m/g, "");
+  assert.doesNotMatch(said, /no role can write it until one claims it/);
+  assert.match(said, /\.env {2}unowned · credential: credential-shaped: never grant a write/);
+  assert.match(said, /dist\/app\.js {2}unowned · build: build output/);
+  assert.match(said, /notes\/plan\.md {2}unowned · ownable: an ownable path no role claims/);
+  assert.match(said, /deploy\/x\.yml {2}belongs to ops/);
+});
+
+test("walls shows six and counts the rest; --all shows every one; the status is over all of them", (t) => {
+  const { root, cfg } = repo('[roles.dev]\nwrites = ["src/**"]\n[roles.ops]\nwrites = ["deploy/**"]\n');
+  mkdirSync(join(root, ".seisin"), { recursive: true });
+  const line = (p) => JSON.stringify({ at: "2026-09-30T10:00:00.000Z", role: "dev", action: "write", target: p, verdict: "denied" });
+  const paths = Array.from({ length: 8 }, (_, i) => `deploy/f${i}.yml`);
+  writeFileSync(join(root, ".seisin", "log.jsonl"), paths.flatMap((p) => [line(p), line(p)]).join("\n") + "\n");
+  const printed = [];
+  t.mock.method(process.stdout, "write", (x) => { printed.push(String(x)); return true; });
+  let cut, every;
+  try { cut = wallsCommand(cfg, ["dev"]); } finally { t.mock.restoreAll(); }
+  const said = printed.join("").replace(/\x1b\[[0-9;]*m/g, "");
+  assert.equal(cut.length, 8, "the status is over every wall, not the six shown");
+  assert.equal((said.match(/deploy\/f\d\.yml/g) ?? []).length, 6);
+  assert.match(said, /2 more wall\(s\): seisin walls dev --all/);
+  printed.length = 0;
+  t.mock.method(process.stdout, "write", (x) => { printed.push(String(x)); return true; });
+  try { every = wallsCommand(cfg, ["dev", "--all"]); } finally { t.mock.restoreAll(); }
+  assert.equal(every.length, 8);
+  assert.equal((printed.join("").match(/deploy\/f\d\.yml/g) ?? []).length, 8);
 });

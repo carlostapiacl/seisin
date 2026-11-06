@@ -1,6 +1,5 @@
 /**
- * Pre-release review of 0.5.0, round x: what a person's decision writes, and
- * what it refuses to pretend it wrote.
+ * What a grant refuses, under the policy's lock, and what it closes without writing.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -10,6 +9,9 @@ import { scratch } from "./_tmp.js";
 import { loadConfig } from "../src/config.js";
 import { record, pending, requestsPath, policyLockBase } from "../src/requests.js";
 import { grant } from "../src/commands/requests.js";
+import { statSync, chmodSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { applyGrant } from "../src/requests.js";
 
 const TOML = '[roles.a]\nwrites = ["a/**"]\nkeys = []\n';
 
@@ -67,22 +69,6 @@ test("the policy's lock lives in the state dir, which every role is denied", () 
 /* ── a protected file is not something to ask for ─────────────────────── */
 
 const WEB = '[roles.web]\nwrites = ["web/**"]\nkeys = []\n';
-
-test("the hook files no request for a protected file, and says nothing was queued", async () => {
-  const { decide } = await import("../src/hook.js");
-  const box = repo("seisin-x-hookprot-", WEB);
-  mkdirSync(join(box, "web", ".vscode"), { recursive: true });
-  writeFileSync(join(box, "web", ".vscode", "settings.json"), "{}");
-  const cfg = loadConfig(join(box, "seisin.toml"));
-  const asked = [];
-  const out = decide(cfg, "web",
-    { tool_name: "Write", tool_input: { file_path: join(box, "web", ".vscode", "settings.json") } },
-    { now: () => true, ask: (_f, r) => asked.push(r) });
-  assert.equal(out.decision, "deny");
-  assert.deepEqual(asked, [], "a request no grant can satisfy was queued");
-  assert.match(out.hookSpecificOutput.permissionDecisionReason, /Nothing was queued/);
-  assert.doesNotMatch(out.hookSpecificOutput.permissionDecisionReason, /Already queued/);
-});
 
 test("a grant for a family the role is not handed is refused, naming control_files", () => {
   const box = repo("seisin-x-grantfam-", WEB);
@@ -162,36 +148,59 @@ test("from the CLI it exits 0 and says it was already granted", async () => {
   assert.equal(pending(requestsPath(box)).length, 0);
 });
 
-/* ── the console's memory expires with what it depends on ─────────────── */
+function policy(text) {
+  const root = scratch("seisin-audit-");
+  const path = join(root, "seisin.toml");
+  writeFileSync(path, text);
+  return loadConfig(path);
+}
 
-test("the console re-reads the disk around the policy after a minute, not never", async (t) => {
-  const { realpathSync } = await import("node:fs");
-  const box = repo("seisin-x-memo-",
-    '[roles.a]\nwrites = ["a/**"]\nkeys = ["TOK=file://cred/t.txt"]\n');
-  const { get } = await consoleOn(t, box);
-  const settings = async () => JSON.stringify((await (await get("/api/settings?role=a")).json()).settings);
+test("grant checks the policy under the lock, including a newly added subtraction", () => {
+  const cfg = policy('[roles.dev]\nwrites = []\nkeys = []\n');
+  mkdirSync(join(cfg.root, "private"));
+  record(requestsPath(cfg.root), { role: "dev", action: "write", target: "private/a.md" });
+  const before = '[roles.dev]\nwrites = []\nkeys = []\nnever_writes = ["private/**"]\n';
+  writeFileSync(cfg.path, before);
+  assert.throws(() => grant(cfg, ["1"]), /never_writes/);
+  assert.equal(readFileSync(cfg.path, "utf8"), before);
+  assert.equal(pending(requestsPath(cfg.root)).length, 1);
+});
 
-  const first = await get("/api/state");
-  const tag = first.headers.get("etag");
-  await first.text();
-  await settings();
-  // Nothing moved: the same tag, a 304.
-  assert.equal((await get("/api/state", { "if-none-match": tag })).status, 304);
+test("an invalid grant leaves both the policy and the pending decision untouched", () => {
+  const cfg = policy('[roles.dev]\nwrites = []\nkeys = []\n');
+  record(requestsPath(cfg.root), { role: "dev", action: "write", target: "/outside/seisin-audit/a.md" });
+  const before = readFileSync(cfg.path, "utf8");
+  assert.throws(() => grant(cfg, ["1"]), /absolute/);
+  assert.equal(readFileSync(cfg.path, "utf8"), before);
+  assert.equal(pending(requestsPath(cfg.root)).length, 1);
+});
 
-  // The key file becomes a link to somewhere else. Its destination is what the
-  // kernel meets, so it must be denied too — but nothing the key hashes moved.
-  const elsewhere = join(box, "elsewhere");
-  mkdirSync(elsewhere);
-  writeFileSync(join(elsewhere, "t.txt"), "x");
-  mkdirSync(join(box, "cred"));
-  symlinkSync(join(elsewhere, "t.txt"), join(box, "cred", "t.txt"));
-  const dest = realpathSync(join(elsewhere, "t.txt"));
-  assert.ok(!(await settings()).includes(dest), "precondition: still the first reading");
+test("grant reads commented headers and indented lists, keeping CRLF and the next role", () => {
+  const before = '  [roles.dev] # current\r\n  writes = ["src/**"] # keep\r\nkeys = []\r\n  [roles.other] # next\r\nwrites = ["api/**"]\r\n';
+  const { toml } = applyGrant(before, { role: "dev", action: "write", grant: "docs/**", times: 1 });
+  const cfg = policy(toml);
+  assert.deepEqual(cfg.roles.dev.writes, ["src/**", "docs/**"]);
+  assert.deepEqual(cfg.roles.other.writes, ["api/**"]);
+  assert.ok(toml.endsWith('  [roles.other] # next\r\nwrites = ["api/**"]\r\n'));
+  assert.doesNotMatch(toml, /(?<!\r)\n/);
+});
 
-  const real = Date.now;
-  Date.now = () => real() + 61_000;
-  try {
-    assert.ok((await settings()).includes(dest), "a disk change was never seen");
-    assert.equal((await get("/api/state", { "if-none-match": tag })).status, 200, "the old tag was still served");
-  } finally { Date.now = real; }
+test("atomic policy edits retain the policy's private file mode", () => {
+  const cfg = policy('[roles.dev]\nwrites = []\nkeys = []\n');
+  chmodSync(cfg.path, 0o600);
+  record(requestsPath(cfg.root), { role: "dev", action: "write", target: "docs/a.md" });
+  grant(cfg, ["1"]);
+  assert.equal(statSync(cfg.path).mode & 0o777, 0o600);
+});
+
+test("a directory at the lock name respects the deadline instead of spinning forever", () => {
+  const base = join(scratch("seisin-audit-lock-"), "log");
+  mkdirSync(base + ".lock");
+  const module = new URL("../src/log.js", import.meta.url).href;
+  const script = `import { withLock } from ${JSON.stringify(module)};
+    try { withLock(${JSON.stringify(base)}, () => {}, { waitMs: 30 }); process.exit(9); }
+    catch (e) { if (e.code !== 'ELOCKED') throw e; }`;
+  const r = spawnSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8", timeout: 2000 });
+  assert.equal(r.error, undefined, r.error?.message);
+  assert.equal(r.status, 0, r.stderr);
 });

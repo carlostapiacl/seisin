@@ -131,3 +131,25 @@ test("SEC-17c a disputed 'allowed' line does not count as legitimate use", () =>
   // backend's src/api/** was only "used" by a disputed line, so it stays unused.
   assert.ok(r.unused.some((u) => u.glob.includes("src/api")), "a disputed line marked a territory used");
 })
+
+/** A policy on disk, loaded. */
+function policy(toml) {
+  const dir = scratch("seisin-review-");
+  writeFileSync(join(dir, "seisin.toml"), toml);
+  return loadConfig(join(dir, "seisin.toml"));
+}
+
+test("review counts a write as use of its own role's territory only", () => {
+  const cfg = policy(`
+[roles.a]
+writes = ["src/**", "docs/**"]
+[roles.b]
+writes = ["src/**"]
+`);
+  mkdirSync(join(cfg.root, ".seisin"));
+  const line = (role, target) => JSON.stringify({ at: new Date().toISOString(), role, action: "write", target, verdict: "allowed" });
+  writeFileSync(join(cfg.root, ".seisin", "log.jsonl"),
+    [line("a", "src/x.ts"), line("a", "src/x.ts"), line("ghost", "docs/y.md")].join("\n") + "\n");
+  const { unused } = review(cfg);
+  assert.deepEqual(unused.map((u) => `${u.role} ${u.glob}`).sort(), ["a docs/**", "b src/**"]);
+});

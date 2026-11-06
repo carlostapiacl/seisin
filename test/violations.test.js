@@ -15,6 +15,9 @@ import {
   parseChunk, actionOf, shellSplit, isOurs, descends, inScope, scopeOf, watchDenials,
   reachedForContent,
 } from "../src/violations.js";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /* ── captured chunks ──────────────────────────────────────────────────── */
 
@@ -313,4 +316,14 @@ test("an unavailable watcher is the same shape, not a different one", () => {
     assert.doesNotThrow(() => w.attributeTo(1234));
     assert.ok(w.close({ drain: 0 }) instanceof Promise, `${platform}: close resolves`);
   }
+});
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+/* ── 5. the comment says where the Linux limit is said ─────────────────── */
+
+test("violations.js does not claim `run` announces the Linux limit", () => {
+  const src = readFileSync(join(ROOT, "src", "violations.js"), "utf8");
+  assert.doesNotMatch(src, /`seisin run` says so once/);
+  assert.match(src, /`seisin check` says it/);
 });
