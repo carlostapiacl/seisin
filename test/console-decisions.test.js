@@ -318,7 +318,7 @@ test("the poll carries no settings; one role's are served on demand, with the to
   const body = await one.json();
   assert.equal(body.role, "frontend");
   assert.deepEqual(body.settings, settingsFor(loadConfig(s.config), "frontend"));
-  assert.ok(JSON.stringify(body.settings).includes("example.org"), "the policy's domains, not a hand-built github.com");
+  assert.match(JSON.stringify(body.settings), /example\.org/, "the policy's domains, not a hand-built github.com");
   assert.equal((await get("/api/settings?role=nobody")).status, 404);
   assert.equal((await get("/api/settings?role=__proto__")).status, 404);
   assert.equal((await fetch(base + "/api/settings?role=frontend")).status, 403);

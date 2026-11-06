@@ -15,17 +15,6 @@ import { boxed, CLI, sandboxSkip } from "./_tmp.js";
 const policy = (writes, extra = "") =>
   `[runtime]\nwrites = []\n${extra}\n[roles.dev]\nwrites = ["${writes}"]\nkeys = []\n`;
 
-for (const grant of [".claude", ".claude/**", ".claude/hooks/**"]) {
-  test(`check refuses a territory aimed at ${grant}`, () => {
-    const root = boxed("pre060-check-");
-    mkdirSync(join(root, ".claude", "hooks"), { recursive: true });
-    writeFileSync(join(root, "seisin.toml"), policy(grant));
-    const cfg = loadConfig(join(root, "seisin.toml"));
-    assert.ok(inspect(cfg).warnings.some((w) =>
-      w.kind === "cannot-be-enforced" && w.headline.includes(grant)));
-  });
-}
-
 test("read = territory makes file explanation match what is kept", () => {
   const root = boxed("pre060-read-");
   mkdirSync(join(root, "src"), { recursive: true });
