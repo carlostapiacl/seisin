@@ -13,8 +13,8 @@ Last run, 2026-11-05: 1209 tests on macOS, all eight jobs green. On Node 24:
 
 | | tests | pass | skipped |
 |---|---|---|---|
-| macOS | 1209 | 1199 | 10 |
-| `ubuntu-latest` | 1208 | 1179 | 29 |
+| macOS | 1210 | 1200 | 10 |
+| `ubuntu-latest` | 1209 | 1180 | 29 |
 
 The skips are platform tests. Some tests run real commands through the real sandbox and check
 what the kernel did; 26 of them are the core boundary file, `test/sandbox.test.js`, and the job

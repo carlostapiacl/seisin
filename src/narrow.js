@@ -75,7 +75,10 @@ function narrowWrites(parsedRole, role, only) {
       throw new Error(
         `--only ${g}: role "${role}" cannot write that, so a run of it cannot either.\n` +
         `  A run only takes away from its role. Its writes are: ${ceiling.join(", ") || "none"}.`);
-  parsedRole.writes = [...new Set(names)];
+  // One already covered by another adds nothing but rules: the sandbox writes a set
+  // of them per path, and Seatbelt refuses a profile past its size.
+  const unique = [...new Set(names)];
+  parsedRole.writes = unique.filter((g) => !unique.some((other) => other !== g && coveredBy(g, other)));
 }
 
 /**
