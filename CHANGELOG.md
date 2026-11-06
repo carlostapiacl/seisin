@@ -8,6 +8,14 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## Unreleased
+
+- **`seisin ui --runs`: a run narrowed from one policy opens with its own record.** Its detail page looked for the log
+  beside the policy kept in `.seisin/policies/`, found none, and showed nothing denied, while the list counted its denials.
+- **The list of runs comes first.** The denials summed across runs are one click away instead of two screens above it.
+- **Smaller:** a long run id no longer overflows the sidebar, an archived run with no requests no longer speaks of
+  pending decisions, and the sidebar links to tartaros, the default sandbox.
+
 ## 0.8.4 — 2026-11-06
 
 - **`isolate = "credentials"` follows the account when `HOME` moves.** The credential homes were found through `$HOME`

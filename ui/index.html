@@ -67,6 +67,8 @@ body{margin:0;background:var(--bg);color:var(--fg);
 .brand b{font-size:15px;font-weight:600;letter-spacing:-.01em}
 .brand small{font-size:11px;color:var(--mid);display:block;margin-top:1px}
 .brand .id{display:flex;align-items:center;gap:10px}
+.brand .id>div{min-width:0}
+.brand #source{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .brand .mark{width:28px;height:28px;flex:none}
 .theme{display:flex;gap:2px;background:var(--hover);border-radius:6px;padding:2px}
 .theme button{flex:1;border:0;background:none;color:var(--mid);padding:4px 0;border-radius:4px;
@@ -168,6 +170,11 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,[t
 .box>header{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;
   justify-content:space-between;gap:12px}
 .box>header h2{font-size:13px;font-weight:600;margin:0}
+.box.fold>summary{padding:10px 14px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;cursor:pointer}
+.box.fold[open]>summary{border-bottom:1px solid var(--line)}
+.box.fold>summary h2{font-size:13px;font-weight:600;margin:0}
+.box.fold>summary .pin:empty{display:none}
+.box.fold>summary .note{font-size:11px;color:var(--dim);margin-left:auto}
 .box>header .note{font-size:11px;color:var(--dim)}
 .box>header .bulk{margin-left:auto;display:flex;gap:6px;align-items:center}
 .box>header .bulk[hidden]{display:none}
@@ -500,7 +507,7 @@ table.runs tr.sys td{color:var(--dim)}
       <div class="cap">Docs</div>
       <a href="https://github.com/carlostapiacl/seisin#readme" target="_blank" rel="noopener"><i>↗</i>seisin README</a>
       <a href="https://github.com/carlostapiacl/seisin/blob/main/docs/glossary.md" target="_blank" rel="noopener"><i>↗</i>Glossary</a>
-      <a href="https://github.com/anthropics/sandbox-runtime" target="_blank" rel="noopener"><i>↗</i>sandbox-runtime</a>
+      <a href="https://github.com/carlostapiacl/tartaros" target="_blank" rel="noopener"><i>↗</i>tartaros</a>
     </div>
   </nav>
 
@@ -580,10 +587,11 @@ table.runs tr.sys td{color:var(--dim)}
         </div>
       </div>
       <div class="cards" id="rn-kpis"></div>
-      <div class="box">
-        <header><h2>Denied across these runs</h2><span class="note">the same denial in many runs is one line · the OS's own housekeeping last</span></header>
+      <!-- Closed until asked for: at 50 lines it pushed the runs two screens down. -->
+      <details class="box fold">
+        <summary><h2>Denied across these runs</h2><span class="pin" id="rn-causes-n"></span><span class="note">the same denial in many runs is one line · the OS's own housekeeping last</span></summary>
         <div class="scrollx"><table class="runs" id="rn-causes"></table></div>
-      </div>
+      </details>
       <div class="box">
         <header><h2>Runs</h2><span class="note">newest first · open one to see its policy, its denials and its log</span></header>
         <div class="scrollx"><table class="runs" id="rn-list"></table></div>
@@ -714,7 +722,7 @@ table.runs tr.sys td{color:var(--dim)}
     <div class="foot">
       <b id="foot-mode">Preview.</b> <span id="foot-text">Opened as a file, this page edits an example policy in memory and
       shows what would be generated. Nothing is saved; run <b>seisin ui</b> in a repository to see yours.</span><br>
-      The JSON is <b>@anthropic-ai/sandbox-runtime</b>'s settings schema, which the test suite exercises against the real binary.
+      The JSON is the settings file the sandbox reads: <b>@anthropic-ai/sandbox-runtime</b>'s schema, which tartaros reads too and the test suite exercises against the real binary.
     </div>
   </main>
 </div>
@@ -1831,8 +1839,10 @@ table.runs tr.sys td{color:var(--dim)}
     var host = document.getElementById("reqs");
     pill("req-pin", REQS.length, REQS.length === 1 ? "request" : "requests");
     if (!REQS.length) {
-      host.innerHTML = '<p class="blank quiet">No pending decisions. ' +
-        '<span>Agents land here when they ask for a path the policy denies them.</span></p>';
+      host.innerHTML = READONLY
+        ? '<p class="blank quiet">This run asked for nothing.</p>'
+        : '<p class="blank quiet">No pending decisions. ' +
+          '<span>Agents land here when they ask for a path the policy denies them.</span></p>';
       drawBulk();
       return;
     }
@@ -2355,6 +2365,7 @@ table.runs tr.sys td{color:var(--dim)}
       document.getElementById("req-note").textContent = "read only · asked for where the run was launched, not here";
     }
     label.textContent = LIVE_LABEL;
+    label.title = LIVE_LABEL;
     label.style.color = "var(--green)";
     // Live, the what-if button goes for good: "run every role unconfined" against a real repo is
     // not a preview. `dataset.live` is what `show()` reads.
@@ -2473,6 +2484,7 @@ table.runs tr.sys td{color:var(--dim)}
       card(t.retried ? "a" : "g", "spent retrying", t.retried, "calls after the first denial of the same thing");
 
     var causes = v.causes || [];
+    document.getElementById("rn-causes-n").textContent = causes.length ? String(causes.length) : "";
     document.getElementById("rn-causes").innerHTML = causes.length
       ? "<thead><tr><th>denied</th><th>what</th><th class=num>runs</th><th class=num>times</th><th>teams</th><th>roles</th></tr></thead><tbody>" +
         causes.map(function(c){

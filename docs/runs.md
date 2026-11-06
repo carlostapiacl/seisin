@@ -44,7 +44,9 @@ to 128 characters. Anything else in `<dir>` (a file, a folder with another name)
 ```
 <dir>/
   <run_id>/
-    seisin.toml          the policy the run ran under, as it was written for it
+    seisin.toml          the policy the run ran under, as it was written for it. A run
+                         narrowed from one policy has none here: what it held under is
+                         in .seisin/policies/, and the newest there is read instead
     .seisin/             what seisin kept beside it: log.jsonl (and rotated log.jsonl.N),
                          requests.jsonl
     run.json             the launcher's word on the run (optional)
@@ -75,7 +77,7 @@ Beside the launcher's `status`, each run gets seisin's own `outcome`:
 
 A run whose system log dropped kernel messages (macOS, a flooded unified log) also says
 **record incomplete**: the boundary held, but some of its denials may be missing from the log.
-| `unread` | its `seisin.toml` is missing or does not load; the error is shown |
+| `unread` | its policy is missing or does not load; the error is shown |
 
 **When something is missing:**
 
@@ -83,7 +85,7 @@ A run whose system log dropped kernel messages (macOS, a flooded unified log) al
   name, with no team, role, work item or status. Its start and end come from the first and
   last line of its log.
 - **`.seisin/` missing or empty**: the run is listed as `no-record`, with nothing denied.
-- **No `seisin.toml`**, or one that does not parse: the run is listed as `unread`, with the
+- **No policy at all** (no `seisin.toml`, no `seisin.json`, nothing in `.seisin/policies/`), or one that does not parse: the run is listed as `unread`, with the
   reason, and does not open.
 
 **What counts as a retry.** Across runs, every denial after the first of the same thing in

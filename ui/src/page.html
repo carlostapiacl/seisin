@@ -46,7 +46,7 @@
       <div class="cap">Docs</div>
       <a href="https://github.com/carlostapiacl/seisin#readme" target="_blank" rel="noopener"><i>↗</i>seisin README</a>
       <a href="https://github.com/carlostapiacl/seisin/blob/main/docs/glossary.md" target="_blank" rel="noopener"><i>↗</i>Glossary</a>
-      <a href="https://github.com/anthropics/sandbox-runtime" target="_blank" rel="noopener"><i>↗</i>sandbox-runtime</a>
+      <a href="https://github.com/carlostapiacl/tartaros" target="_blank" rel="noopener"><i>↗</i>tartaros</a>
     </div>
   </nav>
 
@@ -126,10 +126,11 @@
         </div>
       </div>
       <div class="cards" id="rn-kpis"></div>
-      <div class="box">
-        <header><h2>Denied across these runs</h2><span class="note">the same denial in many runs is one line · the OS's own housekeeping last</span></header>
+      <!-- Closed until asked for: at 50 lines it pushed the runs two screens down. -->
+      <details class="box fold">
+        <summary><h2>Denied across these runs</h2><span class="pin" id="rn-causes-n"></span><span class="note">the same denial in many runs is one line · the OS's own housekeeping last</span></summary>
         <div class="scrollx"><table class="runs" id="rn-causes"></table></div>
-      </div>
+      </details>
       <div class="box">
         <header><h2>Runs</h2><span class="note">newest first · open one to see its policy, its denials and its log</span></header>
         <div class="scrollx"><table class="runs" id="rn-list"></table></div>
@@ -260,7 +261,7 @@
     <div class="foot">
       <b id="foot-mode">Preview.</b> <span id="foot-text">Opened as a file, this page edits an example policy in memory and
       shows what would be generated. Nothing is saved; run <b>seisin ui</b> in a repository to see yours.</span><br>
-      The JSON is <b>@anthropic-ai/sandbox-runtime</b>'s settings schema, which the test suite exercises against the real binary.
+      The JSON is the settings file the sandbox reads: <b>@anthropic-ai/sandbox-runtime</b>'s schema, which tartaros reads too and the test suite exercises against the real binary.
     </div>
   </main>
 </div>

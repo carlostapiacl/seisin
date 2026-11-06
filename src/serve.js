@@ -72,12 +72,17 @@ function statSig(p) {
   try { const s = statSync(p); return `${p}:${s.ino}:${s.size}:${s.mtimeMs}`; } catch { return `${p}:-`; }
 }
 
-function snapshot(configPath) {
+/**
+ * `root`: where the policy's repository is, when that is not the file's folder.
+ * An archived run may hold its policy in `.seisin/policies/`, and its log is
+ * still at the run's own `.seisin/`.
+ */
+function snapshot(configPath, root = null) {
   const text = readFileSync(configPath, "utf8");
   const hash = createHash("sha256").update(text).digest("hex");
   const bucket = Math.floor(Date.now() / MEMO_SPAN);
   if (memo.path !== configPath || memo.hash !== hash || memo.bucket !== bucket) {
-    Object.assign(memo, { path: configPath, hash, bucket, cfg: loadConfig(configPath), logSig: null, all: null });
+    Object.assign(memo, { path: configPath, hash, bucket, cfg: loadConfig(configPath, undefined, { root }), logSig: null, all: null });
     memo.derived.clear();
     memo.bodies.clear();
   }
@@ -201,11 +206,11 @@ export function state(configPath, { since = null, snap = snapshot(configPath), r
  * moved — and a tag naming it, so a poll that already has it gets a 304 and
  * no body at all.
  */
-function stateBody(configPath, since, { readOnly = false } = {}) {
+function stateBody(configPath, since, { readOnly = false, root = null } = {}) {
   // One snapshot for the tag and the body. Each used to take its own, so a
   // file that moved between the two calls got a body filed under the tag of
   // what was there before — and a 304 for it until something else moved.
-  const snap = snapshot(configPath);
+  const snap = snapshot(configPath, root);
   const k = `${snap.key}|${since}|${readOnly}`;
   return memo.bodies.get(k) ?? remember(memo.bodies, k, {
     body: JSON.stringify(state(configPath, { since, snap, readOnly })),
@@ -214,8 +219,8 @@ function stateBody(configPath, since, { readOnly = false } = {}) {
 }
 
 /** One role's generated sandbox settings — what `seisin run` would hand the runtime. */
-function settingsOf(configPath, role) {
-  const { cfg } = snapshot(configPath);
+function settingsOf(configPath, role, root = null) {
+  const { cfg } = snapshot(configPath, root);
   if (typeof role !== "string" || !Object.hasOwn(cfg.roles, role))
     throw Object.assign(new Error(`unknown role ${JSON.stringify(role)}`), { status: 404 });
   return settingsFor(cfg, role);
@@ -483,7 +488,7 @@ const runsMemo = new Map();
 function runBody(dir, id, since) {
   const run = runOf(dir, id);
   if (run.outcome === "unread") throw Object.assign(new Error(`run ${id}: ${run.error}`), { status: 422 });
-  const got = stateBody(runPolicy(dir, id), since, { readOnly: true });
+  const got = stateBody(runPolicy(dir, id), since, { readOnly: true, root: join(dir, id) });
   // The state is already a string; the run is stitched onto it rather than
   // parsed and serialized again on every poll.
   return {
@@ -640,14 +645,15 @@ export function serve(configPath, port = 4178, { lockWaitMs = 10000, runsDir = n
         try {
           const params = new URLSearchParams(query);
           const role = params.get("role");
-          let policy = configPath;
+          let policy = configPath, root = null;
           if (runsDir) {
             const id = params.get("run");
             if (!isRunId(id)) throw bad("run must name one of the runs: ?run=<run_id>");
             runOf(runsDir, id);
             policy = runPolicy(runsDir, id);
+            root = join(runsDir, id);
           }
-          return answer(200, { role, settings: settingsOf(policy, role) });
+          return answer(200, { role, settings: settingsOf(policy, role, root) });
         } catch (e) {
           return answer(e.status ?? 500, { error: e.message });
         }

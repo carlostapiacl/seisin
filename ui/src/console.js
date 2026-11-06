@@ -1109,8 +1109,10 @@
     var host = document.getElementById("reqs");
     pill("req-pin", REQS.length, REQS.length === 1 ? "request" : "requests");
     if (!REQS.length) {
-      host.innerHTML = '<p class="blank quiet">No pending decisions. ' +
-        '<span>Agents land here when they ask for a path the policy denies them.</span></p>';
+      host.innerHTML = READONLY
+        ? '<p class="blank quiet">This run asked for nothing.</p>'
+        : '<p class="blank quiet">No pending decisions. ' +
+          '<span>Agents land here when they ask for a path the policy denies them.</span></p>';
       drawBulk();
       return;
     }
@@ -1633,6 +1635,7 @@
       document.getElementById("req-note").textContent = "read only · asked for where the run was launched, not here";
     }
     label.textContent = LIVE_LABEL;
+    label.title = LIVE_LABEL;
     label.style.color = "var(--green)";
     // Live, the what-if button goes for good: "run every role unconfined" against a real repo is
     // not a preview. `dataset.live` is what `show()` reads.
@@ -1751,6 +1754,7 @@
       card(t.retried ? "a" : "g", "spent retrying", t.retried, "calls after the first denial of the same thing");
 
     var causes = v.causes || [];
+    document.getElementById("rn-causes-n").textContent = causes.length ? String(causes.length) : "";
     document.getElementById("rn-causes").innerHTML = causes.length
       ? "<thead><tr><th>denied</th><th>what</th><th class=num>runs</th><th class=num>times</th><th>teams</th><th>roles</th></tr></thead><tbody>" +
         causes.map(function(c){
