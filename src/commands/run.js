@@ -39,6 +39,7 @@ import { WILD } from "../paths.js";
 import { chooseSandbox, settingsOf, DEFAULT_SANDBOX } from "../sandboxes/index.js";
 import { machOf } from "../browsers.js";
 import { effectiveConfig, narrowingOf } from "../narrow.js";
+import { startWatchdog } from "../watchdog.js";
 import { policyId } from "../config.js";
 import { MACH_FILE } from "../sandboxes/mach-profile.js";
 
@@ -506,6 +507,9 @@ export async function run(config, argv) {
     env,
   });
   denials.attributeTo(child.pid);
+  // SIGKILL runs no handler below: what is left of the run if this process goes (watchdog.js).
+  const watchdog = startWatchdog(child.pid);
+  child.once("exit", () => watchdog.stop());
 
   /**
    * Signals: seisin must not die of one, and must not double one.

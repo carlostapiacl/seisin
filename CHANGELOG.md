@@ -8,6 +8,13 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## Unreleased
+
+- **An agent does not outlive a killed `seisin run`, unless it has double-forked.** A SIGKILL to seisin or its group left
+  the agent running with nobody holding its record. A small process outside the sandbox now kills what it has followed
+  from the runtime down when the run disappears. A double fork escapes it (docs/runs.md). *What to do:* a launcher still
+  has to deal with a process that detached itself.
+
 ## 0.8.2 — 2026-11-05
 
 - **The parent limits what it takes per line from the sandbox.** The audit channel took lines of up to 1 MB. It
