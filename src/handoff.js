@@ -27,7 +27,7 @@
  * about it (recordHandoff). Reads go to a person: a key is shared by a grant,
  * never handed over.
  */
-import { ownersOf, keyHolders, inKeyDir } from "./owners.js";
+import { ownersOf, keyHolders, inKeyDir, explain } from "./owners.js";
 
 /** Small on purpose: a fuse for a topology nobody predicted, not a budget. */
 export const MAX_DEPTH = 4;
@@ -214,6 +214,42 @@ export function chainFromEnv(env = process.env) {
 }
 
 /**
+ * The role's writes before the run's --only, for the hook's words only: it is
+ * how a denial tells "this run left it out" from "this role does not have it".
+ * Nothing enforces from it, and the parent decides on its own copy (intake.js).
+ * Reserved, like CHAIN_ENV (keys.js, RESERVED_ENV).
+ */
+export const ROLE_WRITES_ENV = "SEISIN_ROLE_WRITES";
+
+/** The role's writes from the environment, or null: absent and malformed are the same. */
+export function roleWritesFromEnv(env = process.env) {
+  const raw = env?.[ROLE_WRITES_ENV];
+  if (!raw) return null;
+  let w;
+  try { w = JSON.parse(raw); } catch { return null; }
+  return Array.isArray(w) && w.every((g) => typeof g === "string") ? w : null;
+}
+
+/** Denied in this run, and the role has it: only the run's --only took it away. */
+export function leftOutByRun(config, role, target, roleWrites) {
+  if (!roleWrites) return false;
+  const r = config.roles[role];
+  const whole = { ...config, roles: { ...config.roles, [role]: { ...r, writes: roleWrites } } };
+  return explain(whole, role, "write", target).allowed === true;
+}
+
+/** What a denial says then. No handoff and no person: no grant answers it, and nothing was queued. */
+export function leftOutWords(target, role, again = "") {
+  return `${target} is left out of this run by its --only: ${role} may write it, but not in this run. ` +
+    `No grant changes that, and nothing was queued. If the work needs it, say so in your result. ${ELSEWHERE}${again}`;
+}
+
+/** Up to four names as they are; more than that, the first three and how many else. */
+export function names(list) {
+  return list.length <= 4 ? list.join(", ") : `${list.slice(0, 3).join(", ")} and ${list.length - 3} more`;
+}
+
+/**
  * The decision as the denied agent is told it: whose the path is, where the
  * work goes, and what to do instead of retrying. One sentence, the same from
  * the PreToolUse hook, after a failed tool call and from `seisin whose`.
@@ -234,9 +270,9 @@ export function toAgent(decision, { target, role, key = null, again = "" }) {
       ` A person decides. Do not work around it. ${ELSEWHERE}${again}` + stopped(d, target, key);
   const owners = d.owners ?? [];
   const whose = d.reason === "key"
-    ? (owners.length ? `${target} is declared for ${owners.join(", ")}, not ${role}.` : `No role declares ${target}.`)
+    ? (owners.length ? `${target} is declared for ${names(owners)}, not ${role}.` : `No role declares ${target}.`)
     : owners.length
-      ? `${target} belongs to ${owners.join(", ")}. It is not ${role}'s to change.`
+      ? `${target} belongs to ${names(owners)}. It is not ${role}'s to change.`
       : `${target} has no owner.`;
   // A key or a read is not a change to put somewhere else.
   const write = d.reason !== "key" && d.reason !== "read" && d.type !== "resolved";
@@ -306,7 +342,7 @@ export function nextStep(decision, role) {
     case "human":
       if (d.reason === "key") return "Ask for what you need from it rather than reading the key.";
       if (d.reason === "no-receiver")
-        return `${(d.owners ?? []).join(", ") || "Its owner"} ${(d.owners ?? []).length > 1 ? "do" : "does"} not take handed work, ` +
+        return `${names(d.owners ?? []) || "Its owner"} ${(d.owners ?? []).length > 1 ? "do" : "does"} not take handed work, ` +
           "so a person decides who takes it. Do not work around it.";
       return d.reason === "ambiguous"
         ? "With more than one owner, a person decides who takes it. Do not pick one, and do not work around it."
@@ -365,9 +401,9 @@ function describeDecision(decision, attempt) {
     case "depth":
       return `handoff stopped: handoff chain reached ${d.depth} of ${d.max} — needs a person`;
     case "human":
-      if (d.reason === "ambiguous") return `a person decides: more than one role owns this (${(d.receivers ?? d.owners).join(", ")})`;
+      if (d.reason === "ambiguous") return `a person decides: more than one role owns this (${names(d.receivers ?? d.owners)})`;
       if (d.reason === "no-receiver")
-        return `a person decides: ${d.owners.join(", ")} ${d.owners.length > 1 ? "own" : "owns"} this and ${d.owners.length > 1 ? "take" : "takes"} no handed work (handoff = false)`;
+        return `a person decides: ${names(d.owners)} ${d.owners.length > 1 ? "own" : "owns"} this and ${d.owners.length > 1 ? "take" : "takes"} no handed work (handoff = false)`;
       if (d.reason === "key") return "a person decides: a key is shared by a grant, never handed over";
       if (d.reason === "read") return "a person decides: a read is not handed over";
       return "a person decides: no role owns this";

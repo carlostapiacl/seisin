@@ -16,7 +16,7 @@ import { decide } from "../src/hook.js";
 import { afterTool } from "../src/diagnose.js";
 import { logPath } from "../src/log.js";
 import { requestsPath, queueOf } from "../src/requests.js";
-import { decideHandoff, toAgent, describeHandoff, chainFromEnv, CHAIN_ENV, ELSEWHERE } from "../src/handoff.js";
+import { decideHandoff, toAgent, describeHandoff, chainFromEnv, CHAIN_ENV, ELSEWHERE, roleWritesFromEnv, ROLE_WRITES_ENV, names } from "../src/handoff.js";
 
 const POLICY =
   '[keys]\ndir = ".secrets"\n\n' +
@@ -260,4 +260,52 @@ test("the hook counts this run's tries, and names the earlier runs' apart", () =
   assert.match(second, /You have been denied this 2 times in this run \(and 3 in earlier runs\); it is not going to work on the third try\./);
   // Outside a run nothing marks where this one began: the count is the log's.
   assert.match(said(decide(config, "frontend", write(dir, "src/api/x.ts"), { ...quiet, run: null })), /You have been denied this 5 times now/);
+});
+
+/* ── what only the run's --only took away ── */
+
+test("a write only --only left out says so: no owner, no person, nothing queued", async () => {
+  const dir = boxed("left-out-");
+  writeFileSync(join(dir, "seisin.toml"),
+    '[roles.executor]\nwrites = ["src/api/**"]\n[roles.prepare-a]\nwrites = ["**"]\nhandoff = false\n[roles.prepare-b]\nwrites = ["**"]\nhandoff = false\n');
+  const config = loadConfig(join(dir, "seisin.toml"));
+  const roleWrites = ["src/**"];
+
+  const s = said(decide(config, "executor", write(dir, "src/web/a.ts"), { ...quiet, roleWrites }));
+  assert.match(s, /src\/web\/a\.ts is left out of this run by its --only/);
+  assert.match(s, /nothing was queued/);
+  assert.ok(s.includes(ELSEWHERE));
+  assert.doesNotMatch(s, /prepare-|a person|Already queued/);
+
+  // Outside what the role has at all: the owners and the person, as before.
+  const out = said(decide(config, "executor", write(dir, "docs/a.md"), { ...quiet, roleWrites }));
+  assert.match(out, /docs\/a\.md belongs to prepare-a, prepare-b/);
+  assert.match(out, /Already queued for a person/);
+
+  // Without the run's --only, as before.
+  assert.match(said(decide(config, "executor", write(dir, "src/web/a.ts"), quiet)), /belongs to prepare-a, prepare-b/);
+
+  // The same words after a call the kernel refused.
+  mkdirSync(join(dir, ".seisin"), { recursive: true });
+  appendFileSync(logPath(dir), JSON.stringify({ at: new Date().toISOString(), role: "executor", source: "kernel", action: "write", kind: "file", target: "src/web/a.ts", verdict: "denied" }) + "\n");
+  const after = await afterTool(config, "executor",
+    { hook_event_name: "PostToolUseFailure", tool_name: "Bash", error: "sh: src/web/a.ts: Operation not permitted" },
+    { file: logPath(dir), wait: [0], roleWrites });
+  assert.match(after.hookSpecificOutput.additionalContext, /left out of this run by its --only/);
+});
+
+test("the role's writes reach the hook as a list or not at all, and a policy cannot deliver a key under that name", () => {
+  assert.deepEqual(roleWritesFromEnv({ [ROLE_WRITES_ENV]: '["src/**"]' }), ["src/**"]);
+  for (const bad of ["", "nope", "{}", "[1]"]) assert.equal(roleWritesFromEnv({ [ROLE_WRITES_ENV]: bad }), null, bad);
+  const dir = boxed("left-out-key-");
+  writeFileSync(join(dir, "seisin.toml"), `[keys.providers.k]\ncommand = ["printf", "%s", "{ref}"]\nmode = "env"\n\n[roles.dev]\nwrites = ["src/**"]\nkeys = ["${ROLE_WRITES_ENV}=k://x"]\n`);
+  assert.throws(() => loadConfig(join(dir, "seisin.toml")), new RegExp(`would arrive as ${ROLE_WRITES_ENV}`));
+});
+
+test("a long list of owners is cut, a short one is whole", () => {
+  assert.equal(names(["a", "b", "c", "d"]), "a, b, c, d");
+  assert.equal(names(["a", "b", "c", "d", "e", "f", "g", "h", "i"]), "a, b, c and 6 more");
+  const owners = ["a", "b", "c", "d", "e"];
+  assert.match(describeHandoff({ type: "human", reason: "no-receiver", owners }), /a, b, c and 2 more own this/);
+  assert.match(toAgent({ type: "human", reason: "no-receiver", owners }, { target: "x", role: "r" }), /x belongs to a, b, c and 2 more\./);
 });

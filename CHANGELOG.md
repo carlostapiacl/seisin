@@ -8,6 +8,15 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## 0.8.1 — 2026-11-05
+
+- **An agent stopped by its run's `--only` is told so.** In a repo where `seisin wire` ran, it read that a person
+  would decide and that a request was queued, naming the roles that own the path, when nothing is queued for
+  that denial and no grant changes it. Now it reads that `--only` left the path out of this run. Without the
+  hook an agent still sees only the kernel's error. *What to do:* nothing.
+- **A long list of owners is cut.** With a `prepare-<team>` per team, a denial named nine roles. More than four
+  now reads as the first three and how many else. `seisin whose` and the log keep them all. *What to do:* nothing.
+
 ## 0.8.0 — 2026-11-05
 
 - **A decision is recorded, or seisin says it was not.** `seisin grant` and `decline` and the console

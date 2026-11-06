@@ -9,12 +9,12 @@ the defects I found myself. Open findings are listed as open.
 Node 18/20/22/24, on every pull request and every push to `main`. A release is published only
 from CI, after that passes ([publish.yml](../.github/workflows/publish.yml)), with npm provenance.
 
-Last run, 2026-11-05: 1197 tests on macOS, all eight jobs green. On Node 24:
+Last run, 2026-11-05: 1201 tests on macOS, all eight jobs green. On Node 24:
 
 | | tests | pass | skipped |
 |---|---|---|---|
-| macOS | 1197 | 1187 | 10 |
-| `ubuntu-latest` | 1196 | 1167 | 29 |
+| macOS | 1201 | 1191 | 10 |
+| `ubuntu-latest` | 1200 | 1171 | 29 |
 
 The skips are platform tests. Some tests run real commands through the real sandbox and check
 what the kernel did; 26 of them are the core boundary file, `test/sandbox.test.js`, and the job

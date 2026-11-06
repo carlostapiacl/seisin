@@ -303,6 +303,18 @@ test("review --runs --json sums the runs for a program, and a narrowed run reads
   assert.equal(seisin(["review", "--runs", dir]).status, 2, "only for a program");
 });
 
+test("a run with --only tells the hook what its role has; a run without it does not", { skip }, () => {
+  const show = 'printf "[%s]" "${SEISIN_ROLE_WRITES:-none}"';
+  const go = (...flags) => seisin(["run", "executor", "--policy", join(inst, "seisin.toml"), "--state-dir", join(boxed("narrow-env-"), ".seisin"),
+    "--var", `RUN=${join(inst, "run")}`, ...flags, "--agent", "none", "--", "/bin/sh", "-c", show]);
+  const only = go("--only", "src/api/**");
+  assert.equal(only.status, 0, only.stderr);
+  assert.match(only.stdout, /\["src\/\*\*"\]/);
+  const deny = go("--deny", "src/api/held.ts");
+  assert.equal(deny.status, 0, deny.stderr);
+  assert.match(deny.stdout, /\[none\]/);
+});
+
 /* ── one repo, one record ── */
 
 function repoWithWorktree(prefix) {

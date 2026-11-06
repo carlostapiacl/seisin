@@ -22,7 +22,7 @@ import { openRun } from "../rundir.js";
 import { secretsOf, redactor } from "../redact.js";
 import { C, err } from "../render.js";
 import { pending, requestsPath, queueOf, recordHandoff } from "../requests.js";
-import { chainFrom, describeHandoff, MAX_DEPTH, CHAIN_ENV } from "../handoff.js";
+import { chainFrom, describeHandoff, MAX_DEPTH, CHAIN_ENV, ROLE_WRITES_ENV } from "../handoff.js";
 import { notifier } from "../notify.js";
 import { renderAdded } from "./requests.js";
 import { unknownRole } from "../suggest.js";
@@ -306,7 +306,8 @@ export async function run(config, argv) {
     writeFileSync(join(dirname(file), MACH_FILE), JSON.stringify({ register: machRegister }), { mode: 0o600 });
   const wrap = (inner) => sandbox.wrap(bin, file, settings, inner, { role, machRegister });
 
-  const { env, dropped } = prepareEnvironment({ config, role, sockPath, handed, isDir });
+  const { env, dropped } = prepareEnvironment({ config, role, sockPath, handed, isDir,
+    roleWrites: narrowingOf(mine).only.length ? ceiling.roles[role].writes : null });
   // Resolve in the parent, then deliver, before the canary or agent can start.
   const resolved = deliverCredentials({ config, role, runLabel, trace, theRun, env });
   prepareRunHome({ config, role, env, runTmp, observe });
@@ -568,7 +569,7 @@ export async function run(config, argv) {
 
 // Keep environment filtering ahead of credential resolution: providers run in
 // the parent, and only the sandbox receives the resulting environment.
-function prepareEnvironment({ config, role, sockPath, handed, isDir }) {
+function prepareEnvironment({ config, role, sockPath, handed, isDir, roleWrites }) {
   // The hook runs inside the child and has to know which role it is. These are
   // the only variables seisin injects, and none carries a secret.
   const { env, dropped } = buildEnv(process.env, config.roles[role]);
@@ -584,6 +585,9 @@ function prepareEnvironment({ config, role, sockPath, handed, isDir }) {
   // parent happened to have never reaches a run that was not handed work.
   delete env[CHAIN_ENV];
   if (handed) env[CHAIN_ENV] = JSON.stringify(handed.chain);
+  // The same for what --only took away (handoff.js, ROLE_WRITES_ENV).
+  delete env[ROLE_WRITES_ENV];
+  if (roleWrites) env[ROLE_WRITES_ENV] = JSON.stringify(roleWrites);
   /**
    * The declared toolchain goes first on PATH, under `read = "territory"`.
    *
