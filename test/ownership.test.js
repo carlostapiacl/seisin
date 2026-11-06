@@ -11,6 +11,10 @@ import { scratch } from "./_tmp.js";
 import { decide } from "../src/hook.js";
 import { generalise } from "../src/log.js";
 import { discover } from "../src/commands/init.js";
+import { mkdirSync, existsSync } from "node:fs";
+import { inspect, sharedPaths } from "../src/inspect.js";
+import { toRepoRelative } from "../src/paths.js";
+import { realOrSelf } from "../src/grants.js";
 
 const cfg = {
   root: "/repo",
@@ -168,4 +172,118 @@ test("SEC-15b/09 a territory cannot be absolute, but .. is allowed (used for sib
   assert.throws(load('[roles.a]\nwrites = ["/etc/**"]\n'), /absolute/);
   // .. stays legal: a policy writes ../data/shared/... on purpose
   assert.ok(load('[roles.a]\nwrites = ["../data/shared/**"]\n')());
+});
+
+/** A policy on disk, loaded. */
+function policy(toml) {
+  const dir = scratch("seisin-review-");
+  writeFileSync(join(dir, "seisin.toml"), toml);
+  return loadConfig(join(dir, "seisin.toml"));
+}
+
+// ── owners: `**` does not reach above the repo ──────────────────────────────
+
+test("a glob that does not climb covers nothing above the repo root", () => {
+  assert.equal(covers("**", "../../etc/passwd"), false);
+  assert.equal(covers("**", ".."), false);
+  assert.equal(covers("src/**", "src/../../x"), false);
+  assert.equal(covers("*", "../x"), false);
+  // Inside the repo nothing changed.
+  assert.equal(covers("**", "src/x.ts"), true);
+  assert.equal(covers("src/**", "src/a/../b.ts"), true);
+});
+
+test("a territory that names a place above the root still covers it", () => {
+  // The shape a policy with 32 roles uses: a shared log lives beside the role's directory.
+  assert.equal(covers("../data/shared/lab/dev.md", "../data/shared/lab/dev.md"), true);
+  assert.equal(covers("../data/shared/**", "../data/shared/lab/dev.md"), true);
+  assert.equal(covers("../data/shared/lab/dev.md", "../other/dev.md"), false);
+});
+
+test("explain does not call a path outside the repo 'inside territory'", () => {
+  const cfg = policy(`
+[roles.dev]
+writes = ["**"]
+[roles.lab]
+writes = ["../data/shared/lab/dev.md"]
+`);
+  const out = explain(cfg, "dev", "write", "../../etc/passwd");
+  assert.equal(out.allowed, false);
+  assert.deepEqual(ownersOf(cfg, "../../etc/passwd"), []);
+  assert.equal(explain(cfg, "lab", "write", "../data/shared/lab/dev.md").allowed, true);
+  assert.deepEqual(ownersOf(cfg, "../data/shared/lab/dev.md"), ["lab"]);
+});
+
+// ── owners: only a path key grants a read ───────────────────────────────────
+
+test("a reference key does not make explain(read) say the role declares the file", () => {
+  const cfg = policy(`
+[keys]
+dir = ".secrets"
+[keys.providers.keychain]
+command = ["security", "find-generic-password", "-w", "-s", "{ref}"]
+[roles.a]
+writes = ["a/**"]
+keys = ["keychain://deploy", "TOKEN=file://.secrets/all.env#TOKEN"]
+[roles.b]
+writes = ["b/**"]
+keys = ["all.env"]
+`);
+  // `all.env` is b's file; a only has one value out of it, delivered by the parent.
+  assert.deepEqual(keyHolders(cfg, "all.env"), ["b"]);
+  assert.deepEqual(keyHolders(cfg, ".secrets/all.env"), ["b"]);
+  assert.equal(explain(cfg, "a", "read", ".secrets/all.env").allowed, false);
+  // `deploy` is a keychain item's name, not a file anybody can read.
+  assert.deepEqual(keyHolders(cfg, "deploy"), []);
+  assert.equal(explain(cfg, "b", "read", "all.env").allowed, true);
+});
+
+test("a key directory with a trailing slash matches its keys", () => {
+  const cfg = policy(`[keys]\ndir = ".secrets/"\n[roles.a]\nwrites = ["a/**"]\nkeys = ["x.txt"]\n`);
+  assert.deepEqual(keyHolders(cfg, ".secrets/x.txt"), ["a"]);
+});
+
+// ── performance work that must not change an answer ─────────────────────────
+
+test("the literal-head prefilter keeps every shape the matcher accepts", () => {
+  assert.equal(covers("src/api/**", "src/api"), true);
+  assert.equal(covers("a/**/b", "a/b"), true);
+  assert.equal(covers("a/**/b", "a/x/y/b"), true);
+  assert.equal(covers("**/.env", ".env"), true);
+  assert.equal(covers("src/*.ts", "src/a.ts"), true);
+  assert.equal(covers("src/*.ts", "srcx/a.ts"), false);
+  assert.equal(covers("src/[x]/**", "src/[x]/a"), true);
+  // A long pair past the shared buffer, then a short one reusing it.
+  const deep = "d/".repeat(800) + "f";
+  assert.equal(covers("**/f", deep), true);
+  assert.equal(covers("d/*/f", "d/e/f"), true);
+});
+
+test("sharedPaths answers the same when globs repeat across roles", () => {
+  const cfg = policy(`
+[roles.a]
+writes = ["src/**", "docs/**"]
+[roles.b]
+writes = ["src/**"]
+[roles.c]
+writes = ["docs/x.md", "lib/**"]
+`);
+  assert.deepEqual(sharedPaths(cfg).sort(), ["docs/x.md", "src/**"]);
+  const report = inspect(cfg);
+  assert.deepEqual(report.shared.sort(), ["docs/x.md", "src/**"]);
+  assert.equal(report.warnings.filter((w) => w.kind === "shared").length, 1);
+});
+
+// ── one realpath, the disk's own case ───────────────────────────────────────
+
+test("an absolute path spelled in another case is inside the repo on a case-folding disk", (t) => {
+  const base = scratch("seisin-case-");
+  const repo = join(base, "Repo");
+  mkdirSync(join(repo, "src"), { recursive: true });
+  if (!existsSync(join(base, "repo"))) return t.skip("case-sensitive filesystem");
+  writeFileSync(join(repo, "seisin.toml"), `[roles.a]\nwrites = ["src/**"]\n`);
+  const cfg = loadConfig(join(repo, "seisin.toml"));
+  assert.equal(toRepoRelative(cfg, join(base, "repo", "src", "x.ts")), "src/x.ts");
+  assert.equal(realOrSelf(join(base, "repo")), realOrSelf(repo));
+  assert.ok(realOrSelf(join(base, "repo")).endsWith("/Repo"));
 });

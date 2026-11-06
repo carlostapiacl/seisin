@@ -10,6 +10,7 @@ import { scratch, CLI } from "./_tmp.js";
 import { decide } from "../src/hook.js";
 import { record, settle, pending, applyGrant, grantFor } from "../src/requests.js";
 import { decline as declineCmd } from "../src/commands/requests.js";
+import { requestsPath } from "../src/requests.js";
 
 const cfg = {
   root: "/repo",
@@ -223,4 +224,20 @@ test("SEC-07 two concurrent grants both land — neither is lost", async () => {
   assert.match(toml, /xone\/\*\*/, "role a's grant was lost");
   assert.match(toml, /xtwo\/\*\*/, "role b's grant was lost");
   assert.equal(pending(q).length, 0, "both requests should be settled");
+});
+
+/* ── the queue, reduced once per change ────────────────────────────────── */
+
+test("pending() is cached per file state, and one caller's marks do not leak into the next", () => {
+  const dir = scratch("seisin-audit-q-");
+  const file = requestsPath(dir);
+  record(file, { role: "web", action: "write", target: "api/x.ts", owners: ["api"] });
+  const a = pending(file);
+  a[0].stale = { runs: 9 };
+  assert.equal(pending(file)[0].stale, undefined);
+  record(file, { role: "web", action: "write", target: "api/y.ts", owners: ["api"] });
+  assert.equal(pending(file)[0].times, 2, "a new line is seen");
+  settle(file, pending(file)[0].key, "declined");
+  assert.equal(pending(file).length, 0);
+  assert.equal(pending(file, { includeSettled: true })[0].state, "declined");
 });

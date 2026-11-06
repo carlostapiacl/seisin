@@ -19,6 +19,8 @@ import { afterTool, atSessionStart, recentKernelDenials } from "../src/diagnose.
 import { wire, wired } from "../src/commands/wire.js";
 import { logPath } from "../src/log.js";
 import { resolveSrt } from "../src/commands/run.js";
+import { statSync } from "node:fs";
+import { scratch } from "./_tmp.js";
 
 const TOML = '[roles.web]\nwrites = ["src/web/**"]\n\n[roles.api]\nwrites = ["src/api/**"]\n';
 
@@ -187,4 +189,36 @@ test("a save refused at its temporary file is said about the file it was saving"
   assert.match(text, /Write src\/web\/health\.ts with the shell/);
   // Another role's file: about that file, not about a temporary name nobody owns.
   assert.match(text, /src\/api\/x\.ts belongs to api/);
+});
+
+test("diagnose reads the log's last 512 KB, dropping the line the cut lands in", () => {
+  const dir = scratch("seisin-diag-");
+  const file = join(dir, "log.jsonl");
+  const now = Date.now();
+  const at = new Date(now - 1000).toISOString();
+  const denial = (target) => JSON.stringify({ at, role: "dev", verdict: "denied", source: "kernel", action: "write", target });
+  // one recent refusal far before the budget, then filler, then one at the end
+  const filler = JSON.stringify({ at, role: "other", verdict: "allowed", pad: "x".repeat(200) });
+  const lines = [denial("early/a.txt")];
+  let bytes = 0;
+  while (bytes < 700 * 1024) { lines.push(filler); bytes += filler.length + 1; }
+  lines.push(denial("late/b.txt"));
+  writeFileSync(file, lines.join("\n") + "\n");
+  const seen = recentKernelDenials(file, "dev", now - 60_000).map((e) => e.target);
+  assert.deepEqual(seen, ["late/b.txt"], "read past the byte budget, or missed the last line");
+
+  // The cut: 10 bytes into a refusal drops it; exactly on its first byte keeps it.
+  const BUDGET = 512 * 1024;
+  const L = denial("cut/c.txt");
+  const padded = (n) => JSON.stringify({ pad: "y".repeat(n - 10) });   // `{"pad":""}` is 10 bytes
+  const inside = join(dir, "inside.jsonl");
+  writeFileSync(inside, L + "\n" + padded(BUDGET + 10 - L.length - 2) + "\n");
+  assert.equal(statSync(inside).size, BUDGET + 10);
+  assert.deepEqual(recentKernelDenials(inside, "dev", now - 60_000), [], "half a line was read as a refusal");
+  const onEdge = join(dir, "edge.jsonl");
+  const X = denial("before/x.txt");
+  writeFileSync(onEdge, X + "\n" + L + "\n" + padded(BUDGET - L.length - 2) + "\n");
+  assert.equal(statSync(onEdge).size, BUDGET + X.length + 1);
+  assert.deepEqual(recentKernelDenials(onEdge, "dev", now - 60_000).map((e) => e.target), ["cut/c.txt"],
+    "a cut on a line boundary lost a whole line, or read past the budget");
 });

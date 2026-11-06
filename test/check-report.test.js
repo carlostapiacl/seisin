@@ -12,6 +12,9 @@ import { inspect, sharedPaths } from "../src/inspect.js";
 import { renderReport, renderVerdict } from "../src/render.js";
 import { renderConfig } from "../src/commands/init.js";
 import { wire, wired } from "../src/commands/wire.js";
+import { loadConfig } from "../src/config.js";
+import { hookEntries } from "../src/commands/wire.js";
+import { TOOL_MATCHER } from "../src/hook.js";
 
 const cfg = {
   root: "/repo",
@@ -175,4 +178,96 @@ test("check states the gap it does not cover, every time", () => {
   const keysLimit = limits.find((l) => l.kind === "keys-only-what-you-declared");
   assert.ok(keysLimit, "check does not say keys outside [keys] are readable");
   assert.match(keysLimit.detail, /seisin scan/);
+});
+
+function repo(toml, files = []) {
+  const root = scratch("seisin-fix051-");
+  for (const f of files) {
+    mkdirSync(join(root, f, ".."), { recursive: true });
+    writeFileSync(join(root, f), "");
+  }
+  writeFileSync(join(root, "seisin.toml"), toml);
+  return { root, cfg: loadConfig(join(root, "seisin.toml")) };
+}
+
+const warnings = (cfg, only = null) => inspect(cfg, only, "seisin.toml").warnings;
+
+/* ── 3. `check <role>` names the files the warning points at ───────────── */
+
+test("the individual-files warning points at check <role>, and check <role> names them", () => {
+  const two = '[roles.dev]\nwrites = ["data/app.sqlite", "src/a.js"]\n[roles.qa]\nwrites = ["test/**"]\n';
+  const { cfg } = repo(two, ["data/app.sqlite", "src/a.js", "test/x"]);
+  const all = warnings(cfg).find((x) => x.kind === "siblings-uncovered");
+  assert.match(all.detail, /`seisin check <role>` names the files/);
+  const one = warnings(cfg, "dev").find((x) => x.kind === "siblings-uncovered");
+  assert.match(one.detail, /The files: data\/app\.sqlite src\/a\.js\./);
+});
+
+const silently = (fn) => {
+  const w = process.stdout.write;
+  process.stdout.write = () => true;
+  try { return fn(); } finally { process.stdout.write = w; }
+};
+
+function repoWith(settings) {
+  const root = scratch("seisin-rs-");
+  if (settings) {
+    mkdirSync(join(root, ".claude"), { recursive: true });
+    writeFileSync(join(root, ".claude", "settings.json"), JSON.stringify(settings, null, 2));
+  }
+  return {
+    root, path: join(root, "seisin.toml"), keyDirs: [], allowedDomains: [],
+    roles: { dev: { name: "dev", writes: ["src/**"], keys: [], network: null } },
+  };
+}
+
+const kinds = (cfg) => inspect(cfg, null, "x").warnings.map((w) => w.kind);
+
+test("check says when the hook was wired with the pre-0.5.0 matcher \"*\"", () => {
+  // Wired before 0.5.0: every event is there, PreToolUse just runs on every tool.
+  const old = hookEntries();
+  old.PreToolUse[0].matcher = "*";
+  const cfg = repoWith({ hooks: old });
+
+  assert.ok(kinds(cfg).includes("hook-matcher-broad"));
+  assert.ok(!kinds(cfg).includes("hook-not-wired"), "it is wired — only broadly");
+  const w = inspect(cfg, null, "x").warnings.find((x) => x.kind === "hook-matcher-broad");
+  assert.match(w.detail, /seisin wire/);
+
+  // and `seisin wire` is what makes it go away
+  assert.equal(silently(() => wire(cfg)).changed, true);
+  const pre = JSON.parse(readFileSync(join(cfg.root, ".claude", "settings.json"), "utf8")).hooks.PreToolUse;
+  assert.equal(pre[0].matcher, TOOL_MATCHER);
+  assert.ok(!kinds(cfg).includes("hook-matcher-broad"));
+});
+
+test("check stays quiet about the matcher when it is narrow, missing, or not only ours", () => {
+  // freshly wired
+  assert.ok(!kinds(repoWith({ hooks: hookEntries() })).includes("hook-matcher-broad"));
+  // not wired at all: that is hook-not-wired's to say, not this one's
+  const bare = kinds(repoWith(null));
+  assert.ok(bare.includes("hook-not-wired") && !bare.includes("hook-matcher-broad"));
+  // a "*" entry that also runs somebody else's command: `wire` will not narrow
+  // it, so check must not tell anyone to run `wire` for it
+  const shared = hookEntries();
+  shared.PreToolUse = [{ matcher: "*", hooks: [{ type: "command", command: "seisin hook" }, { type: "command", command: "their-linter" }] }];
+  assert.ok(!kinds(repoWith({ hooks: shared })).includes("hook-matcher-broad"));
+});
+
+test("check does not call a provider missing when it is only where a role writes", () => {
+  const dir = scratch("seisin-prov-");
+  mkdirSync(join(dir, "bin"));
+  writeFileSync(join(dir, "bin", "miprov"), "#!/bin/sh\n", { mode: 0o755 });
+  writeFileSync(join(dir, "seisin.toml"),
+    `[keys.providers.p]\ncommand = ["miprov", "{ref}"]\n[roles.a]\nwrites = ["**"]\nkeys = ["p://x"]\n`);
+  const cfg = loadConfig(join(dir, "seisin.toml"));
+  const before = process.env.PATH;
+  process.env.PATH = `${join(dir, "bin")}:${before}`;
+  try {
+    const kinds = inspect(cfg).warnings.map((w) => w.kind);
+    assert.ok(kinds.includes("provider-in-territory"));
+    assert.ok(!kinds.includes("provider-missing"));
+  } finally {
+    process.env.PATH = before;
+  }
 });

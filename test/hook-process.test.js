@@ -1,31 +1,23 @@
 /**
- * The hook and the run, held to what the 2026-09-30 code review found.
- *
- * Each test names the finding it fixes. Most go through the CLI, because the
- * contract that broke was the process's — its exit code and how long it took —
- * and a unit test of the function behind it would have passed all along.
+ * The hook as a process: malformed events, wiring, and the sentence it adds to a tool's result.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync, spawn } from "node:child_process";
-import { once, EventEmitter } from "node:events";
-import { Readable } from "node:stream";
-import { writeFileSync, readFileSync, mkdirSync, appendFileSync, readdirSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { writeFileSync, readFileSync, mkdirSync, appendFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { scratch, boxed } from "./_tmp.js";
-
+import { scratch } from "./_tmp.js";
 import { targetsOf, decide, TOOL_MATCHER } from "../src/hook.js";
 import { loadConfig } from "../src/config.js";
 import { wire, wired } from "../src/commands/wire.js";
 import { afterTool } from "../src/diagnose.js";
 import { logPath } from "../src/log.js";
-import { resolveSrt } from "../src/commands/run.js";
-import { runsRoot } from "../src/rundir.js";
-import { watchDenials } from "../src/violations.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+
 const CLI = join(HERE, "..", "src", "cli.js");
+
 const TOML = '[roles.web]\nwrites = ["src/web/**"]\n\n[roles.api]\nwrites = ["src/api/**"]\n';
 
 /** A policy in a temp dir, and the environment a hook inside `seisin run` sees. */
@@ -214,117 +206,6 @@ test("the same count when the entry went to the file", () => {
   assert.match(viaFile.hookSpecificOutput.permissionDecisionReason, /denied this 2 times now/);
   const third = decide(cfg, "web", event, { ask: lost });
   assert.match(third.hookSpecificOutput.permissionDecisionReason, /denied this 3 times now/);
-});
-
-/* ── P0-8: a run that fails leaves nothing behind, and says so with exit 2 ── */
-
-const noSrt = resolveSrt() ? false : "sandbox runtime not installed";
-
-/** The run directories still on disk that belong to process `pid`. */
-function leftBy(pid) {
-  const root = runsRoot();
-  return readdirSync(root).filter((n) => {
-    try { return Number(readFileSync(join(root, n, "pid"), "utf8")) === pid; } catch { return false; }
-  });
-}
-
-test("a run whose key cannot be resolved exits 2 and removes its run directory", { skip: noSrt }, () => {
-  const dir = boxed("rh-key-");
-  writeFileSync(join(dir, "seisin.toml"),
-    '[roles.keyed]\nwrites = ["src/**"]\nkeys = ["TOK=file://not-there.txt"]\nkey_mode = "run-file"\n');
-  // Fails after the run directory, the settings and the spool exist.
-  const r = spawnSync(process.execPath, [CLI, "run", "keyed", "--", "true"], { cwd: dir, encoding: "utf8" });
-  assert.equal(r.status, 2, r.stderr);
-  assert.match(r.stderr, /cannot read/);
-  assert.deepEqual(leftBy(r.pid), [], "the run's directory — socket, settings — stayed on disk");
-});
-
-test("a runtime killed by a signal exits 128 + n, like a run that was stopped", { skip: noSrt }, async () => {
-  const dir = boxed("rh-sig-");
-  writeFileSync(join(dir, "seisin.toml"), '[roles.plain]\nwrites = ["src/**"]\n');
-  const child = spawn(process.execPath, [CLI, "run", "plain", "--", "sleep", "20"], { cwd: dir, stdio: "ignore" });
-  // The runtime is seisin's direct child other than `log stream` — the one
-  // running the agent's command, not the canary's that runs before it.
-  let srt = null;
-  for (const end = Date.now() + 15_000; !srt && Date.now() < end;) {
-    await new Promise((ok) => setTimeout(ok, 100));
-    const ps = spawnSync("/bin/ps", ["-Ao", "pid=,ppid=,command="], { encoding: "utf8" }).stdout;
-    srt = ps.split("\n").map((l) => l.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/))
-      .find((m) => m && Number(m[2]) === child.pid && /srt|tartaros/.test(m[3]) && /sleep 20/.test(m[3]))?.[1];
-  }
-  assert.ok(srt, "the runtime never started");
-  process.kill(Number(srt), "SIGKILL");
-  const [code] = await once(child, "exit");
-  assert.equal(code, 128 + 9);
-  assert.deepEqual(leftBy(child.pid), []);
-});
-
-test("a kernel watcher that cannot start has the whole shape run relies on", async () => {
-  const w = watchDenials(() => {}, { platform: "darwin", spawnFn: () => { throw new Error("no log(1) here"); } });
-  assert.equal(w.available, false);
-  assert.doesNotThrow(() => w.attributeTo(123));
-  assert.deepEqual(await w.close({ drain: 50 }), { attributed: 0, foreign: 0, unattributed: 0, dropped: 0 });
-});
-
-/* ── P1-15: `ps` is not taken once per foreign denial ─────────────────── */
-
-/** A denial as `log stream` prints it, from `pid`, tagged with `cmd` and `suffix`. */
-const denial = (pid, suffix, cmd = "git gc --aggressive", path = "/private/tmp/demo/src/api/x.txt") =>
-  `2026-09-30 12:00:00.000 E  kernel[0:78a1c2] (Sandbox) Sandbox: bash(${pid}) deny(1) file-write-create ${path}\n` +
-  `CMD64_${Buffer.from(cmd).toString("base64")}_END_${suffix}_SBX`;
-
-function fakeStream() {
-  const child = new EventEmitter();
-  child.stdout = new Readable({ read() {} });
-  child.kill = () => {};
-  return child;
-}
-const delivered = () => new Promise((r) => setImmediate(r));
-const OURS = ["env", "SEISIN_RUN_ID=abc", "sh", "-c", "work"];
-
-test("a burst of foreign denials costs one ps, not one each (review P1-15)", async () => {
-  const child = fakeStream();
-  let calls = 0;
-  // Two other sandboxes, alive, under their own srt (pid 500 and 600).
-  const tree = new Map([[900, 1], [500, 1], [600, 1]]);
-  for (let i = 0; i < 40; i++) { tree.set(10_000 + i, 500); tree.set(20_000 + i, 600); }
-  const w = watchDenials(() => {}, { argv: OURS, platform: "darwin", spawnFn: () => child,
-    treeFn: () => { calls++; return tree; } });
-  w.attributeTo(900);
-
-  for (let i = 0; i < 40; i++) {
-    child.stdout.push(denial(10_000 + i, "_aaaaaaaaa"));
-    child.stdout.push(denial(20_000 + i, "_bbbbbbbbb"));
-  }
-  await delivered();
-  assert.ok(calls <= 2, `${calls} ps snapshots for 80 foreign denials`);
-  assert.equal(w.stats.attributed, 0);
-  assert.equal(w.stats.foreign, 80, "a suffix proven foreign is counted, not held");
-  w.close();
-});
-
-test("throttling ps does not lose a denial from a process younger than the snapshot", async () => {
-  const child = fakeStream();
-  const seen = [];
-  const tree = new Map([[900, 1], [500, 1], [10_000, 500]]);
-  let calls = 0;
-  const w = watchDenials((d) => seen.push(d.pid), { argv: OURS, platform: "darwin", spawnFn: () => child,
-    treeFn: () => { calls++; return new Map(tree); } });
-  w.attributeTo(900);
-
-  child.stdout.push(denial(10_000, "_aaaaaaaaa"));      // foreign: takes the snapshot
-  await delivered();
-  // Ours, from a process born after that snapshot, with a tag that does not
-  // match (the case the tree exists for). Inside the window: no ps now.
-  tree.set(30_000, 900);
-  child.stdout.push(denial(30_000, "_ours12345", "something the runtime quoted differently"));
-  await delivered();
-  assert.deepEqual(seen, [], "decided on a stale snapshot");
-  const before = calls;
-  for (const end = Date.now() + 3000; !seen.length && Date.now() < end;) await new Promise((r) => setTimeout(r, 25));
-  assert.deepEqual(seen, [30_000], "held and never looked at again");
-  assert.equal(calls, before + 1, "one snapshot for the deferred look");
-  w.close();
 });
 
 test("a Bash command names each file it writes once, and no flag as a file", () => {

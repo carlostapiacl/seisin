@@ -829,3 +829,35 @@ test("a key directory that is a symlink is refused", (t) => {
                 roles: { a: { name: "a", writes: [], keys: ["tok.txt"], network: null } } };
   assert.throws(() => settingsFor(cfg, "a"), /is a symlink/);
 });
+
+function policy(text) {
+  const root = scratch("seisin-audit-");
+  const path = join(root, "seisin.toml");
+  writeFileSync(path, text);
+  return loadConfig(path);
+}
+
+test("a JSON credential fragment resolves only properties that are present in the file", () => {
+  const cfg = policy('[roles.dev]\nwrites = []\n');
+  writeFileSync(join(cfg.root, "key.json"), '{"credentials":{"token":"synthetic-token"}}');
+  assert.equal(readFileRef(parseKey("T=file://key.json#credentials.token"), cfg.root), "synthetic-token");
+  for (const key of ["credentials.toString", "credentials.constructor.name", "credentials.__proto__.constructor.name"])
+    assert.throws(() => readFileRef(parseKey(`T=file://key.json#${key}`), cfg.root), /has no/);
+});
+
+test("dotenv syntax errors do not echo the credential text after a closing quote", () => {
+  const cfg = policy('[roles.dev]\nwrites = []\n');
+  writeFileSync(join(cfg.root, "keys.env"), 'TOKEN="prefix" synthetic-secret-after-quote\n');
+  assert.throws(() => readFileRef(parseKey("T=file://keys.env#TOKEN"), cfg.root), (e) => {
+    assert.match(e.message, /text after its closing quote/);
+    assert.doesNotMatch(e.message, /synthetic-secret/);
+    return true;
+  });
+});
+
+test("reference resolution accepts the same hand-built role shape as the public settings API", () => {
+  const cfg = { root: ".", keyProviders: { p: { command: ["provider", "{ref}"], mode: "env" } } };
+  const role = { name: "dev", keys: ["T=p://token"] };
+  const got = resolveKeys(cfg, role, { run: () => ({ status: 0, stdout: "synthetic-value", stderr: "" }) });
+  assert.equal(got[0].value, "synthetic-value");
+});

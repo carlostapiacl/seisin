@@ -16,6 +16,8 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import { CLI, repoWith } from "./_tmp.js";
 import { record } from "../src/requests.js";
+import { readFileSync } from "node:fs";
+import { scratch } from "./_tmp.js";
 
 const POLICY = '[roles.dev]\nwrites = ["src/**"]\n\n[roles.infra]\nwrites = ["deploy/**"]\n';
 
@@ -152,3 +154,37 @@ test("SEC-21 --observe after the command (no --) is not seisin's flag", async ()
   else { let i = 1; while (i < argv.length && argv[i].startsWith("-")) i++; mine = argv.slice(1, i); }
   assert.ok(!mine.includes("--observe"), "--observe after the command must not be seisin's");
 })
+
+test("the CI sandbox gate passes only a sandbox suite that ran completely", () => {
+  // Test the workflow's actual shell block using native Node output. These
+  // fixtures exercise the gate, not the confinement boundary itself. The
+  // block pins the TAP reporter, so only TAP summaries reach it.
+  const root = scratch("seisin-ci-gate-");
+  // .cjs, not .js: the fixture uses require(), and a .js file takes its module
+  // type from the nearest package.json — a TMPDIR under a package with
+  // "type": "module" turned it into ESM and every case failed.
+  const fixture = join(root, "fixture.test.cjs");
+  const log = join(root, "sandbox.log");
+  const workflow = readFileSync(new URL("../.github/workflows/test.yml", import.meta.url), "utf8");
+  const block = workflow.match(/- name: the sandbox half actually ran\n(?:        [^\n]*\n)*?        run: \|\n((?:          [^\n]*\n|\n)*)/)[1]
+    .replace(/^          /gm, "");
+  const command = "node --test --test-reporter=tap test/sandbox.test.js 2>&1";
+  assert.ok(block.includes(command), "the gate no longer runs the sandbox suite under TAP");
+  const quote = (s) => "'" + s.replaceAll("'", "'\\''") + "'";
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT; // This subprocess is its own test runner.
+  const cases = [
+    ["passing", "test('fixture', () => {});", 0],
+    ["skipped", "test('fixture', {skip: true}, () => {});", 1],
+    ["failing", "test('fixture', () => { throw new Error('no'); });", 1],
+  ];
+  for (const [name, body, status] of cases) {
+    writeFileSync(fixture, `const {test} = require('node:test');\n${body}\n`);
+    const script = block
+      .replace(command, `${quote(process.execPath)} --test --test-reporter=tap ${quote(fixture)} 2>&1`)
+      .replaceAll("/tmp/sandbox.log", quote(log));
+    const r = spawnSync("bash", ["-c", script], { env, encoding: "utf8", timeout: 5000 });
+    assert.equal(r.status, status, `${name}: ${r.stdout}\n${r.stderr}`);
+    if (status) assert.match(r.stdout, /sandbox suite did not run completely/);
+  }
+});

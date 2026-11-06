@@ -16,6 +16,9 @@ import { writeUiLink, readUiLink, clearUiLink } from "../src/uilink.js";
 import { serve } from "../src/serve.js";
 import { RUNS_NAME } from "../src/rundir.js";
 import { boxed } from "./_tmp.js";
+import { chmodSync, lstatSync, symlinkSync, readdirSync } from "node:fs";
+import { scratch } from "./_tmp.js";
+import { runsRoot } from "../src/rundir.js";
 
 // Under test/.sandbox-box through boxed(), which removes it when this file's
 // process ends: made by hand here, every run left its directories behind.
@@ -82,4 +85,40 @@ test("a busy port rejects with a code seisin ui can act on", async () => {
   } finally {
     first.close();
   }
+});
+
+const LIVE_URL = "http://127.0.0.1:4178/#t=synthetic-token";
+
+test("replacing an existing console record makes the new file private", () => {
+  const base = scratch("seisin-link-audit-");
+  const dir = runsRoot(base);
+  const file = join(dir, "ui-4178.url");
+  writeFileSync(file, "old\n");
+  chmodSync(file, 0o644);
+  writeUiLink(4178, LIVE_URL, base);
+  assert.equal(statSync(file).mode & 0o777, 0o600);
+  assert.equal(readUiLink(4178, base).url, LIVE_URL);
+  assert.deepEqual(readdirSync(dir), ["ui-4178.url"]);
+});
+
+test("writing a console record replaces a planted symlink without touching its target", () => {
+  const base = scratch("seisin-link-alias-");
+  const dir = runsRoot(base);
+  const outside = join(base, "keep.txt");
+  writeFileSync(outside, "keep this content\n");
+  const file = join(dir, "ui-4178.url");
+  symlinkSync(outside, file);
+  writeUiLink(4178, LIVE_URL, base);
+  assert.equal(readFileSync(outside, "utf8"), "keep this content\n");
+  assert.equal(lstatSync(file).isSymbolicLink(), false);
+  assert.equal(statSync(file).mode & 0o777, 0o600);
+});
+
+test("a console writer that cannot be signalled is not reported as gone", () => {
+  const base = scratch("seisin-link-live-");
+  writeUiLink(4178, LIVE_URL, base);
+  const kill = process.kill;
+  process.kill = () => { throw Object.assign(new Error("not permitted"), { code: "EPERM" }); };
+  try { assert.equal(readUiLink(4178, base).alive, true); }
+  finally { process.kill = kill; }
 });

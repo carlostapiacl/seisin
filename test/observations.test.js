@@ -9,6 +9,7 @@ import { scratch } from "./_tmp.js";
 import { read, generalise } from "../src/log.js";
 import { renderObserved } from "../src/commands/init.js";
 import { review } from "../src/review.js";
+import { loadConfig } from "../src/config.js";
 
 const cfg = {
   root: "/repo",
@@ -147,4 +148,90 @@ test("SEC-06 init --from-observations ignores lines the parent disputed", () => 
   assert.match(toml, /writes = \[\s*"src\/web\/\*\*"/);   // the legit observation, generalised
   assert.ok(!toml.includes("api"), "a disputed write became policy");
   assert.ok(!toml.includes("db.txt"), "a disputed key read became policy");
+});
+
+function policy(text) {
+  const root = scratch("seisin-audit-");
+  const path = join(root, "seisin.toml");
+  writeFileSync(path, text);
+  return loadConfig(path);
+}
+
+test("an observation proposal preserves every policy setting and its comments", () => {
+  const text = `# policy chosen by a person
+[runtime]
+isolate = "credentials"
+writes = []
+redact = false
+[protect]
+instructions = true
+[scan]
+ignore = ["archive/**"]
+[keys]
+dir = [".secrets", "shared"]
+[keys.providers.vault]
+command = ["vault", "read", "{ref}"]
+mode = "run-file"
+[network]
+allow = ["api.example.test"]
+  [roles.dev] # developer
+  writes = ["src/**"] # approved territory
+keys = ["TOKEN=vault://token"]
+key_mode = "run-file"
+env = ["BUILD_FLAG"]
+network = []
+never_writes = ["src/private/**"]
+mcp = []
+local_ports = [8001]
+local_binding = false
+trustd = false
+control_files = ["ide"]
+[roles.idle]
+writes = ["api/**"]
+keys = []
+never_writes = ["api/private/**"]
+`;
+  const cfg = policy(text);
+  const { toml } = renderObserved(cfg, [{ role: "dev", action: "write", target: "docs/a.md" }]);
+  const after = loadConfig(cfg.path, toml);
+  assert.deepEqual({ ...after, roles: null }, { ...cfg, roles: null });
+  assert.deepEqual(after.roles.idle, cfg.roles.idle);
+  const strip = ({ writes, writesDeclared, ...rest }) => rest;
+  assert.deepEqual(strip(after.roles.dev), strip(cfg.roles.dev));
+  assert.deepEqual(after.roles.dev.writes, ["src/**", "docs/**"]);
+  assert.ok(toml.includes("# approved territory"));
+  assert.ok(toml.includes("# policy chosen by a person"));
+  assert.ok(toml.includes("  [roles.dev] # developer"));
+});
+
+test("an observation proposal keeps a read in its declared key directory", () => {
+  const cfg = policy('[keys]\ndir = [".secrets", "shared"]\n[roles.dev]\nwrites = []\nkeys = []\n');
+  const { toml } = renderObserved(cfg, [
+    { role: "dev", action: "read", kind: "key", target: "shared/token.txt" },
+    { role: "dev", action: "read", kind: "key", target: ".secrets/one.txt" },
+  ]);
+  assert.deepEqual(loadConfig(cfg.path, toml).roles.dev.keys, ["shared/token.txt", "one.txt"]);
+});
+
+test("an observation proposal inserts an omitted list without dropping other settings", () => {
+  const cfg = policy('[roles.dev]\nmcp = []\nnetwork = []\n');
+  const { toml } = renderObserved(cfg, [{ role: "dev", action: "write", target: "docs/a.md" }]);
+  const after = loadConfig(cfg.path, toml);
+  assert.deepEqual(after.roles.dev.writes, ["docs/**"]);
+  assert.deepEqual(after.roles.dev.mcp, []);
+  assert.deepEqual(after.roles.dev.network, []);
+  assert.match(toml, /# set from observation/);
+  assert.doesNotMatch(toml, /set in the console/);
+});
+
+test("older observations cannot resurrect a removed role or turn a host path into territory", () => {
+  const cfg = policy('[roles.dev]\nwrites = []\nkeys = []\n');
+  const { toml } = renderObserved(cfg, [
+    { role: "removed", action: "write", target: "elsewhere/a.md" },
+    { role: "dev", action: "write", target: "/outside/seisin-observation/a.md" },
+    { role: "dev", action: "write", target: "../outside/a.md" },
+  ]);
+  const after = loadConfig(cfg.path, toml);
+  assert.deepEqual(Object.keys(after.roles), ["dev"]);
+  assert.deepEqual(after.roles.dev.writes, []);
 });

@@ -201,7 +201,7 @@ test("the old names are gone from the code and the docs", () => {
   const OLD = /permission-requests|stillRefused|key_mode = "scratch"|mode = "scratch"|\bseisin deny\b/;
   // Where the rename itself is explained: the changelog, the glossary's table,
   // the decision, the errors that name the old value, and this file.
-  const EXPLAINS = new Set(["CHANGELOG.md", "docs/glossary.md", "docs/decisions.md", "src/cli.js", "src/keys.js", "test/renames-0.6.0.test.js", "test/words.test.js"]);
+  const EXPLAINS = new Set(["CHANGELOG.md", "docs/glossary.md", "docs/decisions.md", "src/cli.js", "src/keys.js", "test/old-names.test.js", "test/words.test.js"]);
   const hits = [];
   const walk = (rel) => {
     for (const d of readdirSync(join(ROOT, rel), { withFileTypes: true })) {

@@ -10,6 +10,8 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runsRoot, runsRootOf, openRun } from "../src/rundir.js";
 import { boxed, CLI, sandboxSkip } from "./_tmp.js";
+import { alive } from "../src/log.js";
+import { scratch } from "./_tmp.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SPOOL = join(HERE, "..", "src", "spool.js");
@@ -220,4 +222,40 @@ test("Ctrl-C to an agent that does not catch it ends the run with a failure", { 
   const { code } = await ctrlC('console.log("ready"); setTimeout(()=>{}, 30000)');
   assert.notEqual(code, 0);
   assert.notEqual(code, null, "seisin itself died of the signal");
+});
+
+/* ── one alive(), one JSON-lines reader ──────────────────────────────── */
+
+const gonePid = () =>
+  Number(spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], { encoding: "utf8" }).stdout);
+
+test("alive() is false only for a process the kernel says is gone", () => {
+  assert.equal(alive(process.pid), true);
+  assert.equal(alive(gonePid()), false);
+  // pid 1 is there and not ours to signal (EPERM): alive, not gone
+  if (process.getuid?.() !== 0) assert.equal(alive(1), true);
+  // not a pid we can ask about — and kill(-n) would ask a whole group
+  for (const p of [0, -1, NaN, 1.5, undefined]) assert.equal(alive(p), true, String(p));
+});
+
+test("the run sweep removes a dead run's directory and keeps one it cannot rule dead", () => {
+  const base = scratch("seisin-sweep-");
+  const root = runsRoot(base);
+  const dead = mkdtempSync(join(root, "dead00-"));
+  writeFileSync(join(dead, "pid"), String(gonePid()));
+  // pid 1 answers EPERM to an ordinary user: rundir.js used to treat only
+  // EPERM as alive; this one must survive either way, and now so does anything
+  // the kernel did not call gone.
+  const unsure = mkdtempSync(join(root, "unsur-"));
+  writeFileSync(join(unsure, "pid"), "1");
+  const odd = mkdtempSync(join(root, "odd000-"));
+  writeFileSync(join(odd, "pid"), "-1");
+  const run = openRun({ base });
+  try {
+    assert.ok(!existsSync(dead), "a dead run's directory survived the next run");
+    assert.ok(existsSync(unsure), "a run that may be alive was swept");
+    assert.ok(existsSync(odd), "a pid file naming a process group was read as a dead run");
+  } finally {
+    run.close();
+  }
 });

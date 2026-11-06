@@ -4,6 +4,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { targetsOf, decide } from "../src/hook.js";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { scratch } from "./_tmp.js";
+import { loadConfig } from "../src/config.js";
 
 const cfg = {
   root: "/repo",
@@ -141,4 +145,32 @@ test("observing says nothing about a queue, because it filed none", () => {
     { observe: true, now() {}, ask() { asked++; } });
   assert.equal(out.decision, null);
   assert.equal(asked, 0);
+});
+
+const TOML = '[roles.a]\nwrites = ["a/**"]\nkeys = []\n';
+
+function repo(prefix, toml = TOML) {
+  const box = scratch(prefix);
+  writeFileSync(join(box, "seisin.toml"), toml);
+  return box;
+}
+
+/* ── a protected file is not something to ask for ─────────────────────── */
+
+const WEB = '[roles.web]\nwrites = ["web/**"]\nkeys = []\n';
+
+test("the hook files no request for a protected file, and says nothing was queued", async () => {
+  const { decide } = await import("../src/hook.js");
+  const box = repo("seisin-x-hookprot-", WEB);
+  mkdirSync(join(box, "web", ".vscode"), { recursive: true });
+  writeFileSync(join(box, "web", ".vscode", "settings.json"), "{}");
+  const cfg = loadConfig(join(box, "seisin.toml"));
+  const asked = [];
+  const out = decide(cfg, "web",
+    { tool_name: "Write", tool_input: { file_path: join(box, "web", ".vscode", "settings.json") } },
+    { now: () => true, ask: (_f, r) => asked.push(r) });
+  assert.equal(out.decision, "deny");
+  assert.deepEqual(asked, [], "a request no grant can satisfy was queued");
+  assert.match(out.hookSpecificOutput.permissionDecisionReason, /Nothing was queued/);
+  assert.doesNotMatch(out.hookSpecificOutput.permissionDecisionReason, /Already queued/);
 });

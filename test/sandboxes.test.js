@@ -21,6 +21,7 @@ import { seccompDir } from "../src/sandboxes/srt.js";
 import { settingsFor } from "../src/srt-settings.js";
 import { resolveSrt } from "../src/commands/run.js";
 import { scratch, repoWith, sandboxSkip, CLI } from "./_tmp.js";
+import { boxed } from "./_tmp.js";
 
 const ROLE = '[roles.dev]\nwrites = ["src/**"]\n';
 const cfg = (toml) => {
@@ -394,4 +395,66 @@ test("inject: only a sandbox that masks is handed the role — srt on Linux, tar
   assert.deepEqual(tt.filter((u) => /masked credentials/.test(u)), [], "tartaros is asked, not second-guessed");
   // Without credentials, nothing changes for anyone.
   assert.deepEqual(weigh(cfg(`[sandbox]\nprovider = "srt"\n${ROLE}`), settings(), { platform: "darwin", locate: false }).options[0].unmet, []);
+});
+
+/* ── srt when seisin is a project's dependency ───────────────────────── */
+
+/** A project that installed seisin: npm hoisted the runtime beside it, not inside it. */
+function consumer({ link = true } = {}) {
+  const root = scratch("seisin-dep-");
+  const nm = join(root, "node_modules");
+  const here = join(nm, "seisin", "src", "commands");      // where run.js lives there
+  mkdirSync(here, { recursive: true });
+  const pkg = join(nm, "@anthropic-ai", "sandbox-runtime");
+  mkdirSync(join(pkg, "dist"), { recursive: true });
+  writeFileSync(join(pkg, "package.json"), JSON.stringify({ name: "@anthropic-ai/sandbox-runtime", bin: { srt: "dist/cli.js" } }));
+  writeFileSync(join(pkg, "dist", "cli.js"), "#!/usr/bin/env node\n", { mode: 0o755 });
+  if (link) {
+    mkdirSync(join(nm, ".bin"));
+    symlinkSync("../@anthropic-ai/sandbox-runtime/dist/cli.js", join(nm, ".bin", "srt"));
+  }
+  // and a different, global srt on PATH, the one that must not win
+  const global = join(root, "global-bin");
+  mkdirSync(global);
+  writeFileSync(join(global, "srt"), "#!/bin/sh\n", { mode: 0o755 });
+  return { root, nm, here, global };
+}
+
+test("seisin installed as a dependency finds the hoisted runtime, not a global one", () => {
+  const c = consumer();
+  assert.equal(resolveSrt({ from: c.here, path: "" }), join(c.nm, ".bin", "srt"), "a hoisted runtime was not found");
+  assert.equal(resolveSrt({ from: c.here, path: c.global }), join(c.nm, ".bin", "srt"), "a global srt outranked the pinned one");
+});
+
+test("without a .bin link the runtime's own bin entry is used; with no runtime, PATH, then null", () => {
+  const c = consumer({ link: false });
+  assert.equal(resolveSrt({ from: c.here, path: "" }), join(c.nm, "@anthropic-ai", "sandbox-runtime", "dist", "cli.js"));
+  const bare = scratch("seisin-nodep-");
+  assert.equal(resolveSrt({ from: bare, path: c.global }), join(c.global, "srt"));
+  assert.equal(resolveSrt({ from: bare, path: "" }), null);
+});
+
+/* ── the runtime's log directories on Linux ───────────────────────────── */
+
+test("on Linux a missing runtime log dir is made first where a role could make it, and left out where it could not", { skip: process.platform !== "linux" && "Linux only" }, async () => {
+  const { settingsFor } = await import("../src/srt-settings.js");
+  const { loadConfig } = await import("../src/config.js");
+  // Not under the temp dir: that is a runtime scratch every role may write, and
+  // a ~/.npm there would be creatable — and rightly made first and denied.
+  const home = boxed("seisin-home-");
+  mkdirSync(join(home, ".claude"));                   // the scratch every role gets
+  mkdirSync(join(home, ".npm"));                      // not granted to any role
+  const repo = scratch("seisin-logs-");
+  writeFileSync(join(repo, "seisin.toml"), '[roles.dev]\nwrites = ["src/**"]\n');
+  const was = process.env.HOME;
+  process.env.HOME = home;
+  try {
+    const { denyWrite } = settingsFor(loadConfig(join(repo, "seisin.toml")), "dev").filesystem;
+    assert.ok(existsSync(join(home, ".claude", "debug")), "~/.claude/debug was not made first");
+    assert.ok(denyWrite.some((p) => p.endsWith("/.claude/debug")), "~/.claude/debug is not denied");
+    assert.ok(!denyWrite.some((p) => p.endsWith("/.npm/_logs")), "a missing ~/.npm/_logs was named");
+    assert.ok(!existsSync(join(home, ".npm", "_logs")), "~/.npm/_logs was created");
+  } finally {
+    process.env.HOME = was;
+  }
 });
