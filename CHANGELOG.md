@@ -8,7 +8,7 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
-## Unreleased
+## 0.8.6 — 2026-11-06
 
 - **Output through a pipe arrives whole.** `seisin review --runs <dir> --json` could reach a pipe cut at a multiple of 64 KB,
   with status 0: the process left before stdout had drained. Every command that returns a status now waits for it. A keyed
