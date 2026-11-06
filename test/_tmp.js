@@ -11,6 +11,8 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
+import { loadConfig } from "../src/config.js";
 import { BUILTIN_SANDBOXES, DEFAULT_SANDBOX } from "../src/sandboxes/index.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -74,3 +76,30 @@ export function repoWith(prefix, toml, touch = []) {
   }
   return dir;
 }
+
+/** One turn of the event loop, for what a stream or a socket hands over on the next one. */
+export const delivered = () => new Promise((r) => setImmediate(r));
+
+/** A policy written to a file of its own and loaded the way a run loads it. */
+export function policyFrom(toml) {
+  const dir = scratch("seisin-policy-");
+  writeFileSync(join(dir, "seisin.toml"), toml);
+  return loadConfig(join(dir, "seisin.toml"));
+}
+
+/** The CLI in `cwd`, without color. */
+export const seisinIn = (cwd, ...args) => spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: "utf8", env: { ...process.env, NO_COLOR: "1" } });
+
+/** Settings with a filesystem section and nothing in it. */
+export const noFilesystem = { filesystem: { allowWrite: [], denyWrite: [], allowRead: [], denyRead: [] } };
+
+/** Two roles and a key directory, as a plain object: nothing here reads a file. */
+export const twoRoles = {
+  root: "/repo",
+  keyDirs: [".secrets"],
+  allowedDomains: ["github.com"],
+  roles: {
+    frontend: { name: "frontend", writes: ["src/web/**"], keys: ["netlify.txt"], network: null },
+    backend: { name: "backend", writes: ["src/api/**"], keys: ["database.txt"], network: null },
+  },
+};

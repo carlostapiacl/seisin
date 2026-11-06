@@ -14,13 +14,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { tmpdir } from "node:os";
-import { fileURLToPath } from "node:url";
+import { mkdirSync, writeFileSync, rmSync, realpathSync } from "node:fs";
+import { join } from "node:path";
 import { parseGitdir, checkoutOf, worktreesOf, twinsOf, whereIs } from "../src/worktree.js";
 import { loadConfig } from "../src/config.js";
-import { scratch, CLI } from "./_tmp.js";
+import { scratch, CLI, seisinIn as seisin } from "./_tmp.js";
 
 const haveGit = spawnSync("git", ["--version"]).status === 0;
 
@@ -274,9 +272,6 @@ test("the sentence names the two places relative to the policy, and the root as 
 
 const git = (cwd, ...args) =>
   spawnSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", ...args], { cwd, encoding: "utf8" });
-
-const seisin = (cwd, ...args) =>
-  spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: "utf8", env: { ...process.env, NO_COLOR: "1" } });
 
 /** The verdict line and everything before the worktree note — what the answer was, apart from the note. */
 const answer = (stdout) => stdout.split("  worktree  ")[0];

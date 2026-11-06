@@ -4,22 +4,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildEnv, DEFAULTS as ENV_DEFAULTS } from "../src/env.js";
+import { twoRoles as cfg } from "./_tmp.js";
 
 /** The names that crossed FROM THE PARENT, which is what these tests are about.
  *  `buildEnv` also SETS a couple of variables the parent never had (see
  *  `DEFAULTS` in env.js); asserting on the raw key set would make every test
  *  here fail the next time one is added, for a reason none of them is testing. */
 const forwarded = (env) => Object.keys(env).filter((k) => !(k in ENV_DEFAULTS)).sort();
-
-const cfg = {
-  root: "/repo",
-  keyDirs: [".secrets"],
-  allowedDomains: ["github.com"],
-  roles: {
-    frontend: { name: "frontend", writes: ["src/web/**"], keys: ["netlify.txt"], network: null },
-    backend: { name: "backend", writes: ["src/api/**"], keys: ["database.txt"], network: null },
-  },
-};
 
 test("the built environment drops what the policy did not name", () => {
   // Measured before this existed: 93 variables crossed into every turn, a

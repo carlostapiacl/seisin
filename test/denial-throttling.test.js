@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import { watchDenials } from "../src/violations.js";
+import { delivered } from "./_tmp.js";
 
 test("a kernel watcher that cannot start has the whole shape run relies on", async () => {
   const w = watchDenials(() => {}, { platform: "darwin", spawnFn: () => { throw new Error("no log(1) here"); } });
@@ -27,8 +28,6 @@ function fakeStream() {
   child.kill = () => {};
   return child;
 }
-
-const delivered = () => new Promise((r) => setImmediate(r));
 
 const OURS = ["env", "SEISIN_RUN_ID=abc", "sh", "-c", "work"];
 

@@ -6,18 +6,8 @@ import assert from "node:assert/strict";
 import { targetsOf, decide } from "../src/hook.js";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { scratch } from "./_tmp.js";
+import { scratch, twoRoles as cfg } from "./_tmp.js";
 import { loadConfig } from "../src/config.js";
-
-const cfg = {
-  root: "/repo",
-  keyDirs: [".secrets"],
-  allowedDomains: ["github.com"],
-  roles: {
-    frontend: { name: "frontend", writes: ["src/web/**"], keys: ["netlify.txt"], network: null },
-    backend: { name: "backend", writes: ["src/api/**"], keys: ["database.txt"], network: null },
-  },
-};
 
 test("the hook reads a file tool's target, and a shell redirect's", () => {
   assert.deepEqual(targetsOf("Write", { file_path: "src/a.ts" }), [{ action: "write", path: "src/a.ts" }]);

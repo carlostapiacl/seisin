@@ -13,6 +13,7 @@ import { Readable } from "node:stream";
 import { droppedIn, watchDenials, measureSystemLog } from "../src/violations.js";
 import { renderEntry } from "../src/render.js";
 import { checkStatus } from "../src/commands/check.js";
+import { delivered } from "./_tmp.js";
 
 const MARKER = "=== Messages dropped during live streaming (use `log show` to see what they were)\n";
 const WRITE_DENY =
@@ -37,8 +38,6 @@ function fakeStream({ held = "" } = {}) {
   };
   return child;
 }
-
-const delivered = () => new Promise((r) => setImmediate(r));
 
 test("droppedIn counts one per marker line, and nothing else", () => {
   assert.equal(droppedIn(""), 0);

@@ -5,18 +5,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { writeFileSync, readFileSync, mkdirSync, appendFileSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import { scratch } from "./_tmp.js";
+import { join } from "node:path";
+import { scratch, CLI } from "./_tmp.js";
 import { targetsOf, decide, TOOL_MATCHER } from "../src/hook.js";
 import { loadConfig } from "../src/config.js";
 import { wire, wired } from "../src/commands/wire.js";
 import { afterTool } from "../src/diagnose.js";
 import { logPath } from "../src/log.js";
-
-const HERE = dirname(fileURLToPath(import.meta.url));
-
-const CLI = join(HERE, "..", "src", "cli.js");
 
 const TOML = '[roles.web]\nwrites = ["src/web/**"]\n\n[roles.api]\nwrites = ["src/api/**"]\n';
 

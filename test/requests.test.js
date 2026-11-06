@@ -6,21 +6,11 @@ import assert from "node:assert/strict";
 import { parseToml, loadConfig } from "../src/config.js";
 import { writeFileSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { scratch, CLI } from "./_tmp.js";
+import { scratch, CLI, twoRoles as cfg } from "./_tmp.js";
 import { decide } from "../src/hook.js";
 import { record, settle, pending, applyGrant, grantFor } from "../src/requests.js";
 import { decline as declineCmd } from "../src/commands/requests.js";
 import { requestsPath } from "../src/requests.js";
-
-const cfg = {
-  root: "/repo",
-  keyDirs: [".secrets"],
-  allowedDomains: ["github.com"],
-  roles: {
-    frontend: { name: "frontend", writes: ["src/web/**"], keys: ["netlify.txt"], network: null },
-    backend: { name: "backend", writes: ["src/api/**"], keys: ["database.txt"], network: null },
-  },
-};
 
 test("many denials in one directory are one request, not many", () => {
   // An agent denied on a.ts and then on b.ts does not ask two questions, and a

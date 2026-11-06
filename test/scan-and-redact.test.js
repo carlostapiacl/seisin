@@ -5,16 +5,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
-import { scratch } from "./_tmp.js";
+import { scratch, seisinIn as seisin } from "./_tmp.js";
 import { redactor } from "../src/redact.js";
 import { scan } from "../src/scan.js";
-import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { relative } from "node:path";
 import { insideRepo, territoryRoots } from "../src/scan.js";
 import { loadConfig } from "../src/config.js";
 import { renderScan } from "../src/render.js";
-import { CLI } from "./_tmp.js";
 import { once } from "node:events";
 
 test("a secret split across two chunks is still masked", () => {
@@ -101,8 +99,6 @@ test("scan reports a symlink that leaves the repo, and does not open it", (t) =>
   assert.match(link.shape, /id_rsa/);        // names the target
   assert.ok(!/BEGIN OPENSSH/.test(JSON.stringify(hits)), "it read the target");
 });
-
-const seisin = (cwd, ...args) => spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: "utf8", env: { ...process.env, NO_COLOR: "1" } });
 
 const TOKEN = (c) => "ghp_" + c.repeat(36) + "\n";
 

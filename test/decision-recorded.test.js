@@ -13,12 +13,11 @@ import { spawn, spawnSync } from "node:child_process";
 import { appendFileSync, chmodSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { requestsPath, pending } from "../src/requests.js";
 import { loadConfig } from "../src/config.js";
 import { decideRequest, stillAllowed } from "../src/decide-request.js";
+import { CLI } from "./_tmp.js";
 
-const CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "cli.js");
 const POLICY = '[roles.a]\nwrites = ["lib/**"]\n';
 const root = process.getuid?.() === 0;
 
