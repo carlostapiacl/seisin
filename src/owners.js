@@ -16,7 +16,7 @@ import { isAbsolute, join } from "node:path";
 import { protectedBy } from "./surface.js";
 import { entriesOf, parseKey, BUILTIN } from "./keys.js";
 import { WILD, fromCwd, toRepoRelative } from "./paths.js";
-import { AGENTS, AGENT_CREDENTIALS, CREDENTIAL_HOMES, expand } from "./grants.js";
+import { AGENTS, AGENT_CREDENTIALS, credentialHomes, writePathsOf, expand } from "./grants.js";
 import { keptFor, shutByTerritory } from "./territory.js";
 import { trimEnd } from "./lines.js";
 
@@ -809,5 +809,6 @@ export function explain(config, role, action, target, cwd = config.root) {
   const asked = readTarget(config, target, cwd);
   return asked.key
     ? explainPolicy(config, role, "read", asked.target)
-    : explainFileRead(config, role, asked.target, CREDENTIAL_HOMES.map(expand));
+    : explainFileRead(config, role, asked.target,
+        credentialHomes(config.roles[role] ? writePathsOf(config, config.roles[role]) : []));
 }

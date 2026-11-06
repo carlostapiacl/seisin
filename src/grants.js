@@ -11,10 +11,10 @@
  * mean", and the callers decide what to do with it.
  */
 import { join } from "node:path";
-import { homedir, tmpdir } from "node:os";
+import { homedir, tmpdir, userInfo } from "node:os";
 import { realpathSync, lstatSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { WILD } from "./paths.js";
+import { WILD, realAncestor } from "./paths.js";
 
 /**
  * What every agent needs to write no matter which role it is.
@@ -121,6 +121,33 @@ export const CREDENTIAL_HOMES = [
   "~/.ssh", "~/.aws", "~/.npmrc", "~/.config",
   "~/.gnupg", "~/.kube", "~/.docker", "~/.netrc", "~/.git-credentials",
 ];
+
+/** The home directory of the account, from the user database, whatever `$HOME` says. */
+export function accountHome() {
+  try { return userInfo().homedir || homedir(); } catch { return homedir(); }
+}
+
+/**
+ * The credential homes as paths, for a role that may write `writes`.
+ *
+ * The credentials are the account's, so they are closed there whatever `$HOME`
+ * says: an orchestrator that gives each run its own HOME has not moved them. A
+ * HOME moved elsewhere is closed too, except the parts this role may write. That
+ * home is the run's own, and a tool that keeps its settings in `$HOME/.config`
+ * has to be able to read back what it wrote.
+ */
+export function credentialHomes(writes = []) {
+  const here = CREDENTIAL_HOMES.map(expand);
+  const account = accountHome();
+  if (realAncestor(account) === realAncestor(homedir())) return here;
+  const mine = writes.map(realAncestor);
+  const notMine = here.filter((h) => {
+    const d = realAncestor(h);
+    return !mine.some((w) => d === w || d.startsWith(w + "/"));
+  });
+  const atAccount = CREDENTIAL_HOMES.map((h) => realAncestor(join(account, h.slice(2))));
+  return [...new Set([...atAccount, ...notMine])];
+}
 
 export const RUNTIME_WRITES = [
   "~/.claude", "~/.codex",                 // the CLIs that keep state under their own name

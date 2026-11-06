@@ -8,8 +8,16 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
-## Unreleased
+## 0.8.4 — 2026-11-06
 
+- **`isolate = "credentials"` follows the account when `HOME` moves.** The credential homes were found through `$HOME`
+  alone. They are now closed in the account's home, from the user database, whatever `$HOME` says. A `$HOME` a launcher
+  moved stays closed too, except what the role may write there: that home is the run's own, so a tool can read back
+  the settings it wrote in `$HOME/.config`. *What to do:* a launcher that gives each run its own `HOME` should move to
+  this version.
+- **`seisin run` warns when a role may write a path it may not read.** A tool that creates a directory there and looks
+  again fails with EPERM, and the denied `stat` is not in the log. Said once, before the run. *What to do:* nothing,
+  unless the warning names a path a tool of yours uses.
 - **Claude Code's plugin locks read as expected.** On start it locks its built-in plugins in `~/.claude/plugins/store`,
   and the refusal showed as a wall in every run. It now reads like the plugin cache: expected, nothing to grant. The
   write is still refused. *What to do:* nothing.
