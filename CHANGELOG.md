@@ -12,6 +12,12 @@ changed rather than failing on the old spelling.
 
 - **`seisin ui --runs`: a run narrowed from one policy opens with its own record.** Its detail page looked for the log
   beside the policy kept in `.seisin/policies/`, found none, and showed nothing denied, while the list counted its denials.
+- **One console.** `seisin ui` now holds the runs too, as one more item in its menu, and a run opens as the same views.
+  A repository finds its runs in its own log. A launcher names its directory with `[console] runs`, and `[console] launcher`
+  makes the console read only and says where to ask. `seisin ui --runs <dir>` still works, for what has no policy to open.
+- **A run's numbers agree.** The list and the page of a run now count the same denials, and say the housekeeping beside them.
+  Claude Code's plugin updater in a home a launcher moved counts as expected, as it does in `~/.claude`.
+- **No request queue in a run.** Nothing could be decided there, so a run shows its denials and where to ask.
 - **The list of runs comes first.** The denials summed across runs are one click away instead of two screens above it.
 - **Smaller:** a long run id no longer overflows the sidebar, an archived run with no requests no longer speaks of
   pending decisions, and the sidebar links to tartaros, the default sandbox.

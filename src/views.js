@@ -9,7 +9,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { explain, standingOf } from "./owners.js";
-import { kindsOf, KINDS, expectedOf } from "./kinds.js";
+import { kindsOf, KINDS, expectedOf, runHomeOf } from "./kinds.js";
 import { walls } from "./walls.js";
 import { queueOf } from "./requests.js";
 
@@ -90,6 +90,7 @@ export function causesOf(cfg, entries, { ask = explain, limit = 12 } = {}) {
     const g = by.get(k) ?? { action: e.action, target: e.target, kind: e.kind, times: 0, roles: new Set(), ownersThen: e.owners ?? [] };
     g.times++;
     g.roles.add(e.role);
+    g.run ??= e.run;
     by.set(k, g);
   }
   const total = [...by.values()].reduce((n, g) => n + g.times, 0);
@@ -192,7 +193,8 @@ export function causesOf(cfg, entries, { ask = explain, limit = 12 } = {}) {
    */
   const expected = { paths: 0, denials: 0 };
   for (const g of by.values()) {
-    g.expected = expectedOf(g.target);
+    const home = runHomeOf(g.target, g.run);
+    g.expected = expectedOf(g.target, home ? { home } : undefined);
     if (!g.expected) continue;
     expected.paths++;
     expected.denials += g.times;

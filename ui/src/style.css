@@ -52,6 +52,7 @@ body{margin:0;background:var(--bg);color:var(--fg);
 .brand small{font-size:11px;color:var(--mid);display:block;margin-top:1px}
 .brand .id{display:flex;align-items:center;gap:10px}
 .brand .id>div{min-width:0}
+.on-runs #kpis,.on-runs #range{display:none!important}
 .brand #source{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .brand .mark{width:28px;height:28px;flex:none}
 .theme{display:flex;gap:2px;background:var(--hover);border-radius:6px;padding:2px}

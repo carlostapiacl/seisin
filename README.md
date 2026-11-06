@@ -238,8 +238,7 @@ seisin run frontend -- claude -p "…"     # run an agent as that role
 seisin explain frontend write src/api/x  # ask one question, exit 0 or 1
 seisin review --since 7d                 # what the log says about the policy, this week
 seisin wire                              # install the PreToolUse hook in this repo
-seisin ui                                # a console for deciding what is waiting
-seisin ui --runs <dir>                   # read only, over many runs a launcher archived (docs/runs.md)
+seisin ui                                # the console: what is waiting, the runs, what was denied
 ```
 
 **Three ways in, and they say the same thing.** The **CLI** is what a person types and what

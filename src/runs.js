@@ -1,5 +1,6 @@
 /**
- * `seisin ui --runs <dir>`: the console over many runs, each with its own policy.
+ * The console's runs: a directory of them (`[console] runs`, `seisin ui --runs`),
+ * or the runs named in one log.
  *
  * A launcher that lends each run a territory of its own (wapentake does) has no
  * single seisin.toml to open: every run gets one written for it at the root of
@@ -22,7 +23,7 @@ import { dirname, join } from "node:path";
 import { loadConfig } from "./config.js";
 import { read } from "./log.js";
 import { STATE_DIR, LOG_NAME } from "./layout.js";
-import { expectedOf } from "./kinds.js";
+import { expectedOf, runHomeOf } from "./kinds.js";
 
 /**
  * An archived run's own files, always at `<run>/.seisin/`: a run folder is read
@@ -142,6 +143,21 @@ function summarize(dir, id) {
       roles: [], denied: 0, byKind: {}, expected: 0, retried: 0, causes: [], hosts: [], entries: 0, canary: null, dropped: 0 };
   }
   const all = read(logPath(cfg.root));
+  const facts = digest(all, id);
+  return {
+    ...base,
+    // A run.json that did not say when it started: the log's first line did.
+    started_at: base.started_at ?? facts.started_at,
+    ended_at: base.ended_at ?? facts.ended_at,
+    roles: Object.keys(cfg.roles),
+    ...withoutDates(facts),
+  };
+}
+
+const withoutDates = ({ started_at, ended_at, ...rest }) => rest;
+
+/** What one run's log lines come to, whichever way the run is kept. */
+function digest(all, id) {
   /**
    * Grouped here, by what was denied, rather than through causesOf and walls:
    * those ask the policy and the disk about every path (~130 ms a run on the
@@ -155,9 +171,11 @@ function summarize(dir, id) {
   const groups = new Map();
   for (const e of all) {
     if (e.verdict !== "denied") continue;
-    // macOS framework housekeeping counts as expected even in a log written
-    // before seisin said so (kinds.js expectedOf).
-    if (e.expected === true || (e.kind === "system" && expectedOf(e.target))) { expected++; continue; }
+    // Housekeeping counts as expected even in a log written before seisin said
+    // so: macOS frameworks, and Claude Code's plugin updater in the run's own
+    // home (kinds.js expectedOf).
+    const home = runHomeOf(e.target, e.run ?? id);
+    if (e.expected === true || expectedOf(e.target, home ? { home } : undefined)) { expected++; continue; }
     const k = e.kind ?? "file";
     byKind[k] = (byKind[k] ?? 0) + 1;
     if (k !== "system") denied++;
@@ -180,12 +198,9 @@ function summarize(dir, id) {
     : canaries.some((e) => e.confined === true) ? "clean"
     : "no-record";
   return {
-    ...base,
-    // A run.json that did not say when it started: the log's first line did.
-    started_at: base.started_at ?? all.find((e) => e.at)?.at ?? null,
-    ended_at: base.ended_at ?? [...all].reverse().find((e) => e.at)?.at ?? null,
+    started_at: all.find((e) => e.at)?.at ?? null,
+    ended_at: [...all].reverse().find((e) => e.at)?.at ?? null,
     outcome,
-    roles: Object.keys(cfg.roles),
     sandbox: canary?.sandbox ?? null,
     entries: all.length,
     denied,
@@ -333,6 +348,35 @@ function viewOf(dir, filters, every) {
     runs: shown.map((r) => ({ ...r, causes: r.causes.slice(0, RUN_CAUSES) })),
     readOnly: true,
   };
+}
+
+/**
+ * The runs of one log: a repository with no launcher has no folders of runs,
+ * and every line `seisin run` writes names its run. Lines from before that, or
+ * from outside a run, belong to none and are left out of this list.
+ */
+export function runsInLog(all, roles = []) {
+  const by = new Map();
+  for (const e of all) if (e.run) (by.get(e.run) ?? by.set(e.run, []).get(e.run)).push(e);
+  return [...by].map(([id, lines]) => ({
+    id, run_id: id, team: null, work_item: null, repo: null, status: null, launcher: null, meta: false,
+    role: lines.find((e) => e.role)?.role ?? null,
+    roles,
+    ...digest(lines, id),
+  }));
+}
+
+/** The global view over one log's runs: the same answer a directory of runs gets. */
+export function logRunsView(where, all, filters = {}, roles = []) {
+  return viewOf(where, filters, runsInLog(all, roles));
+}
+
+/** One run of a log, by id; 404 when no line names it. */
+export function logRunOf(all, id, roles = []) {
+  if (!isRunId(id)) throw Object.assign(new Error(`not a run id: ${JSON.stringify(id)}`), { status: 400 });
+  const r = runsInLog(all, roles).find((x) => x.id === id);
+  if (!r) throw Object.assign(new Error(`no run ${id} in this log`), { status: 404 });
+  return { ...r, causes: r.causes.slice(0, RUN_CAUSES) };
 }
 
 /** One run's summary, by id; throws 404 for a name that is not a run here. */

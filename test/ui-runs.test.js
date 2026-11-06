@@ -14,7 +14,8 @@ import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import { serve } from "../src/serve.js";
+import { serve, causesOf } from "../src/serve.js";
+import { loadConfig } from "../src/config.js";
 import { runsView, scanRuns, filtersOf, isRunId } from "../src/runs.js";
 import { record } from "../src/requests.js";
 import { writeUiLink, clearUiLink } from "../src/uilink.js";
@@ -167,6 +168,96 @@ test("a run narrowed from one policy opens with its own log, from the policy in 
   } finally { server.close(); }
 });
 
+test("one console: a policy that names its runs serves both, and still takes a decision", async () => {
+  const box = boxed("ui-one-");
+  const dir = join(box, "data", "runs");
+  mkdirSync(dir, { recursive: true });
+  run(dir, "r-1", { meta: { run_id: "r-1", role: "executor" }, log: [{ event: "canary", role: "agent", run: "r-1", confined: true, reasons: [] }] });
+  const policy = join(box, "seisin.toml");
+  writeFileSync(policy, `${TOML("dev")}\n[console]\nruns = "data/runs"\n`);
+  const server = await serve(policy, 0, { runsDir: join(box, "data", "runs") });
+  const get = (p, o = {}) => fetch(`http://127.0.0.1:${server.address().port}${p}`, { ...o, headers: { "x-seisin-token": server.seisinToken } });
+  try {
+    const info = await (await get("/api/info")).json();
+    assert.equal(info.mode, "policy");
+    assert.equal(info.readOnly, false);
+    assert.equal(info.dir, dir);
+    assert.equal((await get("/api/state")).status, 200);
+    assert.equal((await (await get("/api/runs")).json()).total, 1);
+    assert.equal((await (await get("/api/run?run=r-1")).json()).readOnly, true, "an archived run is never granted from");
+    assert.equal((await get("/api/decide", { method: "POST", body: "{}" })).status, 400, "the policy is: this one is just missing its key");
+  } finally { server.close(); }
+});
+
+test("one console: under a lent territory nothing is written, and it says who to ask", async () => {
+  const box = boxed("ui-lent-");
+  const policy = join(box, "seisin.toml");
+  writeFileSync(policy, `${TOML("dev")}\n[console]\nlauncher = "wapentake"\n`);
+  const server = await serve(policy, 0);
+  const get = (p, o = {}) => fetch(`http://127.0.0.1:${server.address().port}${p}`, { ...o, headers: { "x-seisin-token": server.seisinToken } });
+  try {
+    const info = await (await get("/api/info")).json();
+    assert.equal(info.readOnly, true);
+    assert.equal(info.launcher, "wapentake");
+    for (const path of ["/api/decide", "/api/decline-all", "/api/control-files"]) {
+      const r = await get(path, { method: "POST", body: "{}" });
+      assert.equal(r.status, 405, path);
+      assert.match((await r.json()).error, /wapentake/);
+    }
+  } finally { server.close(); }
+});
+
+test("one console: a repository with no launcher finds its runs in its log", async () => {
+  const box = boxed("ui-log-");
+  const policy = join(box, "seisin.toml");
+  writeFileSync(policy, TOML("dev"));
+  mkdirSync(join(box, ".seisin"), { recursive: true });
+  writeFileSync(join(box, ".seisin", "log.jsonl"), [
+    { event: "canary", role: "dev", run: "aaa", confined: true, reasons: [] },
+    { role: "dev", source: "kernel", action: "write", kind: "file", target: "docs/x.md", verdict: "denied", owners: [], run: "aaa" },
+    { event: "canary", role: "dev", run: "bbb", confined: true, reasons: [] },
+  ].map(line).join(""));
+  const server = await serve(policy, 0);
+  const get = (p) => fetch(`http://127.0.0.1:${server.address().port}${p}`, { headers: { "x-seisin-token": server.seisinToken } });
+  try {
+    const all = await (await get("/api/runs")).json();
+    assert.deepEqual(all.runs.map((r) => [r.id, r.outcome]).sort(), [["aaa", "denied"], ["bbb", "clean"]]);
+    const one = await (await get("/api/run?run=aaa")).json();
+    assert.equal(one.readOnly, true);
+    assert.equal(one.log.filter((e) => e.verdict === "denied").length, 1);
+    const other = await (await get("/api/run?run=bbb")).json();
+    assert.equal(other.log.filter((e) => e.verdict === "denied").length, 0, "another run's lines stay out");
+    assert.equal((await get("/api/run?run=nope")).status, 404);
+  } finally { server.close(); }
+});
+
+test("[console] runs is relative to the policy file; anything but a string is refused", () => {
+  const box = boxed("ui-cfg-");
+  const policy = join(box, "seisin.toml");
+  writeFileSync(policy, `${TOML("dev")}\n[console]\nruns = "data/runs"\nlauncher = "x"\n`);
+  const cfg = loadConfig(policy);
+  assert.equal(cfg.console.runs, join(box, "data", "runs"));
+  assert.equal(cfg.console.launcher, "x");
+  writeFileSync(policy, `${TOML("dev")}\n[console]\nruns = 3\n`);
+  assert.throws(() => loadConfig(policy), /console\.runs/);
+  writeFileSync(policy, `${TOML("dev")}\n[console]\nrun = "x"\n`);
+  assert.throws(() => loadConfig(policy), /did you mean "runs"/);
+});
+
+test("the plugin updater in a run's own home is expected, in the list as on the page", () => {
+  const dir = boxed("ui-exp-");
+  const id = "r-plug";
+  const target = `/tmp/turns/${id}/home/.claude/plugins/store/x.lock`;
+  run(dir, id, { log: [
+    { event: "canary", role: "agent", run: id, confined: true, reasons: [] },
+    { role: "agent", source: "kernel", action: "write", kind: "file", target, verdict: "denied", owners: [], run: id },
+  ] });
+  const r = runsView(dir).runs[0];
+  assert.equal(r.outcome, "clean");
+  assert.equal(r.expected, 1);
+  assert.equal(causesOf({ roles: {} , root: dir, path: join(dir, "x") }, [{ action: "write", kind: "file", target, verdict: "denied", role: "agent", run: id }]).expected.denials, 1);
+});
+
 test("run ids are folder names, nothing that walks out of the directory", () => {
   for (const ok of ["r-1", "01M5VAEQ", "a.b_c"]) assert.ok(isRunId(ok), ok);
   for (const no of ["..", ".", "../x", "a/b", "", ".hidden", "a b"]) assert.ok(!isRunId(no), no);
@@ -255,7 +346,7 @@ test("without --runs the console is the one it was: one policy, and its writes",
   try {
     assert.equal((await (await fetch(`http://127.0.0.1:${port}/api/info`, { headers: h })).json()).mode, "policy");
     assert.equal((await fetch(`http://127.0.0.1:${port}/api/state`, { headers: h })).status, 200);
-    assert.equal((await fetch(`http://127.0.0.1:${port}/api/runs`, { headers: h })).status, 404);
+    assert.equal((await (await fetch(`http://127.0.0.1:${port}/api/runs`, { headers: h })).json()).total, 0, "no run in the log yet");
     const r = await fetch(`http://127.0.0.1:${port}/api/decide`, { method: "POST", headers: h, body: "{}" });
     assert.equal(r.status, 400, "a decision is still taken — this one is just missing its key");
   } finally { server.close(); }

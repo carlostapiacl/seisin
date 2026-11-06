@@ -254,6 +254,20 @@ const OS_BACKGROUND = new Set([
 const OS_BACKGROUND_RE = /^apple\.cfprefs\.\d+v1$/;   // the per-user cfprefs segment
 
 /**
+ * The home a launcher gave a run, read off a denied path: `<...>/<run>/home`,
+ * the shape sameAcrossRuns (runs.js) already reads. An orchestrator moves HOME
+ * per run, and Claude Code's plugin updater is as expected there as in ~/.claude.
+ * Null when the path does not have that shape.
+ */
+export function runHomeOf(target, run) {
+  if (!run) return null;
+  const mark = `/${run}/home`;
+  const t = String(target ?? "");
+  const at = t.indexOf(`${mark}/`);
+  return at === -1 ? null : t.slice(0, at + mark.length);
+}
+
+/**
  * `{ kind, hint }` when the refusal of `target` is expected, else null.
  *
  * `target` as the log keeps it: absolute outside the repository. The home and

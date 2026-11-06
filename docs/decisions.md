@@ -1093,6 +1093,18 @@ what happens when exactly one other owner takes work; picking among several by s
 would be a second routing rule nobody asked for. `seisin run <role> --handoff <id>` for such a
 role is refused before the id is looked up: no decision can route there.
 
+## One console, not one per shape of data
+
+`seisin ui --runs` was added when every run had its own generated policy and there was no one
+file to open. One policy per instance took that reason away, and two commands, two ports and
+two menus were left: someone in the pilot's folder opened `seisin ui` and saw every role and no
+activity, because the activity was under another command.
+
+So runs are an item in the one menu, and opening a run is those same views over that run. The
+flag stays for what cannot name a policy. Granting does not move: a run is read only, and
+`[console] launcher` closes the whole console, because a launcher with its own channel for
+access and a console that also approves would be two places deciding the same thing.
+
 ## Still open
 
 - ~~**An MCP tool call has no owner.**~~ **Read at the server level, 2026-09-24.** The hook used
