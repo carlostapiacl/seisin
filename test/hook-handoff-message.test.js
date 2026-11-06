@@ -274,7 +274,7 @@ test("a write only --only left out says so: no owner, no person, nothing queued"
   const s = said(decide(config, "executor", write(dir, "src/web/a.ts"), { ...quiet, roleWrites }));
   assert.match(s, /src\/web\/a\.ts is left out of this run by its --only/);
   assert.match(s, /nothing was queued/);
-  assert.match(s, new RegExp(ELSEWHERE.replace(/[.()]/g, "\\$&")));
+  assert.ok(s.includes(ELSEWHERE));
   assert.doesNotMatch(s, /prepare-|a person|Already queued/);
 
   // Outside what the role has at all: the owners and the person, as before.
