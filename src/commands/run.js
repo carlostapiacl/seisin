@@ -20,7 +20,7 @@ import { nestedSandboxWarning } from "../nested.js";
 import { spool, SOCK_ENV, FIFO_SUFFIX } from "../spool.js";
 import { openRun, runsRootOf, TMP_NAME } from "../rundir.js";
 import { secretsOf, redactor } from "../redact.js";
-import { C, err } from "../render.js";
+import { C, err, drained } from "../render.js";
 import { pending, requestsPath, queueOf, recordHandoff } from "../requests.js";
 import { chainFrom, describeHandoff, MAX_DEPTH, CHAIN_ENV, ROLE_WRITES_ENV } from "../handoff.js";
 import { notifier } from "../notify.js";
@@ -839,12 +839,22 @@ async function finishRun({
   // event that had already fired and the 2-second guard was the only way out.
   // Every run with a key paid it — measured 3.0 s against 1.2 s without keys.
   // `finished()` settles at once for a stream that is already done.
-  const guard = setTimeout(() => process.exit(status), 2000);
+  //
+  // The guard is for a descendant that holds the child's pipes open, not for a
+  // reader that is behind: with output still queued for the reader, exiting at
+  // 2 s cut what a slow one received, measured at 65536 of 100016 bytes.
+  let guard;
+  const giveUp = () => {
+    if (process.stdout.writableLength || process.stderr.writableLength) guard = setTimeout(giveUp, 2000);
+    else process.exit(status);
+  };
+  guard = setTimeout(giveUp, 2000);
   // A child's exit is not its pipes' EOF. Let pipe() end the redactors
   // after the remaining stdout/stderr arrives; ending them here lost that
   // output. The guard still bounds a descendant that keeps a pipe open.
   await Promise.all([finished(outStream), finished(errStream)]).catch(() => {});
   clearTimeout(guard);
+  await drained();
   process.exit(status);
 }
 

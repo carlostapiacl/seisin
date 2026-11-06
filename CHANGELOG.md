@@ -8,6 +8,13 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## 0.8.6 — 2026-11-06
+
+- **Output through a pipe arrives whole.** `seisin review --runs <dir> --json` could reach a pipe cut at a multiple of 64 KB,
+  with status 0: the process left before stdout had drained. Every command that returns a status now waits for it. A keyed
+  `seisin run` also stopped cutting its child's output when the reader was more than two seconds behind. A reader that never
+  reads now holds a keyed run open, as it already held a run without keys.
+
 ## 0.8.5 — 2026-11-06
 
 - **`seisin ui --runs`: a run narrowed from one policy opens with its own record.** Its detail page looked for the log

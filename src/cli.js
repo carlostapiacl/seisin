@@ -20,7 +20,7 @@ import { findConfig, loadConfig } from "./config.js";
 import { CONFIG_NAME } from "./layout.js";
 import { setStateDir } from "./state.js";
 import { setVars } from "./vars.js";
-import { C, out, err } from "./render.js";
+import { C, out, err, drained } from "./render.js";
 import { COMMAND_HELP, flagsOf, renderHelp, renderLimits } from "./help.js";
 import { nearest, checkFlags } from "./suggest.js";
 
@@ -295,11 +295,15 @@ if (!command.startsWith("-") && asksHelp(command, argv)) {
 try {
   refuseUnknownFlags(command, argv);
   const code = await chosen();
-  if (typeof code === "number") process.exit(code);
+  if (typeof code === "number") {
+    await drained();
+    process.exit(code);
+  }
 } catch (e) {
   err(`${C.red}seisin:${C.off} ${e.message}\n`);
   // A command that was not found is 127 wherever a shell runs it; everything
   // else seisin refuses is a usage or policy error.
+  await drained();
   process.exit(e.exitCode ?? 2);
 }
 
