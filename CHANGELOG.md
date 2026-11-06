@@ -8,7 +8,7 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
-## Unreleased
+## 0.8.5 — 2026-11-06
 
 - **`seisin ui --runs`: a run narrowed from one policy opens with its own record.** Its detail page looked for the log
   beside the policy kept in `.seisin/policies/`, found none, and showed nothing denied, while the list counted its denials.
