@@ -146,6 +146,27 @@ test("a run that moved is read again; one that did not is not", () => {
   assert.equal(scanRuns(dir).runs.find((r) => r.id === "r-exec-b").denied, 1);
 });
 
+test("a run narrowed from one policy opens with its own log, from the policy in its state directory", async () => {
+  const dir = boxed("ui-runs-");
+  const root = join(dir, "r-narrow");
+  const held = join(root, ".seisin", "policies");
+  mkdirSync(held, { recursive: true });
+  writeFileSync(join(held, "abc.json"), JSON.stringify({ roles: { executor: { writes: ["src/**"] } } }));
+  writeFileSync(join(root, ".seisin", "log.jsonl"), [
+    { event: "canary", role: "executor", run: "n1", confined: true, reasons: [] },
+    { role: "executor", source: "kernel", action: "write", kind: "file", target: "docs/x.md", verdict: "denied", owners: [] },
+  ].map(line).join(""));
+  const { server, get } = await console_(dir);
+  try {
+    const one = await (await get("/api/run?run=r-narrow")).json();
+    assert.equal(one.root, root, "the run's folder, not the one its policy is kept in");
+    assert.equal(one.run.denied, 1);
+    assert.equal(one.log.filter((e) => e.verdict === "denied").length, 1, "what the list counted, the run shows");
+    const set = await get("/api/settings?run=r-narrow&role=executor");
+    assert.equal(set.status, 200);
+  } finally { server.close(); }
+});
+
 test("run ids are folder names, nothing that walks out of the directory", () => {
   for (const ok of ["r-1", "01M5VAEQ", "a.b_c"]) assert.ok(isRunId(ok), ok);
   for (const no of ["..", ".", "../x", "a/b", "", ".hidden", "a b"]) assert.ok(!isRunId(no), no);

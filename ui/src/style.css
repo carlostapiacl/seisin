@@ -51,6 +51,8 @@ body{margin:0;background:var(--bg);color:var(--fg);
 .brand b{font-size:15px;font-weight:600;letter-spacing:-.01em}
 .brand small{font-size:11px;color:var(--mid);display:block;margin-top:1px}
 .brand .id{display:flex;align-items:center;gap:10px}
+.brand .id>div{min-width:0}
+.brand #source{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .brand .mark{width:28px;height:28px;flex:none}
 .theme{display:flex;gap:2px;background:var(--hover);border-radius:6px;padding:2px}
 .theme button{flex:1;border:0;background:none;color:var(--mid);padding:4px 0;border-radius:4px;
@@ -152,6 +154,11 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,[t
 .box>header{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;
   justify-content:space-between;gap:12px}
 .box>header h2{font-size:13px;font-weight:600;margin:0}
+.box.fold>summary{padding:10px 14px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;cursor:pointer}
+.box.fold[open]>summary{border-bottom:1px solid var(--line)}
+.box.fold>summary h2{font-size:13px;font-weight:600;margin:0}
+.box.fold>summary .pin:empty{display:none}
+.box.fold>summary .note{font-size:11px;color:var(--dim);margin-left:auto}
 .box>header .note{font-size:11px;color:var(--dim)}
 .box>header .bulk{margin-left:auto;display:flex;gap:6px;align-items:center}
 .box>header .bulk[hidden]{display:none}
