@@ -65,8 +65,7 @@ const PIPE_BUF = 4096;
  * The longest line the parent takes from inside the sandbox. A line of the
  * hook's is a path and a reason; the kernel will not open a path past 4096 bytes.
  * What is on it is worked out on the parent's one thread, where a run's signals
- * are handled too, so the cost of a line is capped here. Measured at the shared
- * limit of 1 MB: one line kept the parent past a SIGTERM for over 30 s.
+ * are handled too, so the cost of a line is capped here.
  */
 const MAX_LINE = 16 * 1024;
 

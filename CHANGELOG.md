@@ -8,6 +8,13 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## 0.8.2 — 2026-11-05
+
+- **The parent limits what it takes per line from the sandbox.** The audit channel took lines of up to 1 MB. It
+  now takes 16 KB, more than any path and reason a hook sends, and drops a longer line with its connection. Some
+  parsers of those lines are linear now, so a long or odd line costs the parent less. *What to do:* nothing. A
+  launcher that pins seisin should move to this version.
+
 ## 0.8.1 — 2026-11-05
 
 - **An agent stopped by its run's `--only` is told so.** In a repo where `seisin wire` ran, it read that a person

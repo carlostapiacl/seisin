@@ -25,7 +25,7 @@ test("a line longer than any path is dropped with its connection; the next conne
   const got = [];
   const s = await spool((to, entry) => got.push(entry.target), join(scratch("sc-"), "s.sock"));
   const line = (target) => JSON.stringify({ to: "log", entry: { target } }) + "\n";
-  await send(s.path, line("../".repeat(300_000)));
+  await send(s.path, line("x".repeat(100_000)));
   await send(s.path, line("x".repeat(4096)));
   await send(s.path, line("src/a.ts"));
   s.close();
