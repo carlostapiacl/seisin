@@ -39,6 +39,24 @@ export const safe = (s) => String(s ?? "").replace(/[\u0000-\u001f\u007f-\u009f]
 export const out = (s) => process.stdout.write(s);
 export const err = (s) => process.stderr.write(s);
 
+/**
+ * Settles once stdout and stderr have handed over all that was written to them.
+ *
+ * Through a pipe, a write takes what the kernel's buffer holds and queues the
+ * rest, and `process.exit` throws that queue away: a large answer reached its
+ * reader cut at a multiple of 64 KB, with status 0 and nothing on stderr. No
+ * timer here, for the same reason: a timer is a way to lose the end of the
+ * output. A reader that has gone away settles this at once, with EPIPE, which
+ * is not the exit status's business and is not reported.
+ */
+export function drained() {
+  return Promise.all([process.stdout, process.stderr].map((s) => new Promise((done) => {
+    s.on("error", () => {});
+    if (!s.writableLength) return done();
+    s.write("", () => done());
+  })));
+}
+
 /* ── the map ──────────────────────────────────────────────────────────── */
 
 /**
