@@ -185,6 +185,17 @@ A write refused only because of `--only` or `--deny` is in the log and not in th
 already has it in the policy, so no grant could answer it. What the role does not have at all is still asked.
 The agent is told the same: `--only` left it out of this run, no grant changes that, and nothing was queued.
 
+## When `seisin run` is killed
+
+A SIGTERM or SIGHUP is passed on to the agent. A SIGKILL runs no handler, and the agent has a process group of its own,
+so a kill of seisin's group does not reach it. A small process outside the group and the sandbox holds a pipe from the
+run, and if the pipe closes without the run having said it finished, it kills what it has followed from the runtime
+down by parent pid, a child in its own session included.
+
+Measured on macOS. **A process that double-forks is not caught**: once it has left the tree it cannot be found, and on
+macOS there is no way to adopt orphans. It stays confined by the sandbox and can keep writing inside its territory. A
+launcher with a folder only that run uses can look for what still has it open.
+
 ## Links
 
 The console's link, as `seisin ui --runs` prints it:

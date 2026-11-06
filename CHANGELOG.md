@@ -8,8 +8,12 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
-## Unreleased
+## 0.8.3 — 2026-11-05
 
+- **An agent does not outlive a killed `seisin run`, unless it has double-forked.** A SIGKILL to seisin or its group left
+  the agent running with nobody holding its record. A small process outside the sandbox now kills what it has followed
+  from the runtime down when the run disappears. A double fork escapes it (docs/runs.md). *What to do:* a launcher still
+  has to deal with a process that detached itself.
 - **An `--only` another one covers no longer costs anything.** Every path takes rules in the macOS profile, and a run
   with 53 of them stopped with `sandbox-exec: profile too large`, nothing started. What another path already covers is
   now left out of the policy, which changes nothing the run may write. Distinct paths still have a limit, measured at
