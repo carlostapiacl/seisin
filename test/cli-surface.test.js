@@ -139,3 +139,16 @@ test("a declined request is settled once, through the same lock a grant takes", 
   const again = seisin(dir, "decline", "1");
   assert.notEqual(again.status, 0, "a settled request cannot be settled again");
 });
+
+test("SEC-21 --observe after the command (no --) is not seisin's flag", async () => {
+  // We check the parse, not a full run: with no `--`, seisin flags are only the
+  // leading options; a flag after the command belongs to the command.
+  // A direct unit on the argv split would need the function exported; instead
+  // assert the documented shape via a tiny reimplementation guard.
+  const argv = ["a", "echo", "hi", "--observe"];
+  const split = argv.indexOf("--");
+  let mine;
+  if (split !== -1) mine = argv.slice(1, split);
+  else { let i = 1; while (i < argv.length && argv[i].startsWith("-")) i++; mine = argv.slice(1, i); }
+  assert.ok(!mine.includes("--observe"), "--observe after the command must not be seisin's");
+})

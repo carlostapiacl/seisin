@@ -20,6 +20,7 @@ import { resolveExecutable, denyFor } from "../src/surface.js";
 import { inspect } from "../src/inspect.js";
 import { scratch } from "./_tmp.js";
 import { renderEntry } from "../src/render.js";
+import { symlinkSync } from "node:fs";
 
 /** A repo with a seisin.toml in it, and a .secrets to hold path-keys. */
 function repo(toml) {
@@ -768,4 +769,63 @@ test("docs: the op recipe writes op:// back, because {ref} is what follows the s
 test("docs: the keychain recipe warns that some values come back in hexadecimal", () => {
   assert.match(DOC, /hexadecimal[\s\S]{0,400}newline/);
   assert.match(DOC, /base64 -D/);
+});
+
+const cfg = {
+  root: "/repo",
+  keyDirs: [".secrets"],
+  allowedDomains: ["github.com"],
+  roles: {
+    frontend: { name: "frontend", writes: ["src/web/**"], keys: ["netlify.txt"], network: null },
+    backend: { name: "backend", writes: ["src/api/**"], keys: ["database.txt"], network: null },
+  },
+};
+
+test("a key cannot point outside the directories declared for keys", () => {
+  // A slash in the name made the path relative to the repo root, so
+  // keys = ["../.ssh/id_rsa"] was a read grant written into the one list nobody
+  // reviews twice, because everything in it is supposed to be a key.
+  const mk = (k, dirs) => ({ root: "/repo", path: "/repo/seisin.toml", keyDirs: dirs, allowedDomains: [],
+                             roles: { f: { name: "f", writes: ["src/**"], keys: [k], network: null } } });
+  assert.throws(() => settingsFor(mk("../.ssh/id_rsa", [".secrets"]), "f"), /outside every \[keys\] dir/);
+  assert.ok(settingsFor(mk("netlify.txt", [".secrets"]), "f").filesystem.allowRead
+    .includes("/repo/.secrets/netlify.txt"));
+  // and declaring a second directory is the supported way to use another place
+  assert.ok(settingsFor(mk("shared/api.txt", [".secrets", "shared"]), "f").filesystem.allowRead
+    .includes("/repo/shared/api.txt"));
+});
+
+test("a key that is a symlink out of its directory is refused", (t) => {
+  // The sandbox enforces on a symlink's target — the same property that made
+  // allowing /tmp allow nothing. So .secrets/token.txt → ~/.ssh/id_rsa is a
+  // read grant on the ssh key, written into the one list nobody audits twice.
+  const box = scratch("seisin-sym-");
+  t.after(() => rmSync(box, { recursive: true, force: true }));
+  mkdirSync(join(box, ".secrets"), { recursive: true });
+  const outside = join(box, "afuera.txt");
+  writeFileSync(outside, "SECRETO\n");
+  symlinkSync(outside, join(box, ".secrets", "tok.txt"));
+  writeFileSync(join(box, ".secrets", "propia.txt"), "SECRETO\n");
+
+  const mk = (k) => ({ root: box, path: join(box, "seisin.toml"), keyDirs: [".secrets"], allowedDomains: [],
+                       roles: { f: { name: "f", writes: ["src/**"], keys: [k], network: null } } });
+  assert.throws(() => settingsFor(mk("tok.txt"), "f"), /is a symlink/);
+  assert.ok(settingsFor(mk("propia.txt"), "f").filesystem.allowRead.some((p) => p.endsWith("propia.txt")));
+});
+
+test("a key directory that is a symlink is refused", (t) => {
+  // The symlinked key file was already closed; the directory is the same hole
+  // one level up. denyRead names the path as written and the runtime enforces on
+  // the target, so `.secrets -> /tmp/other` gives a deny that covers nothing and
+  // an allow that leaves the repo.
+  const box = scratch("seisin-kd-");
+  t.after(() => rmSync(box, { recursive: true, force: true }));
+  const outside = join(box, "afuera");
+  mkdirSync(outside, { recursive: true });
+  writeFileSync(join(outside, "tok.txt"), "SECRETO\n");
+  symlinkSync(outside, join(box, ".secrets"));
+
+  const cfg = { root: box, path: join(box, "seisin.toml"), keyDirs: [".secrets"], allowedDomains: [],
+                roles: { a: { name: "a", writes: [], keys: ["tok.txt"], network: null } } };
+  assert.throws(() => settingsFor(cfg, "a"), /is a symlink/);
 });
