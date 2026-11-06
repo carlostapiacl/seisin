@@ -178,7 +178,7 @@ test("check says when what a provider runs sits inside a role's territory, whose
 });
 
 test("a flag or a value with a placeholder is not a file to protect", { skip }, () => {
-  const toml = KEYED.replace('"/bin/sh", "tools/prov.sh", "{ref}"', '"/bin/echo", "--tools/flag", "tools/{ref}"').replace('key_mode = "env"\n', 'key_mode = "env"\n');
+  const toml = KEYED.replace('"/bin/sh", "tools/prov.sh", "{ref}"', '"/bin/echo", "--tools/flag", "tools/{ref}"');
   const { dir } = repo(toml);
   const r = seisin(["run", "dev", "--agent", "none", "--", "/bin/sh", "-c", "echo x > tools/X && echo OK"], dir);
   assert.match(r.stdout, /OK/, r.stdout + r.stderr);

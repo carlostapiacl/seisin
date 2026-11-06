@@ -2,6 +2,7 @@ import { resolve, dirname, basename, relative, join } from "node:path";
 import { existsSync } from "node:fs";
 import { territoryOf, implicitSidecar, under, regularFilesIn } from "./files.js";
 import { covers } from "../owners.js";
+import { trimEnd } from "../lines.js";
 
 export function layoutWarnings(config, roles, scoped) {
   const warnings = [];
@@ -18,7 +19,7 @@ export function layoutWarnings(config, roles, scoped) {
    */
   for (const r of roles)
     for (const p of r.private ?? []) {
-      const dir = p.replace(/\/\*\*$/, "").replace(/\/+$/, "").replace(/^\.\//, "");
+      const dir = trimEnd(p.replace(/\/\*\*$/, "")).replace(/^\.\//, "");
       for (const o of Object.values(config.roles)) {
         if (o.name === r.name) continue;
         const g = (o.writesDeclared ?? o.writes).find((w) => covers(w, dir));
@@ -79,7 +80,7 @@ export function layoutWarnings(config, roles, scoped) {
    * directory is read by the roles that declare a key in it and written by
    * none; a folder a role must write belongs somewhere else.
    */
-  const keyRoots = (config.keyDirs ?? []).map((d) => d.replace(/\/+$/, "")).filter(Boolean);
+  const keyRoots = (config.keyDirs ?? []).map((d) => trimEnd(d)).filter(Boolean);
   for (const r of roles) {
     for (const g of r.writes) {
       const fixed = [];
