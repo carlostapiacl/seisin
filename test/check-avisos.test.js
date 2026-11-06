@@ -61,6 +61,11 @@ test("the plugin cache is expected; the rest of ~/.claude/plugins is not", () =>
   assert.equal(expectedOf(CACHE)?.kind, "plugins");
   assert.equal(expectedOf(join(homedir(), ".claude", "plugins", "installed_plugins.json")), null);
   assert.equal(expectedOf(".claude/plugins/cache/x"), null, "a project's .claude is not the updater's");
+  assert.equal(expectedOf("/run/home/.claude/plugins/store/a_builtin-b049.json.lock", { home: "/run/home" })?.kind, "plugins");
+  assert.equal(expectedOf("/run/home/.claude/plugins/store", { home: "/run/home" })?.kind, "plugins");
+  assert.equal(expectedOf(".claude/plugins/store/x"), null, "a project's .claude is not the updater's");
+  assert.equal(expectedOf("/run/home/.claude/plugins/installed_plugins.json", { home: "/run/home" }), null, "the rest of plugins stays a refusal");
+  assert.equal(expectedOf("/run/home/.claude/plugins/stored", { home: "/run/home" }), null);
   assert.equal(expectedOf("/cfg/plugins/cache/a", { env: { CLAUDE_CONFIG_DIR: "/cfg" } })?.kind, "plugins");
 });
 

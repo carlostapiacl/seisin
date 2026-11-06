@@ -466,7 +466,7 @@ territory" reads as its opposite. *Where:* `seisin review` "by kind", MCP `stand
 
 **expected denial**: a denial that is correct and needs nothing from anybody: the agent program's
 own housekeeping reaching outside the sandbox. Today one case, Claude Code updating its plugins
-into `~/.claude/plugins/cache`; plugins run and update outside the sandbox. Said apart as
+into `~/.claude/plugins/cache`, or locking its built-in plugins in `plugins/store`; plugins run and update outside the sandbox. Said apart as
 "expected" by `seisin run`, `seisin walls`, `seisin review` ("Denied as expected") and the console,
 never counted as repeated denials or retries, and never told to the agent. *Where:* the `expected`
 field on walls and causes.

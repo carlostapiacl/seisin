@@ -8,6 +8,12 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## Unreleased
+
+- **Claude Code's plugin locks read as expected.** On start it locks its built-in plugins in `~/.claude/plugins/store`,
+  and the refusal showed as a wall in every run. It now reads like the plugin cache: expected, nothing to grant. The
+  write is still refused. *What to do:* nothing.
+
 ## 0.8.3 — 2026-11-05
 
 - **An agent does not outlive a killed `seisin run`, unless it has double-forked.** A SIGKILL to seisin or its group left
