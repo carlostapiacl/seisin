@@ -172,6 +172,11 @@ with `event: "narrowed"` names the policy it came from, what it took away and wh
 by name. A folder with no `seisin.toml` or `seisin.json` of its own is read from there, so these runs need
 nothing else to appear in this console.
 
+An `--only` another one covers (`src/api/a.ts` beside `src/api/**`) is left out of the policy, which changes nothing
+the run may write. Each path left costs rules in the sandbox's profile, and on macOS the profile has a size limit:
+measured with a policy of 16 reads and paths of about 100 characters, 45 distinct paths start and 46 do not. Past it
+the run does not start.
+
 `--only` is refused before anything starts when the repo, or a path of the role, sits inside what `[runtime] writes`
 gives every role as scratch (`/tmp` and `~/.cache` by default), because scratch is written around it. Move the repo,
 or set `[runtime] writes` to a list that leaves it out. `--deny` closes its path inside scratch too.
