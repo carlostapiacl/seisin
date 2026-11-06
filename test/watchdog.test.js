@@ -34,20 +34,22 @@ const pidIn = (dir, name) => Number(readFileSync(join(dir, name), "utf8"));
 const killGroup = (run) => { try { process.kill(-run.pid, "SIGKILL"); } catch {} };
 const watchdogOf = (run) => spawnSync("pgrep", ["-P", String(run.pid), "-f", "watchdog.js"], { encoding: "utf8" }).stdout.trim();
 
+// By what the host sees: on Linux the sandbox has a pid namespace, and a pid from inside means nothing here.
+const sleepers = (seconds) => spawnSync("pgrep", ["-f", `sleep ${seconds}$`], { encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean).map(Number);
+
 test("SIGKILL to seisin's group: the agent and a child in its own session die", { skip }, async () => {
-  const session = `perl -e 'use POSIX; POSIX::setsid(); open(F,">","kid.pid"); print F $$; close F; exec "/bin/sleep","60"'`;
-  const { dir, run } = start(`echo $$ > agent.pid; ${session} & wait`);
+  const [own, session] = [70000 + (process.pid % 9000), 80000 + (process.pid % 9000)];
+  const detached = `perl -e 'use POSIX; POSIX::setsid(); exec "/bin/sleep","${session}"'`;
+  const { run } = start(`/bin/sleep ${own} & ${detached} & wait`);
   try {
-    assert.ok(await until(() => existsSync(join(dir, "agent.pid")) && existsSync(join(dir, "kid.pid")), 20000), "the run did not start");
-    const agent = pidIn(dir, "agent.pid"), kid = pidIn(dir, "kid.pid");
+    assert.ok(await until(() => sleepers(own).length > 0 && sleepers(session).length > 0, 20000), "the run did not start");
     await new Promise((r) => setTimeout(r, 2500));         // one scan of the tree
-    assert.ok(up(agent) && up(kid));
     killGroup(run);
-    assert.ok(await until(() => !up(agent)), "the agent outlived the run");
-    assert.ok(await until(() => !up(kid)), "its child in another session outlived the run");
+    assert.ok(await until(() => sleepers(own).length === 0), "the agent's child outlived the run");
+    assert.ok(await until(() => sleepers(session).length === 0), "the child in another session outlived the run");
   } finally {
     killGroup(run);
-    for (const n of ["agent.pid", "kid.pid"]) if (existsSync(join(dir, n))) try { process.kill(pidIn(dir, n), "SIGKILL"); } catch {}
+    for (const p of [...sleepers(own), ...sleepers(session)]) try { process.kill(p, "SIGKILL"); } catch {}
   }
 });
 
