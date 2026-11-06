@@ -17,6 +17,8 @@ changed rather than failing on the old spelling.
   makes the console read only and says where to ask. `seisin ui --runs <dir>` still works, for what has no policy to open.
 - **A run's numbers agree.** The list and the page of a run now count the same denials, and say the housekeeping beside them.
   Claude Code's plugin updater in a home a launcher moved counts as expected, as it does in `~/.claude`.
+- **`--expect-denied tcp:<port>`.** A canary that dials a decoy port can say so, and that denial stops counting against the run.
+  `seisin check --json` lists it as `expect-denied-tcp`.
 - **No request queue in a run.** Nothing could be decided there, so a run shows its denials and where to ask.
 - **The list of runs comes first.** The denials summed across runs are one click away instead of two screens above it.
 - **Smaller:** a long run id no longer overflows the sidebar, an archived run with no requests no longer speaks of

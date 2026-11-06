@@ -47,6 +47,8 @@ export { policyId };
  * (`seisin run --expect-denied`): taken from the parent's own argv, never from
  * anything the sandbox can reach. See expectedByCaller below.
  */
+const TCP_PROBE = /^tcp:\d{1,5}$/;
+
 export function intake({ config, role, runId, label = null, observe = false, settings, notify, chain = null, expectDenied = [], trace = {}, ceiling = null }) {
   // `trace` is the launcher's (trace.js), read by the parent: in the stamp, so a
   // line the sandbox sends cannot claim another run's trace.
@@ -91,6 +93,8 @@ export function intake({ config, role, runId, label = null, observe = false, set
    * anything, and nothing it sends can add to the list (docs/decisions.md).
    */
   const probes = new Set(expectDenied.map((p) => samePath(config, p)).filter(Boolean));
+  // A port the caller's canary dials on purpose: `tcp:<port>`, exactly as the log writes it.
+  const dialled = new Set(expectDenied.filter((p) => TCP_PROBE.test(p)));
   const expectedByCaller = (target) => probes.size > 0 && probes.has(samePath(config, target));
 
   /**
@@ -246,10 +250,13 @@ export function intake({ config, role, runId, label = null, observe = false, set
       if (connects.has(d.path)) return;
       connects.add(d.path);
       const v = explain(config, role, "connect", d.path);
+      const asked = dialled.has(d.path);
+      if (asked) stats.probes++;
       log({
         role, tool: "kernel", source: "kernel",
         action: "connect", kind: "network", target: d.path, verdict: "denied",
         owners: [], reason: d.operation, ...(v.listed ? { listed: true } : {}),
+        ...(asked ? { expected: true } : {}),
       });
       return;
     }

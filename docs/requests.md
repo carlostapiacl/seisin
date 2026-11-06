@@ -257,6 +257,10 @@ seisin: 1 of them expected by the caller (--expect-denied) — nothing queued
     #1  web wants write on notes.md (owned by prepare)
 ```
 
+A canary that dials a decoy names its port the same way, `--expect-denied tcp:52970`. The denial
+of a connection names only the port, so pick one nothing else would dial: a port taken at random
+by the caller, for that run.
+
 The probe's denial stays in the log, with `"expected": true`, and nothing else: no request, no
 notification, no line in `walls`, `review` or the console's causes. The flag is repeatable and
 takes a path relative to the repo or absolute, compared the way every other path is (through the

@@ -404,7 +404,7 @@ A host is otherwise all of it. Only tartaros enforces it (from 0.1.0-alpha.18): 
 the host's TLS and refuses any other request, which lands in the log as a network denial.
 
 **expected denial**: a denial the caller of `seisin run` said it would probe for, with
-`--expect-denied <path>`: logged with `"expected": true`, asked of nobody. *Not:* the plugin
+`--expect-denied <path>` or `tcp:<port>`: logged with `"expected": true`, asked of nobody. *Not:* the plugin
 updater's denials, which `walls` and `review` call expected on their own.
 
 **handoff chain**: the sequence of roles one handoff has passed through, bounded in depth. Always

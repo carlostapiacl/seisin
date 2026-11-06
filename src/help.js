@@ -19,7 +19,7 @@ export const COMMAND_HELP = {
       ["--debug-env", "print the environment variables the role does not get"],
       ["--agent <name>", "claude, codex or none: which agent the command runs, when seisin cannot tell from it (a wrapper script). Its home is the run's scratch; the other agents' sign-in is closed"],
       ["--handoff <id>", "this run takes a pending request handed to this role, and starts only if the policy routes that request here. Its own requests join the handoff chain"],
-      ["--expect-denied <path>", "a path the caller will probe and expects to be denied (its own canary). That exact path is logged as expected and files no request; repeatable. Any other path is asked as usual"],
+      ["--expect-denied <path>", "a path the caller will probe and expects to be denied (its own canary). That exact path, or a port as tcp:<port>, is logged as expected and files no request; repeatable. Any other path is asked as usual"],
       ["--run-id <id>", "the launcher's own id for this run, used in the log instead of a random one, so an orchestrator's records and seisin's join on it"],
       ["--only <glob>", "this run writes only here; repeatable. Each one has to be inside what the role may write: a run takes away from its role, never adds"],
       ["--deny <glob>", "this run may not write here, on top of the role's never_writes; repeatable"],

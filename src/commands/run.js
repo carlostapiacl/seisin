@@ -886,6 +886,10 @@ export function handoffOf(config, role, mine) {
  * else is something the sandboxed side could reach, and a list it could add
  * to would be a way to keep its own denials out of the queue.
  *
+ * Or a port, `tcp:<port>`, for a canary that dials a decoy: the kernel's denial
+ * names only the port, so a real connection to that same port in the same run
+ * would read as expected too. The caller picks a port nothing else would dial.
+ *
  * A path, exactly. A glob is refused rather than read literally: `*` meaning
  * "this one file" is not what anyone who typed it meant, and meaning "every
  * file" would make a probe a way to silence a whole directory.
@@ -900,6 +904,8 @@ export function expectedDenials(mine) {
     if (WILD.test(p))
       throw new Error(`--expect-denied ${p}: a path, not a pattern. Only a denial of exactly that path is expected; ` +
         `name each one with its own --expect-denied.`);
+    if (/^tcp:/.test(p) && !(/^tcp:\d{1,5}$/.test(p) && Number(p.slice(4)) >= 1 && Number(p.slice(4)) <= 65535))
+      throw new Error(`--expect-denied ${p}: a port is tcp:<1-65535>.`);
     out.push(p);
   }
   return out;
