@@ -178,6 +178,7 @@ or set `[runtime] writes` to a list that leaves it out. `--deny` closes its path
 
 A write refused only because of `--only` or `--deny` is in the log and not in the request queue: the role
 already has it in the policy, so no grant could answer it. What the role does not have at all is still asked.
+The agent is told the same: `--only` left it out of this run, no grant changes that, and nothing was queued.
 
 ## Links
 

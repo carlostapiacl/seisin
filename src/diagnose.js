@@ -33,7 +33,7 @@ import { readEntries } from "./log.js";
 import { explain } from "./owners.js";
 import { hitsOf, againWords, walls } from "./walls.js";
 import { collapseSidecars } from "./render.js";
-import { decideHandoff, toAgent, isStopped, ELSEWHERE } from "./handoff.js";
+import { decideHandoff, toAgent, isStopped, leftOutByRun, leftOutWords, names, ELSEWHERE } from "./handoff.js";
 import { keyOf } from "./requests.js";
 import { destinationOf } from "./intake.js";
 
@@ -89,7 +89,7 @@ export function recentKernelDenials(file, role, sinceMs) {
 }
 
 /** The sentence for one refusal, in the words the PreToolUse hook uses. */
-function sentence(config, role, file, e, chain = null, run = null) {
+function sentence(config, role, file, e, chain = null, run = null, roleWrites = null) {
   const action = e.kind === "key" ? "read" : e.action === "read" || e.action === "connect" ? e.action : "write";
   // An atomic save refused at its temporary file is about the file it was
   // saving. Said about that file, or the agent goes looking for a missing
@@ -112,6 +112,7 @@ function sentence(config, role, file, e, chain = null, run = null) {
   // handoff decision the hook and the queue use. Everything else — a protected
   // file, a connection, a read the mode shuts — keeps the policy's own reason.
   const handed = (action === "write" || e.kind === "key") && !v.gitMetadata && !v.protected && !v.privateTo;
+  if (handed && action === "write" && leftOutByRun(config, role, e.target, roleWrites)) return leftOutWords(e.target, role, again);
   if (handed)
     return toAgent(decideHandoff({ request: { role, action, target: e.target }, config, chain }),
       { target: e.target, role, key: keyOf({ role, action, target: e.target }), again });
@@ -151,7 +152,7 @@ function evidenceOf(event) {
  * refusal, and a loaded machine can be slower than the hook. Only when the tool
  * reported a failure — see {@link evidenceOf}.
  */
-export async function afterTool(config, role, event, { file, now = Date.now, wait = [0, 100, 300], chain = null, run = process.env.SEISIN_RUN_ID ?? null } = {}) {
+export async function afterTool(config, role, event, { file, now = Date.now, wait = [0, 100, 300], chain = null, roleWrites = null, run = process.env.SEISIN_RUN_ID ?? null } = {}) {
   const { text: evidence, failed } = evidenceOf(event);
   if (!DENIAL_SIGNS.test(evidence)) return null;
   // JSON escapes what the program printed; the signatures are written against the text.
@@ -162,7 +163,7 @@ export async function afterTool(config, role, event, { file, now = Date.now, wai
     found = recentKernelDenials(file, role, now() - WINDOW_MS);
     if (found.length) break;
   }
-  const lines = [...known, ...found.map((e) => sentence(config, role, file, e, chain, run)).filter(Boolean)].slice(0, MAX_NAMED);
+  const lines = [...known, ...found.map((e) => sentence(config, role, file, e, chain, run, roleWrites)).filter(Boolean)].slice(0, MAX_NAMED);
   if (!lines.length) return null;
   const total = known.length + found.length;
   const more = total > MAX_NAMED ? ` (and ${total - MAX_NAMED} more — \`seisin walls ${role}\`)` : "";
@@ -175,7 +176,7 @@ export async function afterTool(config, role, event, { file, now = Date.now, wai
 }
 
 /** When a session starts, resumes or is compacted: the map, before the first wall. */
-export function atSessionStart(config, role, event, { file, chain = null } = {}) {
+export function atSessionStart(config, role, event, { file, chain = null, roleWrites = null } = {}) {
   const r = config.roles[role];
   const writes = collapseSidecars(r.writesDeclared ?? r.writes);
   const lines = [
@@ -199,12 +200,18 @@ export function atSessionStart(config, role, event, { file, chain = null } = {})
   // an agent told the owner here repeated it after the sentence its denial
   // told it to pass on alone.
   const stops = (x) => isStopped(decideHandoff({ request: { role, action: x.action, target: x.target }, config, chain }));
+  const leftOut = (x) => x.action === "write" && leftOutByRun(config, role, x.target, roleWrites);
   const inRepo = w.filter((x) => !outside(x)), out = w.filter(outside);
-  const stopped = inRepo.filter(stops), mine = inRepo.filter((x) => !stops(x));
-  const wall = (x) => `- ${x.action} ${x.target} (${x.times}×) — ${x.owners?.length ? `belongs to ${x.owners.join(", ")}` : x.reason}`;
+  const left = inRepo.filter(leftOut), rest = inRepo.filter((x) => !leftOut(x));
+  const stopped = rest.filter(stops), mine = rest.filter((x) => !stops(x));
+  const wall = (x) => `- ${x.action} ${x.target} (${x.times}×) — ${x.owners?.length ? `belongs to ${names(x.owners)}` : x.reason}`;
   if (mine.length) {
     lines.push("Already denied more than once, and still denied — do not try again, hand it over:");
     for (const x of mine) lines.push(wall(x));
+  }
+  if (left.length) {
+    lines.push("Already denied more than once, left out of this run by its --only — do not try again; no grant changes it:");
+    for (const x of left) lines.push(`- ${x.action} ${x.target} (${x.times}×)`);
   }
   if (stopped.length) {
     lines.push("Already denied more than once, where this run's handoff chain stops — do not try again; a person decides, " +

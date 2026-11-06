@@ -21,7 +21,7 @@ import { explain, normalize, privateOwner } from "./owners.js";
 import { append, logPath } from "./log.js";
 import { hitsOf, againWords } from "./walls.js";
 import { record, requestsPath, keyOf } from "./requests.js";
-import { decideHandoff, toAgent, queuedLine, isStopped, ELSEWHERE } from "./handoff.js";
+import { decideHandoff, toAgent, queuedLine, isStopped, leftOutByRun, leftOutWords, ELSEWHERE } from "./handoff.js";
 
 /** Tools whose input names a file directly. */
 const FILE_TOOLS = {
@@ -192,7 +192,7 @@ function kindOf(config, path) {
  * the same decisions and returns none of them, so a policy can be written from
  * what a real run did instead of from what someone imagined it would do.
  */
-export function decide(config, role, event, { observe = false, now = append, ask = record, chain = null, run = process.env.SEISIN_RUN_ID ?? null } = {}) {
+export function decide(config, role, event, { observe = false, now = append, ask = record, chain = null, roleWrites = null, run = process.env.SEISIN_RUN_ID ?? null } = {}) {
   const targets = targetsOf(event.tool_name, event.tool_input);
   const file = logPath(config.root);
   const queue = requestsPath(config.root);
@@ -309,7 +309,8 @@ export function decide(config, role, event, { observe = false, now = append, ask
    * branches above say why nothing was queued, which is not a handoff.
    */
   const queued = !denied.neverWrites && !denied.gitMetadata && !denied.protected && !denied.privateTo && !denied.mcp;
-  const handoff = queued
+  const leftOut = queued && denied.action === "write" && leftOutByRun(config, role, denied.target, roleWrites);
+  const handoff = queued && !leftOut
     ? decideHandoff({ request: { role, action: denied.action, target: denied.target }, config, chain })
     : null;
   // A denied write that nothing will ever grant is still a change not to
@@ -335,6 +336,8 @@ export function decide(config, role, event, { observe = false, now = append, ask
           ? `${denied.reason}. Nothing was queued.` + elsewhere + again
           : denied.mcp
           ? `${denied.reason}. Nothing was queued: which MCP servers a role may load is set in its mcp list, a policy change a person makes, not something they grant from the queue.` + again
+          : leftOut
+          ? leftOutWords(denied.target, role, again)
           : toAgent(handoff, { target: denied.target, role, key: keyOf({ role, action: denied.action, target: denied.target }), again }) +
             // Where a chain stops, the sentence to pass on already says the
             // request is waiting, and is the last thing the agent reads.
