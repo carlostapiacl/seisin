@@ -41,15 +41,6 @@ export {
 } from "./grants.js";
 
 
-/** Reads are denied wholesale under the key directory, then re-allowed one file at a time. */
-/**
- * The settings one role gets.
- *
- * `spool` is the path of the parent's audit socket, when a parent is holding
- * one. It is granted by path so the hook can report what it decided without
- * the repo's state directory being writable from inside — see spool.js. With
- * no parent there is nothing to grant and nothing to reach.
- */
 /**
  * `local_ports`, as the allowlist entries that let the proxy dial them.
  *
@@ -106,6 +97,13 @@ export function loopbackVia(role, cmd, sandbox = "srt") {
 export const SHARED_TMP = { darwin: ["/tmp/claude", "/private/tmp/claude"], linux: ["/tmp/claude"] };
 
 /**
+ * The settings one role gets.
+ *
+ * `spool` is the path of the parent's audit socket, when a parent is holding
+ * one. It is granted by path so the hook can report what it decided without
+ * the repo's state directory being writable from inside — see spool.js. With
+ * no parent there is nothing to grant and nothing to reach.
+ *
  * `agent` is what the run's command runs — `agentOf(cmd)`, or `--agent`. It
  * decides which agent's home is scratch for this run and whose sign-in files
  * are closed to it. Left out (check, console, explain: no command), the
@@ -114,13 +112,7 @@ export const SHARED_TMP = { darwin: ["/tmp/claude", "/private/tmp/claude"], linu
 export function settingsFor(config, roleName, spool = null, observe = false, { agent, program, tmp, forRun = false } = {}) {
   const role = config.roles[roleName];
   if (!role) throw unknownRole(config, roleName);
-  const claudeGrant = role.writes.find((g) => /^(?:\.\/)?\.claude(?:\/|$)/.test(g));
-  if (claudeGrant)
-    throw new Error(
-      `roles.${roleName}.writes includes "${claudeGrant}", but a project's .claude cannot be granted.\n` +
-      "  Claude Code reads its settings and hooks outside the sandbox. Remove this territory; " +
-      "a broad territory such as ** keeps working with .claude protected.",
-    );
+  refuseClaudeGrant(role, roleName);
 
   const abs = (p) => (p.startsWith("/") ? p : join(config.root, p));
   // "credentials" closes the places credentials live; "home" does that and
@@ -173,24 +165,7 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
   const sharedTmp = SHARED_TMP[process.platform === "linux" ? "linux" : "darwin"]
     .filter((p) => process.platform !== "linux" || existsSync(p) || madeFirst(p, scratch));
 
-  /**
-   * Refuse before the runtime does, because the runtime's refusal says nothing.
-   *
-   * With an isolated home too deep for the socket the runtime puts inside it,
-   * `srt` dies on `listen EINVAL: invalid argument` and a path — no role, no
-   * mention of `isolate`, nothing a reader could act on. This is the same
-   * failure seisin already documents in spool.js, reached from the other side.
-   */
-  if (isolated) {
-    const room = homeFits(config, roleName);
-    if (room < 0)
-      throw new Error(
-        `\`isolate = true\` cannot hold role "${roleName}" here: its home leaves ` +
-        `${-room} byte(s) too little for the runtime's socket, and a unix socket path ` +
-        `is capped near ${SOCKET_MAX} bytes.\n` +
-        `  Shorten the role name, or run with a shorter TMPDIR.`,
-      );
-  }
+  if (isolated) refuseHomeTooDeep(config, roleName);
 
   const home = isolated ? roleHome(config, roleName) : null;
   const denyRead = [];
@@ -201,24 +176,7 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
   // re-allowed. A key written without a directory resolves against the first
   // one, which keeps the ordinary single-directory config short.
   const dirs = config.keyDirs ?? [];
-  for (const dir of dirs) {
-    // A key *file* that is a symlink is refused below. The directory itself is
-    // the same hole one level up: denyRead names the path as written, and the
-    // runtime enforces on the destination — so `.secrets -> /tmp/elsewhere`
-    // gives a deny that covers nothing and an allow that reaches out of the
-    // repo. Refused rather than resolved, because a key directory that is not
-    // where it says it is has nothing to gain from being clever about.
-    const here = abs(dir);
-    // lstat on the directory itself, not a comparison of resolved paths: on
-    // macOS /var is a link to /private/var, so a repo under a temp directory
-    // would fail this check for an ancestor it does not control.
-    if (isLink(here))
-      throw new Error(
-        `[keys] dir "${dir}" is a symlink to ${realOrSelf(here)}.\n` +
-        `  The sandbox enforces on the destination, so the deny would not cover what the ` +
-        `allow reaches. Point [keys] dir at the real location instead.`);
-    denyRead.push(here);
-  }
+  denyRead.push(...keyDirDenies(dirs, abs));
 
   /**
    * Isolated mode also narrows what a role may READ, which the ordinary mode
@@ -284,92 +242,16 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
     denyRead.push(realOrSelf(roleHomeRoot(config)));
     allowRead.push(realOrSelf(home));
   }
-  /**
-   * Only a key that IS a file becomes a read grant.
-   *
-   * A reference has no path, so there is nothing here to allow: it is resolved
-   * by the parent before the sandbox starts and handed over as an environment
-   * variable or as a file in the run directory. See keys.js. Filtering here rather than
-   * upstream keeps the two kinds from having to know about each other — the
-   * settings this function emits are still, entirely, about the filesystem.
-   */
-  for (const entry of entriesOf(role).filter((e) => e.kind === "file")) {
-    const key = entry.raw;
-    const path = key.includes("/") ? abs(key) : abs(join(dirs[0] ?? ".", key));
-    // A key has to live in a declared key directory. Without this check a
-    // slash in the name made the path relative to the repo root instead, so
-    // `keys = ["../.ssh/id_rsa"]` re-opened a read outside `.secrets` — which
-    // is a read grant written in the one list nobody reads twice, because
-    // everything in it is supposed to be a key.
-    // Resolved, not compared as text. The sandbox enforces on the destination
-    // of a symlink — the same property that made a `/tmp` grant grant nothing —
-    // so `.secrets/github-token.txt -> ~/.ssh/id_rsa` is a read grant on the
-    // ssh key, written in the one list nobody audits twice. Measured: the read
-    // succeeded through the link and through the real path.
-    const real = realOrSelf(path);
-    const inside = dirs.some((d) => {
-      const root = realOrSelf(abs(d));
-      return real === root || real.startsWith(root.endsWith("/") ? root : root + "/");
-    });
-    if (!inside)
-      throw new Error(
-        `keys = "${key}" for role ${role.name} resolves to ${real}, outside every [keys] dir ` +
-        `(${dirs.join(", ") || "none declared"}).\n` +
-        `${real === path ? "" : `  (it is a symlink: ${path} → ${real})\n`}` +
-        `  A key must live in a declared key directory. To use another location, declare it: ` +
-        `[keys] dir = ["${dirs[0] ?? ".secrets"}", "<the other one>"].`
-      );
-    allowRead.push(path);
-  }
+  allowRead.push(...keyFileReads(role, dirs, abs));
 
-  /**
-   * Other runs' directories are unreadable; this run's is readable.
-   *
-   * Every run keeps its socket and `run-file` keys under one root (rundir.js),
-   * and every role runs as the same user, so the directory mode protects
-   * nothing between roles. Measured: one role read another's run-file key while
-   * both ran. Same shape as the key directories: deny the parent, allow your own.
-   */
   const runs = runsRootOf(spool);
   const isFifo = spool?.endsWith(FIFO_SUFFIX) === true;
   if (runs) {
-    denyRead.push(runs);
-    allowRead.push(dirname(spool));
-    /**
-     * And the temp directories runs are given when their role may write no
-     * other (rundir.js, TMP_NAME): denied as a whole, this run's own allowed
-     * back. Same shape again, and for the same reason — every run is the same
-     * user, so a run could otherwise read what another left in its temp.
-     */
-    const tmps = join(dirname(runs), TMP_NAME);
-    denyRead.push(tmps);
-    if (tmp && (tmp === tmps || tmp.startsWith(tmps + "/"))) allowRead.push(tmp);
-    /**
-     * This run's settings are not this run's to read.
-     *
-     * They sit in the run's own directory, which the run reads for its run-file
-     * keys, so they were readable from inside: a map of every path left open
-     * and every one shut, handed to the process it confines. Not a defence on
-     * its own — the policy has to be right either way — but there is no reason
-     * to give an agent the list of doors to try. Named here, by the path
-     * rundir.js writes them to, because they do not exist yet.
-     */
-    denyRead.push(join(dirname(spool), SETTINGS_NAME));
+    const { deny, allow } = runDirReads(runs, spool, tmp);
+    denyRead.push(...deny);
+    allowRead.push(...allow);
   }
 
-  /**
-   * `[runtime] read = "territory"`: the data roots are denied whole and what
-   * this role needs is allowed back inside them. See territory.js for why
-   * allowed back and no longer carved.
-   *
-   * Allowed back: the repo (key directories inside it stay denied by name,
-   * above), what the role writes, and what it declares in `reads` and
-   * `toolchain` — except where a deny above already covers it. A `reads`
-   * entry under `~/.ssh` stays shut, as it did when the mode only denied.
-   *
-   * Not allowed back twice: what is already re-allowed above — this run's
-   * directory, the role's own home, the key files.
-   */
   /**
    * Other roles' private folders: denied to read and to write, whatever this
    * role's territory says and in either read mode.
@@ -412,13 +294,7 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
   ];
 
   if (config.read === "territory") {
-    const reopened = allowRead.map(realOrSelf);
-    const inReopened = (p) => { const r = realAncestor(p); return reopened.some((a) => r === a || r.startsWith(a + "/")); };
-    // On Linux the runtime's apply-seccomp runs inside: see seccompDir.
-    const seccomp = process.platform === "linux" ? seccompDir() : null;
-    const keep = [...keptFor(config, role, { observe, agent, program }), ...(seccomp ? [seccomp] : [])]
-      .filter((p) => !inReopened(p));
-    const { deny, allow } = territoryReads(dataRoots(), keep, { writes: allowWrite, denied: [...denyRead] });
+    const { deny, allow } = territoryFor(config, role, { observe, agent, program, allowWrite, denyRead, allowRead });
     denyRead.push(...deny);
     allowRead.push(...allow);
   }
@@ -544,6 +420,164 @@ export function settingsFor(config, roleName, spool = null, observe = false, { a
      */
     ...(credentials ? { credentials } : {}),
   };
+}
+
+/** A project's `.claude` is read by Claude Code outside the sandbox, so no role is granted it. */
+function refuseClaudeGrant(role, roleName) {
+  const claudeGrant = role.writes.find((g) => /^(?:\.\/)?\.claude(?:\/|$)/.test(g));
+  if (claudeGrant)
+    throw new Error(
+      `roles.${roleName}.writes includes "${claudeGrant}", but a project's .claude cannot be granted.\n` +
+      "  Claude Code reads its settings and hooks outside the sandbox. Remove this territory; " +
+      "a broad territory such as ** keeps working with .claude protected.",
+    );
+}
+
+/**
+ * Refuse before the runtime does, because the runtime's refusal says nothing.
+ *
+ * With an isolated home too deep for the socket the runtime puts inside it,
+ * `srt` dies on `listen EINVAL: invalid argument` and a path — no role, no
+ * mention of `isolate`, nothing a reader could act on. This is the same
+ * failure seisin already documents in spool.js, reached from the other side.
+ */
+function refuseHomeTooDeep(config, roleName) {
+  const room = homeFits(config, roleName);
+  if (room < 0)
+    throw new Error(
+      `\`isolate = true\` cannot hold role "${roleName}" here: its home leaves ` +
+      `${-room} byte(s) too little for the runtime's socket, and a unix socket path ` +
+      `is capped near ${SOCKET_MAX} bytes.\n` +
+      `  Shorten the role name, or run with a shorter TMPDIR.`,
+    );
+}
+
+/**
+ * The declared key directories, each one denied to read. One that is a
+ * symlink is refused, because the sandbox enforces on the destination.
+ */
+function keyDirDenies(dirs, abs) {
+  const out = [];
+  for (const dir of dirs) {
+    // A key *file* that is a symlink is refused below. The directory itself is
+    // the same hole one level up: denyRead names the path as written, and the
+    // runtime enforces on the destination — so `.secrets -> /tmp/elsewhere`
+    // gives a deny that covers nothing and an allow that reaches out of the
+    // repo. Refused rather than resolved, because a key directory that is not
+    // where it says it is has nothing to gain from being clever about.
+    const here = abs(dir);
+    // lstat on the directory itself, not a comparison of resolved paths: on
+    // macOS /var is a link to /private/var, so a repo under a temp directory
+    // would fail this check for an ancestor it does not control.
+    if (isLink(here))
+      throw new Error(
+        `[keys] dir "${dir}" is a symlink to ${realOrSelf(here)}.\n` +
+        `  The sandbox enforces on the destination, so the deny would not cover what the ` +
+        `allow reaches. Point [keys] dir at the real location instead.`);
+    out.push(here);
+  }
+  return out;
+}
+
+/**
+ * Only a key that IS a file becomes a read grant.
+ *
+ * A reference has no path, so there is nothing here to allow: it is resolved
+ * by the parent before the sandbox starts and handed over as an environment
+ * variable or as a file in the run directory. See keys.js. Filtering here rather than
+ * upstream keeps the two kinds from having to know about each other — the
+ * settings this function emits are still, entirely, about the filesystem.
+ */
+function keyFileReads(role, dirs, abs) {
+  const out = [];
+  for (const entry of entriesOf(role).filter((e) => e.kind === "file")) {
+    const key = entry.raw;
+    const path = key.includes("/") ? abs(key) : abs(join(dirs[0] ?? ".", key));
+    // A key has to live in a declared key directory. Without this check a
+    // slash in the name made the path relative to the repo root instead, so
+    // `keys = ["../.ssh/id_rsa"]` re-opened a read outside `.secrets` — which
+    // is a read grant written in the one list nobody reads twice, because
+    // everything in it is supposed to be a key.
+    // Resolved, not compared as text. The sandbox enforces on the destination
+    // of a symlink — the same property that made a `/tmp` grant grant nothing —
+    // so `.secrets/github-token.txt -> ~/.ssh/id_rsa` is a read grant on the
+    // ssh key, written in the one list nobody audits twice. Measured: the read
+    // succeeded through the link and through the real path.
+    const real = realOrSelf(path);
+    const inside = dirs.some((d) => {
+      const root = realOrSelf(abs(d));
+      return real === root || real.startsWith(root.endsWith("/") ? root : root + "/");
+    });
+    if (!inside)
+      throw new Error(
+        `keys = "${key}" for role ${role.name} resolves to ${real}, outside every [keys] dir ` +
+        `(${dirs.join(", ") || "none declared"}).\n` +
+        `${real === path ? "" : `  (it is a symlink: ${path} → ${real})\n`}` +
+        `  A key must live in a declared key directory. To use another location, declare it: ` +
+        `[keys] dir = ["${dirs[0] ?? ".secrets"}", "<the other one>"].`
+      );
+    out.push(path);
+  }
+  return out;
+}
+
+/**
+ * Other runs' directories are unreadable; this run's is readable.
+ *
+ * Every run keeps its socket and `run-file` keys under one root (rundir.js),
+ * and every role runs as the same user, so the directory mode protects
+ * nothing between roles. Measured: one role read another's run-file key while
+ * both ran. Same shape as the key directories: deny the parent, allow your own.
+ */
+function runDirReads(runs, spool, tmp) {
+  const deny = [], allow = [];
+  deny.push(runs);
+  allow.push(dirname(spool));
+  /**
+   * And the temp directories runs are given when their role may write no
+   * other (rundir.js, TMP_NAME): denied as a whole, this run's own allowed
+   * back. Same shape again, and for the same reason — every run is the same
+   * user, so a run could otherwise read what another left in its temp.
+   */
+  const tmps = join(dirname(runs), TMP_NAME);
+  deny.push(tmps);
+  if (tmp && (tmp === tmps || tmp.startsWith(tmps + "/"))) allow.push(tmp);
+  /**
+   * This run's settings are not this run's to read.
+   *
+   * They sit in the run's own directory, which the run reads for its run-file
+   * keys, so they were readable from inside: a map of every path left open
+   * and every one shut, handed to the process it confines. Not a defence on
+   * its own — the policy has to be right either way — but there is no reason
+   * to give an agent the list of doors to try. Named here, by the path
+   * rundir.js writes them to, because they do not exist yet.
+   */
+  deny.push(join(dirname(spool), SETTINGS_NAME));
+  return { deny, allow };
+}
+
+/**
+ * `[runtime] read = "territory"`: the data roots are denied whole and what
+ * this role needs is allowed back inside them. See territory.js for why
+ * allowed back and no longer carved.
+ *
+ * Allowed back: the repo (key directories inside it stay denied by name,
+ * above), what the role writes, and what it declares in `reads` and
+ * `toolchain` — except where a deny above already covers it. A `reads`
+ * entry under `~/.ssh` stays shut, as it did when the mode only denied.
+ *
+ * Not allowed back twice: what is already re-allowed above — this run's
+ * directory, the role's own home, the key files.
+ */
+function territoryFor(config, role, { observe, agent, program, allowWrite, denyRead, allowRead }) {
+  const reopened = allowRead.map(realOrSelf);
+  const inReopened = (p) => { const r = realAncestor(p); return reopened.some((a) => r === a || r.startsWith(a + "/")); };
+  // On Linux the runtime's apply-seccomp runs inside: see seccompDir.
+  const seccomp = process.platform === "linux" ? seccompDir() : null;
+  const keep = [...keptFor(config, role, { observe, agent, program }), ...(seccomp ? [seccomp] : [])]
+    .filter((p) => !inReopened(p));
+  const { deny, allow } = territoryReads(dataRoots(), keep, { writes: allowWrite, denied: [...denyRead] });
+  return { deny, allow };
 }
 
 /**
