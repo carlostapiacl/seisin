@@ -31,10 +31,12 @@ import { record, requestsPath } from "./requests.js";
 import { inScope, scopeOf, reachedForContent } from "./violations.js";
 import { mcpServer } from "./hook.js";
 import { policyId } from "./config.js";
-import { expectedOf, kindOf } from "./kinds.js";
+import { expectedOf, kindOf, destinationOf } from "./kinds.js";
 
 /** Moved to config.js, where the handoff decisions read it too; kept here for callers. */
 export { policyId };
+/** Moved to kinds.js, beside the rule that names a file temporary; kept here for callers. */
+export { destinationOf };
 
 /**
  * The handlers for one run.
@@ -213,53 +215,60 @@ export function intake({ config, role, runId, label = null, observe = false, set
   }
 
   function fromKernel(d) {
-    /**
-     * A refused connection: logged, never queued.
-     *
-     * Once per target per run, because the thing that dials a closed port is
-     * usually a readiness loop, and a loop polling a database every half second
-     * would otherwise write the log the size of the wait. And no request: a port
-     * is not a territory anyone owns, so there is nobody to hand it to — the
-     * sentence says what the policy would have to change instead.
-     */
-    /**
-     * A refused Mach service, sysctl or the like: logged by operation and name,
-     * never queued — see SYSTEM in violations.js.
-     *
-     * Once per operation and name per run, and a trailing pid is folded into
-     * the name for that count: a browser whose children cannot find its
-     * rendezvous service ask for it a thousand times in forty seconds, each
-     * under the parent's pid, and the second line says nothing the first did not.
-     */
-    if (d.action === "system") {
-      const key = `${d.operation} ${d.path.replace(/\.\d+$/, ".<pid>")}`;
-      if (systems.has(key)) return;
-      systems.add(key);
-      // The one that kills a browser at start, and that a preset answers: named
-      // at the end of the run, because the agent saw only a crash.
-      const preset = d.operation === "mach-register" ? browserFor(d.path) : null;
-      if (preset && !stats.browsers.includes(preset)) stats.browsers.push(preset);
-      log({
-        role, tool: "kernel", source: "kernel",
-        action: d.operation, kind: "system", target: d.path.slice(0, 1000), verdict: "denied",
-        owners: [], reason: d.operation,
-      });
-      return;
-    }
-    if (d.action === "connect") {
-      if (connects.has(d.path)) return;
-      connects.add(d.path);
-      const v = explain(config, role, "connect", d.path);
-      const asked = dialled.has(d.path);
-      if (asked) stats.probes++;
-      log({
-        role, tool: "kernel", source: "kernel",
-        action: "connect", kind: "network", target: d.path, verdict: "denied",
-        owners: [], reason: d.operation, ...(v.listed ? { listed: true } : {}),
-        ...(asked ? { expected: true } : {}),
-      });
-      return;
-    }
+    if (d.action === "system") return refusedService(d);
+    if (d.action === "connect") return refusedConnection(d);
+    return refusedPath(d);
+  }
+
+  /**
+   * A refused Mach service, sysctl or the like: logged by operation and name,
+   * never queued — see SYSTEM in violations.js.
+   *
+   * Once per operation and name per run, and a trailing pid is folded into
+   * the name for that count: a browser whose children cannot find its
+   * rendezvous service ask for it a thousand times in forty seconds, each
+   * under the parent's pid, and the second line says nothing the first did not.
+   */
+  function refusedService(d) {
+    const key = `${d.operation} ${d.path.replace(/\.\d+$/, ".<pid>")}`;
+    if (systems.has(key)) return;
+    systems.add(key);
+    // The one that kills a browser at start, and that a preset answers: named
+    // at the end of the run, because the agent saw only a crash.
+    const preset = d.operation === "mach-register" ? browserFor(d.path) : null;
+    if (preset && !stats.browsers.includes(preset)) stats.browsers.push(preset);
+    log({
+      role, tool: "kernel", source: "kernel",
+      action: d.operation, kind: "system", target: d.path.slice(0, 1000), verdict: "denied",
+      owners: [], reason: d.operation,
+    });
+  }
+
+  /**
+   * A refused connection: logged, never queued.
+   *
+   * Once per target per run, because the thing that dials a closed port is
+   * usually a readiness loop, and a loop polling a database every half second
+   * would otherwise write the log the size of the wait. And no request: a port
+   * is not a territory anyone owns, so there is nobody to hand it to — the
+   * sentence says what the policy would have to change instead.
+   */
+  function refusedConnection(d) {
+    if (connects.has(d.path)) return;
+    connects.add(d.path);
+    const v = explain(config, role, "connect", d.path);
+    const asked = dialled.has(d.path);
+    if (asked) stats.probes++;
+    log({
+      role, tool: "kernel", source: "kernel",
+      action: "connect", kind: "network", target: d.path, verdict: "denied",
+      owners: [], reason: d.operation, ...(v.listed ? { listed: true } : {}),
+      ...(asked ? { expected: true } : {}),
+    });
+  }
+
+  /** A refused read or write of a file: logged, and asked about when a person could grant it. */
+  function refusedPath(d) {
     if (!inScope(d.path, scope)) { stats.offPolicy++; return; }
     if (!reachedForContent(d)) { stats.walks++; return; }
     // Relative inside the repo, absolute outside it. A role can be refused at
@@ -364,20 +373,4 @@ export function intake({ config, role, runId, label = null, observe = false, set
  */
 function temporary(action, target) {
   return action === "write" && kindOf(target).kind === "temporary";
-}
-
-/**
- * The file a write-then-rename was replacing, from its temporary file's name:
- * `src/health.ts.tmp.48213.3fa9c1d2e0b4` → `src/health.ts`. Claude Code's form,
- * and the general `<file>.tmp.<anything>`; null for any other temporary file.
- */
-export function destinationOf(target) {
-  // Within the last path segment; the last `.tmp.` with something after it.
-  const base = target.lastIndexOf("/") + 1;
-  let at = target.lastIndexOf(".tmp.");
-  while (at >= base) {
-    if (at > base && at >= 2 && at + ".tmp.".length < target.length) return target.slice(0, at);
-    at = at > 0 ? target.lastIndexOf(".tmp.", at - 1) : -1;
-  }
-  return null;
 }

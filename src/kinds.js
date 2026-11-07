@@ -283,3 +283,19 @@ export function expectedOf(target, { home = homedir(), env = process.env } = {})
   ].filter(Boolean).flatMap((r) => PLUGIN_HOUSEKEEPING.map((d) => `${String(r).replace(/\/+$/, "")}/plugins/${d}`));
   return roots.some((r) => t === r || t.startsWith(r + "/")) ? { kind: "plugins", hint: EXPECTED.plugins } : null;
 }
+
+/**
+ * The file a write-then-rename was replacing, from its temporary file's name:
+ * `src/health.ts.tmp.48213.3fa9c1d2e0b4` → `src/health.ts`. Claude Code's form,
+ * and the general `<file>.tmp.<anything>`; null for any other temporary file.
+ */
+export function destinationOf(target) {
+  // Within the last path segment; the last `.tmp.` with something after it.
+  const base = target.lastIndexOf("/") + 1;
+  let at = target.lastIndexOf(".tmp.");
+  while (at >= base) {
+    if (at > base && at >= 2 && at + ".tmp.".length < target.length) return target.slice(0, at);
+    at = at > 0 ? target.lastIndexOf(".tmp.", at - 1) : -1;
+  }
+  return null;
+}
