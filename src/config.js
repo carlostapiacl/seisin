@@ -3,10 +3,9 @@
  * fields, the sandbox and key providers. The TOML subset is in toml.js.
  */
 import { createHash } from "node:crypto";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve, dirname, join } from "node:path";
-import { CONFIG_NAME } from "./layout.js";
 import { parseKey, MODES, checkNames, BUILTIN, unknownMode } from "./keys.js";
 import { readNotify } from "./notify-config.js";
 import { FORBIDDEN, dict, isTable, own, LINES, parseToml } from "./toml.js";
@@ -22,17 +21,7 @@ export { closest, ROLE_KEYS, CONTROL_FAMILIES, privateDir } from "./config-field
 
 export { CONFIG_NAME } from "./layout.js";
 
-/** Walk up from `from` until a seisin.toml shows up. Returns its path or null. */
-export function findConfig(from = process.cwd()) {
-  let dir = resolve(from);
-  for (;;) {
-    const candidate = join(dir, CONFIG_NAME);
-    if (existsSync(candidate)) return candidate;
-    const parent = dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
-  }
-}
+export { findConfig } from "./find-config.js";
 
 
 /**
