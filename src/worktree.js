@@ -32,7 +32,7 @@
  */
 import { statSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve, relative, isAbsolute } from "node:path";
-import { findConfig } from "./config.js";
+import { findConfig } from "./find-config.js";
 import { realOrSelf } from "./grants.js";
 import { trimEnd } from "./lines.js";
 
