@@ -35,7 +35,7 @@ import { hitsOf, againWords, walls } from "./walls.js";
 import { collapseSidecars } from "./render.js";
 import { decideHandoff, toAgent, isStopped, leftOutByRun, leftOutWords, names, ELSEWHERE } from "./handoff.js";
 import { keyOf } from "./requests.js";
-import { destinationOf } from "./intake.js";
+import { destinationOf } from "./kinds.js";
 
 /** What a refused write or read looks like in a tool's output. A trigger to look, not a verdict. */
 export const DENIAL_SIGNS = /Operation not permitted|EPERM|EACCES|Permission denied|Read-only file system/i;
