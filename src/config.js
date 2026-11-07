@@ -130,6 +130,67 @@ export function loadConfig(path, text = readFileSync(path, "utf8"), { root = nul
   // setting it never wrote down. Two independent stops, because the failure
   // they prevent is invisible in review — the config reads one way and the
   // policy is another.
+  const { roles, names } = rolesOf(parsed, path);
+
+  // One directory or several. Several is the common case once a repo has more
+  // than one kind of secret, and making people flatten them to satisfy the tool
+  // is how a tool gets kept out.
+  const keyDir = own(own(parsed, "keys"), "dir");
+  // `.secrets/` and `.secrets` are one directory, and every consumer compares
+  // them as prefixes: with the slash kept, `scan` walked into the protected
+  // directory and a bare key resolved to `.secrets//x`, which matched nothing.
+  const keyDirs = (keyDir === undefined ? [] : asArray(keyDir, "keys.dir"))
+    .map((d) => trimSlashes(d) || d);
+  const keyProviders = readProviders(own(own(parsed, "keys"), "providers"), path);
+  // `undefined` means "use the defaults"; an explicit empty array means "none".
+  // The difference matters: one is a user who has not thought about it, the
+  // other is a user who has.
+  const runtime = own(parsed, "runtime");
+  const runtimeWrites = own(runtime, "writes");
+
+  const out = {
+    // The root is the policy's folder, unless the policy was read from elsewhere
+    // (`--policy`): then it is the folder the command runs in, and the policy
+    // stays outside the repo it governs.
+    root: root ? resolve(root) : dirname(path), path, keyDirs, keyProviders, unbound,
+    // Through asArray like every other list: `allow = "github.com"` was kept as
+    // a string, and a string iterated is its characters.
+    allowedDomains: asArray(own(own(parsed, "network"), "allow"), "network.allow"),
+    // `[network] deny_addresses` — where an allowed name may not lead. An allowed
+    // domain whose DNS somebody else controls can be pointed at a host on your
+    // LAN; the runtime denies loopback, link-local and metadata addresses by
+    // itself and leaves private ranges to the policy, because an intranet name
+    // is a legitimate thing to allow. Checked here, with the line, rather than
+    // by the sandbox at start.
+    deniedAddresses: readAddresses(own(own(parsed, "network"), "deny_addresses"), `${path}: network.deny_addresses`),
+    runtimeWrites: runtimeWrites === undefined ? undefined : asArray(runtimeWrites, "runtime.writes"),
+    // `[runtime] isolate` — how much of your home a role stops reaching. See
+    // srt-settings.js for what each level emits, and readIsolate() below for why there
+    // are two of them.
+    isolate: readIsolate(own(runtime, "isolate")),
+    // `[runtime] read` — what a role may read. "all" is every file but the ones
+    // denied by name; "territory" denies the places data lives and re-opens
+    // only what the role needs. See territory.js.
+    read: readReadMode(own(runtime, "read"), path),
+    redact: readBoolean(own(runtime, "redact"), `${path}: runtime.redact`),
+    scanIgnore: asArray(own(own(parsed, "scan"), "ignore"), "scan.ignore"),
+    protect: readProtect(own(parsed, "protect"), path),
+    console: readConsole(own(parsed, "console"), path),
+    roles: {},
+  };
+
+  for (const name of names) out.roles[name] = readRole(name, own(roles, name), { path, keyDirs, keyProviders });
+  checkPrivateOverlap(out.roles, path);
+  out.sandbox = readSandbox(own(parsed, "sandbox"), path);
+  out.notify = readNotify(own(parsed, "notify"), { path, root: out.root, keyDirs, roles: out.roles, own });
+  return out;
+}
+
+/**
+ * The `[roles]` table, checked for shape before any role in it is read: tables,
+ * no nested tables, at least one, and no two names that differ only in case.
+ */
+function rolesOf(parsed, path) {
   const roles = own(parsed, "roles") ?? {};
   // `roles = "x"` or `roles = [...]` at the root, or `[roles]` with `a = true`,
   // would read as roles named "0", "1" or "a" with no settings of their own —
@@ -181,294 +242,244 @@ export function loadConfig(path, text = readFileSync(path, "utf8"), { root = nul
       byLower.set(k, n);
     }
   }
+  return { roles, names };
+}
 
-  // One directory or several. Several is the common case once a repo has more
-  // than one kind of secret, and making people flatten them to satisfy the tool
-  // is how a tool gets kept out.
-  const keyDir = own(own(parsed, "keys"), "dir");
-  // `.secrets/` and `.secrets` are one directory, and every consumer compares
-  // them as prefixes: with the slash kept, `scan` walked into the protected
-  // directory and a bare key resolved to `.secrets//x`, which matched nothing.
-  const keyDirs = (keyDir === undefined ? [] : asArray(keyDir, "keys.dir"))
-    .map((d) => trimSlashes(d) || d);
-  const keyProviders = readProviders(own(own(parsed, "keys"), "providers"), path);
-  // `undefined` means "use the defaults"; an explicit empty array means "none".
-  // The difference matters: one is a user who has not thought about it, the
-  // other is a user who has.
-  const runtime = own(parsed, "runtime");
-  const runtimeWrites = own(runtime, "writes");
-
-  const out = {
-    // The root is the policy's folder, unless the policy was read from elsewhere
-    // (`--policy`): then it is the folder the command runs in, and the policy
-    // stays outside the repo it governs.
-    root: root ? resolve(root) : dirname(path), path, keyDirs, keyProviders, unbound,
-    // Through asArray like every other list: `allow = "github.com"` was kept as
-    // a string, and a string iterated is its characters.
-    allowedDomains: asArray(own(own(parsed, "network"), "allow"), "network.allow"),
-    // `[network] deny_addresses` — where an allowed name may not lead. An allowed
-    // domain whose DNS somebody else controls can be pointed at a host on your
-    // LAN; the runtime denies loopback, link-local and metadata addresses by
-    // itself and leaves private ranges to the policy, because an intranet name
-    // is a legitimate thing to allow. Checked here, with the line, rather than
-    // by the sandbox at start.
-    deniedAddresses: readAddresses(own(own(parsed, "network"), "deny_addresses"), `${path}: network.deny_addresses`),
-    runtimeWrites: runtimeWrites === undefined ? undefined : asArray(runtimeWrites, "runtime.writes"),
-    // `[runtime] isolate` — how much of your home a role stops reaching. See
-    // srt-settings.js for what each level emits, and readIsolate() below for why there
-    // are two of them.
-    isolate: readIsolate(own(runtime, "isolate")),
-    // `[runtime] read` — what a role may read. "all" is every file but the ones
-    // denied by name; "territory" denies the places data lives and re-opens
-    // only what the role needs. See territory.js.
-    read: readReadMode(own(runtime, "read"), path),
-    redact: readBoolean(own(runtime, "redact"), `${path}: runtime.redact`),
-    scanIgnore: asArray(own(own(parsed, "scan"), "ignore"), "scan.ignore"),
-    protect: readProtect(own(parsed, "protect"), path),
-    console: readConsole(own(parsed, "console"), path),
-    roles: {},
-  };
-
-  for (const name of names) {
-    const r = own(roles, name);
-    const writes = assertNotAbsolute(asArray(own(r, "writes"), `${path}: roles.${name}.writes`), `${path}: roles.${name}.writes`);
-    const keys = asArray(own(r, "keys"), `roles.${name}.keys`);
-    // Read once, here, so every consumer sees the same answer about what an
-    // entry is. `keys` itself stays the array of strings that was written: it
-    // is what `render`, `serve` and `init` print, and the whole point of a
-    // reference is that the written form is the reviewable one.
-    const keyEntries = keys.map((k) => {
-      try {
-        return parseKey(k);
-      } catch (e) {
-        throw new Error(`${path}: roles.${name}: ${e.message}`);
-      }
-    });
-    // Only a path needs somewhere to live. A reference does not, and demanding
-    // `[keys] dir` from a config whose secrets are all in a vault would be the
-    // tool insisting on the arrangement it was built for.
-    if (keyEntries.some((k) => k.kind === "file") && keyDirs.length === 0)
-      throw new Error(`${path}: roles.${name} lists keys, but [keys] dir is not set`);
-    /**
-     * An unknown scheme is refused, not ignored.
-     *
-     * Same rule as everywhere else here: a `keys = ["vault://x"]` with no
-     * `[keys.providers.vault]` is a configuration error, and the alternative —
-     * treating it as a filename, or as a key that quietly never arrives — is a
-     * policy that reads as protecting something it is not.
-     */
-    for (const k of keyEntries) {
-      // `file://` ships with seisin, so it needs no declaration. It is the one
-      // builtin, and the reason is in keys.js: a secret in a plain file is the
-      // case this exists for, and making that case declare a provider that
-      // runs `cat` is a papercut on the only path most people take.
-      if (k.kind !== "ref" || BUILTIN.has(k.scheme) || own(keyProviders, k.scheme)) continue;
-      const known = Object.keys(keyProviders);
-      throw new Error(
-        `${path}: roles.${name}: key "${k.raw}" uses the "${k.scheme}" scheme, and no ` +
-        `[keys.providers.${k.scheme}] is declared.\n` +
-        `  ${known.length ? `Declared providers: ${known.join(", ")}.` : "No providers are declared."}\n` +
-        `  A provider is a command with a placeholder:\n` +
-        `    [keys.providers.${k.scheme}]\n` +
-        `    command = ["your-cli", "read", "{ref}"]`);
+/** One `[roles.<name>]` table, read into the shape every consumer uses. */
+function readRole(name, r, { path, keyDirs, keyProviders }) {
+  const writes = assertNotAbsolute(asArray(own(r, "writes"), `${path}: roles.${name}.writes`), `${path}: roles.${name}.writes`);
+  const keys = asArray(own(r, "keys"), `roles.${name}.keys`);
+  // Read once, here, so every consumer sees the same answer about what an
+  // entry is. `keys` itself stays the array of strings that was written: it
+  // is what `render`, `serve` and `init` print, and the whole point of a
+  // reference is that the written form is the reviewable one.
+  const keyEntries = keys.map((k) => {
+    try {
+      return parseKey(k);
+    } catch (e) {
+      throw new Error(`${path}: roles.${name}: ${e.message}`);
     }
-    checkNames({ name, keyEntries });
-    const keyMode = own(r, "key_mode");
-    if (keyMode !== undefined && !MODES.includes(keyMode))
-      throw unknownMode(`${path}: roles.${name}:`, "key_mode", keyMode);
-    const injectHosts = readInjectHosts(own(r, "inject_hosts"), `${path}: roles.${name}.inject_hosts`);
-    const neverWrites = readNeverWrites(own(r, "never_writes"), `${path}: roles.${name}.never_writes`);
-    const localBinding = own(r, "local_binding");
-    const trustd = own(r, "trustd");
-    if (trustd !== undefined && typeof trustd !== "boolean")
-      throw new Error(`${path}: roles.${name}.trustd must be true or false, not ${JSON.stringify(trustd)}`);
-    if (localBinding !== undefined && typeof localBinding !== "boolean")
-      throw new Error(`${path}: roles.${name}.local_binding must be true or false, not ${JSON.stringify(localBinding)}`);
-    const handoff = own(r, "handoff");
-    if (handoff !== undefined && typeof handoff !== "boolean")
-      throw new Error(`${path}: roles.${name}.handoff must be true or false, not ${JSON.stringify(handoff)}`);
-    const localPorts = readLocalPorts(own(r, "local_ports"), `${path}: roles.${name}.local_ports`);
-    const browsers = readBrowsers(own(r, "browsers"), `${path}: roles.${name}.browsers`);
-    const mcp = readMcp(own(r, "mcp"), `${path}: roles.${name}.mcp`);
-    const controlFiles = readControlFiles(own(r, "control_files"), `${path}: roles.${name}.control_files`);
-    const reads = readReadList(own(r, "reads"), `${path}: roles.${name}.reads`);
-    const toolchain = readReadList(own(r, "toolchain"), `${path}: roles.${name}.toolchain`);
-    const priv = readPrivate(own(r, "private"), `${path}: roles.${name}.private`);
-    const verify = own(r, "verify") === undefined ? null : asArray(own(r, "verify"), `roles.${name}.verify`);
-    /**
-     * `handoff_exempt`: folders where the trust-handoff set is not protected, for a
-     * setup phase that fills a dependency tree whose packages ship their own
-     * `.gitattributes`, `.github/` or `.git/` (`composer install`, measured: 326
-     * denials). Relative to the repo, no `..`, no globs. Only a sandbox that can
-     * open exactly that (tartaros) is handed the role.
-     */
-    const handoffExempt = own(r, "handoff_exempt") === undefined ? [] : asArray(own(r, "handoff_exempt"), `roles.${name}.handoff_exempt`);
-    /**
-     * `requests`: the only requests the role may send to an allowed host,
-     * `"METHODS host[/path]"` (METHODS: `GET,POST` or `*`). An allowed host is
-     * otherwise all of it: a token for api.github.com pushes to any repository
-     * it reaches. The host must be in `network`. Only tartaros enforces it
-     * (from 0.1.0-alpha.18): it terminates that host and refuses anything else.
-     */
-    const requests = own(r, "requests") === undefined ? [] : asArray(own(r, "requests"), `roles.${name}.requests`).map((spec) => {
-      const m = /^(\*|[A-Z]+(?:,[A-Z]+)*)\s+([A-Za-z0-9.-]+)(\/\S*)?$/.exec(String(spec).trim());
-      if (!m || (m[3] ?? "").split("/").some((seg) => seg === "." || seg === ".."))
-        throw new Error(`${path}: roles.${name}.requests "${spec}": "METHODS host[/path]", e.g. "GET api.github.com" or "POST,PATCH api.github.com/repos/acme/"`);
-      return { host: m[2], methods: m[1] === "*" ? [] : m[1].split(","), paths: m[3] ? [m[3]] : [] };
-    });
-    // A rule narrows a host the role may reach; on a host it may not, it says nothing.
-    const reach = own(r, "network") === undefined ? [] : asArray(own(r, "network"), `roles.${name}.network`);
-    for (const q of requests) {
-      const covered = reach.some((h) => h === q.host || (h.startsWith("*.") && q.host.endsWith(h.slice(1))));
-      if (!covered)
-        throw new Error(`${path}: roles.${name}.requests: ${q.host} is not in roles.${name}.network, so the role cannot reach it at all`);
-    }
-    for (const e of handoffExempt)
-      if (e.startsWith("/") || e.startsWith("~") || e.split("/").includes("..") || /[*?[\]]/.test(e) || !e.trim())
-        throw new Error(`${path}: roles.${name}.handoff_exempt "${e}": a folder in the repo, relative, with no ".." and no globs`);
-    if (verify && verify.length === 0)
-      throw new Error(`${path}: roles.${name}.verify is empty. It is the command that proves the role can check ` +
-        `its own work — ["python", "-m", "pytest", "--version"] — or leave it out.`);
-    out.roles[name] = {
-      name,
-      /**
-       * `writes` is what is GRANTED; `writesDeclared` is what was written.
-       *
-       * Expanded here and not at emit time, because two answers is how the
-       * document ends up looser or tighter than the boundary. Everything
-       * downstream — `ownersOf`, `explain`, `whose`, the settings, the console
-       * — reads `writes`, so the owner of a database is the owner of its `-wal`
-       * everywhere, and the kernel and the sentence agree. The declared form is
-       * kept so that regenerating a config writes back what a person typed
-       * rather than the expansion.
-       */
-      writes: withSidecars([...new Set([...writes, ...priv])]),
-      writesDeclared: writes,
-      /**
-       * Folders only this role reads and writes. Each is also part of its
-       * territory (added to `writes` above, so `explain`, `whose` and the
-       * settings agree it is this role's), and every OTHER role is given a
-       * denyRead and a denyWrite on it — in either read mode, isolated or not.
-       * Deny-only: an allow nested in a deny breaks on one platform or the
-       * other unless it is handled the way territory.js handles its own.
-       */
-      private: priv,
-      keys,
-      keyEntries,
-      keyMode: keyMode ?? null,
-      injectHosts,
-      env: asArray(own(r, "env"), `roles.${name}.env`),
-      network: own(r, "network") === undefined ? null : asArray(own(r, "network"), `roles.${name}.network`),
-      /**
-       * What this role may never write, even inside its own `writes`.
-       *
-       * A subtraction, and the only one the format has. It exists for the case
-       * a territory glob cannot say: `repo/**` minus `repo/.git/index.lock`, for
-       * a role that works in a worktree and has its own index. Without it the
-       * alternative is enumerating every top-level entry of the repo but `.git`
-       * — a list that goes stale the day somebody adds a directory.
-       *
-       * Per role and never global: a global deny on `.git/index.lock` breaks
-       * every role that legitimately commits in the shared checkout. Absent
-       * means exactly what it meant before the key existed.
-       */
-      // Sidecars too: `data/app.sqlite` minus its `-wal` is not a subtraction.
-      // A fabricated -wal is applied to the database the next time it opens.
-      neverWrites: withSidecars(neverWrites),
-      neverWritesDeclared: neverWrites,
-      /**
-       * Whether this role may listen on a local port — a dev server, the
-       * backend an end-to-end test drives, a test database.
-       *
-       * Off unless the role says so, and per role because most roles never
-       * start a server: an agent that edits docs has no business accepting
-       * connections. Wider than the name: the runtime also lets the role listen
-       * on every interface and connect to every localhost port. See `check`.
-       */
-      localBinding: localBinding === true,
-      /**
-       * The ports on this machine the role may connect to, and no others.
-       *
-       * The narrow form of reaching a local service. `local_binding` opens
-       * every port on localhost (macOS), which includes whatever control API
-       * is listening there without a password. This names the ports instead,
-       * and the runtime's proxy enforces the list — the same allowlist the
-       * domains go through. See srt-settings.js for what that costs: the client has to
-       * go through the proxy, which HTTP clients do and a MySQL driver does not.
-       */
-      localPorts,
-      /**
-       * The headless browsers this role may start (browsers.js): the Mach
-       * services each needs, by name, and nothing else. `[]` unless the role
-       * says so — every other role keeps the profile as it was.
-       */
-      browsers,
-      /**
-       * The MCP servers this role may load, by name, or null when the policy
-       * does not say. `[]` is "none". seisin declares this and does not
-       * enforce it: MCP servers are started by the agent's CLI, so the launcher
-       * builds the CLI's MCP config from this list (Claude Code:
-       * `--mcp-config` with only these + `--strict-mcp-config`).
-       */
-      mcp,
-      /**
-       * Whether this role may reach com.apple.trustd.agent (macOS). Needed by
-       * Dart/Flutter and by Go built before 1.27 to verify TLS at all; Go 1.27+
-       * does without it through the SSL_CERT_FILE that env.js sets. Off unless
-       * the role says so. See srt-settings.js for what it costs.
-       */
-      trustd: trustd === true,
-      /**
-       * The families of control files this role may edit inside its own
-       * territory: "ide" (`.vscode/`, `.cursor/`, `.windsurf/`) and
-       * "instructions" (`CLAUDE.md`, `AGENTS.md`…). surface.js says what each
-       * is and why only these two can be handed out. Absent is none.
-       */
-      controlFiles,
-      /**
-       * Whether this role takes work handed to it (handoff.js). True unless the
-       * role says `handoff = false`: a role that is a pipeline phase rather
-       * than a worker — it prepares the tree, it is not someone to pass a
-       * file to — still owns its territory, and a write denied there goes to
-       * another owner or to a person instead of starting it.
-       */
-      handoff: handoff !== false,
-      /** Folders, relative to the root, where trust-handoff is not protected (tartaros only). */
-      handoffExempt,
-      /** The only requests to an allowed host: `{ host, methods, paths }` (tartaros only). */
-      requests,
-      /**
-       * What this role reads beyond its repo, under `read = "territory"`.
-       *
-       * `reads` is data — a sibling checkout, a shared docs folder. `toolchain`
-       * is what runs — a venv, `~/.nvm`, `~/.cargo` — kept apart because `check`
-       * treats the two differently: a toolchain that does not exist is the
-       * reason a role cannot verify itself, and that is worth a finding. Both
-       * are read grants and nothing else; neither is ever writable. Ignored
-       * (and said so by `check`) under `read = "all"`, where everything is
-       * readable already.
-       */
-      reads,
-      toolchain,
-      /**
-       * The command that proves this role can check its own work, run by
-       * `seisin check --verify` inside the role's sandbox. Measured in
-       * an agent orchestrator (2026-10-09): an agent asked to verify with nothing to verify
-       * with cost 80% more per task and verified nothing; the same agent with
-       * its toolchain ran the suite every time at the original cost.
-       */
-      verify,
-      // Kept so `check` can name a misspelt key instead of ignoring it. An
-      // unknown key in a role table used to be dropped silently, and for a
-      // subtraction that is failing open: `never_write` would read as a rule
-      // and subtract nothing.
-      unknownKeys: Object.keys(r).filter((k) => !ROLE_KEYS.includes(k)),
-    };
+  });
+  // Only a path needs somewhere to live. A reference does not, and demanding
+  // `[keys] dir` from a config whose secrets are all in a vault would be the
+  // tool insisting on the arrangement it was built for.
+  if (keyEntries.some((k) => k.kind === "file") && keyDirs.length === 0)
+    throw new Error(`${path}: roles.${name} lists keys, but [keys] dir is not set`);
+  /**
+   * An unknown scheme is refused, not ignored.
+   *
+   * Same rule as everywhere else here: a `keys = ["vault://x"]` with no
+   * `[keys.providers.vault]` is a configuration error, and the alternative —
+   * treating it as a filename, or as a key that quietly never arrives — is a
+   * policy that reads as protecting something it is not.
+   */
+  for (const k of keyEntries) {
+    // `file://` ships with seisin, so it needs no declaration. It is the one
+    // builtin, and the reason is in keys.js: a secret in a plain file is the
+    // case this exists for, and making that case declare a provider that
+    // runs `cat` is a papercut on the only path most people take.
+    if (k.kind !== "ref" || BUILTIN.has(k.scheme) || own(keyProviders, k.scheme)) continue;
+    const known = Object.keys(keyProviders);
+    throw new Error(
+      `${path}: roles.${name}: key "${k.raw}" uses the "${k.scheme}" scheme, and no ` +
+      `[keys.providers.${k.scheme}] is declared.\n` +
+      `  ${known.length ? `Declared providers: ${known.join(", ")}.` : "No providers are declared."}\n` +
+      `  A provider is a command with a placeholder:\n` +
+      `    [keys.providers.${k.scheme}]\n` +
+      `    command = ["your-cli", "read", "{ref}"]`);
   }
-  checkPrivateOverlap(out.roles, path);
-  out.sandbox = readSandbox(own(parsed, "sandbox"), path);
-  out.notify = readNotify(own(parsed, "notify"), { path, root: out.root, keyDirs, roles: out.roles, own });
-  return out;
+  checkNames({ name, keyEntries });
+  const keyMode = own(r, "key_mode");
+  if (keyMode !== undefined && !MODES.includes(keyMode))
+    throw unknownMode(`${path}: roles.${name}:`, "key_mode", keyMode);
+  const injectHosts = readInjectHosts(own(r, "inject_hosts"), `${path}: roles.${name}.inject_hosts`);
+  const neverWrites = readNeverWrites(own(r, "never_writes"), `${path}: roles.${name}.never_writes`);
+  const localBinding = own(r, "local_binding");
+  const trustd = own(r, "trustd");
+  if (trustd !== undefined && typeof trustd !== "boolean")
+    throw new Error(`${path}: roles.${name}.trustd must be true or false, not ${JSON.stringify(trustd)}`);
+  if (localBinding !== undefined && typeof localBinding !== "boolean")
+    throw new Error(`${path}: roles.${name}.local_binding must be true or false, not ${JSON.stringify(localBinding)}`);
+  const handoff = own(r, "handoff");
+  if (handoff !== undefined && typeof handoff !== "boolean")
+    throw new Error(`${path}: roles.${name}.handoff must be true or false, not ${JSON.stringify(handoff)}`);
+  const localPorts = readLocalPorts(own(r, "local_ports"), `${path}: roles.${name}.local_ports`);
+  const browsers = readBrowsers(own(r, "browsers"), `${path}: roles.${name}.browsers`);
+  const mcp = readMcp(own(r, "mcp"), `${path}: roles.${name}.mcp`);
+  const controlFiles = readControlFiles(own(r, "control_files"), `${path}: roles.${name}.control_files`);
+  const reads = readReadList(own(r, "reads"), `${path}: roles.${name}.reads`);
+  const toolchain = readReadList(own(r, "toolchain"), `${path}: roles.${name}.toolchain`);
+  const priv = readPrivate(own(r, "private"), `${path}: roles.${name}.private`);
+  const verify = own(r, "verify") === undefined ? null : asArray(own(r, "verify"), `roles.${name}.verify`);
+  /**
+   * `handoff_exempt`: folders where the trust-handoff set is not protected, for a
+   * setup phase that fills a dependency tree whose packages ship their own
+   * `.gitattributes`, `.github/` or `.git/` (`composer install`, measured: 326
+   * denials). Relative to the repo, no `..`, no globs. Only a sandbox that can
+   * open exactly that (tartaros) is handed the role.
+   */
+  const handoffExempt = own(r, "handoff_exempt") === undefined ? [] : asArray(own(r, "handoff_exempt"), `roles.${name}.handoff_exempt`);
+  /**
+   * `requests`: the only requests the role may send to an allowed host,
+   * `"METHODS host[/path]"` (METHODS: `GET,POST` or `*`). An allowed host is
+   * otherwise all of it: a token for api.github.com pushes to any repository
+   * it reaches. The host must be in `network`. Only tartaros enforces it
+   * (from 0.1.0-alpha.18): it terminates that host and refuses anything else.
+   */
+  const requests = own(r, "requests") === undefined ? [] : asArray(own(r, "requests"), `roles.${name}.requests`).map((spec) => {
+    const m = /^(\*|[A-Z]+(?:,[A-Z]+)*)\s+([A-Za-z0-9.-]+)(\/\S*)?$/.exec(String(spec).trim());
+    if (!m || (m[3] ?? "").split("/").some((seg) => seg === "." || seg === ".."))
+      throw new Error(`${path}: roles.${name}.requests "${spec}": "METHODS host[/path]", e.g. "GET api.github.com" or "POST,PATCH api.github.com/repos/acme/"`);
+    return { host: m[2], methods: m[1] === "*" ? [] : m[1].split(","), paths: m[3] ? [m[3]] : [] };
+  });
+  // A rule narrows a host the role may reach; on a host it may not, it says nothing.
+  const reach = own(r, "network") === undefined ? [] : asArray(own(r, "network"), `roles.${name}.network`);
+  for (const q of requests) {
+    const covered = reach.some((h) => h === q.host || (h.startsWith("*.") && q.host.endsWith(h.slice(1))));
+    if (!covered)
+      throw new Error(`${path}: roles.${name}.requests: ${q.host} is not in roles.${name}.network, so the role cannot reach it at all`);
+  }
+  for (const e of handoffExempt)
+    if (e.startsWith("/") || e.startsWith("~") || e.split("/").includes("..") || /[*?[\]]/.test(e) || !e.trim())
+      throw new Error(`${path}: roles.${name}.handoff_exempt "${e}": a folder in the repo, relative, with no ".." and no globs`);
+  if (verify && verify.length === 0)
+    throw new Error(`${path}: roles.${name}.verify is empty. It is the command that proves the role can check ` +
+      `its own work — ["python", "-m", "pytest", "--version"] — or leave it out.`);
+  return {
+    name,
+    /**
+     * `writes` is what is GRANTED; `writesDeclared` is what was written.
+     *
+     * Expanded here and not at emit time, because two answers is how the
+     * document ends up looser or tighter than the boundary. Everything
+     * downstream — `ownersOf`, `explain`, `whose`, the settings, the console
+     * — reads `writes`, so the owner of a database is the owner of its `-wal`
+     * everywhere, and the kernel and the sentence agree. The declared form is
+     * kept so that regenerating a config writes back what a person typed
+     * rather than the expansion.
+     */
+    writes: withSidecars([...new Set([...writes, ...priv])]),
+    writesDeclared: writes,
+    /**
+     * Folders only this role reads and writes. Each is also part of its
+     * territory (added to `writes` above, so `explain`, `whose` and the
+     * settings agree it is this role's), and every OTHER role is given a
+     * denyRead and a denyWrite on it — in either read mode, isolated or not.
+     * Deny-only: an allow nested in a deny breaks on one platform or the
+     * other unless it is handled the way territory.js handles its own.
+     */
+    private: priv,
+    keys,
+    keyEntries,
+    keyMode: keyMode ?? null,
+    injectHosts,
+    env: asArray(own(r, "env"), `roles.${name}.env`),
+    network: own(r, "network") === undefined ? null : asArray(own(r, "network"), `roles.${name}.network`),
+    /**
+     * What this role may never write, even inside its own `writes`.
+     *
+     * A subtraction, and the only one the format has. It exists for the case
+     * a territory glob cannot say: `repo/**` minus `repo/.git/index.lock`, for
+     * a role that works in a worktree and has its own index. Without it the
+     * alternative is enumerating every top-level entry of the repo but `.git`
+     * — a list that goes stale the day somebody adds a directory.
+     *
+     * Per role and never global: a global deny on `.git/index.lock` breaks
+     * every role that legitimately commits in the shared checkout. Absent
+     * means exactly what it meant before the key existed.
+     */
+    // Sidecars too: `data/app.sqlite` minus its `-wal` is not a subtraction.
+    // A fabricated -wal is applied to the database the next time it opens.
+    neverWrites: withSidecars(neverWrites),
+    neverWritesDeclared: neverWrites,
+    /**
+     * Whether this role may listen on a local port — a dev server, the
+     * backend an end-to-end test drives, a test database.
+     *
+     * Off unless the role says so, and per role because most roles never
+     * start a server: an agent that edits docs has no business accepting
+     * connections. Wider than the name: the runtime also lets the role listen
+     * on every interface and connect to every localhost port. See `check`.
+     */
+    localBinding: localBinding === true,
+    /**
+     * The ports on this machine the role may connect to, and no others.
+     *
+     * The narrow form of reaching a local service. `local_binding` opens
+     * every port on localhost (macOS), which includes whatever control API
+     * is listening there without a password. This names the ports instead,
+     * and the runtime's proxy enforces the list — the same allowlist the
+     * domains go through. See srt-settings.js for what that costs: the client has to
+     * go through the proxy, which HTTP clients do and a MySQL driver does not.
+     */
+    localPorts,
+    /**
+     * The headless browsers this role may start (browsers.js): the Mach
+     * services each needs, by name, and nothing else. `[]` unless the role
+     * says so — every other role keeps the profile as it was.
+     */
+    browsers,
+    /**
+     * The MCP servers this role may load, by name, or null when the policy
+     * does not say. `[]` is "none". seisin declares this and does not
+     * enforce it: MCP servers are started by the agent's CLI, so the launcher
+     * builds the CLI's MCP config from this list (Claude Code:
+     * `--mcp-config` with only these + `--strict-mcp-config`).
+     */
+    mcp,
+    /**
+     * Whether this role may reach com.apple.trustd.agent (macOS). Needed by
+     * Dart/Flutter and by Go built before 1.27 to verify TLS at all; Go 1.27+
+     * does without it through the SSL_CERT_FILE that env.js sets. Off unless
+     * the role says so. See srt-settings.js for what it costs.
+     */
+    trustd: trustd === true,
+    /**
+     * The families of control files this role may edit inside its own
+     * territory: "ide" (`.vscode/`, `.cursor/`, `.windsurf/`) and
+     * "instructions" (`CLAUDE.md`, `AGENTS.md`…). surface.js says what each
+     * is and why only these two can be handed out. Absent is none.
+     */
+    controlFiles,
+    /**
+     * Whether this role takes work handed to it (handoff.js). True unless the
+     * role says `handoff = false`: a role that is a pipeline phase rather
+     * than a worker — it prepares the tree, it is not someone to pass a
+     * file to — still owns its territory, and a write denied there goes to
+     * another owner or to a person instead of starting it.
+     */
+    handoff: handoff !== false,
+    /** Folders, relative to the root, where trust-handoff is not protected (tartaros only). */
+    handoffExempt,
+    /** The only requests to an allowed host: `{ host, methods, paths }` (tartaros only). */
+    requests,
+    /**
+     * What this role reads beyond its repo, under `read = "territory"`.
+     *
+     * `reads` is data — a sibling checkout, a shared docs folder. `toolchain`
+     * is what runs — a venv, `~/.nvm`, `~/.cargo` — kept apart because `check`
+     * treats the two differently: a toolchain that does not exist is the
+     * reason a role cannot verify itself, and that is worth a finding. Both
+     * are read grants and nothing else; neither is ever writable. Ignored
+     * (and said so by `check`) under `read = "all"`, where everything is
+     * readable already.
+     */
+    reads,
+    toolchain,
+    /**
+     * The command that proves this role can check its own work, run by
+     * `seisin check --verify` inside the role's sandbox. Measured in
+     * an agent orchestrator (2026-10-09): an agent asked to verify with nothing to verify
+     * with cost 80% more per task and verified nothing; the same agent with
+     * its toolchain ran the suite every time at the original cost.
+     */
+    verify,
+    // Kept so `check` can name a misspelt key instead of ignoring it. An
+    // unknown key in a role table used to be dropped silently, and for a
+    // subtraction that is failing open: `never_write` would read as a rule
+    // and subtract nothing.
+    unknownKeys: Object.keys(r).filter((k) => !ROLE_KEYS.includes(k)),
+  };
 }
 
 /**
