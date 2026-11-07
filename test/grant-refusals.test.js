@@ -197,3 +197,27 @@ test("a directory at the lock name respects the deadline instead of spinning for
   assert.equal(r.error, undefined, r.error?.message);
   assert.equal(r.status, 0, r.stderr);
 });
+
+test("a read of a file outside every key directory is refused, and the policy is left as it was", () => {
+  // A read is granted as a key. Written into keys, this path made check and run
+  // refuse the role's policy after a person had approved it.
+  const toml = '[keys]\ndir = ".secrets"\n\n[roles.a]\nwrites = ["a/**"]\nkeys = []\n';
+  const box = repo("seisin-x-grantread-", toml);
+  mkdirSync(join(box, ".secrets"));
+  record(requestsPath(box), { role: "a", action: "read", target: "web/a.ts", owners: [] });
+  const cfg = loadConfig(join(box, "seisin.toml"));
+  assert.throws(() => grant(cfg, ["1"]), /not in a \[keys\] dir.*Decline this request/s);
+  assert.equal(readFileSync(join(box, "seisin.toml"), "utf8"), toml);
+  assert.equal(pending(requestsPath(box)).length, 1, "the request stays for a person to decline");
+});
+
+test("a read of a key in a key directory is still granted as a key", () => {
+  const toml = '[keys]\ndir = ".secrets"\n\n[roles.a]\nwrites = ["a/**"]\nkeys = []\n';
+  const box = repo("seisin-x-grantkey-", toml);
+  mkdirSync(join(box, ".secrets"));
+  writeFileSync(join(box, ".secrets", "db.txt"), "x\n");
+  record(requestsPath(box), { role: "a", action: "read", target: ".secrets/db.txt", owners: [] });
+  grant(loadConfig(join(box, "seisin.toml")), ["1"]);
+  assert.deepEqual(loadConfig(join(box, "seisin.toml")).roles.a.keys.length, 1);
+  assert.deepEqual(pending(requestsPath(box)), []);
+});

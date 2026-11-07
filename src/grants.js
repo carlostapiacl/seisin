@@ -111,8 +111,11 @@ export function roleHome(config, role) {
  *
  * `~/.config` is here whole rather than `~/.config/gh`: it is where a growing
  * number of CLIs keep their tokens, and listing them one by one is the
- * enumeration this list exists to avoid. A tool that needs a directory under it
- * can be granted it by name.
+ * enumeration this list exists to avoid. Nothing under these is opened again:
+ * a `reads` entry inside one stays shut (`check` says so), and a write grant
+ * there is a directory the role can write and not read back. A tool that keeps
+ * its settings there has to be pointed elsewhere — `XDG_CONFIG_HOME` for one
+ * that follows the XDG spec, or its own flag.
  */
 export const CREDENTIAL_HOMES = [
   // The order is not arbitrary: `check` names the first few, so the ones a

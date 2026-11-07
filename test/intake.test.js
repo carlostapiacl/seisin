@@ -235,12 +235,14 @@ test("a refusal on a path the policy says nothing about is counted, not logged",
   assert.equal(take.stats.offPolicy, 1);
 });
 
-test("a read the kernel refused asks, even of a file the policy leaves open", () => {
-  // The two disagree, and the refusal is what the agent ran into.
-  const { dir, config, queue } = setup();
+test("a read the kernel refused of a file the policy leaves open is logged, and asks nobody", () => {
+  // Granting a read adds a key, and a file outside every key directory cannot
+  // be one: the grant left the role with a policy that check and run refuse.
+  const { dir, config, lines, queue } = setup();
   const take = intake({ config, role: "web", runId: "r", settings });
   take.fromKernel({ action: "read", operation: "file-read-data", path: join(dir, "web", "a.ts") });
-  assert.deepEqual(queue().map((r) => r.target), ["web/a.ts"]);
+  assert.deepEqual(queue(), []);
+  assert.deepEqual(lines().map((l) => [l.action, l.target, l.verdict]), [["read", "web/a.ts", "denied"]]);
 });
 
 test("a key the kernel refused is logged as a key, and the queue names who holds it", () => {

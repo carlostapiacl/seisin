@@ -640,7 +640,18 @@ export function markStale(queue, entries, { runs = STALE_RUNS, gapMs = RUN_GAP_M
  * decision; seisin will not make it by writing one of them silently.
  */
 export function refuseIfBarred(config, request) {
-  if (request.action === "read") return;
+  // A read is granted as a key, and a key lives in a [keys] dir. Anything else
+  // written into `keys` leaves the role with a policy that `check` and `run`
+  // refuse, so the grant is refused first, with nothing written.
+  if (request.action === "read") {
+    if (!isKeyRequest(config, request))
+      throw new Error(
+        `${request.target} is not in a [keys] dir, and a read is granted as a key: it would go into ` +
+        `keys of ${request.role}, where a path outside every key directory is refused. Under ` +
+        `read = "all" a file outside the key directories is readable already; under read = "territory", ` +
+        `declare its directory in reads. Decline this request.`);
+    return;
+  }
   const role = config.roles?.[request.role];
   const hit = role && neverWrites(role, request.target, config);
   if (hit)

@@ -313,7 +313,11 @@ export function intake({ config, role, runId, label = null, observe = false, set
     // is always nobody, and the queue said "(unowned)" over another role's key.
     const whose = d.action === "read" && inKeyDir(config, rel) ? keyHolders(config, rel) : ownersOf(config, rel);
     const scratch = rel !== d.path && temporary(d.action, rel);
-    if (rel !== d.path && !barred && !unaskable && !granted && !scratch && !asked)
+    // A read the policy leaves open is not a question for a person either.
+    // Granting a read adds a key, and a file outside every key directory cannot
+    // be one: the grant left the role with a policy that no longer loads.
+    const openRead = rel !== d.path && d.action === "read" && !verdict && explain(config, role, "read", rel).allowed === true;
+    if (rel !== d.path && !barred && !unaskable && !granted && !openRead && !scratch && !asked)
       ask({ role, action: d.action, target: rel, owners: whose });
 
     /**
