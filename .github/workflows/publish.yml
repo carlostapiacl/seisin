@@ -20,6 +20,12 @@ permissions:
   contents: read
   id-token: write        # provenance, and trusted publishing without a token
 
+# One publish per tag at a time, and never cancelled: a publish stopped halfway
+# can leave npm with the version and GitHub without its release.
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   test:
     uses: ./.github/workflows/test.yml
@@ -27,22 +33,32 @@ jobs:
   publish:
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           # v5+ caches by itself; a release and its tests start from nothing.
           package-manager-cache: false
-          node-version: 22
+          node-version: 24
       # No `registry-url`: it writes an .npmrc with `always-auth=true` and an
       # empty `_authToken` (there is no token, on purpose), which forces token
       # auth and fails ENEEDAUTH before OIDC is ever tried. Trusted publishing
       # needs no .npmrc — npm mints the token from `id-token: write` itself.
-      # Trusted publishing (OIDC, no token) needs npm 11.5.1+, and node 22 ships
-      # npm 10 — without this, publish fell back to a token that is not set and
-      # failed with ENEEDAUTH even though the trusted publisher is configured.
-      - name: npm that can publish through OIDC
-        run: npm install -g npm@latest
+      # Trusted publishing (OIDC, no token) needs npm 11.5.1+. Node 22 ships npm
+      # 10, and publish fell back to a token that is not set (ENEEDAUTH). This
+      # used to install npm@latest over it, an unpinned download in the one job
+      # that publishes; Node 24 ships an npm that is new enough, so that npm is
+      # used as it comes, and checked, so an older one stops here and says why.
+      - name: npm that can publish through OIDC (11.5.1+)
+        run: |
+          node -e '
+            const v = require("child_process").execSync("npm --version").toString().trim();
+            const [a, b, c] = v.split(".").map(Number);
+            if (a > 11 || (a === 11 && (b > 5 || (b === 5 && c >= 1)))) process.exit(0);
+            console.error("npm " + v + " cannot publish through OIDC: trusted publishing needs 11.5.1 or newer.");
+            process.exit(1);
+          '
       # `npm publish` runs `prepublishOnly: npm test`, and the sandbox half of
       # the suite needs the real runtime and kernel on this runner too — the
       # same setup the test job does, or every sandboxed run dies here and the
@@ -76,6 +92,7 @@ jobs:
   release:
     needs: publish
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write    # this job only: create the release for the pushed tag
     steps:
