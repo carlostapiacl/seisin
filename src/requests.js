@@ -646,8 +646,8 @@ export function refuseIfBarred(config, request) {
   if (request.action === "read") {
     if (!isKeyRequest(config, request))
       throw new Error(
-        `${request.target} is not in a [keys] dir, and a read is granted as a key: it would go into ` +
-        `keys of ${request.role}, where a path outside every key directory is refused. Under ` +
+        `${request.target} is not in a [keys] dir, and a read is granted as a key: written into keys of ` +
+        `${request.role}, it would leave a policy that check and run do not load. Under ` +
         `read = "all" a file outside the key directories is readable already; under read = "territory", ` +
         `declare its directory in reads. Decline this request.`);
     return;
