@@ -96,6 +96,10 @@ Measured, on the same machine, same policy, same command:
 | `isolate = "credentials"` | **closed** | open | **OK** |
 | `isolate = "home"` | **closed** | closed | `Not logged in` |
 
+Nothing under those directories is opened again. A `reads` entry inside one (`~/.config/some-tool`)
+stays shut, and `seisin check` says so. A tool that keeps its settings there has to be pointed
+elsewhere: `XDG_CONFIG_HOME` for one that follows the XDG spec, or its own flag.
+
 `"home"` also gives each role its own `HOME`, `TMPDIR` and XDG directories, so one role cannot
 read the session another's CLI just wrote. It is the stronger claim and it has a real price:
 **every CLI in the sandbox sees an empty home and asks you to log in again.** That is not this

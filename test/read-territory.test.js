@@ -192,6 +192,17 @@ test("the run's own settings are denied to the run", () => {
   assert.ok(s.filesystem.denyRead.includes("/tmp/x/snr/abc-123/settings.json"));
 });
 
+test("check: a reads entry inside a credential home is said to stay shut under isolate, and only then", () => {
+  const withReads = POLICY.replace('keys = ["k.txt"]', 'keys = ["k.txt"]\nreads = ["~/.config/some-tool", "../shared"]');
+  const shut = (toml) => inspect(loadConfig(join(repo(toml).root, "seisin.toml"))).warnings
+    .filter((x) => x.kind === "reads-in-credential-home").map((x) => x.headline);
+  const isolated = shut(withReads.replace('read = "territory"\n', 'read = "territory"\nisolate = "credentials"\n'));
+  assert.equal(isolated.length, 1, isolated.join("\n"));
+  assert.match(isolated[0], /~\/\.config\/some-tool stays shut — it is inside ~\/\.config/);
+  // Without isolate the entry opens, and nothing is said.
+  assert.deepEqual(shut(withReads), []);
+});
+
 test("check: reads under read = \"all\" is said to change nothing", () => {
   const { root } = repo(POLICY.replace('read = "territory"\n', "").replace('keys = ["k.txt"]', 'keys = ["k.txt"]\ntoolchain = ["~/.venvs/x"]'));
   const w = inspect(loadConfig(join(root, "seisin.toml"))).warnings;

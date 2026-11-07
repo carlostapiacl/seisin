@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { existsSync } from "node:fs";
 import { keptFor, shutByTerritory, readPath, dataRoots } from "../territory.js";
 import { realAncestor } from "../paths.js";
+import { CREDENTIAL_HOMES, expand } from "../grants.js";
 
 /**
  * What `read = "territory"` takes away from a role that it may need, said
@@ -60,6 +61,24 @@ export function territoryWarnings(config, r) {
         detail: `${covered.join(", ")} ${covered.length === 1 ? "is a place" : "are places"} the mode denies because people keep their data there. ` +
           "Name the directory the role needs inside it instead.",
       });
+  }
+  // Inside a credential home a read grant is not reopened: the deny on the
+  // home wins, so the entry reads as an opening and opens nothing.
+  const shielded = config.isolate === "credentials" || config.isolate === "home" || config.isolate === true;
+  if (shielded) {
+    const homes = CREDENTIAL_HOMES.map((h) => [h, realAncestor(expand(h))]);
+    for (const p of declared) {
+      const abs = realAncestor(readPath(config.root, p));
+      const home = homes.find(([, h]) => abs === h || abs.startsWith(h + "/"));
+      if (home)
+        out.push({
+          kind: "reads-in-credential-home",
+          headline: `${r.name}: ${p} stays shut — it is inside ${home[0]}, which isolate = "${config.isolate === true ? "home" : config.isolate}" closes`,
+          detail: `${CREDENTIAL_HOMES.join(", ")} are where credentials live, and nothing under them is opened ` +
+            "again. If a tool keeps its settings there, point it elsewhere: XDG_CONFIG_HOME for one that follows " +
+            "the XDG spec, or the tool's own flag.",
+        });
+    }
   }
   const keep = keptFor(config, r);
   const path = (process.env.PATH ?? "").split(delimiter).filter(Boolean);

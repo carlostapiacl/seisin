@@ -8,6 +8,15 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## Unreleased
+
+- **A read the policy leaves open asks nobody.** When the kernel refused a read that the policy allows, the queue got a
+  request, and granting it put the file in `keys`, where a path outside every key directory is refused: `check` and
+  `run` then refused the role. The refusal is still logged. `seisin grant` also refuses a read outside the key
+  directories, with nothing written, so a request already in a queue cannot do this either.
+- **`check`: a `reads` entry inside a credential home is said to stay shut.** Under `isolate`, `~/.ssh`, `~/.config`
+  and the rest are closed whole, and an entry inside one opened nothing without anything saying so.
+
 ## 0.8.7 — 2026-11-07
 
 - **Nothing changes in how seisin behaves.** The code that reads a policy, writes a role's sandbox settings, starts a run
