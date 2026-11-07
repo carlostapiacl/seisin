@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { explain } from "../src/owners.js";
 import { realpathSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { scratch } from "./_tmp.js";
+import { scratch, twoRoles as cfg } from "./_tmp.js";
 import { tmpdir } from "node:os";
 import { inspect, sharedPaths } from "../src/inspect.js";
 import { renderReport, renderVerdict } from "../src/render.js";
@@ -15,16 +15,6 @@ import { wire, wired } from "../src/commands/wire.js";
 import { loadConfig } from "../src/config.js";
 import { hookEntries } from "../src/commands/wire.js";
 import { TOOL_MATCHER } from "../src/hook.js";
-
-const cfg = {
-  root: "/repo",
-  keyDirs: [".secrets"],
-  allowedDomains: ["github.com"],
-  roles: {
-    frontend: { name: "frontend", writes: ["src/web/**"], keys: ["netlify.txt"], network: null },
-    backend: { name: "backend", writes: ["src/api/**"], keys: ["database.txt"], network: null },
-  },
-};
 
 test("inspect names a path two roles claim", () => {
   // Before, this could only be checked by launching the binary and searching

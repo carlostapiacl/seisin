@@ -5,21 +5,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { scratch } from "./_tmp.js";
+import { scratch, twoRoles as cfg, policyFrom as policy } from "./_tmp.js";
 import { read, generalise } from "../src/log.js";
 import { renderObserved } from "../src/commands/init.js";
 import { review } from "../src/review.js";
 import { loadConfig } from "../src/config.js";
-
-const cfg = {
-  root: "/repo",
-  keyDirs: [".secrets"],
-  allowedDomains: ["github.com"],
-  roles: {
-    frontend: { name: "frontend", writes: ["src/web/**"], keys: ["netlify.txt"], network: null },
-    backend: { name: "backend", writes: ["src/api/**"], keys: ["database.txt"], network: null },
-  },
-};
 
 test("observed paths collapse to directories, not to the whole tree", () => {
   // Two files under src/api must not generalise to src/**: that hands over the
@@ -149,13 +139,6 @@ test("SEC-06 init --from-observations ignores lines the parent disputed", () => 
   assert.ok(!toml.includes("api"), "a disputed write became policy");
   assert.ok(!toml.includes("db.txt"), "a disputed key read became policy");
 });
-
-function policy(text) {
-  const root = scratch("seisin-audit-");
-  const path = join(root, "seisin.toml");
-  writeFileSync(path, text);
-  return loadConfig(path);
-}
 
 test("an observation proposal preserves every policy setting and its comments", () => {
   const text = `# policy chosen by a person

@@ -7,7 +7,7 @@ import { loadConfig } from "../src/config.js";
 import { covers, ownersOf, keyHolders, explain } from "../src/owners.js";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { scratch } from "./_tmp.js";
+import { scratch, twoRoles as cfg, policyFrom as policy } from "./_tmp.js";
 import { decide } from "../src/hook.js";
 import { generalise } from "../src/log.js";
 import { discover } from "../src/commands/init.js";
@@ -15,16 +15,6 @@ import { mkdirSync, existsSync } from "node:fs";
 import { inspect, sharedPaths } from "../src/inspect.js";
 import { toRepoRelative } from "../src/paths.js";
 import { realOrSelf } from "../src/grants.js";
-
-const cfg = {
-  root: "/repo",
-  keyDirs: [".secrets"],
-  allowedDomains: ["github.com"],
-  roles: {
-    frontend: { name: "frontend", writes: ["src/web/**"], keys: ["netlify.txt"], network: null },
-    backend: { name: "backend", writes: ["src/api/**"], keys: ["database.txt"], network: null },
-  },
-};
 
 test("a subtree glob covers the directory it was granted", () => {
   assert.ok(covers("src/web/**", "src/web"));
@@ -173,13 +163,6 @@ test("SEC-15b/09 a territory cannot be absolute, but .. is allowed (used for sib
   // .. stays legal: a policy writes ../data/shared/... on purpose
   assert.ok(load('[roles.a]\nwrites = ["../data/shared/**"]\n')());
 });
-
-/** A policy on disk, loaded. */
-function policy(toml) {
-  const dir = scratch("seisin-review-");
-  writeFileSync(join(dir, "seisin.toml"), toml);
-  return loadConfig(join(dir, "seisin.toml"));
-}
 
 // ── owners: `**` does not reach above the repo ──────────────────────────────
 

@@ -4,16 +4,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import { boxed } from "./_tmp.js";
+import { boxed, seisinIn as seisin } from "./_tmp.js";
 
 import { append, withLock, droppedPath, verifyChain, verifyLog, logSegments, read, GENESIS } from "../src/log.js";
 import { appendFileSync, renameSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { genesisPath } from "../src/log.js";
-import { CLI, scratch } from "./_tmp.js";
+import { scratch } from "./_tmp.js";
 
 
 function logFile() {
@@ -207,8 +206,6 @@ test("an entry that could not get the lock is counted, and verify says so", () =
   assert.deepEqual(r.breaks, [], "a drop is not tampering");
   assert.equal(r.dropped, 1, "but it is not silent either");
 });
-
-const seisin = (cwd, ...args) => spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: "utf8", env: { ...process.env, NO_COLOR: "1" } });
 
 /* ── log verify: the genesis record and its log ──────────────────────── */
 

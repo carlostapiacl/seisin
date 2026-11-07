@@ -4,6 +4,7 @@ import { createDenialAttribution, TREE_MS } from "../src/denial-attribution.js";
 import { watchDenials, underAnotherRun } from "../src/violations.js";
 import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
+import { delivered } from "./_tmp.js";
 
 const denial = (pid, suffix = "ours_SBX", command = null) => ({
   pid, suffix, command, action: "write", operation: "file-write-create", path: `/repo/${pid}`,
@@ -87,8 +88,6 @@ function fakeStream() {
   child.kill = () => {};
   return child;
 }
-
-const delivered = () => new Promise((r) => setImmediate(r));
 
 const OURS = ["env", "SEISIN_RUN_ID=abc", "sh", "-c", "work"];
 

@@ -9,7 +9,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync, readFileSync, statSync, readdirSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -19,9 +19,7 @@ import { loadConfig } from "../src/config.js";
 import { runsView, scanRuns, filtersOf, isRunId } from "../src/runs.js";
 import { record } from "../src/requests.js";
 import { writeUiLink, clearUiLink } from "../src/uilink.js";
-import { boxed } from "./_tmp.js";
-
-const CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "cli.js");
+import { boxed, CLI } from "./_tmp.js";
 
 const TOML = (role) => `[roles.${role}]\nwrites = ["src/**"]\n`;
 

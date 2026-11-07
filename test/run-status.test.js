@@ -6,15 +6,10 @@ import assert from "node:assert/strict";
 import { spawnSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { writeFileSync, readFileSync, readdirSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import { boxed } from "./_tmp.js";
+import { join } from "node:path";
+import { boxed, CLI } from "./_tmp.js";
 import { resolveSrt } from "../src/commands/run.js";
 import { runsRoot } from "../src/rundir.js";
-
-const HERE = dirname(fileURLToPath(import.meta.url));
-
-const CLI = join(HERE, "..", "src", "cli.js");
 
 /* ── P0-8: a run that fails leaves nothing behind, and says so with exit 2 ── */
 

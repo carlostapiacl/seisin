@@ -15,21 +15,18 @@ import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync, symlinkSync, realpathSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { fileURLToPath } from "node:url";
 import { territoryReads, outlastAllows, readPath, dataRoots, shutByTerritory, MAX_CARVE } from "../src/territory.js";
 import { loadConfig, readReadMode } from "../src/config.js";
 import { settingsFor } from "../src/srt-settings.js";
 import { inspect } from "../src/inspect.js";
 import { mkdtempSync, rmSync } from "node:fs";
-import { sandboxSkip, srtOnlySkip } from "./_tmp.js";
+import { sandboxSkip, srtOnlySkip, CLI } from "./_tmp.js";
 
 // Under the home, not /tmp: /tmp is writable scratch and would make an
 // out-of-territory write appear allowed. Keep this fixture outside scratch.
 const made = [];
 process.on("exit", () => { for (const d of made) try { rmSync(d, { recursive: true, force: true }); } catch {} });
 const scratch = (prefix) => { const d = mkdtempSync(join(homedir(), prefix)); made.push(d); return d; };
-
-const CLI = fileURLToPath(new URL("../src/cli.js", import.meta.url));
 
 /* ── the rules, against a fake disk ───────────────────────────────────── */
 

@@ -7,16 +7,7 @@ import { realpathSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { settingsFor, RUNTIME_WRITES, roleHomeRoot, homeFits } from "../src/srt-settings.js";
-
-const cfg = {
-  root: "/repo",
-  keyDirs: [".secrets"],
-  allowedDomains: ["github.com"],
-  roles: {
-    frontend: { name: "frontend", writes: ["src/web/**"], keys: ["netlify.txt"], network: null },
-    backend: { name: "backend", writes: ["src/api/**"], keys: ["database.txt"], network: null },
-  },
-};
+import { twoRoles as cfg } from "./_tmp.js";
 
 test("the emitted settings carry every field the runtime requires", () => {
   // The runtime refuses to start on a partial settings file rather than falling

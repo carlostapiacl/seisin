@@ -4,14 +4,13 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { loadConfig } from "../src/config.js";
 import { intake, policyId } from "../src/intake.js";
 import { effectiveConfig } from "../src/narrow.js";
 import { markStale, runsAfter, pending, requestsPath } from "../src/requests.js";
-import { scratch } from "./_tmp.js";
+import { scratch, noFilesystem as settings } from "./_tmp.js";
 
 function setup() {
   const dir = scratch("seisin-intake-");
@@ -29,8 +28,6 @@ function setup() {
   const queue = () => pending(requestsPath(dir));
   return { dir, config, lines, queue };
 }
-
-const settings = { filesystem: { allowWrite: [], denyWrite: [], allowRead: [], denyRead: [] } };
 
 test("every line carries the run and the policy it ran under", () => {
   const { config, lines } = setup();

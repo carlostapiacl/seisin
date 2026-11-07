@@ -11,7 +11,7 @@ import { loadConfig } from "../src/config.js";
 import { intake } from "../src/intake.js";
 import { buildEnv } from "../src/env.js";
 import { parseTraceparent, traceFields } from "../src/trace.js";
-import { scratch } from "./_tmp.js";
+import { scratch, noFilesystem as settings } from "./_tmp.js";
 
 const TP = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
 
@@ -40,8 +40,6 @@ function setup() {
     : [];
   return { config, lines };
 }
-
-const settings = { filesystem: { allowWrite: [], denyWrite: [], allowRead: [], denyRead: [] } };
 
 test("every line of a traced run carries the launcher's trace, and the sandbox cannot forge it", () => {
   const { config, lines } = setup();

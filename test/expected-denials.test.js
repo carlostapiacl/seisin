@@ -11,7 +11,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync, symlinkSync } from "node:fs";
+import { writeFileSync, readFileSync, existsSync, realpathSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { loadConfig } from "../src/config.js";
@@ -23,9 +23,7 @@ import { samePath } from "../src/paths.js";
 import { inspect } from "../src/inspect.js";
 import { walls } from "../src/walls.js";
 import { causesOf } from "../src/views.js";
-import { scratch, boxed, repoWith, CLI } from "./_tmp.js";
-
-const settings = { filesystem: { allowWrite: [], denyWrite: [], allowRead: [], denyRead: [] } };
+import { scratch, boxed, repoWith, CLI, noFilesystem as settings } from "./_tmp.js";
 
 function setup(toml = '[roles.prepare]\nwrites = ["**"]\nhandoff = false\n\n[roles.web]\nwrites = ["web/**"]\n') {
   const dir = scratch("seisin-expect-");

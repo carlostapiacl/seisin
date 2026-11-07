@@ -7,7 +7,7 @@ import { parseToml, loadConfig } from "../src/config.js";
 import { tomlString, tomlName } from "../src/layout.js";
 import { writeFileSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { scratch } from "./_tmp.js";
+import { scratch, policyFrom as policy } from "./_tmp.js";
 
 test("a quoted value keeps its first character", () => {
   // Regression. The first parser chained two slices and turned ".secrets" into
@@ -194,13 +194,6 @@ test("SEC-14 role names that differ only in case are refused", () => {
   writeFileSync(join(dir, "seisin.toml"), '[roles.dev]\nwrites = ["a/**"]\n\n[roles.Dev]\nwrites = ["b/**"]\n');
   assert.throws(() => loadConfig(join(dir, "seisin.toml")), /differ only in case/);
 });
-
-/** A policy on disk, loaded. */
-function policy(toml) {
-  const dir = scratch("seisin-review-");
-  writeFileSync(join(dir, "seisin.toml"), toml);
-  return loadConfig(join(dir, "seisin.toml"));
-}
 
 // ── config: nothing outside the roles is ignored silently ───────────────────
 

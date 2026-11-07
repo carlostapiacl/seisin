@@ -3,19 +3,10 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { loadConfig } from "../src/config.js";
 import { parentInputs, denyFor, protections, writableRoots, protectedBy } from "../src/surface.js";
-import { scratch } from "./_tmp.js";
-
-/** A policy on disk, loaded. */
-function policy(toml) {
-  const dir = scratch("seisin-review-");
-  writeFileSync(join(dir, "seisin.toml"), toml);
-  return loadConfig(join(dir, "seisin.toml"));
-}
+import { policyFrom as policy } from "./_tmp.js";
 
 test("key directories and the policy are protected by a field, not by their wording", () => {
   const cfg = policy(`

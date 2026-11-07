@@ -10,7 +10,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, realpathSync, readFileSync } from "node:fs";
+import { writeFileSync, mkdirSync, rmSync, realpathSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { parseKey, defaultName, modeOf, resolveRef, resolveKeys, entriesOf, MODES, readFileRef } from "../src/keys.js";
@@ -18,7 +18,7 @@ import { loadConfig } from "../src/config.js";
 import { settingsFor } from "../src/srt-settings.js";
 import { resolveExecutable, denyFor } from "../src/surface.js";
 import { inspect } from "../src/inspect.js";
-import { scratch } from "./_tmp.js";
+import { scratch, twoRoles as cfg, policyFrom as policy } from "./_tmp.js";
 import { renderEntry } from "../src/render.js";
 import { symlinkSync } from "node:fs";
 
@@ -771,16 +771,6 @@ test("docs: the keychain recipe warns that some values come back in hexadecimal"
   assert.match(DOC, /base64 -D/);
 });
 
-const cfg = {
-  root: "/repo",
-  keyDirs: [".secrets"],
-  allowedDomains: ["github.com"],
-  roles: {
-    frontend: { name: "frontend", writes: ["src/web/**"], keys: ["netlify.txt"], network: null },
-    backend: { name: "backend", writes: ["src/api/**"], keys: ["database.txt"], network: null },
-  },
-};
-
 test("a key cannot point outside the directories declared for keys", () => {
   // A slash in the name made the path relative to the repo root, so
   // keys = ["../.ssh/id_rsa"] was a read grant written into the one list nobody
@@ -829,13 +819,6 @@ test("a key directory that is a symlink is refused", (t) => {
                 roles: { a: { name: "a", writes: [], keys: ["tok.txt"], network: null } } };
   assert.throws(() => settingsFor(cfg, "a"), /is a symlink/);
 });
-
-function policy(text) {
-  const root = scratch("seisin-audit-");
-  const path = join(root, "seisin.toml");
-  writeFileSync(path, text);
-  return loadConfig(path);
-}
 
 test("a JSON credential fragment resolves only properties that are present in the file", () => {
   const cfg = policy('[roles.dev]\nwrites = []\n');

@@ -13,11 +13,10 @@ import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync, existsSync, rmSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { homedir, tmpdir } from "node:os";
-import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
 import { loadConfig } from "../src/config.js";
 import { settingsFor, SHARED_TMP } from "../src/srt-settings.js";
-import { sandboxSkip } from "./_tmp.js";
+import { sandboxSkip, CLI } from "./_tmp.js";
 
 // Under the home, not /tmp: with /tmp writable as scratch, a write into
 // /tmp/claude would say nothing about the deny.
@@ -31,7 +30,6 @@ const repo = (runtime) => {
   return root;
 };
 
-const CLI = fileURLToPath(new URL("../src/cli.js", import.meta.url));
 const run = (cwd, script) => new Promise((ok) => {
   let out = "";
   const p = spawn(process.execPath, [CLI, "run", "dev", "--agent", "none", "--", "/bin/sh", "-c", script], { cwd });

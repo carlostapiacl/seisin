@@ -8,12 +8,11 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { review } from "../src/review.js";
 import { loadConfig } from "../src/config.js";
-import { scratch } from "./_tmp.js";
+import { scratch, policyFrom as policy } from "./_tmp.js";
 
 const POLICY = `[keys]
 dir = [".secrets"]
@@ -95,7 +94,7 @@ test("one allowed line is enough to make the question answerable again", () => {
   assert.ok(!globs.includes("src/web/**"), "the one that was written is not dead");
 });
 
-test("an empty log answers nothing and claims nothing", () => {
+test("reviewing an empty log answers nothing and claims nothing", () => {
   const config = repo([]);
   const r = review(config);
   assert.equal(r.entries, 0);
@@ -131,13 +130,6 @@ test("SEC-17c a disputed 'allowed' line does not count as legitimate use", () =>
   // backend's src/api/** was only "used" by a disputed line, so it stays unused.
   assert.ok(r.unused.some((u) => u.glob.includes("src/api")), "a disputed line marked a territory used");
 })
-
-/** A policy on disk, loaded. */
-function policy(toml) {
-  const dir = scratch("seisin-review-");
-  writeFileSync(join(dir, "seisin.toml"), toml);
-  return loadConfig(join(dir, "seisin.toml"));
-}
 
 test("review counts a write as use of its own role's territory only", () => {
   const cfg = policy(`

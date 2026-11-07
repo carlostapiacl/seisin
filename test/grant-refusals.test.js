@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync, readFileSync, lstatSync, symlinkSync, mkdirSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { scratch } from "./_tmp.js";
+import { scratch, policyFrom as policy } from "./_tmp.js";
 import { loadConfig } from "../src/config.js";
 import { record, pending, requestsPath, policyLockBase } from "../src/requests.js";
 import { grant } from "../src/commands/requests.js";
@@ -147,13 +147,6 @@ test("from the CLI it exits 0 and says it was already granted", async () => {
   assert.match(r.stdout, /already granted/);
   assert.equal(pending(requestsPath(box)).length, 0);
 });
-
-function policy(text) {
-  const root = scratch("seisin-audit-");
-  const path = join(root, "seisin.toml");
-  writeFileSync(path, text);
-  return loadConfig(path);
-}
 
 test("grant checks the policy under the lock, including a newly added subtraction", () => {
   const cfg = policy('[roles.dev]\nwrites = []\nkeys = []\n');

@@ -18,6 +18,7 @@ import {
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { delivered } from "./_tmp.js";
 
 /* ── captured chunks ──────────────────────────────────────────────────── */
 
@@ -159,9 +160,6 @@ function fakeStream() {
   child.kill = () => { child.killed = true; };
   return child;
 }
-
-/** A stream delivers on the next tick, the same as the real one. */
-const delivered = () => new Promise((r) => setImmediate(r));
 
 test("a denial from this run is recorded, one from another sandbox is not", async () => {
   const child = fakeStream();

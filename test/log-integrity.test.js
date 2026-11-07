@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { scratch } from "./_tmp.js";
+import { scratch, noFilesystem as settings } from "./_tmp.js";
 import { append, read, readLines, verifyLog, verifyChain, logSegments, genesisPath } from "../src/log.js";
 import { timesHit } from "../src/walls.js";
 import { record, pending, requestsPath } from "../src/requests.js";
@@ -122,8 +122,6 @@ function intakeRepo() {
   writeFileSync(join(dir, "seisin.toml"), '[roles.web]\nwrites = ["web/**"]\n\n[roles.api]\nwrites = ["api/**"]\n');
   return { dir, config: loadConfig(join(dir, "seisin.toml")) };
 }
-
-const settings = { filesystem: { allowWrite: [], denyWrite: [], allowRead: [], denyRead: [] } };
 
 test("the confined process cannot set the time of its own lines", () => {
   const { dir, config } = intakeRepo();

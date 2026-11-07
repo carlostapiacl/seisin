@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { spawnSync, spawn } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
-import { CLI, boxed, sandboxSkip } from "./_tmp.js";
+import { CLI, boxed, sandboxSkip, noFilesystem as settings } from "./_tmp.js";
 
 import { loadConfig, policyId } from "../src/config.js";
 import { decideHandoff } from "../src/handoff.js";
@@ -35,8 +35,6 @@ function repo(text = POLICY) {
 }
 
 const cli = (dir, ...args) => spawnSync(process.execPath, [CLI, ...args], { cwd: dir, encoding: "utf8" });
-const settings = { filesystem: { allowWrite: [], denyWrite: [], allowRead: [], denyRead: [] } };
-
 /* ── the decision ─────────────────────────────────────────────────────── */
 
 test("a key is never handed over: a person decides, and the decision names who declares it", () => {
