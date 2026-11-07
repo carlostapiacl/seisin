@@ -12,7 +12,7 @@ import { finished } from "node:stream/promises";
 import { constants as osConstants } from "node:os";
 import { mkdirSync, writeFileSync, existsSync, readFileSync, statSync } from "node:fs";
 import { join, dirname, delimiter, resolve } from "node:path";
-import { settingsFor, roleHome, loopbackVia, agentOf, AGENTS, AGENT_HOMES } from "../srt-settings.js";
+import { settingsFor, roleHome, loopbackVia } from "../srt-settings.js";
 import { buildEnv } from "../env.js";
 import { traceFields } from "../trace.js";
 import { resolveKeys } from "../keys.js";
@@ -22,7 +22,7 @@ import { openRun, runsRootOf, TMP_NAME } from "../rundir.js";
 import { secretsOf, redactor } from "../redact.js";
 import { C, err, drained } from "../render.js";
 import { pending, requestsPath, queueOf, recordHandoff } from "../requests.js";
-import { chainFrom, describeHandoff, MAX_DEPTH, CHAIN_ENV, ROLE_WRITES_ENV } from "../handoff.js";
+import { MAX_DEPTH, CHAIN_ENV, ROLE_WRITES_ENV } from "../handoff.js";
 import { notifier } from "../notify.js";
 import { renderAdded } from "./requests.js";
 import { unknownRole } from "../suggest.js";
@@ -34,8 +34,7 @@ import { writePathsOf, realOrSelf, SOCKET_MAX } from "../grants.js";
 import { runCanary, CANARY_EXIT } from "../canary.js";
 import { scratchWarnings } from "../inspect/machine.js";
 import { append, logPath } from "../log.js";
-import { flagsOf } from "../help.js";
-import { WILD, realAncestor } from "../paths.js";
+import { realAncestor } from "../paths.js";
 import { chooseSandbox, settingsOf, DEFAULT_SANDBOX } from "../sandboxes/index.js";
 import { machOf } from "../browsers.js";
 import { effectiveConfig, narrowingOf } from "../narrow.js";
@@ -54,28 +53,13 @@ import { MACH_FILE } from "../sandboxes/mach-profile.js";
  */
 const DRAIN_MS = 250;
 
+// Read off the argv in run-flags.js; exported from here still, as before.
+import { splitRunArgv, agentFor, runIdOf, handoffOf, expectedDenials } from "./run-flags.js";
+export { splitRunArgv, agentFor, runIdOf, handoffOf, expectedDenials };
+
 // Moved with the rest of what is particular to sandbox-runtime (sandboxes/srt.js);
 // exported from here still, where callers and the tests have always found them.
 export { resolveSrt, dependencySrt, installHint } from "../sandboxes/srt.js";
-
-/**
- * Which agent this run is: `--agent <name>` when given, else read off the
- * command. It decides whose home is scratch and whose sign-in is closed (see
- * AGENT_HOMES in grants.js). `--agent none` says "no agent", for a run that
- * must get neither home whatever its command looks like.
- */
-export function agentFor(mine, cmd) {
-  const at = mine.lastIndexOf("--agent");
-  if (at === -1) return agentOf(cmd);
-  const given = mine[at + 1];
-  if (given === "none") return null;
-  if (!AGENTS.includes(given))
-    throw new Error(
-      `--agent ${given ?? ""}: seisin knows ${AGENTS.join(", ")} and none.\n` +
-      `  It decides whose home a run may write (${AGENTS.map((a) => AGENT_HOMES[a]).join(", ")}) ` +
-      `and whose sign-in it cannot read.`);
-  return given;
-}
 
 /**
  * The egress refusals in a sandbox's own JSON-lines log (tartaros `--log`:
@@ -103,47 +87,8 @@ export function brokerDenials(file) {
   return [...by.values()];
 }
 
-/**
- * `--run-id <id>`: the launcher's own id for this run (an orchestrator's ULID),
- * used instead of a random one wherever the run is named. Letters, digits, `-`
- * and `_`, 64 at most: it becomes part of a directory name and of log lines.
- */
-export function runIdOf(mine) {
-  const at = mine.lastIndexOf("--run-id");
-  if (at === -1) return null;
-  const id = mine[at + 1];
-  if (!id || !/^[A-Za-z0-9_-]{1,64}$/.test(id))
-    throw new Error(`--run-id ${id ?? ""}: letters, digits, "-" and "_" only, 64 at most`);
-  return id;
-}
-
 export async function run(config, argv) {
-  /**
-   * Ours before the `--`, theirs after it.
-   *
-   * `argv.includes("--observe")` scanned the whole line, so `seisin run x --
-   * claude --observe` put seisin into observe mode over a flag that belonged to
-   * the agent. It is the same mistake the `--` separator was added to stop srt
-   * making with the agent's flags, made one layer up.
-   */
-  const split = argv.indexOf("--");
-  const role = argv[0];
-  let mine, cmd;
-  if (split !== -1) {
-    mine = argv.slice(1, split);
-    cmd = argv.slice(split + 1);
-  } else {
-    // No `--`: seisin's own flags are the leading `-options` only. From the
-    // first token that is not an option, everything is the command — its own
-    // flags are its business. `seisin run x echo hi --observe` used to read
-    // `--observe` as seisin's and put the run in observe mode; now that flag
-    // belongs to `echo`, and observe needs `seisin run x --observe -- echo hi`.
-    let i = 1;
-    const values = flagsOf("run").values;
-    while (i < argv.length && argv[i].startsWith("-")) i += values.includes(argv[i]) ? 2 : 1;
-    mine = argv.slice(1, i);
-    cmd = argv.slice(i);
-  }
+  const { role, mine, cmd } = splitRunArgv(argv);
   if (!role || cmd.length === 0) throw new Error("usage: seisin run <role> -- <command...>");
   if (!config.roles[role]) throw unknownRole(config, role);
   // What this run takes away from its role, and the values its role left open.
@@ -246,24 +191,7 @@ export async function run(config, argv) {
     ? [...toolchainBins(config, config.roles[role], isDir), process.env.PATH ?? ""].join(delimiter)
     : process.env.PATH;
   const program = whichOn(cmd[0], searchPath);
-  /**
-   * The run's temp directory: one the role may write, never the runtime's.
-   *
-   * sandbox-runtime hands every child `/tmp/claude` as TMPDIR, and that
-   * directory is now denied (srt-settings.js, SHARED_TMP). It takes CLAUDE_CODE_TMPDIR
-   * instead when set, so that is where the run's goes: the role's own tmp under
-   * `isolate = "home"`, else the parent's TMPDIR when the role may already write
-   * it, else one made for this run beside the runs root, granted to it alone. A caller's
-   * own CLAUDE_CODE_TMPDIR is kept only if the role may write it: an
-   * environment variable is not a way to widen the policy.
-   */
-  const granted = writePathsOf(config, config.roles[role], { observe, agent });
-  const writable = (p) => !!p && [p, realOrSelf(p)].some((q) =>
-    granted.some((g) => q === g || q === realOrSelf(g) || q.startsWith(g + "/") || q.startsWith(realOrSelf(g) + "/")));
-  const isolatedHome = config.isolate === "home" || config.isolate === true;
-  let runTmp = [process.env.CLAUDE_CODE_TMPDIR,
-    isolatedHome ? join(roleHome(config, role), "tmp") : process.env.TMPDIR].find(writable);
-  if (!runTmp) runTmp = theRun.tmp();
+  const runTmp = runTmpFor({ config, role, theRun, observe, agent });
   const generated = settingsFor(config, role, sockPath, observe, { agent, program, tmp: runTmp, forRun: true });
 
   /**
@@ -327,56 +255,9 @@ export async function run(config, argv) {
     throw e;
   }
 
-  // What the role gets, in the policy's own words: `writes 8 path(s)` counted
-  // the runtime's scratch directories as territory and named none of it.
-  const r = config.roles[role];
-  const territory = observe ? "the whole repo" : r.writes.length ? r.writes.join(" ") : "nothing";
-  const scratch = settings.filesystem.allowWrite.length - (observe ? 1 : r.writes.length);
-  err(
-    `${C.dim}seisin: ${role} · writes ${territory}${scratch > 0 ? ` (+${scratch} scratch)` : ""} · ` +
-    `keys ${r.keys.length ? r.keys.join(" ") : "none"} · ` +
-    `${agent ? `runs ${agent}` : "runs no agent seisin knows"} · ` +
-    `env ${Object.keys(env).length} kept, ${dropped.length} dropped · read ${config.read}` +
-    `${observe ? ` · ${C.yellow}OBSERVING — the repo is writable, the network is NOT${C.off}${C.dim}` : ""}${C.off}\n`
-  );
-  // `check` says this, and a run is where it costs: the role writes another role's
-  // files and the banner above reads as if it could not.
-  if (!observe) {
-    const around = scratchWarnings(config).find((w) => w.kind === "scratch");
-    if (around) err(`${C.yellow}seisin: ${around.headline}. ${around.detail}${C.off}\n`);
-  }
+  sayWhatItGets({ config, role, env, dropped, settings, agent, observe, sockPath });
 
-  // A tool that creates one of these and looks again fails on EPERM, and the
-  // refused stat leaves no line in the log.
-  // The runs' shared roots are shut to every run on purpose, and no tool goes there.
-  const ownRoots = runsRootOf(sockPath) ? [runsRootOf(sockPath), join(dirname(runsRootOf(sockPath)), TMP_NAME)] : [];
-  const blind = writableButUnreadable(settings.filesystem, realAncestor)
-    .filter((p) => !ownRoots.some((o) => p === realAncestor(o) || p.startsWith(realAncestor(o) + "/")));
-  if (blind.length) {
-    const named = blind.slice(0, 3).join(", ") + (blind.length > 3 ? ` and ${blind.length - 3} more` : "");
-    err(`${C.yellow}seisin: ${role} can write but not read ${named}. A tool that creates a directory there and checks it again fails with EPERM, and the denied stat is not logged.${C.off}\n`);
-  }
-
-  // Redaction needs the output to pass through this process, and piping breaks
-  // anything that draws its own screen. So it turns itself off on a terminal
-  // and on for the runs that end up in a log, which is where a leaked key
-  // actually survives. Say so rather than deciding it quietly.
-  const wantRedact = config.redact !== false && config.roles[role].keys.length > 0;
-  const canRedact = wantRedact && !process.stdout.isTTY;
-  if (wantRedact && !canRedact) err(`${C.dim}seisin: redaction off — interactive terminal${C.off}\n`);
-
-  // Resolved references are masked alongside the key files. They never touched
-  // the disk under a path `secretsOf` could find, so without this the one kind
-  // of key that is supposed to be better looked after would be the one kind
-  // that sails through the redactor into a log.
-  const secrets = canRedact
-    ? [...secretsOf(settings, readFileSync), ...resolved.map((r) => r.value)]
-        .filter((v) => v.length >= 8)
-        .sort((a, b) => b.length - a.length)
-    : [];
-  const outStream = secrets.length ? redactor(secrets) : null;
-  const errStream = secrets.length ? redactor(secrets) : null;
-  if (outStream) { outStream.pipe(process.stdout); errStream.pipe(process.stderr); }
+  const { outStream, errStream } = redaction({ config, role, settings, resolved });
 
   // `--` before the user's command, and it is not cosmetic. Without it the
   // sandbox's own argument parser reaches into what the agent was invoked with
@@ -440,35 +321,7 @@ export async function run(config, argv) {
    * canary.js. A failure stops the run with its own exit code and a line in
    * the log; there is no flag to skip it.
    */
-  const probe = await runCanary({
-    wrap, settingsFile: file, settings, env, cwd: process.cwd(),
-    runDir: theRun.dir, runsRoot: theRun.root, role: config.roles[role],
-    granted: writePathsOf(config, config.roles[role], { observe, agent }),
-  });
-  if (!probe.ok) {
-    append(logPath(config.root), {
-      event: "canary", role, run: runLabel, ...trace, agent: agent ?? null, confined: false, reasons: probe.failed,
-      sandbox: sandbox.name,
-    });
-    if (probe.exposed) {
-      err(`${C.red}seisin: ${role} was NOT started — another process holds a real value the agent would see:${C.off}\n` +
-        probe.failed.map((f) => `  - ${f}\n`).join("") +
-        `  A process's environment and arguments are readable by every process of your user (on macOS no sandbox ` +
-        `hides them), so masking would hide nothing. Usually a shell that exported the token, and what it started. ` +
-        `Unset it there or end that process, and keep the value only where seisin's key points (docs/keys.md).\n`);
-      process.exit(CANARY_EXIT);
-    }
-    err(`${C.red}seisin: ${role} was NOT started — the sandbox failed its canary:${C.off}\n` +
-      probe.failed.map((f) => `  - ${f}\n`).join("") +
-      `  The policy as generated does not hold on this machine, so no agent runs under it. ` +
-      `This is recorded in the log (confined=false). Exit 86 means the boundary did not hold; ` +
-      `run seisin check, fix the reported policy or machine setup, and try again. There is no flag to skip it.\n`);
-    process.exit(CANARY_EXIT);
-  }
-  append(logPath(config.root), {
-    event: "canary", role, run: runLabel, ...trace, agent: agent ?? null, confined: true, reasons: [],
-    sandbox: sandbox.name,
-  });
+  await canaryOrStop({ wrap, file, settings, env, theRun, config, role, observe, agent, runLabel, trace, sandbox });
   if (held.narrowed) append(logPath(config.root), { event: "narrowed", role, run: runLabel, ...trace, policy: policyId(config), ...held.narrowed });
   // Said once, only when it is not the default: which sandbox holds this run
   // is a fact a reader of the terminal would otherwise have to guess.
@@ -522,52 +375,8 @@ export async function run(config, argv) {
   const watchdog = startWatchdog(child.pid);
   child.once("exit", () => watchdog.stop());
 
-  /**
-   * Signals: seisin must not die of one, and must not double one.
-   *
-   * Without handlers Node dies on SIGTERM and SIGINT at once: the agent kept
-   * running with nobody holding its audit channel, and the run's directory
-   * stayed behind (74 had piled up on one machine). An orchestrator's timeout
-   * is a SIGTERM to seisin's pid alone, so SIGTERM and SIGHUP are passed on,
-   * and the run exits 128 + the signal — the runtime itself ends 0 when told
-   * to stop, which reported success for a killed run.
-   *
-   * SIGINT is NOT passed on. It comes from the terminal, which sends it to the
-   * whole foreground group: the runtime gets it too and forwards it to the
-   * agent. Measured with one Ctrl-C: the agent received 2 SIGINTs before any
-   * of this (the runtime already duplicates), and 3 when seisin forwarded as
-   * well — and two in a row is how Claude Code tells "cancel" from "quit". So
-   * seisin only stops dying of it.
-   *
-   * And an interrupted run is never reported as a success. The runtime exits 0
-   * whenever its child dies of a signal (measured: SIGINT and SIGTERM, to the
-   * group or to its pid, all 0), so from here "the agent caught the Ctrl-C and
-   * finished" and "the agent was killed by it" look the same. The run exits
-   * 130 in both until the runtime passes the status through; the other choice
-   * reports a killed run as done, which is the one an orchestrator acts on.
-   */
-  let stoppedBy = null;
-  let interrupted = false;
-  process.on("SIGINT", () => { interrupted = true; });
-  for (const sig of ["SIGTERM", "SIGHUP"])
-    process.on(sig, () => { stoppedBy ??= sig; try { child.kill(sig); } catch {} });
+  const statusOf = passSignals(child);
   if (outStream) { child.stdout.pipe(outStream); child.stderr.pipe(errStream); }
-
-  /**
-   * The status is worked out when the run is about to leave, not when the
-   * child exits. A Ctrl-C reaches the runtime and seisin at once; when the
-   * runtime is quicker, the child's `exit` is handled before seisin's own
-   * SIGINT, `interrupted` is still false, and an interrupted run left with 0.
-   * Seen once in a full suite run under load; by the end of the drains below
-   * the pending signal has been handled.
-   */
-  // A runtime that itself dies of a signal (SIGKILL, the OOM killer) exits
-  // the shell's way, 128 + n, the same as a run seisin was told to stop — it
-  // was reported as 1, a plain failure, which hides that it was killed.
-  const statusOf = (code, signal) => stoppedBy ? 128 + osConstants.signals[stoppedBy]
-    : signal ? 128 + (osConstants.signals[signal] ?? 0)
-    : interrupted && !code ? 130
-    : code ?? 0;
 
   child.on("exit", (code, signal) => finishRun({
     config, role, runLabel, trace, audit, denials, brokerLog, sandbox,
@@ -580,6 +389,165 @@ export async function run(config, argv) {
     err(`${C.red}seisin:${C.off} could not start the sandbox: ${e.message}\n`);
     process.exit(2);
   });
+}
+
+/**
+ * The run's temp directory: one the role may write, never the runtime's.
+ *
+ * sandbox-runtime hands every child `/tmp/claude` as TMPDIR, and that
+ * directory is now denied (srt-settings.js, SHARED_TMP). It takes CLAUDE_CODE_TMPDIR
+ * instead when set, so that is where the run's goes: the role's own tmp under
+ * `isolate = "home"`, else the parent's TMPDIR when the role may already write
+ * it, else one made for this run beside the runs root, granted to it alone. A caller's
+ * own CLAUDE_CODE_TMPDIR is kept only if the role may write it: an
+ * environment variable is not a way to widen the policy.
+ */
+function runTmpFor({ config, role, theRun, observe, agent }) {
+  const granted = writePathsOf(config, config.roles[role], { observe, agent });
+  const writable = (p) => !!p && [p, realOrSelf(p)].some((q) =>
+    granted.some((g) => q === g || q === realOrSelf(g) || q.startsWith(g + "/") || q.startsWith(realOrSelf(g) + "/")));
+  const isolatedHome = config.isolate === "home" || config.isolate === true;
+  const runTmp = [process.env.CLAUDE_CODE_TMPDIR,
+    isolatedHome ? join(roleHome(config, role), "tmp") : process.env.TMPDIR].find(writable);
+  return runTmp || theRun.tmp();
+}
+
+/** The run's first lines: what the role gets, and what it can write but not read. */
+function sayWhatItGets({ config, role, env, dropped, settings, agent, observe, sockPath }) {
+  // What the role gets, in the policy's own words: `writes 8 path(s)` counted
+  // the runtime's scratch directories as territory and named none of it.
+  const r = config.roles[role];
+  const territory = observe ? "the whole repo" : r.writes.length ? r.writes.join(" ") : "nothing";
+  const scratch = settings.filesystem.allowWrite.length - (observe ? 1 : r.writes.length);
+  err(
+    `${C.dim}seisin: ${role} · writes ${territory}${scratch > 0 ? ` (+${scratch} scratch)` : ""} · ` +
+    `keys ${r.keys.length ? r.keys.join(" ") : "none"} · ` +
+    `${agent ? `runs ${agent}` : "runs no agent seisin knows"} · ` +
+    `env ${Object.keys(env).length} kept, ${dropped.length} dropped · read ${config.read}` +
+    `${observe ? ` · ${C.yellow}OBSERVING — the repo is writable, the network is NOT${C.off}${C.dim}` : ""}${C.off}\n`
+  );
+  // `check` says this, and a run is where it costs: the role writes another role's
+  // files and the banner above reads as if it could not.
+  if (!observe) {
+    const around = scratchWarnings(config).find((w) => w.kind === "scratch");
+    if (around) err(`${C.yellow}seisin: ${around.headline}. ${around.detail}${C.off}\n`);
+  }
+
+  // A tool that creates one of these and looks again fails on EPERM, and the
+  // refused stat leaves no line in the log.
+  // The runs' shared roots are shut to every run on purpose, and no tool goes there.
+  const ownRoots = runsRootOf(sockPath) ? [runsRootOf(sockPath), join(dirname(runsRootOf(sockPath)), TMP_NAME)] : [];
+  const blind = writableButUnreadable(settings.filesystem, realAncestor)
+    .filter((p) => !ownRoots.some((o) => p === realAncestor(o) || p.startsWith(realAncestor(o) + "/")));
+  if (blind.length) {
+    const named = blind.slice(0, 3).join(", ") + (blind.length > 3 ? ` and ${blind.length - 3} more` : "");
+    err(`${C.yellow}seisin: ${role} can write but not read ${named}. A tool that creates a directory there and checks it again fails with EPERM, and the denied stat is not logged.${C.off}\n`);
+  }
+}
+
+function redaction({ config, role, settings, resolved }) {
+  // Redaction needs the output to pass through this process, and piping breaks
+  // anything that draws its own screen. So it turns itself off on a terminal
+  // and on for the runs that end up in a log, which is where a leaked key
+  // actually survives. Say so rather than deciding it quietly.
+  const wantRedact = config.redact !== false && config.roles[role].keys.length > 0;
+  const canRedact = wantRedact && !process.stdout.isTTY;
+  if (wantRedact && !canRedact) err(`${C.dim}seisin: redaction off — interactive terminal${C.off}\n`);
+
+  // Resolved references are masked alongside the key files. They never touched
+  // the disk under a path `secretsOf` could find, so without this the one kind
+  // of key that is supposed to be better looked after would be the one kind
+  // that sails through the redactor into a log.
+  const secrets = canRedact
+    ? [...secretsOf(settings, readFileSync), ...resolved.map((r) => r.value)]
+        .filter((v) => v.length >= 8)
+        .sort((a, b) => b.length - a.length)
+    : [];
+  const outStream = secrets.length ? redactor(secrets) : null;
+  const errStream = secrets.length ? redactor(secrets) : null;
+  if (outStream) { outStream.pipe(process.stdout); errStream.pipe(process.stderr); }
+  return { outStream, errStream };
+}
+
+/** Runs the canary and records it; a failure ends the process with CANARY_EXIT. */
+async function canaryOrStop({ wrap, file, settings, env, theRun, config, role, observe, agent, runLabel, trace, sandbox }) {
+  const probe = await runCanary({
+    wrap, settingsFile: file, settings, env, cwd: process.cwd(),
+    runDir: theRun.dir, runsRoot: theRun.root, role: config.roles[role],
+    granted: writePathsOf(config, config.roles[role], { observe, agent }),
+  });
+  if (!probe.ok) {
+    append(logPath(config.root), {
+      event: "canary", role, run: runLabel, ...trace, agent: agent ?? null, confined: false, reasons: probe.failed,
+      sandbox: sandbox.name,
+    });
+    if (probe.exposed) {
+      err(`${C.red}seisin: ${role} was NOT started — another process holds a real value the agent would see:${C.off}\n` +
+        probe.failed.map((f) => `  - ${f}\n`).join("") +
+        `  A process's environment and arguments are readable by every process of your user (on macOS no sandbox ` +
+        `hides them), so masking would hide nothing. Usually a shell that exported the token, and what it started. ` +
+        `Unset it there or end that process, and keep the value only where seisin's key points (docs/keys.md).\n`);
+      process.exit(CANARY_EXIT);
+    }
+    err(`${C.red}seisin: ${role} was NOT started — the sandbox failed its canary:${C.off}\n` +
+      probe.failed.map((f) => `  - ${f}\n`).join("") +
+      `  The policy as generated does not hold on this machine, so no agent runs under it. ` +
+      `This is recorded in the log (confined=false). Exit 86 means the boundary did not hold; ` +
+      `run seisin check, fix the reported policy or machine setup, and try again. There is no flag to skip it.\n`);
+    process.exit(CANARY_EXIT);
+  }
+  append(logPath(config.root), {
+    event: "canary", role, run: runLabel, ...trace, agent: agent ?? null, confined: true, reasons: [],
+    sandbox: sandbox.name,
+  });
+}
+
+/**
+ * Signals: seisin must not die of one, and must not double one.
+ *
+ * Without handlers Node dies on SIGTERM and SIGINT at once: the agent kept
+ * running with nobody holding its audit channel, and the run's directory
+ * stayed behind (74 had piled up on one machine). An orchestrator's timeout
+ * is a SIGTERM to seisin's pid alone, so SIGTERM and SIGHUP are passed on,
+ * and the run exits 128 + the signal — the runtime itself ends 0 when told
+ * to stop, which reported success for a killed run.
+ *
+ * SIGINT is NOT passed on. It comes from the terminal, which sends it to the
+ * whole foreground group: the runtime gets it too and forwards it to the
+ * agent. Measured with one Ctrl-C: the agent received 2 SIGINTs before any
+ * of this (the runtime already duplicates), and 3 when seisin forwarded as
+ * well — and two in a row is how Claude Code tells "cancel" from "quit". So
+ * seisin only stops dying of it.
+ *
+ * And an interrupted run is never reported as a success. The runtime exits 0
+ * whenever its child dies of a signal (measured: SIGINT and SIGTERM, to the
+ * group or to its pid, all 0), so from here "the agent caught the Ctrl-C and
+ * finished" and "the agent was killed by it" look the same. The run exits
+ * 130 in both until the runtime passes the status through; the other choice
+ * reports a killed run as done, which is the one an orchestrator acts on.
+ */
+function passSignals(child) {
+  let stoppedBy = null;
+  let interrupted = false;
+  process.on("SIGINT", () => { interrupted = true; });
+  for (const sig of ["SIGTERM", "SIGHUP"])
+    process.on(sig, () => { stoppedBy ??= sig; try { child.kill(sig); } catch {} });
+
+  /**
+   * The status is worked out when the run is about to leave, not when the
+   * child exits. A Ctrl-C reaches the runtime and seisin at once; when the
+   * runtime is quicker, the child's `exit` is handled before seisin's own
+   * SIGINT, `interrupted` is still false, and an interrupted run left with 0.
+   * Seen once in a full suite run under load; by the end of the drains below
+   * the pending signal has been handled.
+   */
+  // A runtime that itself dies of a signal (SIGKILL, the OOM killer) exits
+  // the shell's way, 128 + n, the same as a run seisin was told to stop — it
+  // was reported as 1, a plain failure, which hides that it was killed.
+  return (code, signal) => stoppedBy ? 128 + osConstants.signals[stoppedBy]
+    : signal ? 128 + (osConstants.signals[signal] ?? 0)
+    : interrupted && !code ? 130
+    : code ?? 0;
 }
 
 // Keep environment filtering ahead of credential resolution: providers run in
@@ -858,70 +826,6 @@ async function finishRun({
   process.exit(status);
 }
 
-/**
- * `--handoff <id>`: this run is the role a pending request was handed to.
- *
- * The flag names a request, never a role. Which role takes it is the decision
- * handoff.js makes from the policy as it stands, and a run of any other role
- * is refused — so whatever starts roles can act on `handoff.role` but cannot
- * substitute its own choice, and a model upstream of it choosing "backend"
- * changes nothing. What the run carries forward is the chain the decision
- * extends; every request it files is recorded in that chain, which is how a
- * cycle back to a role the work came from, or a chain past its depth, is
- * caught instead of routed.
- */
-export function handoffOf(config, role, mine) {
-  const at = mine.indexOf("--handoff");
-  if (at === -1) return null;
-  // Said before the request is looked up: whatever the id, this role is not
-  // one the policy hands work to, and that is the answer.
-  if (config.roles[role]?.handoff === false)
-    throw new Error(`${role} does not take handed work (handoff = false in its role): no request is handed to it. Nothing was started.`);
-  const id = mine[at + 1];
-  if (!id || id.startsWith("-")) throw new Error("usage: seisin run <role> --handoff <id> -- <command...> (the id from seisin requests)");
-  const request = queueOf(config).find((r) => r.key === id);
-  if (!request) throw new Error(`no pending request has the id "${id}" — seisin requests lists them`);
-  const d = request.handoff;
-  if (d.type !== "route")
-    throw new Error(`${id} is not handed to anybody: ${describeHandoff(d, request.attempt)}. Nothing was started.`);
-  if (d.role !== role)
-    throw new Error(`${id} is handed to ${d.role}, not ${role}: the policy decides who takes it. Nothing was started.`);
-  return { request, chain: chainFrom(d) };
-}
-
-/**
- * `--expect-denied <path>`, as many times as given: the paths whose denial the
- * caller is waiting for (intake.js). Read from this process's argv and nowhere
- * else — not the environment, not a file in the repo — because everything
- * else is something the sandboxed side could reach, and a list it could add
- * to would be a way to keep its own denials out of the queue.
- *
- * Or a port, `tcp:<port>`, for a canary that dials a decoy: the kernel's denial
- * names only the port, so a real connection to that same port in the same run
- * would read as expected too. The caller picks a port nothing else would dial.
- *
- * A path, exactly. A glob is refused rather than read literally: `*` meaning
- * "this one file" is not what anyone who typed it meant, and meaning "every
- * file" would make a probe a way to silence a whole directory.
- */
-export function expectedDenials(mine) {
-  const out = [];
-  for (let i = 0; i < mine.length; i++) {
-    if (mine[i] !== "--expect-denied") continue;
-    const p = mine[++i];
-    if (!p || p.startsWith("-") || !p.trim())
-      throw new Error("usage: seisin run <role> --expect-denied <path> -- <command...> (a path, relative to the repo or absolute)");
-    if (WILD.test(p))
-      throw new Error(`--expect-denied ${p}: a path, not a pattern. Only a denial of exactly that path is expected; ` +
-        `name each one with its own --expect-denied.`);
-    if (/^tcp:/.test(p) && !(/^tcp:\d{1,5}$/.test(p) && Number(p.slice(4)) >= 1 && Number(p.slice(4)) <= 65535))
-      throw new Error(`--expect-denied ${p}: a port is tcp:<1-65535>.`);
-    out.push(p);
-  }
-  return out;
-}
-
-/** Is `name` a program the role can start with this PATH? */
 /** Where `name` resolves on `path`, absolute, or null. */
 function whichOn(name, path) {
   if (!name) return null;
@@ -930,6 +834,7 @@ function whichOn(name, path) {
   return null;
 }
 
+/** Is `name` a program the role can start with this PATH? */
 function onPath(name, path) {
   if (!name) return false;
   if (name.includes("/")) return existsSync(name);
