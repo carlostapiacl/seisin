@@ -8,6 +8,13 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## 0.8.7 — 2026-11-07
+
+- **Nothing changes in how seisin behaves.** The code that reads a policy, writes a role's sandbox settings, starts a run
+  and records what the kernel refused is split into smaller functions, and `src/` no longer has an import cycle. A role's
+  settings come out byte for byte as before. The tests now also cover lines forged from inside the sandbox, kernel
+  refusals that ask nobody, and how a shell command's arguments are read.
+
 ## 0.8.6 — 2026-11-06
 
 - **Output through a pipe arrives whole.** `seisin review --runs <dir> --json` could reach a pipe cut at a multiple of 64 KB,
