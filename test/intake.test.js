@@ -141,3 +141,113 @@ test("a narrowed run still asks for what its role does not have at all", () => {
   take.fromKernel({ action: "write", path: join(dir, "api", "x.ts"), operation: "file-write-create" });
   assert.equal(queue().length, 1);
 });
+
+/* ── a line from inside the sandbox is a claim ─────────────────────────── */
+
+test("a use line with no target, or a verdict nobody gives, is dropped", () => {
+  const { config, lines } = setup();
+  const take = intake({ config, role: "web", runId: "r", settings });
+  for (const target of [undefined, 42, "   "]) take.fromHook("log", { action: "use", tool: "x", target, verdict: "denied" });
+  take.fromHook("log", { action: "use", tool: "x", target: "mcp__db__query", verdict: "permitted" });
+  assert.deepEqual(lines(), []);
+});
+
+test("a use line is checked against the role's mcp list, and a name that does not parse is refused", () => {
+  const { dir, lines } = setup();
+  writeFileSync(join(dir, "seisin.toml"), '[roles.web]\nwrites = ["web/**"]\nmcp = ["docs"]\n');
+  const config = loadConfig(join(dir, "seisin.toml"));
+  const take = intake({ config, role: "web", runId: "r", settings });
+  take.fromHook("log", { action: "use", tool: "x", target: "mcp__db__query", verdict: "denied" });
+  take.fromHook("log", { action: "use", tool: "x", target: "mcp__db__query", verdict: "allowed" });
+  take.fromHook("log", { action: "use", tool: "x", target: "not-a-tool-name", verdict: "allowed" });
+  const [honest, forged, unparsed] = lines();
+  assert.equal(honest.disputed, undefined);
+  assert.equal(forged.disputed, "denied");
+  assert.equal(unparsed.disputed, "denied");
+});
+
+test("a file line about anything but a read or a write, with no target, or with an invented verdict, is dropped", () => {
+  const { config, lines, queue } = setup();
+  const take = intake({ config, role: "web", runId: "r", settings });
+  for (const to of ["log", "queue"]) {
+    take.fromHook(to, { action: "exec", target: "api/x.ts", verdict: "denied" });
+    take.fromHook(to, { action: "write", target: 42, verdict: "denied" });
+    take.fromHook(to, { action: "write", target: "   ", verdict: "denied" });
+  }
+  take.fromHook("log", { action: "write", target: "api/x.ts", verdict: "permitted" });
+  assert.deepEqual(lines(), []);
+  assert.deepEqual(queue(), []);
+});
+
+test("a filed request for something no grant can open puts nothing in front of a person", () => {
+  const dir = scratch("seisin-intake-");
+  writeFileSync(join(dir, "seisin.toml"),
+    '[roles.web]\nwrites = ["web/**"]\nnever_writes = ["web/generated/**"]\n\n' +
+    '[roles.owner]\nwrites = ["api/**"]\nprivate = ["vault/**"]\n');
+  const config = loadConfig(join(dir, "seisin.toml"));
+  const take = intake({ config, role: "web", runId: "r", settings });
+  take.fromHook("queue", { action: "write", target: "web/a.ts" });
+  take.fromHook("queue", { action: "write", target: "web/generated/a.ts" });
+  take.fromHook("queue", { action: "write", target: ".git/config" });
+  take.fromHook("queue", { action: "write", target: "seisin.toml" });
+  take.fromHook("queue", { action: "read", target: "vault/a.txt" });
+  assert.deepEqual(pending(requestsPath(dir)), []);
+  // And the same shape of line, for a path a person can give, does reach them.
+  take.fromHook("queue", { action: "write", target: "api/x.ts" });
+  assert.deepEqual(pending(requestsPath(dir)).map((r) => r.target), ["api/x.ts"]);
+});
+
+/* ── what the kernel refused ───────────────────────────────────────────── */
+
+test("a refused service is one line, and asks nobody", () => {
+  const { config, lines, queue } = setup();
+  const take = intake({ config, role: "web", runId: "r", settings });
+  take.fromKernel({ action: "system", operation: "mach-lookup", path: "com.example.svc" });
+  assert.equal(lines().length, 1);
+  assert.deepEqual(queue(), []);
+  assert.equal(take.stats.offPolicy, 0, "a service is not a path outside the policy");
+});
+
+test("a refused port is one line however many times it is dialled, and asks nobody", () => {
+  const { config, lines, queue } = setup();
+  const take = intake({ config, role: "web", runId: "r", settings });
+  for (let i = 0; i < 3; i++) take.fromKernel({ action: "connect", operation: "network-outbound", path: "tcp:3306" });
+  take.fromKernel({ action: "connect", operation: "network-outbound", path: "tcp:5432" });
+  assert.deepEqual(lines().map((l) => l.target), ["tcp:3306", "tcp:5432"]);
+  assert.deepEqual(queue(), []);
+  assert.equal(take.stats.offPolicy, 0, "a port is not a path outside the policy");
+});
+
+test("a write the kernel refused in git's metadata is recorded and asks nobody", () => {
+  const { dir, config, lines, queue } = setup();
+  const take = intake({ config, role: "web", runId: "r", settings });
+  take.fromKernel({ action: "write", operation: "file-write-create", path: join(dir, ".git", "objects", "aa") });
+  assert.equal(lines().length, 1);
+  assert.deepEqual(queue(), []);
+});
+
+test("a refusal on a path the policy says nothing about is counted, not logged", () => {
+  const { config, lines, queue } = setup();
+  const take = intake({ config, role: "web", runId: "r", settings });
+  take.fromKernel({ action: "read", operation: "file-read-data", path: "/nowhere/the/policy/mentions" });
+  assert.deepEqual(lines(), []);
+  assert.deepEqual(queue(), []);
+  assert.equal(take.stats.offPolicy, 1);
+});
+
+test("a read the kernel refused asks, even of a file the policy leaves open", () => {
+  // The two disagree, and the refusal is what the agent ran into.
+  const { dir, config, queue } = setup();
+  const take = intake({ config, role: "web", runId: "r", settings });
+  take.fromKernel({ action: "read", operation: "file-read-data", path: join(dir, "web", "a.ts") });
+  assert.deepEqual(queue().map((r) => r.target), ["web/a.ts"]);
+});
+
+test("a key the kernel refused is logged as a key, and the queue names who holds it", () => {
+  // Who a write lookup finds for `.secrets/x` is nobody, or whoever writes `**`.
+  const { dir, config, lines, queue } = setup();
+  const take = intake({ config, role: "web", runId: "r", settings });
+  take.fromKernel({ action: "read", operation: "file-read-data", path: join(dir, ".secrets", "db.txt") });
+  assert.equal(lines()[0].kind, "key");
+  assert.deepEqual(queue()[0].owners, ["backend"]);
+});

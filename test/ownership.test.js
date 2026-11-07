@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadConfig } from "../src/config.js";
-import { covers, ownersOf, keyHolders, explain } from "../src/owners.js";
+import { covers, ownersOf, keyHolders, explain, readTarget } from "../src/owners.js";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { scratch, twoRoles as cfg, policyFrom as policy } from "./_tmp.js";
@@ -269,4 +269,31 @@ test("an absolute path spelled in another case is inside the repo on a case-fold
   assert.equal(toRepoRelative(cfg, join(base, "repo", "src", "x.ts")), "src/x.ts");
   assert.equal(realOrSelf(join(base, "repo")), realOrSelf(repo));
   assert.ok(realOrSelf(join(base, "repo")).endsWith("/Repo"));
+});
+
+test("a read outside every key directory is allowed, and says why", () => {
+  const config = policy('[keys]\ndir = ".secrets"\n\n[roles.a]\nwrites = ["src/**"]\n');
+  const v = explain(config, "a", "read", "docs/readme.md");
+  assert.equal(v.allowed, true);
+  assert.equal(v.open, true);
+});
+
+test("a bare name is a key when it is a file in a key directory, and a path when it is not", () => {
+  const dir = scratch("seisin-readtarget-");
+  mkdirSync(join(dir, ".secrets"));
+  writeFileSync(join(dir, ".secrets", "db.txt"), "x\n");
+  writeFileSync(join(dir, "seisin.toml"), '[keys]\ndir = ".secrets"\n\n[roles.a]\nwrites = ["src/**"]\n');
+  const config = loadConfig(join(dir, "seisin.toml"));
+  assert.deepEqual(readTarget(config, "db.txt", dir), { key: true, target: "db.txt" });
+  assert.deepEqual(readTarget(config, "db", dir), { key: true, target: "db" });
+  assert.equal(readTarget(config, "notes.txt", dir).key, false);
+});
+
+test("a port the role lists and the kernel still refused is marked as listed", () => {
+  const config = policy('[roles.a]\nwrites = ["src/**"]\nlocal_ports = [3306]\n');
+  const listed = explain(config, "a", "connect", "tcp:3306");
+  assert.equal(listed.listed, true);
+  assert.equal(listed.network, true);
+  assert.equal(listed.allowed, false);
+  assert.notEqual(explain(config, "a", "connect", "tcp:5432").listed, true);
 });

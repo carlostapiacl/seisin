@@ -164,3 +164,22 @@ test("the hook files no request for a protected file, and says nothing was queue
   assert.match(out.hookSpecificOutput.permissionDecisionReason, /Nothing was queued/);
   assert.doesNotMatch(out.hookSpecificOutput.permissionDecisionReason, /Already queued/);
 });
+
+test("what a command's arguments are not, the hook does not call a file", () => {
+  const paths = (command) => targetsOf("Bash", { command }).map((t) => t.path);
+  assert.deepEqual(paths("rm a.txt 2>/dev/null"), ["a.txt"], "a redirect is not an argument");
+  assert.deepEqual(paths("rm $FILE"), [], "a word with shell in it is not a name");
+  assert.deepEqual(paths("rm abc"), ["abc"], "a bare name of three letters is");
+  assert.deepEqual(paths("rm ab"), [], "and of two it is more likely debris");
+});
+
+test("an MCP server refused twice is told so the second time", () => {
+  const dir = scratch("seisin-hook-");
+  const config = { ...cfg, root: dir, roles: { ...cfg.roles, frontend: { ...cfg.roles.frontend, mcp: ["docs"] } } };
+  const event = { tool_name: "mcp__db__query", tool_input: {} };
+  const reason = () => decide(config, "frontend", event, { run: null }).hookSpecificOutput.permissionDecisionReason;
+  const first = reason();
+  const second = reason();
+  assert.ok(second.startsWith(first), "the same sentence");
+  assert.notEqual(second, first, "and a word on how many times it has been said");
+});
