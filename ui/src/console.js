@@ -58,7 +58,6 @@
   var BASE = null;
   var ROOT = "";
   var sel = "frontend";
-  var LOG = [];
 
   function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
   // For attribute values: the text an agent chose (a request's id is its path)
@@ -377,12 +376,6 @@
       tb.appendChild(tr);
     });
 
-    var off=ROLES.filter(function(r){return !r.sandbox;}).length;
-    drawKpis();
-    pill("pin", off, off === 1 ? "role unconfined" : "roles unconfined");
-    var k=document.getElementById("kill");
-    k.textContent=off?"Confine every role":"Run every role unconfined";
-    k.classList.toggle("warn",off===0);
   }
 
   function drawCfg(){
@@ -471,61 +464,7 @@
     host.innerHTML=L.join("\n");
   }
 
-  /** What a denial with no owner was about, said of the thing it was — not "no role owns this
-   *  path" of a port or a tool, which is not a path and was never anybody's. */
-  function unownedSays(about){
-    return about === "network" ? "not in the network allow list"
-         : about === "tool" ? "MCP server not allowed for this role"
-         : about === "key" ? "a key this role does not declare"
-         : "no role owns this path";
-  }
 
-  function drawLog(){
-    var c=document.getElementById("log"); c.textContent="";
-    if(!LOG.length){
-      var z=document.createElement("p"); z.className="blank";
-      z.innerHTML="No decisions recorded yet.<br><span>The log fills when an agent actually "+
-                  "runs inside the sandbox — <code>seisin run &lt;role&gt; -- …</code>. "+
-                  "Asking <code>seisin explain</code> or reading this console does not write to it.</span>";
-      c.appendChild(z); return;
-    }
-    LOG.forEach(function(e){
-      var d=document.createElement("div");
-      d.className="ev "+e.kind;
-      var label=e.kind==="admin"?"you":e.kind==="deny"?"denied":e.kind==="observed"?"observed":"allowed";
-      var line,who="";
-      if(e.kind==="admin"){
-        line=esc(e.act)+"  <em>"+esc(e.target)+"</em>";
-      }else{
-        line="<em>"+esc(e.role)+"</em>  "+esc(e.act)+"  "+esc(e.target);
-        if(e.kind==="deny"){
-          who=e.owners.length
-            ? '<div class="who">belongs to <em>'+e.owners.map(esc).join("</em>, <em>")+"</em></div>"
-            : '<div class="who">'+esc(unownedSays(e.about))+"</div>";
-        }
-      }
-      // Only the kernel's own lines get the mark. A hook line and an older line look the
-      // same as they always did — the absence is the default, not a third state.
-      var src=e.source==="kernel"
-        ? '<span class="src" title="The OS denied it: recorded from the kernel, whether or not the hook saw the attempt. '+
-          'This line cannot be talked around.">OS denied</span>'
-        : "";
-      var w=when(e.at);
-      d.innerHTML="<b>"+label+'</b><span class="body"><span class="what">'+line+"</span>"+who+
-                  "</span>"+src+'<span class="when" title="'+escA(w.title)+'">'+esc(w.text)+"</span>";
-      c.appendChild(d);
-    });
-  }
-
-  /**
-   * A what-if, and only where a what-if is honest: the example. seisin.toml cannot
-   * express an unconfined role, so live this button does not exist.
-   */
-  document.getElementById("kill").onclick=function(){
-    var anyOpen=ROLES.some(function(r){return !r.sandbox;});
-    ROLES.forEach(function(r){r.sandbox=anyOpen;});
-    note(anyOpen?"confined":"unconfined","every role");
-  };
 
   /* ── control files ────────────────────────────────────────────────────── */
 
@@ -806,192 +745,14 @@
   var LIVE = false;    // served by `seisin ui`, reading a real repo
   var SETTINGS = {};   // role -> { settings } or { error }, from /api/settings; cleared when the policy changes
   var ONDISK = null;   // the file on disk, when there is one
-  var CAUSES = null;   // this window's denials, grouped by what was denied
-  var WALLS = {};      // per role, what it keeps being denied and still would be
-  var SHOW_ALL = false; // Denied: every cause, not the first twelve
 
-  /** The kind as a person reads it. The stored value "territory" reads as its opposite — a
-   *  path nobody owns — so it is said "ownable"; the value itself is a published field. */
-  function kindSays(k){ return k === "territory" ? "ownable" : k; }
 
-  /** One cause's line under its path: whose it is, or what kind of thing it is. */
-  function causeSays(c){
-    if (c.about && c.about !== "file") return unownedSays(c.about);
-    // Refused correctly and nothing to grant: said as expected, before "protected".
-    if (c.expected) return "expected · " + c.expected.hint;
-    if (c.standing === "protected") return "protected: " + (c.why || "");
-    if (c.standing === "outside") return c.why || "outside the map";
-    if (c.owners && c.owners.length) return "owned by " + c.owners.join(", ");
-    return "unowned" + (c.kind ? " · " + kindSays(c.kind) + (c.kind !== "territory" && c.hint ? ": " + c.hint : "") : "");
-  }
 
-  function bar(c, max){
-    var w = Math.max(2, Math.round((c.times / max) * 100));
-    // A cause the policy no longer denies is history, not live: shown greyed, not dropped.
-    var cold = c.stillDenied === 0;
-    var who = c.roles.length === 1 ? c.roles[0] : c.roles.length + " roles";
-    return '<div class="bar' + (cold ? ' cold' : '') + '">' +
-      '<div class="lbl"><div class="p">' + esc(c.action) + ' ' + esc(c.target) + '</div>' +
-      '<div class="who">' + esc(who) + " · " + esc(causeSays(c)) + (cold ? ' · <b>granted since</b>' : '') + '</div>' +
-      '<div class="t"><span class="f" style="width:' + w + '%"></span></div></div>' +
-      '<div class="num">' + plural(c.times, "denial") + '<s>' + (c.share * 100).toFixed(1) + '% of all</s></div>' +
-    '</div>';
-  }
 
-  /**
-   * The shape of the window, grouped by cause.
-   *
-   * The reading comes first and the bars second. Files first, then keys, the network and MCP
-   * tools each apart: "no role owns this path" is a sentence about paths. The list is cut at
-   * twelve and says so — it used to stop at twelve with nothing to say there were more.
-   */
-  function drawCauses(){
-    var f = CAUSES;
-    var lede = document.getElementById("ca-lede");
-    var bars = document.getElementById("ca-bars"), more = document.getElementById("ca-more"), other = document.getElementById("ca-other");
-    if (!f || !f.total) {
-      lede.textContent = "Nothing was denied in this window.";
-      bars.innerHTML = ""; more.innerHTML = ""; other.innerHTML = "";
-      return;
-    }
-    var fam = (f.families || [])[0];
-    var famShare = fam ? Math.round(fam.share * 100) : 0;
-    var distinct = f.distinct || f.causes.length;
-    var h = "<b>" + plural(f.total, "denial") + "</b> in this window, over <b>" + distinct.toLocaleString() +
-      "</b> distinct " + (distinct === 1 ? "thing" : "things") + ". ";
-    // The reading has to be taken at the level of the NAME, not the path, or it comes out
-    // backwards: six lock files in six repositories, none above 17%, is one kind of thing.
-    if (fam && famShare >= 40 && fam.paths > 1)
-      h += "<span class=\"q\"><b>" + fam.times.toLocaleString() + "</b> of them — <b>" +
-              famShare + "%</b> — are the same name in " + fam.paths + " places: " +
-              "<code>" + esc(fam.name) + "</code>. One kind of thing at that scale is a " +
-              "tooling problem with a mechanical fix, not something to grant.</span>";
-    else if (fam && famShare >= 40)
-      h += "<span class=\"q\"><b>" + famShare + "%</b> of it is a single path. That is " +
-              "usually mechanical rather than something to grant.</span>";
-    else
-      h += "<span class=\"q\">No one kind of thing dominates, which is what a real boundary " +
-              "question looks like rather than a tooling one.</span>";
-    var st = f.standing || {};
-    if (f.unowned)
-      h += " <b>" + f.unowned.toLocaleString() + "</b> " + (f.unowned === 1 ? "is a path" : "are paths") +
-              " <b>no role owns</b> — a grant cannot settle those until somebody claims them.";
-    var kinds = st.unowned && st.unowned.kinds;
-    if (f.unowned && kinds && kinds.territory && kinds.territory.paths < f.unowned)
-      h += " Only <b>" + kinds.territory.paths.toLocaleString() + "</b> of those " +
-              (kinds.territory.paths === 1 ? "is" : "are") + " ownable, a question of who owns what; the rest is " +
-              ["git", "temporary", "build", "credential"].filter(function(k){ return kinds[k] && kinds[k].paths; })
-                .map(function(k){ return kinds[k].paths.toLocaleString() + " " + k; }).join(", ") +
-              ", each with its own fix and none of them an owner.";
-    var ex = f.expected;
-    if (ex && ex.denials)
-      h += " <b>" + plural(ex.denials, "denial") + "</b> " + (ex.denials === 1 ? "is" : "are") +
-              " expected: Claude Code updating its plugins from inside the sandbox. They run and update outside it — nothing to grant.";
-    var closed = (st.protected ? st.protected.paths : 0);
-    if (closed)
-      h += " <b>" + closed.toLocaleString() + "</b> " + (closed === 1 ? "is" : "are") +
-              " protected on purpose — the boundary working, nothing to grant.";
-    lede.innerHTML = h;
-    document.getElementById("dn-window").textContent = rangeLabel() + " · " + plural(f.total, "denial");
 
-    var files = f.causes.filter(function(c){ return (c.about || "file") === "file"; });
-    var max = Math.max.apply(null, f.causes.map(function(c){ return c.times; }).concat([1]));
-    var shown = SHOW_ALL ? files : files.slice(0, 12);
-    var fileTotal = f.about ? f.about.file.paths : files.length;
-    bars.innerHTML = (files.length ? '<h3 class="sr">Files</h3>' : "") + shown.map(function(c){ return bar(c, max); }).join("");
-    more.innerHTML = "";
-    if (fileTotal > 12) {
-      var b = document.createElement("button"); b.type = "button"; b.className = "showall";
-      b.textContent = SHOW_ALL ? "show the first 12" :
-        shown.length + " of " + fileTotal.toLocaleString() + " paths · show all" +
-        (files.length < fileTotal ? " (the first " + files.length + " are listed here)" : "");
-      b.onclick = function(){ SHOW_ALL = !SHOW_ALL; drawCauses(); };
-      more.appendChild(b);
-    }
-    var parts = [
-      ["key", "Keys", "reads of a key the role does not declare"],
-      ["network", "Network", "connections to a destination not in the network allow list"],
-      ["tool", "MCP tools", "tools from an MCP server the role is not allowed to use"]
-    ];
-    other.innerHTML = parts.map(function(p){
-      var list = f.causes.filter(function(c){ return c.about === p[0]; });
-      var n = f.about ? f.about[p[0]] : { paths: list.length, denials: list.reduce(function(s, c){ return s + c.times; }, 0) };
-      if (!n || !n.denials) return "";
-      return '<div class="other"><h3>' + p[1] + " · " + plural(n.denials, "denial") + "</h3><p>" + p[2] + '.</p><div class="bars">' +
-        list.map(function(c){ return bar(c, max); }).join("") + "</div></div>";
-    }).join("");
-  }
 
-  /** Denied, by name — the cut that says what kind of day it was. */
-  function drawFamilies(){
-    var f = CAUSES;
-    var fams = (f && f.families) || [];
-    var top = fams[0];
-    document.getElementById("fa-lede").innerHTML = !top ? "Nothing was denied in this window."
-      : "The most common name is <code>" + esc(top.name) + "</code>: <b>" + Math.round(top.share * 100) + "%</b> of " +
-        plural(f.total, "denial") + ", across <b>" + top.paths + "</b> path" + (top.paths === 1 ? "" : "s") + "." +
-        (top.share >= 0.4 && top.paths > 1
-          ? ' <span class="q">One name at that scale is usually mechanical. Fixing the tool ' +
-            'removes the denials; granting the paths only hides them.</span>'
-          : ' <span class="q">No single name dominates — these are separate questions, ' +
-            'not one problem.</span>');
 
-    document.getElementById("fa-list").innerHTML = fams.map(function(x){
-      var w = Math.max(2, Math.round((x.times / (top.times || 1)) * 100));
-      return '<div class="fam">' +
-        '<div class="fam-h"><code>' + esc(x.name) + '</code>' +
-          '<span class="num">' + plural(x.times, "denial") + ' <s>' + (x.share*100).toFixed(1) + '%</s></span></div>' +
-        '<div class="t"><span class="f" style="width:' + w + '%"></span></div>' +
-        '<div class="who">' + x.paths + ' path' + (x.paths===1?'':'s') + ' · ' +
-          x.roles.length + ' role' + (x.roles.length===1?'':'s') + ': ' + esc(x.roles.join(", ")) + '</div>' +
-        '<ul class="places">' + x.where.map(function(p){
-          return '<li><span>' + esc(p.target) + '</span><b>' + p.times.toLocaleString() + '</b></li>';
-        }).join("") + '</ul></div>';
-    }).join("");
-  }
 
-  /** Retries on a list of walls: every call after the first denial of each. */
-  function retriesOf(list){ return list.reduce(function(n, w){ return n + (w.expected ? 0 : w.retried !== undefined ? w.retried : w.times - 1); }, 0); }
-
-  /**
-   * What a wall says under its path: the sentence Denied gives the same path, from the same
-   * function. Two of them drifted — Walls put "has an owner" before "protected" and had no
-   * case for a path outside the repository, so it told a person to add ~/.npmrc to a role's
-   * keys where Denied said there was nothing to grant.
-   */
-  function wallSays(w){ return causeSays(w); }
-
-  /**
-   * Walls — per role, what it keeps hitting and what that cost.
-   *
-   * One unit per number, said beside it. The role's figure was retries (times − 1 per wall)
-   * and each row's was times, so a role with walls of 5× and 3× read "6" above two numbers
-   * that add up to eight.
-   */
-  function drawWalls(){
-    var rows = Object.keys(WALLS || {}).map(function(r){
-      var w = WALLS[r];
-      return { role: r, walls: w, spent: retriesOf(w), hits: w.reduce(function(n, x){ return n + x.times; }, 0) };
-    }).sort(function(a,b){ return b.spent - a.spent; });
-    var total = rows.reduce(function(n,x){ return n + x.spent; }, 0);
-
-    document.getElementById("wl-lede").innerHTML = !rows.length
-      ? "No role is repeating a denial it has already been given."
-      : "<b>" + plural(total, "retry", "retries") + "</b> across <b>" + plural(rows.length, "role") +
-        '</b>: calls that tried again something already denied. <span class="q">A denial is said once, ' +
-        'mid-turn. Nothing carries it forward, so it gets tried again.</span>';
-
-    document.getElementById("wl-list").innerHTML = rows.map(function(x){
-      return '<div class="fam">' +
-        '<div class="fam-h"><code>' + esc(x.role) + '</code>' +
-          '<span class="num">' + plural(x.spent, "retry", "retries") + ' <s>of ' + plural(x.hits, "denial") + '</s></span></div>' +
-        '<ul class="places">' + x.walls.map(function(w){
-          return '<li><span>' + esc(w.action) + ' ' + esc(w.target) + '<br>' +
-            '<em>' + esc(wallSays(w)) + '</em></span><b>' + plural(w.times, "denial") + " · " +
-            (w.retried !== undefined ? w.retried : w.times - 1) + " retried</b></li>";
-        }).join("") + '</ul></div>';
-    }).join("");
-  }
 
   /** A count beside a nav item, or nothing — with its unit for a screen reader and a tooltip. */
   function pill(id, n, unit){
@@ -1002,57 +763,6 @@
     el.hidden = !n;
   }
 
-  /**
-   * The five numbers.
-   *
-   * Chosen by one rule: a KPI has to be something that can change and that you
-   * would do something about. Emphasis is conditional, never constant: at zero
-   * they go quiet and say so in words.
-   */
-  function drawKpis(){
-    var f = CAUSES || { total: 0, families: [], distinct: 0, causes: [] };
-    var waiting = REQS.length;
-    var retry = Object.keys(WALLS || {}).reduce(function(n, r){ return n + retriesOf(WALLS[r]); }, 0);
-    var fam = f.families && f.families[0];
-    var off = (ROLES || []).filter(function(r){ return !r.sandbox; }).length;
-
-    function set(id, cls, value, sub){
-      var el = document.getElementById(id);
-      if (!el) return;
-      el.classList.remove("live","alarm","calm");
-      if (cls) el.classList.add(cls);
-      el.querySelector(".n").textContent = value;
-      el.querySelector(".s").textContent = sub;
-    }
-
-    set("k-wait", waiting ? "live" : "calm", waiting,
-        READONLY ? (waiting ? (waiting === 1 ? "request, asked for elsewhere" : "requests, asked for elsewhere") : "nothing asked for")
-          : waiting ? (waiting === 1 ? "decision" : "decisions") : "nothing to decide");
-    set("k-open", off ? "alarm" : "calm", off,
-        off ? (off === 1 ? "role running unconfined" : "roles running unconfined") : "every role confined");
-    // The same count the list of runs gives: what the OS does at start and the
-    // expected housekeeping are said beside it, never left out without a word.
-    var quiet = ((f.about && f.about.system && f.about.system.denials) || 0) + ((f.expected && f.expected.denials) || 0);
-    var quietPaths = ((f.about && f.about.system && f.about.system.paths) || 0) + ((f.expected && f.expected.paths) || 0);
-    (f.causes || []).forEach(function(c){ if (c.about === "system" && c.expected) { quiet -= c.times; quietPaths--; } });
-    var real = Math.max(0, f.total - quiet);
-    set("k-ref", real ? "live" : "calm", real.toLocaleString(),
-        (real ? Math.max(1, (f.distinct || f.causes.length) - quietPaths).toLocaleString() + " distinct things" : f.total ? "nothing but housekeeping" : "nothing was denied") +
-        (quiet ? " · +" + quiet.toLocaleString() + " housekeeping" : "") +
-        (RANGE === "all" ? "" : " · " + rangeLabel()));
-    // Under 40% no name is "the" cause, and the Denied page says so in words. The card said
-    // "18% is index.lock" beside a lede saying nothing dominates.
-    if (fam && fam.share >= 0.4)
-      set("k-conc", "live", Math.round(fam.share * 100) + "%", "of denials are " + fam.name);
-    else
-      set("k-conc", "calm", fam ? "none" : "—",
-          fam ? "no dominant cause · largest: " + fam.name + " " + Math.round(fam.share * 100) + "%" : "nothing was denied");
-    set("k-retry", retry ? "live" : "calm", retry.toLocaleString(),
-        retry ? "retries on walls already denied" : "nothing retried");
-
-    pill("dn-pin", real, real === 1 ? "denial" : "denials");
-    pill("wl-pin", retry, retry === 1 ? "retry on a wall" : "retries on walls");
-  }
 
   /** What granting covers, said before the click: the file that was asked for, the folder
    *  that would be granted, and whose it is. It said "wants to write docs/**" for a request
@@ -1106,11 +816,6 @@
     return narrowable(r) && f && f.checked ? { scope: "file", grant: r.target } : { scope: "folder", grant: r.grant };
   }
 
-  /** Read only, where a request goes instead: the launcher that lent the run its territory. */
-  function askedWhere(){
-    var who = RUNINFO && RUNINFO.launcher;
-    return who ? "Not granted here — ask for it in <b>" + esc(who) + "</b>:" : "Not granted here — ask for it where the run was launched:";
-  }
 
   function drawReqs(){
     var host = document.getElementById("reqs");
@@ -1124,7 +829,11 @@
       return;
     }
 
+    // On a role's page, that role's requests only; each keeps its place in the queue, which is what a decision names.
+    var only = route() === "role" ? ROLE : null;
+    document.getElementById("req-h").textContent = only ? "Waiting on you" : "Pending decisions";
     host.innerHTML = REQS.map(function(r, i){
+      if (only && r.role !== only) return "";
       var times = r.times > 1 ? 'asked ' + r.times + "×" : "asked once";
       var w = when(r.last || r.first);
       var stale = r.stale ? ' · not asked again in ' + Number(r.stale.runs) + ' runs since — likely no longer needed' : "";
@@ -1137,7 +846,7 @@
           '<div class="err" id="err-' + i + '" role="alert" hidden></div>' +
         "</div>" +
         (READONLY
-          ? '<div class="act ro-ask">' + askedWhere() + ' <code>' + esc(r.grant) + "</code></div>"
+          ? '<div class="act ro-ask">' + 'Not granted here — ask for it ' + esc(askedOf()) + ': <code>' + esc(r.grant) + "</code></div>"
           : '<div class="act">' +
           '<input id="why-' + i + '" placeholder="reason (required)" aria-label="Reason for ' +
             escA(r.role) + '’s request" aria-describedby="err-' + i + '">' +
@@ -1186,7 +895,8 @@
     var bulk = document.getElementById("bulk");
     var btn = document.getElementById("decline-all");
     var why = document.getElementById("why-all");
-    bulk.hidden = REQS.length < 2 || READONLY;
+    // On a role's page the box lists that role's requests; "all" would reach the others too.
+    bulk.hidden = REQS.length < 2 || READONLY || /^#role\//.test(location.hash);
     btn.disabled = false;
     var rest = "Decline all (" + REQS.length + ")";
     disarm(btn, rest);
@@ -1327,7 +1037,7 @@
    * of a typo is worse than one that is down, because zero is a plausible answer.
    */
   function draw(){
-    [drawRows, drawCfg, drawControls, drawToml, drawLog, drawReqs, drawCauses, drawFamilies, drawWalls]
+    [drawRows, drawCfg, drawControls, drawToml, drawReqs]
       .forEach(function(f){ try { f(); } catch (e) { console.error("seisin: " + f.name + " failed", e); } });
   }
 
@@ -1339,11 +1049,11 @@
    * bar and the history entry at once.
    */
   /**
-   * Over a directory of runs, the run that is open: `&run=<id>` in the link a
-   * launcher hands out (beside the token, in the fragment), kept in the query
-   * once the fragment is wiped, so a reload stays on it.
+   * A run a link asked for: `&run=<id>` beside the token, the link a launcher's
+   * panel hands out. There is no console of one run any more: once the runs are
+   * read, it opens under its role (`#role/<role>/run/<id>`).
    */
-  var RUN = (function(){
+  var LINKED_RUN = (function(){
     var h = /(?:^#|&)run=([A-Za-z0-9][A-Za-z0-9._-]{0,127})(?:&|$)/.exec(location.hash || "");
     var q = new URLSearchParams(location.search).get("run");
     var id = h ? h[1] : q;
@@ -1354,7 +1064,7 @@
     try {
       if (m) { sessionStorage.setItem("seisin-token", m[1]); }
       var t = m ? m[1] : (sessionStorage.getItem("seisin-token") || "");
-      if (m) history.replaceState(null, "", location.pathname + (RUN ? "?run=" + encodeURIComponent(RUN) : location.search));
+      if (m) history.replaceState(null, "", location.pathname + location.search.replace(/([?&])run=[^&]*&?/, "$1").replace(/[?&]$/, ""));
       return t;
     } catch (_) { return m ? m[1] : ""; }
   })();
@@ -1365,7 +1075,7 @@
   var LAUNCHER = null;
   var HAS_RUNS = false;
   /** Who a denial is asked of, when it is not asked here. */
-  function askedOf(){ var who = (RUNINFO && RUNINFO.launcher) || LAUNCHER; return who ? "in " + who : "where the run was launched"; }
+  function askedOf(){ var who = LAUNCHER; return who ? "in " + who : "where the run was launched"; }
 
   /** What to tell a person when a request to this server fails. */
   function whyFailed(e, status){
@@ -1418,58 +1128,7 @@
     });
   }
 
-  /* ── time window ──────────────────────────────────────────────────────── */
-  // "1h" … "30d", "all", or "from:<ISO>". Remembered per browser, as a convenience.
-  var RANGE = "all";
-  try { RANGE = localStorage.getItem("seisin.range") || "all"; } catch (_) {}
-  var SPANS = { "1h": 36e5, "4h": 4 * 36e5, "24h": 24 * 36e5, "7d": 7 * 864e5, "30d": 30 * 864e5 };
-  if (!SPANS[RANGE] && RANGE !== "all" && RANGE.indexOf("from:") !== 0) RANGE = "all";
-
-  function sinceIso(){
-    if (SPANS[RANGE]) return new Date(Math.floor((Date.now() - SPANS[RANGE]) / 6e4) * 6e4).toISOString();
-    if (RANGE.indexOf("from:") === 0) return RANGE.slice(5);
-    return null;
-  }
-  function stateUrl(){
-    var s = sinceIso();
-    if (RUN)
-      return "/api/run?run=" + encodeURIComponent(RUN) + (s ? "&since=" + encodeURIComponent(s) : "");
-    return "/api/state" + (s ? "?since=" + encodeURIComponent(s) : "");
-  }
-  function rangeLabel(){
-    if (SPANS[RANGE]) return "last " + RANGE;
-    if (RANGE.indexOf("from:") === 0) return "since " + new Date(RANGE.slice(5)).toLocaleString();
-    return "all time";
-  }
-  var CUSTOM = false;   // the date field is open
-  function drawRange(){
-    var from = document.getElementById("range-from");
-    var isFrom = RANGE.indexOf("from:") === 0;
-    document.querySelectorAll("#range .seg button").forEach(function(b){
-      var on = b.dataset.r === "custom" ? (isFrom || CUSTOM) : (b.dataset.r === RANGE && !CUSTOM);
-      b.classList.toggle("on", on);
-      b.setAttribute("aria-pressed", on ? "true" : "false");
-    });
-    document.getElementById("range-from-box").hidden = !(isFrom || CUSTOM);
-    if (!isFrom) from.value = "";
-  }
-  function setRange(r){
-    RANGE = r;
-    CUSTOM = false;
-    try { localStorage.setItem("seisin.range", r); } catch (_) {}
-    drawRange();
-    reload().catch(function(){ /* server went away: keep what is on screen */ });
-  }
-  document.querySelectorAll("#range .seg button").forEach(function(b){
-    b.addEventListener("click", function(){
-      if (b.dataset.r === "custom") { CUSTOM = true; drawRange(); document.getElementById("range-from").focus(); return; }
-      setRange(b.dataset.r);
-    });
-  });
-  document.getElementById("range-from").addEventListener("change", function(e){
-    var t = Date.parse(e.target.value);   // datetime-local is local time, which Date.parse reads as such
-    setRange(isNaN(t) ? "all" : "from:" + new Date(t).toISOString());
-  });
+  function stateUrl(){ return "/api/state"; }
 
   /**
    * One read of the state, for boot, the poll and the reload after a decision.
@@ -1544,23 +1203,13 @@
       var fresh = s.roles.find(function(x){ return x.name === r2.name; });
       if (fresh) r2.blocks = fresh.blocks;
     });
-    var log = changed("log", s.log);
-    if (log) LOG = fromServer(s.log);
     var reqs = changed("requests", s.requests || []);
     if (reqs) REQS = s.requests || [];
-    var causes = changed("causes", s.causes);
-    if (causes) CAUSES = s.causes || null;
-    var walls = changed("walls", s.walls);
-    if (walls) WALLS = s.walls || {};
 
     var views = [];
     if (policy) views.push(drawRows, drawCfg, drawControls, drawToml);
     else if (blocks) views.push(drawRows);
-    if (log) views.push(drawLog);
     if (reqs) views.push(drawReqs);
-    if (causes) views.push(drawCauses, drawFamilies);
-    if (walls) views.push(drawWalls);
-    views.push(drawKpis);
     views.forEach(function(f){ try { f(); } catch (e) { console.error("seisin: " + f.name + " failed", e); } });
   }
 
@@ -1570,7 +1219,7 @@
     if (ASKING[name]) return;
     ASKING[name] = true;
     try {
-      var r = await fetch("/api/settings?role=" + encodeURIComponent(name) + (RUN ? "&run=" + encodeURIComponent(RUN) : ""),
+      var r = await fetch("/api/settings?role=" + encodeURIComponent(name) + "",
                           { cache: "no-store", headers: { "x-seisin-token": TOKEN } });
       var out = await r.json();
       SETTINGS[name] = r.ok ? { settings: out.settings } : { error: out.error || "could not read the settings" };
@@ -1583,7 +1232,13 @@
   }
 
   var LIVE_LABEL = "";
+  /** Until the server has answered, nothing is shown: the example drawn first read as a live run for a second. */
   async function boot(){
+    var asking = location.protocol.startsWith("http") && !!TOKEN;
+    if (asking) document.body.classList.add("booting");
+    try { await bootInner(); } finally { document.body.classList.remove("booting"); }
+  }
+  async function bootInner(){
     let got = null, stale = false;
     try {
       // Opened as a file there is no server to ask; the fetch only printed a CORS error.
@@ -1595,9 +1250,8 @@
         if (said.mode === "runs") { MODE = "runs"; READONLY = true; }
         if (said.readOnly) READONLY = true;
         LAUNCHER = said.launcher || null;
-        if (RUN) READONLY = true;
       }
-      if (MODE === "runs" && !RUN) { await bootRuns(); return; }
+      if (MODE === "runs") { await bootRuns(); return; }
       got = await fetchState(true);
       // A live server that refuses this tab's token: `seisin ui` was restarted
       // and minted a new one. Falling back to the example here showed a policy
@@ -1639,47 +1293,35 @@
         document.getElementById("demo-banner").innerHTML += " This tab has no link token: open the link <code>seisin ui</code> printed, or run <code>seisin ui --link</code>.";
       applyState(demoState());
       draw();
+      route();   // sets ROLE, so a reload on a role's page draws that role
+      bootDemoRuns();
       show(route());
+      openPending(demoView());
       return;
     }
 
     LIVE = true;
     applyState(s);
     LIVE_LABEL = s.config.replace(/^.*\//, "") + " · live";
-    if (RUN) {
-      RUNINFO = s.run || null; LIVE_LABEL = "run " + RUN + " · read only"; drawRunBanner();
-    } else if (LAUNCHER) LIVE_LABEL += " · read only";
+    if (LAUNCHER) LIVE_LABEL += " · read only";
     label.textContent = LIVE_LABEL;
     label.title = LIVE_LABEL;
     label.style.color = "var(--green)";
-    // Live, the what-if button goes for good: "run every role unconfined" against a real repo is
-    // not a preview. `dataset.live` is what `show()` reads.
-    document.getElementById("kill").dataset.live = "1";
-    document.getElementById("range").hidden = false;
-    drawRange();
-    document.getElementById("kill").hidden = true;
-    // And so does the card that counts what the button would do: live it could only say 0.
-    document.getElementById("k-open").style.display = "none";
-    // Read only nothing waits on the person here: what the run asked for is asked for where it was launched.
-    // So the queue and its card go, and the denials say where to ask.
-    if (READONLY) {
-      document.getElementById("nav-req").hidden = true;
-      document.getElementById("k-wait").style.display = "none";
-    }
-    document.getElementById("toml-note").textContent = RUN ? "this run's policy, as it was kept" : "the file on disk, as it stands";
+    // Read only nothing waits on the person here: what a run asked for is asked for where it was launched.
+    if (READONLY) document.getElementById("nav-req").hidden = true;
+    document.getElementById("toml-note").textContent = "the file on disk, as it stands";
     document.getElementById("foot-mode").textContent = READONLY ? "Live, read only." : "Live.";
-    document.getElementById("foot-text").innerHTML = RUN
-      ? "This page reads <b>" + esc(s.config) + "</b> and one run's log. Nothing is written from here: " +
-        "what a run was lent is asked for where it was launched."
-      : READONLY
+    document.getElementById("foot-text").innerHTML = READONLY
       ? "This page reads <b>" + esc(s.config) + "</b> and the log on disk. Nothing is written from here: " +
         "the territory is lent by " + esc(LAUNCHER) + ", and access is asked for there."
       : "This page reads <b>" + esc(s.config) + "</b> and the log on disk. Two actions write, each in place and stamped " +
       "with its reason: a decision on a request, and saving a control-files change after its preview. Territories " +
       "and keys are changed in seisin.toml itself.";
     draw();
-    if (!RUN && HAS_RUNS) await addRuns();
+    if (HAS_RUNS) await addRuns();
     show(route());
+    // Opened on a role (a reload, a link to a run): that role's cut, and the run it names.
+    if (HAS_RUNS && route() === "role") { var g2 = await fetchRuns(true); if (g2.v) { drawRunsAll(g2.v); openPending(g2.v); } }
     poll();
   }
 
@@ -1687,10 +1329,9 @@
    * `seisin ui --runs`: every run, filtered and summed, read only. One run opens
    * as the console always looked — its policy, its denials, its log — with no
    * grant on it. */
-  var RUNINFO = null;
   var RFILTER = (function(){
     var q = new URLSearchParams(location.search), out = {};
-    ["team", "role", "work_item", "status", "outcome", "q"].forEach(function(k){ var v = q.get(k); if (v) out[k] = v; });
+    ["since", "team", "role", "work_item", "status", "outcome", "q"].forEach(function(k){ var v = q.get(k); if (v) out[k] = v; });
     return out;
   })();
   var RLAST = { url: null, etag: null, v: null };
@@ -1698,10 +1339,13 @@
   function runsUrl(){
     var q = new URLSearchParams();
     Object.keys(RFILTER).forEach(function(k){ if (RFILTER[k]) q.set(k, RFILTER[k]); });
+    // On a role's page, every run cut to what that role did in it.
+    if (ROLE && /^#role\//.test(location.hash)) q.set("srole", ROLE);
     var s = q.toString();
     return "/api/runs" + (s ? "?" + s : "");
   }
   async function fetchRuns(fresh){
+    if (!LIVE && DEMO_SHIFTED) return { v: demoView() };
     var url = runsUrl();
     var h = { "x-seisin-token": TOKEN };
     if (!fresh && RLAST.etag && RLAST.url === url) h["if-none-match"] = RLAST.etag;
@@ -1732,28 +1376,8 @@
     return '<span class="oc ' + escA(o) + '">' + esc(says[o] || o) + "</span>" + lost;
   }
 
-  function drawRunBanner(){
-    var b = document.getElementById("run-banner");
-    var r = RUNINFO || { id: RUN };
-    b.innerHTML = "<b>Run " + esc(r.run_id || r.id) + "</b> " + outcomeTag(r.outcome || "", r.dropped) +
-      ' · <a href="./#runs">all runs</a>' +
-      '<div class="meta">' + (runMeta(r) || "no run.json: only what its policy and log say") +
-      " · read only: access is asked for " + esc(askedOf()) + "</div>";
-    b.hidden = false;
-    document.getElementById("nav-runs").hidden = false;
-  }
 
   function drawRunsView(v){
-    // The filters: every value any run has, with how many runs have it.
-    document.querySelectorAll("#rn-filters select").forEach(function(sel){
-      var f = sel.dataset.f;
-      var opts = (v.facets[f] || []);
-      var cur = RFILTER[f] || "";
-      sel.innerHTML = '<option value="">all</option>' + opts.map(function(o){
-        return '<option value="' + escA(o.value) + '"' + (o.value === cur ? " selected" : "") + ">" + esc(o.value) + " (" + o.runs + ")</option>";
-      }).join("");
-      sel.disabled = !opts.length;
-    });
     document.getElementById("rn-count").textContent = v.totals.runs === v.total
       ? plural(v.total, "run") : plural(v.totals.runs, "run") + " of " + v.total;
     pill("runs-pin", v.total, v.total === 1 ? "run" : "runs");
@@ -1768,16 +1392,21 @@
       card(t.outcome.refused ? "a" : "g", "canary failed", t.outcome.refused || 0, "runs that never started") +
       (t.outcome["no-record"] ? card("a", "no record", t.outcome["no-record"], "runs with nothing that says the boundary held") : "") +
       (t.incomplete ? card("a", "record incomplete", t.incomplete, "runs whose system log dropped kernel messages") : "") +
-      card(t.denied ? "a" : "g", "denied", t.denied, (k.file || 0).toLocaleString() + " files · " + (k.network || 0).toLocaleString() + " network") +
+      (function(){
+        var p = (v.attention && v.attention.piles) || null;
+        if (!p) return card(t.denied ? "a" : "g", "denied", t.denied, (k.file || 0).toLocaleString() + " files · " + (k.network || 0).toLocaleString() + " network");
+        var need = p.decide.denials + p.outside.denials + p.handoff.denials;
+        return card(need ? "a" : "g", "need a person", need, "denials · +" + (p.protected.denials + p.expected.denials).toLocaleString() + " the boundary working");
+      })() +
       card(t.retried ? "a" : "g", "spent retrying", t.retried, "calls after the first denial of the same thing");
 
     var causes = v.causes || [];
     document.getElementById("rn-causes-n").textContent = causes.length ? String(causes.length) : "";
     document.getElementById("rn-causes").innerHTML = causes.length
-      ? "<thead><tr><th>denied</th><th>what</th><th class=num>runs</th><th class=num>times</th><th>teams</th><th>roles</th></tr></thead><tbody>" +
+      ? "<thead><tr><th>stands</th><th>denied</th><th>what</th><th class=num>runs</th><th class=num>times</th><th>teams</th><th>roles</th></tr></thead><tbody>" +
         causes.map(function(c){
-          return '<tr class="' + (c.about === "system" ? "sys" : "") + '"><td>' + esc(c.action) + "</td><td><code>" + esc(c.target) +
-            "</code></td><td class=num>" + c.runs + "</td><td class=num>" + c.times + "</td><td>" + esc((c.teams || []).join(", ")) +
+          return '<tr class="' + (c.about === "system" ? "sys" : "") + '"><td>' + classTag(c.class) + "</td><td>" + esc(c.action) + "</td><td><code>" + esc(c.target) +
+            '</code><div class="ro-ask">' + esc(c.hint || c.why || "") + "</div></td><td class=num>" + c.runs + "</td><td class=num>" + c.times + "</td><td>" + esc((c.teams || []).join(", ")) +
             "</td><td>" + esc((c.roles || []).join(", ")) + "</td></tr>";
         }).join("") + "</tbody>"
       : '<tbody><tr><td class="blank quiet">Nothing denied in these runs.</td></tr></tbody>';
@@ -1785,13 +1414,16 @@
     var SHOWN = 300, runs = v.runs || [];
     document.getElementById("rn-list").innerHTML = runs.length
       ? "<thead><tr><th>run</th><th>started</th><th>team</th><th>role</th><th>work item</th><th>status</th><th>outcome</th>" +
-        "<th class=num>denied</th><th class=num>retried</th><th>hosts denied</th></tr></thead><tbody>" +
+        '<th class=num title="denials that need a person: no owner, outside, another role">needs</th><th class=num title="denials that are the boundary working: protected on purpose, expected">boundary</th><th class=num>retried</th><th>hosts denied</th></tr></thead><tbody>' +
         runs.slice(0, SHOWN).map(function(r){
           var w = when(r.started_at || "");
-          return "<tr><td><a href=\"./?run=" + encodeURIComponent(r.id) + "#denied\"><code>" + esc(r.run_id || r.id) + "</code></a></td>" +
+          var ran = r.roles_ran || [];
+          var into = ran.indexOf(r.role) !== -1 ? r.role : ran[ran.length - 1];
+          var href = into ? "#role/" + encodeURIComponent(into) + "/run/" + encodeURIComponent(r.id) : "./?run=" + encodeURIComponent(r.id) + "#denied";
+          return "<tr><td><a href=\"" + escA(href) + "\"><code>" + esc(r.run_id || r.id) + "</code></a></td>" +
             '<td title="' + escA(w.title || "") + '">' + esc(w.text || "") + "</td><td>" + esc(r.team || "") + "</td><td>" + esc(r.role || "") +
             "</td><td>" + esc(r.work_item || "") + "</td><td>" + esc(r.status || "") + "</td><td>" + outcomeTag(r.outcome, r.dropped) +
-            "</td><td class=num>" + r.denied + "</td><td class=num>" + r.retried + "</td><td>" +
+            "</td><td class=num>" + needsOf(r) + "</td><td class=num>" + workingOf(r) + "</td><td class=num>" + r.retried + "</td><td>" +
             (r.hosts || []).slice(0, 3).map(function(h){ return "<code>" + esc(h.target) + "</code>"; }).join(" ") + "</td></tr>";
         }).join("") + "</tbody>"
       : '<tbody><tr><td class="blank quiet">' + (v.total ? "No run matches these filters." : "No runs in " + esc(v.dir) + " yet.") + "</td></tr></tbody>";
@@ -1800,12 +1432,336 @@
     more.textContent = "Showing the newest " + SHOWN + " of " + runs.length + ": narrow the filters for the rest.";
   }
 
+  /* ── attention ───────────────────────────────────────────────────────────
+   * Where each denial stands, in the five words the CLI uses too (views.js classOf):
+   * no owner, outside and another role's need a person; protected and expected are the
+   * boundary working, counted and kept off the top. */
+  var CLASS_LABEL = { decide: "no owner", outside: "outside", handoff: "other role", protected: "protected", expected: "expected", granted: "granted since" };
+  var CLASS_WHAT = {
+    decide: "no role owns it: a decision nobody has made",
+    outside: "a host, a port, a key or a path outside the repository: the allow list's question",
+    handoff: "another role's territory: work to hand over, or a territory drawn wrong",
+    protected: "closed to every role on purpose: the boundary working",
+    expected: "the agent program's own housekeeping, denied correctly: nothing to do",
+    granted: "the policy gives it to this role now: denied before the grant, nothing left to do"
+  };
+  function classTag(c){
+    c = c || "decide";
+    return '<span class="cl ' + escA(c) + '" title="' + escA(CLASS_WHAT[c] || "") + '">' + esc(CLASS_LABEL[c] || c) + "</span>";
+  }
+  function needsOf(r){ var b = r.byClass || {}; return (b.decide || 0) + (b.outside || 0) + (b.handoff || 0); }
+  function workingOf(r){ var b = r.byClass || {}; return (b.protected || 0) + (b.expected || 0); }
+
+  /** The shared filter: every value any run has, with how many runs have it. */
+  function drawFilters(v){
+    // The filters: every value any run has, with how many runs have it.
+    document.querySelectorAll("#rn-filters select").forEach(function(sel){
+      var f = sel.dataset.f;
+      // The window has its own options; it only shows which one is on.
+      if (sel.dataset.fixed) { sel.value = RFILTER[f] || ""; return; }
+      var opts = (v.facets[f] || []);
+      var cur = RFILTER[f] || "";
+      sel.innerHTML = '<option value="">all</option>' + opts.map(function(o){
+        return '<option value="' + escA(o.value) + '"' + (o.value === cur ? " selected" : "") + ">" + esc(o.value) + " (" + o.runs + ")</option>";
+      }).join("");
+      sel.disabled = !opts.length;
+      // A repository's own runs have no team or work item: the filter is left out rather than offered empty.
+      sel.closest("label").hidden = !opts.length;
+    });
+  }
+
+  function drawRunsAll(v){
+    try { drawFilters(v); } catch (e) { console.error("seisin: drawFilters failed", e); }
+    try { drawRolesNav(v.roles || []); } catch (e) { console.error("seisin: drawRolesNav failed", e); }
+    if (v.filters && v.filters.srole) {
+      try { drawRole(v); } catch (e) { console.error("seisin: drawRole failed", e); }
+      return;
+    }
+    drawRunsView(v);
+    try { drawOverview(v); } catch (e) { console.error("seisin: drawOverview failed", e); }
+  }
+
+  /* Shared by the overview and a role's page: the same list, the same days, the same five places. */
+  function needsRows(top, limit, withRoles){
+    return "<thead><tr><th class=num>runs</th><th>stands</th><th>what was denied</th><th>why it is denied</th><th>" + (withRoles ? "who" : "where") + "</th><th>last</th></tr></thead><tbody>" +
+      top.slice(0, limit).map(function(c, i){
+        var who = [];
+        if (withRoles && c.roles && c.roles.length) who.push(c.roles.slice(0, 3).join(", ") + (c.roles.length > 3 ? " +" + (c.roles.length - 3) : ""));
+        if (c.teams && c.teams.length) who.push(c.teams.slice(0, 3).join(", ") + (c.teams.length > 3 ? " +" + (c.teams.length - 3) : ""));
+        if (c.work_item_count) who.push(c.work_item_count === 1 ? "1 work item" : c.work_item_count + " work items");
+        var w = when(c.last_at || "");
+        return '<tr class="' + (i < 3 ? "lead" : "") + '"><td class=num>' + c.runs.toLocaleString() + "</td><td>" + classTag(c.class) +
+          (c.new ? '<span class="cl new" title="first seen in the last 24 hours">new</span>' : "") + "</td><td>" + esc(c.action) +
+          " <code>" + esc(c.target) + "</code>" + (c.times > c.runs ? ' <span class="ro-ask">' + c.times.toLocaleString() + " times</span>" : "") +
+          (c.places ? ' <span class="ro-ask" title="' + escA((c.where || []).map(function(x){ return x.target + " (" + x.runs + " runs)"; }).join("\n") +
+            (c.places > (c.where || []).length ? "\n…" : "")) + '">in ' + c.places.toLocaleString() + " places</span>" : "") +
+          '</td><td class="why">' + esc(c.hint || c.why || CLASS_WHAT[c.class] || "") + '</td><td class="who">' + esc(who.join(" · ")) + "</td><td>" +
+          esc(w.text || "") + "</td></tr>";
+      }).join("") + "</tbody>";
+  }
+  function daysHtml(days){
+    var max = Math.max.apply(null, days.map(function(d){ return d.needs; }).concat([1]));
+    var DAYNAMES = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+    return '<div class="days" role="img" aria-label="denials that need a person, per day, over the last 14 days">' +
+      days.map(function(d){
+        var pct = d.needs ? Math.max(3, Math.round(d.needs / max * 100)) : 0;
+        var tip = d.day + ": " + d.runs + (d.runs === 1 ? " run" : " runs") + " · " + d.needs.toLocaleString() + " needing a person · " +
+          d.boundary.toLocaleString() + " the boundary working" + (d.refused ? " · " + d.refused + " canary failed" : "");
+        return '<div class="d' + (d.needs ? "" : " zero") + '" title="' + escA(tip) + '"><i style="height:' + pct + '%"></i></div>';
+      }).join("") + "</div>" +
+      '<div class="days-axis">' + days.map(function(d, i){
+        var dt = new Date(d.day + "T12:00:00");
+        return "<span>" + (i === days.length - 1 ? "today" : (i % 2 ? "" : DAYNAMES[dt.getDay()] + " " + dt.getDate())) + "</span>";
+      }).join("") + "</div>" +
+      '<p class="days-sum">' + days.reduce(function(n, d){ return n + d.runs; }, 0).toLocaleString() + " runs in these 14 days · " +
+      days.reduce(function(n, d){ return n + d.needs; }, 0).toLocaleString() + " denials needing a person</p>";
+  }
+  function pilesHtml(p){
+    var order = ["decide", "outside", "handoff", "protected", "expected"];
+    var total = order.reduce(function(n, c){ return n + p[c].denials; }, 0) || 1;
+    return "<thead><tr><th>stands</th><th class=num>denials</th><th class=num>share</th><th class=num>runs</th><th>what it asks of you</th></tr></thead><tbody>" +
+      order.map(function(c){
+        var quiet = c === "protected" || c === "expected";
+        return '<tr class="' + (quiet ? "quiet" : "") + '"><td>' + classTag(c) + "</td><td class=num>" + p[c].denials.toLocaleString() +
+          "</td><td class=num>" + Math.round(p[c].denials / total * 100) + "%</td><td class=num>" + p[c].runs.toLocaleString() +
+          '</td><td class="what">' + esc(CLASS_WHAT[c]) + "</td></tr>";
+      }).join("") + "</tbody>";
+  }
+  function kpiCard(cls, title, n, sub, href){
+    return '<a class="card kpi ' + cls + '" href="' + (href || "#overview") + '"><h2>' + esc(title) + '</h2><div class="n">' +
+      esc(typeof n === "number" ? n.toLocaleString() : n) + '</div><div class="s">' + sub + "</div></a>";
+  }
+  function healthCards(a, href){
+    var h = a.health, p = a.piles;
+    var need = p.decide.denials + p.outside.denials + p.handoff.denials;
+    var working = p.protected.denials + p.expected.denials;
+    // With no run there is nothing to say held: the canary has not been tried.
+    return (!h.runs ? kpiCard("", "boundary", "—", "no run yet: <code>seisin run &lt;role&gt; -- &lt;agent&gt;</code>", href) : kpiCard(h.refused ? "a" : "g", "boundary",
+        h.refused ? h.refused.toLocaleString() + " failed" : "held",
+        h.refused ? "runs whose canary failed: nothing ran" : "canary passed in every run that has one", href)) +
+      (h.incomplete || h.noRecord ? kpiCard("a", "record", (h.incomplete + h.noRecord).toLocaleString(),
+        [h.incomplete ? h.incomplete + " with kernel messages dropped" : "", h.noRecord ? h.noRecord + " with no record" : ""].filter(Boolean).join(" · "), href) : "") +
+      kpiCard(need ? "a" : "g", "need a person", a.needs, (a.needs === 1 ? "thing" : "things") + (a.paths !== a.needs ? " in " + a.paths.toLocaleString() + " places" : "") + " · " + need.toLocaleString() + " denials", href) +
+      kpiCard(a.fresh ? "a" : "g", "new today", a.fresh, a.fresh ? "first seen in the last 24 h" : "nothing new in the last 24 h", href) +
+      kpiCard("", "boundary working", working, "protected " + p.protected.denials.toLocaleString() + " · expected " + p.expected.denials.toLocaleString(), href);
+  }
+
+  /** The roles in the sidebar: a name that shares its prefix with two or more others is folded under it. */
+  var ROLES_SEEN = [];
+  function drawRolesNav(roles){
+    ROLES_SEEN = roles;
+    var box = document.getElementById("nav-roles");
+    if (!box) return;
+    // No prototype: a role named constructor-one must not find Object's own constructor.
+    var groups = Object.create(null);
+    roles.forEach(function(r){ var m = /^([^-]+)-./.exec(r.name); if (m) (groups[m[1]] = groups[m[1]] || []).push(r); });
+    var folded = Object.create(null);
+    Object.keys(groups).forEach(function(k){ if (groups[k].length >= 3) groups[k].forEach(function(r){ folded[r.name] = k; }); });
+    function link(r){
+      var on = route() === "role" && ROLE === r.name;
+      return '<a href="#role/' + escA(encodeURIComponent(r.name)) + '" class="' + (on ? "on" : "") + (r.def ? "" : " gone") + '" title="' +
+        escA(r.def ? r.runs + " runs" : "not in the newest policy: only its past runs") + '"><i>' + (r.health.refused ? "!" : "·") + "</i>" +
+        esc(r.name) + '<span class="pin">' + (r.needs ? esc(String(r.needs)) : "") + "</span></a>";
+    }
+    var done = Object.create(null), out = "";
+    roles.forEach(function(r){
+      var g = folded[r.name];
+      if (!g) { out += link(r); return; }
+      if (done[g]) return;
+      done[g] = true;
+      var members = groups[g];
+      var needs = members.reduce(function(n, x){ return n + x.needs; }, 0);
+      var open = route() === "role" && members.some(function(x){ return x.name === ROLE; });
+      out += "<details" + (open ? " open" : "") + '><summary title="' + escA(members.length + " roles") + '">' + esc(g) + "-*" +
+        '<span class="pin">' + (needs ? needs : "") + "</span></summary>" + members.map(link).join("") + "</details>";
+    });
+    var keep = box.querySelector("details[open]") ? Array.from(box.querySelectorAll("details")).map(function(d){ return d.open; }) : null;
+    box.innerHTML = out;
+    if (keep) box.querySelectorAll("details").forEach(function(d, i){ if (keep[i]) d.open = true; });
+  }
+
+  function drawOverview(v){
+    var a = v.attention;
+    if (!a) return;
+    var waiting = !READONLY && REQS && REQS.length;
+    document.getElementById("at-kpis").innerHTML =
+      (waiting ? kpiCard("b", "waiting on you", REQS.length, REQS.length === 1 ? "request to decide" : "requests to decide", "#requests") : "") +
+      healthCards(a);
+    pill("att-pin", a.needs, a.needs === 1 ? "thing needs a person" : "things need a person");
+
+    // Every role, worst first: the page's main table.
+    var roles = v.roles || [];
+    document.getElementById("ov-roles").innerHTML = roles.length
+      ? "<thead><tr><th>role</th>" + (waiting ? "<th class=num>waiting on you</th>" : "") + "<th class=num>runs</th><th class=num>needs a person</th><th>the most of it</th><th>boundary</th><th>last run</th></tr></thead><tbody>" +
+        roles.map(function(r){
+          var asks = waiting ? REQS.filter(function(q){ return q.role === r.name; }).length : 0;
+          var w = when(r.last_at || "");
+          var bound = r.health.refused ? '<span class="oc refused">' + r.health.refused + " canary failed</span>"
+            : r.runs ? '<span class="oc clean">held</span>' : "";
+          return '<tr class="' + (r.runs ? "" : "idle") + '"><td><a href="#role/' + escA(encodeURIComponent(r.name)) + '">' + esc(r.name) + "</a>" +
+            (r.def ? "" : ' <span class="ro-ask" title="not in the newest policy">past</span>') + "</td>" +
+            (waiting ? "<td class=num>" + (asks ? '<a href="#role/' + escA(encodeURIComponent(r.name)) + '"><b>' + asks + "</b></a>" : "") + "</td>" : "") +
+            "<td class=num>" + r.runs.toLocaleString() +
+            "</td><td class=num>" + (r.needs ? r.needs.toLocaleString() : "—") + '</td><td class="top">' +
+            (r.top ? classTag(r.top.class) + " " + esc(r.top.action) + " <code>" + esc(r.top.target) + "</code>" : (r.runs ? "nothing" : "never ran")) +
+            "</td><td>" + bound + "</td><td>" + esc(w.text || "") + "</td></tr>";
+        }).join("") + "</tbody>"
+      : '<tbody><tr><td class="blank quiet">No role has run yet.</td></tr></tbody>';
+
+    var top = a.top || [];
+    var SHOW = SHOW_ALL_ATT ? top.length : 8;
+    document.getElementById("at-need-note").textContent = a.needs
+      ? "every role, by how many runs hit it · " + (top.length < a.needs ? "the first " + top.length + " of " + a.needs.toLocaleString() : a.needs.toLocaleString() + " in all")
+      : "";
+    document.getElementById("at-list").innerHTML = top.length ? needsRows(top, SHOW, true)
+      : '<tbody><tr><td class="blank quiet">' + (v.totals.runs
+          ? "Nothing needs a person: every denial in these runs was protected on purpose or expected."
+          : (v.total ? "No run matches these filters." : "No runs yet. Start one with <code>seisin run &lt;role&gt; -- &lt;agent&gt;</code>; each line it logs names its run.")) + "</td></tr></tbody>";
+    var more = document.getElementById("at-more");
+    more.hidden = top.length <= 8;
+    more.innerHTML = '<a href="#overview" id="at-toggle">' + (SHOW_ALL_ATT ? "show the first 8" : "show all " + top.length) + "</a>";
+    var t = document.getElementById("at-toggle");
+    if (t) t.onclick = function(e){ e.preventDefault(); SHOW_ALL_ATT = !SHOW_ALL_ATT; drawOverview(v); };
+    document.getElementById("at-days").innerHTML = daysHtml(a.days || []);
+    document.getElementById("at-piles").innerHTML = pilesHtml(a.piles);
+  }
+  var SHOW_ALL_ATT = false;
+
+  /* ── one role ───────────────────────────────────────────────────────────── */
+  var ROLE = null;
+  var OPEN_RUNS = {};
+  var SHOW_ALL_ROLE = false;
+  function drawRole(v){
+    var info = (v.roles || []).find(function(r){ return r.name === ROLE; }) || { name: ROLE, def: null, health: {} };
+    var d = info.def;
+    function codes(list, none){ return list && list.length ? list.map(function(x){ return "<code>" + esc(String(x)) + "</code>"; }).join("") : '<span class="ro-ask">' + none + "</span>"; }
+    document.getElementById("v-title").textContent = ROLE;
+    document.getElementById("rl-head").innerHTML =
+      "<dl>" +
+      (d ? "<dt>writes</dt><dd>" + codes(d.writes, "nothing") + "</dd>" +
+        "<dt>reads</dt><dd>" + esc(d.read === "territory" ? "only its territory, and what the policy opens" : "the machine, except keys, other roles' credentials and protected places") + "</dd>" +
+        "<dt>keys</dt><dd>" + codes(d.keys, "none") + "</dd>" +
+        "<dt>network</dt><dd>" + codes(d.network, "no host") + (d.localPorts ? " · local ports " + codes(d.localPorts, "") : "") + "</dd>" +
+        "<dt>held by</dt><dd>" + esc(d.sandbox || "the default: tartaros, or sandbox-runtime where tartaros is not installed") + "</dd>"
+        : "") +
+      "</dl>" +
+      (d ? '<p class="ro-ask" style="margin:8px 0 0">As the newest policy says it' + (MODE === "runs" ? " (the newest run's)" : "") + ".</p>"
+         : '<p class="gone">Not in the newest policy: this page shows only its past runs.</p>') +
+      "";
+    var a = v.attention;
+    document.getElementById("rl-kpis").innerHTML = healthCards(a, "#role/" + encodeURIComponent(ROLE));
+    var top = a.top || [];
+    var SHOW = SHOW_ALL_ROLE ? top.length : 10;
+    document.getElementById("rl-need-note").textContent = a.needs ? "by how many of its runs hit it" : "";
+    document.getElementById("rl-list").innerHTML = top.length ? needsRows(top, SHOW, false)
+      : '<tbody><tr><td class="blank quiet">' + (v.totals.runs ? "Nothing needs a person: every denial this role had was protected on purpose or expected." : "This role has no runs in this window.") + "</td></tr></tbody>";
+    var more = document.getElementById("rl-list-more");
+    more.hidden = top.length <= 10;
+    more.innerHTML = '<a href="#" id="rl-toggle">' + (SHOW_ALL_ROLE ? "show the first 10" : "show all " + top.length) + "</a>";
+    var t = document.getElementById("rl-toggle");
+    if (t) t.onclick = function(e){ e.preventDefault(); SHOW_ALL_ROLE = !SHOW_ALL_ROLE; drawRole(v); };
+    document.getElementById("rl-days").innerHTML = daysHtml(a.days || []);
+    document.getElementById("rl-piles").innerHTML = pilesHtml(a.piles);
+
+    // Its runs, each opening in place as this role lived it.
+    var SHOWN = 200, runs = v.runs || [];
+    document.getElementById("rl-runs-note").textContent = runs.length
+      ? plural(v.totals.runs, "run") + " · newest first · open one to see it in order" : "";
+    var body = runs.slice(0, SHOWN).map(function(r){
+      var w = when(r.started_at || "");
+      var open = !!OPEN_RUNS[r.id];
+      return '<tr class="run' + (open ? " open" : "") + '" data-run="' + escA(r.id) + '"><td><code>' + esc(shortId(r.run_id || r.id)) + '</code></td><td title="' + escA(w.title || "") + '">' + esc(w.text || "") +
+        "</td><td>" + esc(r.team || "") + "</td><td>" + esc(r.work_item || "") + "</td><td>" + esc(r.role || "") + "</td><td>" + esc(r.status || "") + "</td><td>" +
+        outcomeTag(r.outcome, r.dropped) + "</td><td class=num>" + needsOf(r) + "</td><td class=num>" + workingOf(r) + "</td></tr>" +
+        (open ? '<tr class="tl"><td colspan="9" id="tl-' + escA(r.id) + '">' + (TIMELINES[r.id + "|" + ROLE] ? timelineHtml(TIMELINES[r.id + "|" + ROLE]) : "Reading…") + "</td></tr>" : "");
+    }).join("");
+    document.getElementById("rl-runs").innerHTML = runs.length
+      ? '<thead><tr><th>run</th><th>started</th><th>team</th><th>work item</th><th title="the launcher\'s word for the run">launched as</th><th>status</th><th>outcome</th>' +
+        '<th class=num title="denials that need a person">needs</th><th class=num title="denials that are the boundary working">boundary</th></tr></thead><tbody>' + body + "</tbody>"
+      : '<tbody><tr><td class="blank quiet">No run of this role matches these filters.</td></tr></tbody>';
+    var m = document.getElementById("rl-more");
+    m.hidden = runs.length <= SHOWN;
+    m.textContent = "Showing the newest " + SHOWN + " of " + runs.length + ": narrow the window or the filters for the rest.";
+    document.querySelectorAll("#rl-runs tr.run").forEach(function(tr){
+      tr.onclick = function(){ toggleRun(tr.dataset.run, v); };
+    });
+  }
+  function shortId(id){ return id.length > 14 ? id.slice(0, 6) + "…" + id.slice(-6) : id; }
+
+  var TIMELINES = {};
+  async function toggleRun(id, v){
+    // The role this run was opened under: the person may be on another role's page by the time it answers.
+    var role = ROLE, key = id + "|" + role;
+    OPEN_RUNS[id] = !OPEN_RUNS[id];
+    drawRole(v);
+    if (!OPEN_RUNS[id] || TIMELINES[key]) return;
+    if (!LIVE && DEMO_SHIFTED) TIMELINES[key] = DEMO_SHIFTED.timelines[key] || { error: "not in the example" };
+    else try {
+      var r = await fetch("/api/timeline?run=" + encodeURIComponent(id) + "&role=" + encodeURIComponent(role), { cache: "no-store", headers: { "x-seisin-token": TOKEN } });
+      var t = await r.json();
+      TIMELINES[key] = r.ok ? t : { error: t.error || "could not read this run" };
+    } catch (e) { TIMELINES[key] = { error: whyFailed(e) }; }
+    if (ROLE !== role) return;
+    var cell = document.getElementById("tl-" + id);
+    if (cell) cell.innerHTML = timelineHtml(TIMELINES[key]);
+  }
+  function timelineHtml(t){
+    if (t.error) return '<span class="err">' + esc(t.error) + "</span>";
+    // Local time, as every other date on the page.
+    function at(s){
+      var d = s ? new Date(s) : null;
+      return d && !isNaN(d) ? '<span class="t" title="' + escA(s) + '">' + esc(d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })) + "</span>" : '<span class="t">—</span>';
+    }
+    var items = t.events.map(function(e){
+      if (e.type === "canary") return '<li class="' + (e.confined ? "ok" : "bad") + '">' + at(e.at) + (e.confined
+        ? "canary passed" + (e.sandbox ? " under " + esc(e.sandbox) : "") + ": the boundary held, the agent started"
+        : "<b>canary failed</b>: " + esc((e.reasons || []).join("; ")) + " — nothing ran") + "</li>";
+      if (e.type === "narrowed") return '<li class="quiet">' + at(e.at) + "policy narrowed for this run</li>";
+      if (e.type === "dropped") return '<li class="bad">' + at(e.at) + "the system log dropped " + e.batches + " batch(es): denials may be missing from here</li>";
+      var quiet = e.class === "protected" || e.class === "expected";
+      return '<li class="' + (quiet ? "quiet" : "bad") + '">' + at(e.at) + classTag(e.class) + " " + esc(e.action) + " <code>" + esc(e.target) + "</code>" +
+        (e.times > 1 ? " ×" + e.times : "") + (e.probe ? ' <span class="ro-ask">the canary\'s own probe</span>' : "") +
+        (e.likely ? ' <span class="ro-ask">most likely ' + esc(e.likely) + "</span>" : "") +
+        (e.why && !quiet ? ' <span class="ro-ask">— ' + esc(e.why) + "</span>" : "") + "</li>";
+    });
+    if (!items.length) items.push('<li class="quiet">nothing recorded for this role in this run</li>');
+    return '<ul class="tl-list">' + items.join("") + "</ul>" +
+      '<div class="tl-foot">' + (t.allowed ? t.allowed.toLocaleString() + " allowed · " : "") + (t.more ? t.more + " more denials not listed · " : "") +
+      "</div>" + askedHtml(t) + heldHtml(t);
+  }
+  /** What an archived run asked for: never granted here, asked for where it was launched. */
+  function askedHtml(t){
+    var qs = t.requests || [];
+    if (!qs.length) return "";
+    return '<div class="tl-foot">asked for, and not given — ask for it ' + esc(askedOf()) + ": " + qs.map(function(q){
+      return q.error ? '<span class="err">' + esc(q.error) + "</span>"
+        : esc(q.action) + " <code>" + esc(q.grant || q.target) + "</code>" + (q.times > 1 ? " ×" + q.times : "");
+    }).join(" · ") + "</div>";
+  }
+  /** What the role could do in this run: the policy it held under, and what --only and --deny took away. */
+  function heldHtml(t){
+    var h = t.held, n = t.narrowed;
+    if (!h && !n) return "";
+    function list(xs){ return xs && xs.length ? xs.map(function(x){ return "<code>" + esc(x) + "</code>"; }).join(" ") : "none"; }
+    var rows = [];
+    if (h) rows.push("<dt>writes</dt><dd>" + list(h.writes) + "</dd>", "<dt>keys</dt><dd>" + list(h.keys) + "</dd>",
+                     "<dt>network</dt><dd>" + list(h.network) + "</dd>");
+    if (n && n.only && n.only.length) rows.push("<dt>only, this run</dt><dd>" + list(n.only) + "</dd>");
+    if (n && n.deny && n.deny.length) rows.push("<dt>denied, this run</dt><dd>" + list(n.deny) + "</dd>");
+    if (n && n.vars && n.vars.length) rows.push("<dt>variables given</dt><dd>" + list(n.vars) + "</dd>");
+    // Only the run's own policy is called the one it held under; otherwise it is today's, and says so.
+    var title = t.held_from === "run" || !h ? "the policy it held under"
+      : "the policy today — seisin.toml has changed since this run, and what it held is not kept";
+    return '<details class="tl-held"><summary>' + esc(title) + '</summary><div class="role-head"><dl>' + rows.join("") + "</dl></div></details>";
+  }
+
   function setRunFilter(k, val){
     if (val) RFILTER[k] = val; else delete RFILTER[k];
     var q = new URLSearchParams();
     Object.keys(RFILTER).forEach(function(x){ q.set(x, RFILTER[x]); });
-    history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q : ""));
-    fetchRuns(true).then(function(g){ if (g.v) drawRunsView(g.v); }).catch(function(){});
+    // The hash too: on a role's page the filter applies to that role.
+    history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q : "") + location.hash);
+    fetchRuns(true).then(function(g){ if (g.v) drawRunsAll(g.v); }).catch(function(){});
   }
 
   /** The filters, once. */
@@ -1821,9 +1777,10 @@
   /** Read while they are on screen: a directory of hundreds has nothing to say to another view. */
   function pollRuns(){
     setTimeout(async function(){
-      if (route() === "runs") try {
+      var rt = route();
+      if (rt === "runs" || rt === "overview" || rt === "role") try {
         var g = await fetchRuns(false);
-        if (g.v) drawRunsView(g.v);
+        if (g.v) drawRunsAll(g.v);
         if (MODE === "runs") {
           if (g.v || g.same) { FAILS = 0; if (OFFLINE) setOffline(null); }
           else if (++FAILS >= 2) setOffline(g.status === 403 ? "expired" : "down");
@@ -1835,11 +1792,61 @@
   /** Runs beside a policy: one more item in the menu. */
   async function addRuns(){
     var got = await fetchRuns(true);
-    if (!got.v || !got.v.total) { HAS_RUNS = false; return; }
+    // A repository with no run yet is read the same way: every role of its policy, none run.
+    if (!got.v) { HAS_RUNS = false; return; }
     document.getElementById("nav-runs").hidden = false;
+    document.body.classList.add("by-roles");
     wireRuns();
-    drawRunsView(got.v);
+    drawRunsAll(got.v);
     pollRuns();
+    openLinked(got.v);
+  }
+
+  /** `&run=<id>` from a launcher's link: that run, open under the role it ran as. */
+  function openLinked(v){
+    if (!LINKED_RUN) return;
+    var id = LINKED_RUN, r = (v.runs || []).filter(function(x){ return x.id === id; })[0];
+    LINKED_RUN = null;
+    var role = r && ((r.roles_ran && r.roles_ran[0]) || null);
+    if (role) { location.hash = "role/" + encodeURIComponent(role) + "/run/" + encodeURIComponent(id); return; }
+    setRunFilter("q", id);
+    location.hash = "runs";
+  }
+
+  /* ── the example's runs ───────────────────────────────────────────────────
+   * Opened as a file, the Overview, each role's page and each run are drawn from
+   * DEMO_RUNS (ui/demo.js): made-up runs, computed by the server's own code. Its
+   * dates are fixed; they are moved here to end today. The filter is left out:
+   * every view of the example is the whole example. */
+  var DEMO_SHIFTED = null;
+  function shiftDates(x, ms, days){
+    if (Array.isArray(x)) return x.map(function(y){ return shiftDates(y, ms, days); });
+    if (x && typeof x === "object") {
+      var o = {};
+      Object.keys(x).forEach(function(k){
+        var y = x[k];
+        o[k] = k === "day" && typeof y === "string" && /^\d{4}-\d{2}-\d{2}$/.test(y)
+          ? new Date(Date.parse(y + "T12:00:00Z") + days * 864e5).toISOString().slice(0, 10)
+          : shiftDates(y, ms, days);
+      });
+      return o;
+    }
+    if (typeof x === "string" && /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(x)) return new Date(Date.parse(x) + ms).toISOString();
+    return x;
+  }
+  function bootDemoRuns(){
+    if (typeof DEMO_RUNS === "undefined") return;
+    var days = Math.round((Date.now() - Date.parse(DEMO_RUNS.generated)) / 864e5);
+    DEMO_SHIFTED = shiftDates(DEMO_RUNS, days * 864e5, days);
+    HAS_RUNS = true;
+    document.getElementById("nav-runs").hidden = false;
+    document.body.classList.add("by-roles", "demo-runs");
+    drawRunsAll(demoView());
+  }
+  /** The view a live console would have answered: the whole example, or one role's cut of it. */
+  function demoView(){
+    var on = ROLE && /^#role\//.test(location.hash) && DEMO_SHIFTED.views[ROLE];
+    return on || DEMO_SHIFTED.views[""];
   }
 
   /** Runs with no policy (`seisin ui --runs`): the rest of the menu has nothing to show. */
@@ -1857,15 +1864,15 @@
     label.style.color = "var(--green)";
     document.getElementById("nav-runs").hidden = false;
     document.querySelectorAll(".side .list > a[href^='#']").forEach(function(a){ a.hidden = true; });
-    // Inline, not `hidden`: the cards' own display rules outrank the attribute.
-    ["kpis", "range", "kill"].forEach(function(id){ var e = document.getElementById(id); if (e) { e.hidden = true; e.style.display = "none"; } });
     document.getElementById("foot-mode").textContent = "Live, read only.";
     document.getElementById("foot-text").innerHTML = "This page reads the runs in <b>" + esc(got.v.dir) +
       "</b>, one folder each, as their launcher archived them. Nothing is written from here.";
     wireRuns();
-    drawRunsView(got.v);
-    show("runs");
+    drawRunsAll(got.v);
+    show(route());
+    if (route() === "role") { var g2 = await fetchRuns(true); if (g2.v) { drawRunsAll(g2.v); openPending(g2.v); } }
     pollRuns();
+    openLinked(got.v);
   }
 
   /** Every two seconds after the last answer, not every two seconds regardless. */
@@ -1880,22 +1887,17 @@
    * it has to keep working opened straight off the disk with no server at all. */
   function views(){
     return {
+      overview:   {view:"overview", title:"Overview",
+                   sub:"Whether the boundary held, every role at a glance, and what needs a person. Denials that are the boundary working are counted, not listed."},
+      role:       {view:"role",     title: ROLE || "Role",
+                   sub:"What this role may do, what it was denied across its runs, and each run as it lived it."},
       runs:       {view:"runs",     title:"Runs",
-                   sub:"Every run, newest first: what each was denied and what the denials cost. Open one for its policy and its log."},
-      policy:     {view:"roles",    title:"Roles",
-                   sub:"Each role's territory — the folders it may write — and the keys it may read. " +
+                   sub:"Every run, newest first. One opens under the role it ran as, in order: its canary, each denial once, the end."},
+      policy:     {view:"roles",    title:"Policy",
+                   sub:"Each role's territory — the folders it may write — and the keys it may read, with the control files and the settings each role resolves to. " +
                        (LIVE ? "Read-only here: the policy is seisin.toml." : "In this example you can edit them; nothing is saved.")},
       requests:   {view:"requests", title:"Waiting on you",
                    sub:"Requests: access an agent asked for and cannot have. Granting one adds a line to seisin.toml."},
-      denied:     {view:"denied",   title:"Denied", tab:"path",
-                   sub:"Everything an agent tried in the window and the OS denied, grouped by what it was about." +
-                       (READONLY ? " Not granted here: access is asked for " + askedOf() + "." : "")},
-      causes:     {view:"denied",   title:"Denied", tab:"name",
-                   sub:"The same denials grouped by file name — the cut that says whether a day was a tooling problem or a territory question."},
-      walls:      {view:"walls",    title:"Walls",
-                   sub:"A wall is something a role was denied twice or more and would still be denied today. Retrying one costs a call every time."},
-      activity:   {view:"activity", title:"Activity",
-                   sub:"Every log entry, newest first — hook and kernel — each denial with whose it was."},
       configfile: {view:"config",   title:"Config file",
                    sub: LIVE ? "The policy as it stands on disk. Decisions and control-files saves write here, stamped."
                              : "The example policy, generated in this page. Live, this is your seisin.toml as it is on disk."}
@@ -1910,21 +1912,24 @@
     });
     document.getElementById("v-title").textContent = v.title;
     document.getElementById("v-sub").textContent = v.sub;
-    if (v.view === "denied") {
-      var byName = v.tab === "name";
-      document.getElementById("dn-path").hidden = byName;
-      document.getElementById("dn-name").hidden = !byName;
-      document.getElementById("tab-path").setAttribute("aria-selected", byName ? "false" : "true");
-      document.getElementById("tab-name").setAttribute("aria-selected", byName ? "true" : "false");
-    }
     // Full cards on the landing view; a strip elsewhere.
-    document.getElementById("kpis").classList.toggle("compact", v.view !== "requests");
-    var kill = document.getElementById("kill");
-    if (kill) kill.hidden = (v.view !== "roles") || kill.dataset.live === "1";
     document.getElementById("nav-all").classList.toggle("on", route === "runs");
+    document.getElementById("nav-att").classList.toggle("on", route === "overview");
+    document.querySelectorAll("#nav-roles a").forEach(function(a){
+      a.classList.toggle("on", route === "role" && a.getAttribute("href") === "#role/" + encodeURIComponent(ROLE || ""));
+    });
+    // The decisions box lives on the role's page while it is open, when that role has any.
+    var box = document.getElementById("requests");
+    var mine = route === "role" && !READONLY && REQS.some(function(q){ return q.role === ROLE; });
+    var to = mine ? document.getElementById("rl-reqs") : document.querySelector('section[data-view="requests"]');
+    if (box && to && box.parentNode !== to) to.insertBefore(box, to.firstChild);
+    if (box) { try { drawReqs(); } catch (e) {} }
+    // One filter for every view over runs.
+    var overRuns = v.view === "runs" || v.view === "overview" || v.view === "role";
+    document.getElementById("rn-filterbox").hidden = !(overRuns && !document.getElementById("nav-runs").hidden);
     // The list has its own numbers; the policy's window and cards would sit above them saying 0.
-    document.body.classList.toggle("on-runs", v.view === "runs");
-    var navRoute = route === "causes" ? "denied" : route;
+    document.body.classList.toggle("on-runs", overRuns);
+    var navRoute = route;
     document.querySelectorAll(".side .list a[href^='#']").forEach(function(a){
       var on = a.getAttribute("href").slice(1) === navRoute;
       a.classList.toggle("on", on);
@@ -1938,15 +1943,36 @@
 
   /** The landing view is what is waiting on you, not the policy table. */
   function route(){
-    if (MODE === "runs" && !RUN) return "runs";
     var h = (location.hash || "").slice(1);
-    // Nothing waits on a person in a run, or under a lent territory.
-    if (h && !(h === "requests" && READONLY)) return h;
-    if (RUN) return "denied";
-    if (HAS_RUNS && !document.getElementById("nav-runs").hidden && (READONLY || !REQS.length)) return "runs";
-    return READONLY ? "denied" : "requests";
+    // #role/<name>, and #role/<name>/run/<id> with that run open under it.
+    var m = /^role\/([^/]+)(?:\/run\/([^/]+))?$/.exec(h);
+    if (m && HAS_RUNS) {
+      ROLE = decodeURIComponent(m[1]);
+      if (m[2]) OPEN_RUNS[decodeURIComponent(m[2])] = true;
+      return "role";
+    }
+    if (h === "attention") return "overview";
+    if (MODE === "runs") return h === "runs" ? "runs" : "overview";
+    // Nothing waits on a person under a lent territory. A link to a screen that is gone
+    // (#denied, #walls, #activity: what they said is on each role's page now) lands on the Overview.
+    if (h && views()[h] && !(h === "requests" && READONLY)) return h;
+    return HAS_RUNS ? "overview" : READONLY ? "policy" : "requests";
   }
-  window.addEventListener("hashchange", function(){ show(route()); });
+  window.addEventListener("hashchange", function(){
+    var r = route();
+    show(r);
+    if (HAS_RUNS && (r === "runs" || r === "overview" || r === "role")) {
+      if (RLAST.v && RLAST.url === runsUrl()) drawRunsAll(RLAST.v);
+      else fetchRuns(true).then(function(g){ if (g.v) { drawRunsAll(g.v); openPending(g.v); } }).catch(function(){});
+    }
+  });
+  /** Runs a link asked to open (#role/<name>/run/<id>) whose timeline is not read yet. */
+  function openPending(v){
+    if (route() !== "role") return;
+    Object.keys(OPEN_RUNS).forEach(function(id){
+      if (OPEN_RUNS[id] && !TIMELINES[id + "|" + ROLE]) { OPEN_RUNS[id] = false; toggleRun(id, v); }
+    });
+  }
   show(route());
 
   // Wired once, outside `draw`, so a redraw never drops the listener or the typed text.
@@ -1959,19 +1985,6 @@
     });
   })();
 
-  /** The server's entries, in the shape the renderer already speaks. */
-  function fromServer(entries){
-    return (entries || []).map(e => ({
-      at: e.at || "",
-      kind: e.verdict === "denied" ? "deny" : e.verdict === "observed" ? "observed" : e.verdict === "admin" ? "admin" : "allow",
-      role: e.role,
-      act: e.action,
-      target: e.target,
-      owners: e.owners || [],
-      about: e.kind || "file",
-      source: e.source
-    }));
-  }
 
   async function refresh(){
     var got;

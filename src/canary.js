@@ -39,7 +39,12 @@ export const CANARY_EXIT = 86;
 const isDir = (p) => { try { return statSync(p).isDirectory(); } catch { return false; } };
 
 /**
- * Runs the canary and resolves to `{ ok, failed: [reasons], ms }`.
+ * Runs the canary and resolves to `{ ok, failed: [reasons], ms, port }`.
+ *
+ * `port` is the loopback port the network probe dialled (null when it did not
+ * run): the kernel refuses that connection, which is the answer the probe
+ * wants, and the system log can deliver the refusal after the kernel watcher
+ * has started. The run marks it expected rather than record it as the agent's.
  *
  * `runDir` is this run's directory and `runsRoot` the one above it; the
  * secret is planted in the second, which the settings deny to every run but
@@ -166,5 +171,5 @@ export async function runCanary({ srt, wrap = null, settingsFile, settings, env,
   }
 
   for (const p of [secret, outside, insideDir, shared]) if (p) try { rmSync(p, { force: true, recursive: p === insideDir }); } catch {}
-  return { ok: failed.length === 0, failed, ms: Date.now() - t0 };
+  return { ok: failed.length === 0, failed, ms: Date.now() - t0, port };
 }

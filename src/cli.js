@@ -169,8 +169,16 @@ const COMMANDS = {
     if (runs === -1) return (await import("./commands/review.js")).reviewCommand(config(), argv).friction.length ? 1 : 0;
     const dir = argv[runs + 1];
     if (!dir || !argv.includes("--json")) throw new Error("usage: seisin review --runs <dir> --json");
+    // Kept for launchers that read it; the same runs, sorted by what needs a person, are
+    // `seisin attention --runs <dir> --json`. Said on stderr, so the JSON on stdout is unchanged.
+    process.stderr.write("seisin: review --runs is deprecated and will be removed — use: seisin attention --runs <dir> --json\n");
     out(JSON.stringify((await import("./runs.js")).runsView(resolve(dir)), null, 2) + "\n");
     return 0;
+  },
+  // --runs needs no policy; without it, the policy's own runs.
+  attention: async () => {
+    const { attentionCommand, attentionStatus } = await import("./commands/attention.js");
+    return attentionStatus(attentionCommand(argv.includes("--runs") ? maybeConfig() : config(), argv));
   },
   walls: async () => ((await import("./commands/walls.js")).wallsCommand(config(), argv).some((w) => !w.expected) ? 1 : 0),
   requests: async () => ((await import("./commands/requests.js")).requests(config(), argv).length ? 1 : 0),

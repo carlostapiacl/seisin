@@ -59,10 +59,11 @@ anything. What escapes the hook goes unexplained, never unenforced.
 
 ![the console: requests waiting on a person, a grant that needs a reason and a second click for another role's path, the line it wrote, the denials grouped by path with the kind of each unowned one, the walls each role keeps hitting, the roles, and a control-files change shown before it is saved](https://raw.githubusercontent.com/carlostapiacl/seisin/main/docs/img/console.gif)
 
-It opens on what needs a decision, not on the policy. Four numbers sit on top (waiting on
-you, denied, the **top cause**, and calls **spent retrying** walls), each a link to the page
-that explains it, and the last two are recomputed against the policy, which a log alone cannot
-do: something granted since stops counting.
+It opens on the **Overview**: what is waiting on you, whether the boundary held, every role of
+the policy, and what needs a person across the runs, sorted into the five words above and
+recomputed against the policy, which a log alone cannot do: something granted since stops
+counting. Each role has its page, and each run opens under it as a timeline. (The recording
+above is of the console before 0.9.0.)
 
 **A decision needs a reason.** Grant without one asks for it; Decline without one fills in
 a default and asks again, so what is recorded is on screen first. The request says what a
@@ -71,7 +72,7 @@ covers all of `src/api/**`*, and whose it is today. Sharing another role's terri
 second click that names it. After it, the console shows the line it wrote to `seisin.toml`
 and where.
 
-**Denied and Walls say the same thing about one path.** A path no role owns says what kind
+**Every view says the same thing about one path.** A path no role owns says what kind
 of thing it is (*ownable*, or git's, temporary, build output, a credential) and the move
 that fits each, which for all but the first is not an owner.
 
@@ -140,6 +141,58 @@ It is arithmetic over the log, with no model, network or heuristics: seisin's
 whole argument is that interpreting text is the wrong way to decide things. Every finding carries the window it was computed
 over, because *never used* means nothing without *in how long*.
 
+
+## Across runs: what needs a person
+
+Most denials are the boundary working. Over one pilot's 2,302 runs, 27,000 denials and not one on a
+path nobody owned; 97% of the runs read "denied" in a list that said only that. `seisin attention`
+and the console's first screen over runs (**Attention**) sort every denial by where it stands:
+
+| class | what it is | what it asks of you |
+|---|---|---|
+| **no owner** | no role owns the path | a decision nobody has made |
+| **outside** | a host, a port, a key, or a path outside the repository | the allow list's question |
+| **other role** | another role's territory | work to hand over, or a territory drawn wrong |
+| **protected** | closed to every role on purpose | nothing: the boundary working |
+| **expected** | the agent program's own housekeeping (plugin updates, macOS preferences at start) | nothing |
+
+Only the first three are listed, by how many runs hit each. The same file name in many places is one
+line (`…/__pycache__ in 26 places`), and the ports the system hands out (32768 and up, a different one
+in each run) are one line too. A cause first seen in the last day is marked new.
+
+```
+$ seisin attention --runs ./runs --since 7d
+
+  6 runs since 2026-11-06 01:22
+
+  Boundary  held in every run
+  Denied    14 that need a person (no owner 0 · outside 6 · other role 8)
+            12 that are the boundary working (protected 6 · expected 6)
+  14 days   ········▅▅▅▅██  needing a person, per day, 10-30 to 11-12
+
+  Needs a person  3 things in 5 places, by the runs that hit each
+
+  6 runs  outside    connect tcp:5432
+          a port or a socket, which no role owns — teams blog, shop · roles executor
+  6 runs  other role write …/__pycache__ in 3 places
+          belongs to api — teams blog, shop · roles executor
+  2 runs  other role write api/server.js
+          belongs to api — teams blog, shop · roles executor
+```
+
+Over `--runs <dir>`, or the policy's `[console] runs`, or the runs named in the policy's own log.
+`--team`, `--role`, `--work-item`, `--status` and `--outcome` narrow it the way the console's filter
+does: a work item picked there is that work item whole, every run it took. `--json` for a program.
+It exits 1 when a run's canary failed in the window, and 0 otherwise, however long the list.
+
+`seisin run` ends with the same words for its own run: the boundary working in one line, and what
+needs a person spelled out with the command that says more.
+
+```
+seisin: 4 denials in this run — 1 expected, 1 protected on purpose, 2 to look at:
+  other role write api/server.js (2×) — belongs to api
+  → seisin explain web write api/server.js · across runs: seisin attention
+```
 
 ## When the boundary is right and the agent cannot hear it
 

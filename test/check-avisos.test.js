@@ -19,7 +19,7 @@ import { spawnSync } from "node:child_process";
 import { expectedOf } from "../src/kinds.js";
 import { walls, render, wasted } from "../src/walls.js";
 import { review } from "../src/review.js";
-import { parseSince, causesOf, describeWalls } from "../src/views.js";
+import { parseSince, causesOf, describeWalls, classOf } from "../src/views.js";
 import { intake, destinationOf } from "../src/intake.js";
 import { inspect } from "../src/inspect.js";
 import { renderReport } from "../src/render.js";
@@ -116,11 +116,10 @@ test("the console counts it apart and says it on the cause", () => {
   assert.equal(c.causes.find((x) => x.target === CACHE).expected.kind, "plugins");
   assert.equal(c.causes.find((x) => x.target === "web/a.ts").expected, undefined);
 
-  // The page's own sentence for a cause, run as the page runs it.
+  // Every view says it in one word, before "protected": the page's label for it.
+  assert.equal(classOf({ standing: "protected", expected: { hint: "H" } }), "expected");
   const html = readFileSync(new URL("../ui/index.html", import.meta.url), "utf8");
-  const src = /function causeSays\(c\)\{[\s\S]*?\n  \}/.exec(html)[0];
-  const causeSays = new Function(`${src}; return causeSays;`)();
-  assert.match(causeSays({ about: "file", standing: "protected", why: ".claude", expected: { hint: "H" } }), /^expected · H$/);
+  assert.match(html, /expected: "expected"/);
 });
 
 test("the end of a run counts the expected ones", () => {

@@ -52,7 +52,6 @@ body{margin:0;background:var(--bg);color:var(--fg);
 .brand small{font-size:11px;color:var(--mid);display:block;margin-top:1px}
 .brand .id{display:flex;align-items:center;gap:10px}
 .brand .id>div{min-width:0}
-.on-runs #kpis,.on-runs #range{display:none!important}
 .brand #source{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .brand .mark{width:28px;height:28px;flex:none}
 .theme{display:flex;gap:2px;background:var(--hover);border-radius:6px;padding:2px}
@@ -67,7 +66,7 @@ body{margin:0;background:var(--bg);color:var(--fg);
 .side a:hover{background:var(--hover);color:var(--fg)}
 .side a.on{background:var(--active);color:var(--blue);border-left-color:var(--blue)}
 .side a i{font-style:normal;font-size:11px;width:12px;opacity:.8}
-.side a .pin{margin-left:auto;font-size:10px;font-weight:600;min-width:17px;height:17px;padding:0 5px;
+.side a .pin,#nav-roles summary .pin{margin-left:auto;font-size:10px;font-weight:600;min-width:17px;height:17px;padding:0 5px;
   border-radius:9px;background:var(--active);color:var(--blue);display:grid;place-items:center;
   font-variant-numeric:tabular-nums}
 
@@ -90,14 +89,6 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,[t
 
 .cards{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 /* Time window: quick presets plus a free "from". Filters what comes from the log. */
-.range{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--mid)}
-.range .seg{display:flex;gap:2px;background:var(--hover);border-radius:6px;padding:2px}
-.range .seg button{border:0;background:none;color:var(--mid);padding:4px 10px;border-radius:4px;
-  cursor:pointer;font:inherit;font-size:12px}
-.range .seg button.on{background:var(--panel);color:var(--fg);box-shadow:0 1px 2px #0002}
-.range input{font:inherit;font-size:12px;padding:4px 8px;border:1px solid var(--line2);
-  border-radius:6px;background:var(--bg);color:var(--fg)}
-.range input.on{border-color:var(--fg)}
 .card{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--line2);
   border-radius:8px;padding:14px 16px;min-height:96px;display:flex;flex-direction:column}
 .card.g{border-left-color:var(--green)} .card.a{border-left-color:var(--amber)} .card.b{border-left-color:var(--blue)}
@@ -261,7 +252,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
 /* An empty count is not a count. `.pin` has a background and a min-width, so a role with no
    pending anything rendered as a small grey blob next to the label — a badge that says
    nothing but looks like it is trying to. */
-.side a .pin:empty{display:none}
+.side a .pin:empty,#nav-roles summary .pin:empty{display:none}
 
 /* What a view says when it has nothing to show. Not a shrug: the two reasons a log is empty
    need different answers, so it names them. */
@@ -376,9 +367,6 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
   .req input[aria-invalid="true"]{border-color:var(--amber)}
 
   /* Denied: tabs, and the parts that are not paths. */
-  .tabs{display:flex;gap:2px;background:var(--hover);border-radius:6px;padding:2px}
-  .tabs a{font-size:12px;padding:3px 10px;border-radius:4px;color:var(--mid);text-decoration:none}
-  .tabs a[aria-selected="true"]{background:var(--panel);color:var(--fg);box-shadow:0 1px 2px #0002}
   .showall{margin-top:12px;font:inherit;font-size:12px;border:0;background:none;color:var(--blue);cursor:pointer;padding:0;text-decoration:underline}
   .other{margin-top:20px;border-top:1px solid var(--line);padding-top:14px}
   .other h3{font-size:12px;font-weight:600;margin:0 0 2px}
@@ -405,14 +393,6 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
   pre mark{background:var(--amber-bg);color:var(--fg);outline:1px solid var(--amber);border-radius:2px}
 
   /* KPIs: full cards on the landing view, a strip everywhere else. */
-  #kpis.compact{display:flex;flex-wrap:wrap;gap:8px}
-  #kpis.compact .card{min-height:0;padding:6px 12px;flex-direction:row;align-items:baseline;gap:8px;flex:1 1 150px}
-  #kpis.compact .card .n{font-size:16px;margin-top:0;order:-1;min-width:0}
-  #kpis.compact .card .s{display:none}
-  #kpis.compact .card h2{font-size:10px}
-  .range .custom[hidden]{display:none}
-  .range[hidden]{display:none}
-  .range label{display:inline-flex;align-items:center;gap:6px}
 
   @media (max-width:720px){
     /* A request stacks: the sentence gets the width, the actions go under it at full width. */
@@ -433,8 +413,6 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
     table.roles td{display:grid;grid-template-columns:76px minmax(0,1fr);gap:8px;border:0;padding:4px 14px;width:auto;text-align:left}
     table.roles td::before{content:attr(data-label);font-size:10px;font-weight:600;letter-spacing:.06em;
       text-transform:uppercase;color:var(--dim);padding-top:3px}
-    #kpis.compact{flex-wrap:nowrap;overflow-x:auto}
-    #kpis.compact .card{flex:0 0 auto}
     .ctl-row{flex-direction:column;align-items:flex-start}
     .preview input{width:100%}
     .places li{flex-direction:column;gap:2px}
@@ -442,9 +420,7 @@ button.btn:active,button.tag:active,button.add:active,button.sw:active{transform
 
 /* ── a directory of runs (seisin ui --runs) ─────────────────────────────── */
 /* `hidden` has to win over the display these set, or the runs view keeps the policy's nav and cards. */
-.side a[hidden],.side .cap[hidden],.cards[hidden],.range[hidden]{display:none}
-.banner.run{border-left:3px solid var(--blue)}
-.banner.run .meta{color:var(--mid);font-size:12px;margin-top:4px}
+.side a[hidden],.side .cap[hidden],.cards[hidden]{display:none}
 .runs-filters{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
 .runs-filters label{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--mid)}
 .runs-filters select,.runs-filters input{font:inherit;font-size:12px;padding:4px 6px;border:1px solid var(--line);
@@ -461,3 +437,70 @@ table.runs tr.sys td{color:var(--dim)}
 .oc.refused,.oc.unread,.oc.no-record{color:var(--fg);background:var(--amber-bg);border-color:var(--amber)}
 .ro-ask{font-size:12px;color:var(--mid);max-width:320px}
 .ro-ask code{font-family:var(--mono)}
+
+/* ── attention: the first screen over runs ──────────────────────────────── */
+.att-grid{display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+@media (max-width:900px){.att-grid{grid-template-columns:minmax(0,1fr)}}
+/* Where a denial stands: the three that need a person carry color, the boundary working does not. */
+.cl{font-weight:600;font-size:11px;padding:1px 6px;border-radius:9px;border:1px solid var(--line);white-space:nowrap}
+.cl.decide{color:var(--fg);background:var(--amber-bg);border-color:var(--amber)}
+.cl.outside{color:var(--amber);border-color:var(--amber)}
+.cl.handoff{color:var(--blue);border-color:var(--blue)}
+.cl.protected,.cl.expected,.cl.granted{color:var(--dim)}
+.cl.new{color:var(--fg);background:var(--amber-bg);border-color:var(--amber);margin-left:4px}
+table.att td.why{color:var(--mid);max-width:460px}
+table.att td.who{color:var(--mid);font-size:11px;white-space:nowrap}
+table.att tr.lead td{font-weight:500}
+#at-piles td.what{color:var(--mid);min-width:180px}
+#at-piles td.num{white-space:nowrap}
+#at-piles tr.quiet td{color:var(--dim)}
+/* The days: one bar per day, the needing-a-person part in amber over the day's runs. */
+.days{display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:4px;align-items:end;height:120px}
+.days .d{display:flex;flex-direction:column;justify-content:flex-end;height:100%;cursor:default}
+.days .d i{display:block;background:var(--amber);border-radius:3px 3px 0 0;min-height:0}
+.days .d.zero i{background:var(--line2);min-height:2px}
+.days-axis{display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:4px;margin-top:6px;font-size:10px;color:var(--dim);text-align:center;font-variant-numeric:tabular-nums}
+.days-sum{font-size:12px;color:var(--mid);margin:10px 0 0}
+/* Until the console has asked its server: it used to draw the example first, saying
+   "Preview… edits an example policy" over a live run for a second, and on a reload the
+   menu showed the policy's six screens before settling on the two a directory of runs has. */
+body.booting main>*,body.booting .side .list{visibility:hidden}
+body.booting main::before{content:"Reading…";visibility:visible;display:block;color:var(--mid);font-size:13px;padding:24px 0}
+
+/* ── roles: the unit the console is read by ─────────────────────────────── */
+#nav-roles a{padding-left:28px}
+#nav-roles a.gone{opacity:.6}
+#nav-roles details>summary{display:flex;align-items:center;gap:9px;padding:5px 14px 5px 28px;color:var(--mid);cursor:pointer;list-style:none;font-size:13px}
+#nav-roles details>summary .pin{margin-left:auto}
+#nav-roles details>summary::-webkit-details-marker{display:none}
+#nav-roles details>summary::before{content:"▸";font-size:9px;width:10px}
+#nav-roles details[open]>summary::before{content:"▾"}
+#nav-roles details a{padding-left:42px}
+.role-head{padding:14px 16px}
+.role-head h2{margin:0 0 8px;font-size:18px;font-weight:600;font-family:var(--mono)}
+.role-head dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 14px;margin:0;font-size:12px}
+.role-head dt{color:var(--dim);text-transform:uppercase;letter-spacing:.06em;font-size:10px;font-weight:600;padding-top:2px}
+.role-head dd{margin:0;color:var(--fg)}
+.role-head dd code{font-family:var(--mono);font-size:11.5px;background:var(--hover);padding:1px 5px;border-radius:4px;margin:0 4px 2px 0;display:inline-block}
+.role-head .gone{color:var(--amber);font-size:12px;margin-top:8px}
+#ov-roles td a{font-family:var(--mono);font-weight:600}
+#ov-roles tr.idle td{color:var(--dim)}
+#ov-roles td.top{color:var(--mid);max-width:420px}
+#rl-runs tr.run{cursor:pointer}
+#rl-runs tr.run:hover td{background:var(--hover)}
+#rl-runs tr.run td:first-child::before{content:"▸ ";color:var(--dim)}
+#rl-runs tr.run.open td:first-child::before{content:"▾ "}
+#rl-runs tr.tl>td{background:var(--bg);padding:10px 14px 14px 34px}
+.tl-list{list-style:none;margin:0;padding:0;border-left:2px solid var(--line2)}
+.tl-list li{position:relative;padding:3px 0 3px 14px;font-size:12px;line-height:1.5}
+.tl-list li::before{content:"";position:absolute;left:-5px;top:9px;width:8px;height:8px;border-radius:50%;background:var(--line2)}
+.tl-list li.ok::before{background:var(--green)} .tl-list li.bad::before{background:var(--amber)}
+.tl-list li.quiet{color:var(--dim)}
+.tl-list .t{font-variant-numeric:tabular-nums;color:var(--dim);margin-right:8px;font-family:var(--mono);font-size:11px}
+.tl-list code{font-family:var(--mono);font-size:11px;word-break:break-all}
+.tl-foot{font-size:11px;color:var(--mid);margin-top:8px}
+.tl-held{margin-top:8px;font-size:12px}.tl-held summary{cursor:pointer;color:var(--blue)}.tl-held .role-head{padding:6px 0 0}
+
+/* Read by role: the strip of counts over the whole log, and its window, belong to the screens that went. */
+.demo-runs #rn-filterbox{display:none!important}
+.runs-filters label[hidden]{display:none}

@@ -54,7 +54,8 @@ test("review --runs --json reaches a pipe whole", () => {
 test("a reader that goes away costs neither the status nor a stack trace", () => {
   const r = piped(["review", "--runs", manyRuns(), "--json"], () => "head -c 10 >/dev/null");
   assert.equal(r.status, 0);
-  assert.equal(r.stderr, "");
+  // Only the word that it is deprecated: no stack trace.
+  assert.match(r.stderr, /^seisin: review --runs is deprecated[^\n]*\n$/);
 });
 
 test("a keyed run's output reaches a reader that is past the exit guard", { skip }, () => {

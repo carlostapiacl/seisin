@@ -255,7 +255,7 @@ sandbox" hint. *Elsewhere:* Claude Code, Codex, Cursor, VS Code all use *sandbox
 and nono both say a process is **confined** [12, 26]. Aligned.
 
 **unconfined**: a role run without a
-sandbox. **`seisin.toml` cannot express it**: it exists only in the console's example-mode what-if.
+sandbox. **`seisin.toml` cannot express it.**
 *Why new:* the console had three words for a state the product does not have, and a live KPI card
 counting it; one word, defined as "not expressible", ends that. *Elsewhere:* AppArmor calls a
 process with no profile **unconfined** [26]; the same meaning, so no collision.
@@ -308,7 +308,7 @@ What happens after a denial, and who answers.
 
 **denial**: one read, write or connection the boundary denied. The event. *Not:* block,
 refusal, rejection, violation (for ours), "stopped". *Where:* `seisin run` ("1 kernel denial(s)
-recorded"), the console's **Denied** view, `seisin log --verdict denied`. *Elsewhere:* the sandbox
+recorded"), a role's page in the console, `seisin log --verdict denied`. *Elsewhere:* the sandbox
 runtime and Claude Code call the recorded event a **sandbox violation** and say the operation is
 **blocked** [1, 6]; Claude Code's hook event is `PermissionDenied` [3]. When quoting their output,
 quote it; in seisin's own voice it is a denial.
@@ -417,7 +417,7 @@ qualified: a bare *chain* is the log's hash chain.
 What is written down, and how you know it was not changed.
 
 **log**: `.seisin/log.jsonl`: one append-only line per **entry**, written by the parent, in no
-role's territory. `seisin log`, `seisin watch`, the console's **Activity**. *Not:* audit trail,
+role's territory. `seisin log`, `seisin watch`, a run's timeline in the console. *Not:* audit trail,
 history, ledger (in labels; plain English is fine). *Elsewhere:* NIST's **audit log**, "a
 chronological record of system activities" [20]. Aligned.
 
@@ -477,7 +477,7 @@ the same volume spread across unrelated causes is a territory question.
 
 **wall**: something a role has been denied at least twice **and would still be denied today**,
 recomputed against the policy rather than read out of the log. A grant makes its wall disappear on
-the next run. `seisin walls`, the console's **Walls**, MCP `seisin_walls`, the hook's session
+the next run. `seisin walls`, MCP `seisin_walls`, the hook's session
 message. *Not:* block, blocker, stuck path. *Elsewhere:* no established meaning; it needs this line
 and nothing to reconcile.
 

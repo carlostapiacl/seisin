@@ -252,6 +252,25 @@ const OS_BACKGROUND = new Set([
   "kcfpreferencesanyapplication", "kern.tcsm_enable", "kern.system_version_compat",
 ]);
 const OS_BACKGROUND_RE = /^apple\.cfprefs\.\d+v1$/;   // the per-user cfprefs segment
+/**
+ * The same preferences, as files: CFPreferences reads the global domain at a
+ * program's start, from the real home whatever HOME says. Under a role that
+ * reads only its territory these were the top cause across one pilot's runs
+ * (291 runs, every one a reviewer), and nothing the agent did needed them.
+ */
+const GLOBAL_PREFS_NAME = /^\.GlobalPreferences(_m)?(\.[0-9A-Fa-f-]+)?\.plist$/;
+
+/**
+ * Only in a home: the user's (`/Users/<name>`, `/home/<name>`, `/var/root`) or
+ * the one a launcher gave the run. The same name anywhere else — a fixture in
+ * the repository — is a file like any other.
+ */
+function globalPrefsOf(t, home) {
+  const m = /^(.*)\/Library\/Preferences\/(?:ByHost\/)?([^/]+)$/.exec(t);
+  if (!m || !GLOBAL_PREFS_NAME.test(m[2])) return false;
+  const root = m[1];
+  return (home && root === String(home).replace(/\/+$/, "")) || /^\/(Users|home)\/[^/]+$/.test(root) || root === "/var/root";
+}
 
 /**
  * The home a launcher gave a run, read off a denied path: `<...>/<run>/home`,
@@ -275,7 +294,7 @@ export function runHomeOf(target, run) {
  */
 export function expectedOf(target, { home = homedir(), env = process.env } = {}) {
   const t = String(target ?? "").replace(/\\/g, "/");
-  if (OS_BACKGROUND.has(t) || OS_BACKGROUND_RE.test(t)) return { kind: "os-background", hint: EXPECTED["os-background"] };
+  if (OS_BACKGROUND.has(t) || OS_BACKGROUND_RE.test(t) || globalPrefsOf(t, home)) return { kind: "os-background", hint: EXPECTED["os-background"] };
   const roots = [
     env.CLAUDE_CONFIG_DIR,
     home && `${home.replace(/\/+$/, "")}/.claude`,

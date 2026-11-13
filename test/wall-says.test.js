@@ -1,38 +1,24 @@
 /**
- * Walls and Denied say the same sentence of the same path.
+ * Every screen says the same word of the same path.
  *
  * Measured on a real console: for a read of ~/.npmrc, Denied said "outside the
  * repository" (nothing to grant) and Walls said "add it to a role's keys" — it
  * told a person to hand an agent the file that holds the npm token. And a
  * protected path that also has an owner read "belongs to X" on Walls (ask the
  * owner) and "protected" on Denied (never granted). Two functions, two orders.
+ *
+ * Walls and Denied are gone from the console (0.9.0); what is left of the rule is
+ * that one function, classOf, names where a path stands for every view: the
+ * Overview, a role's page, a run's timeline, `seisin attention`.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { boxed } from "./_tmp.js";
 import { loadConfig } from "../src/config.js";
-import { describeWalls } from "../src/views.js";
-
-const HTML = readFileSync(new URL("../ui/index.html", import.meta.url), "utf8");
-
-/** The page's own functions, taken from its source and run as they are. */
-function pageFns() {
-  const grab = (name) => {
-    const at = HTML.indexOf(`function ${name}(`);
-    assert.ok(at >= 0, `${name} is not in the page`);
-    let depth = 0, i = HTML.indexOf("{", at);
-    for (let j = i; j < HTML.length; j++) {
-      if (HTML[j] === "{") depth++;
-      else if (HTML[j] === "}" && --depth === 0) return HTML.slice(at, j + 1);
-    }
-    throw new Error(`unbalanced ${name}`);
-  };
-  const src = ["unownedSays", "kindSays", "causeSays", "wallSays"].map(grab).join("\n");
-  return new Function(`${src}; return { causeSays, wallSays };`)();
-}
+import { describeWalls, classOf } from "../src/views.js";
 
 const CASES = [
   { name: "owned", about: "file", standing: "owned", owners: ["backend"] },
@@ -49,19 +35,15 @@ const CASES = [
   { name: "key", about: "key", owners: [] },
 ];
 
-test("Walls says exactly what Denied says, for every kind of path", () => {
-  const { causeSays, wallSays } = pageFns();
-  for (const c of CASES) assert.equal(wallSays(c), causeSays(c), c.name);
+test("one word for where a path stands, whatever else it carries", () => {
+  const want = { owned: "handoff", protected: "protected", outside: "outside", unowned: "decide" };
+  for (const c of CASES.filter((x) => x.standing)) assert.equal(classOf(c), want[c.standing], c.name);
 });
 
-test("nothing on Walls tells a person to grant ~/.npmrc, or to ask the owner of a protected path", () => {
-  const { wallSays } = pageFns();
-  const npmrc = CASES.find((c) => c.name.startsWith("outside"));
-  assert.doesNotMatch(wallSays(npmrc), /keys|declares/);
-  assert.match(wallSays(npmrc), /outside the repository/);
-  const prot = CASES.find((c) => c.name === "protected with an owner");
-  assert.match(wallSays(prot), /^protected/);
-  for (const c of CASES) assert.doesNotMatch(wallSays(c), / — $| —$/, `${c.name}: a dangling dash`);
+test("nothing tells a person to grant ~/.npmrc, or to ask the owner of a protected path", () => {
+  assert.equal(classOf(CASES.find((c) => c.name.startsWith("outside"))), "outside");
+  assert.equal(classOf(CASES.find((c) => c.name === "protected with an owner")), "protected");
+  assert.equal(classOf({ ...CASES[0], expected: { hint: "H" } }), "expected", "expected wins over everything");
 });
 
 test("the server gives every file wall its standing, owned or not", () => {

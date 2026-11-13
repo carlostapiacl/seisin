@@ -98,7 +98,7 @@ test("anything the console derives is reachable over MCP", () => {
   //
   // Only the DERIVED views. Raw passthrough (`log`, `toml`) is not analysis and
   // `seisin_activity` already covers the log.
-  const DERIVED = ["causes", "walls"];
+  const DERIVED = ["causes", "walls", "attention", "timeline"];
   const names = TOOLS.map((t) => t.name);
   for (const k of DERIVED)
     assert.ok(names.includes("seisin_" + k),

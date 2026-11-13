@@ -114,6 +114,7 @@ seisin run <role> -- claude -p "…"     # a role from seisin check, inside its 
 ```
 
 On Linux, [three system packages first](#install). Everything below is why it works and where it does not.
+**[Using it with one agent, several in one repository, or a fleet behind a launcher →](https://github.com/carlostapiacl/seisin/blob/main/docs/guide.md)**
 
 ---
 
@@ -237,6 +238,7 @@ seisin help limits                       # what seisin cannot do, in any repo
 seisin run frontend -- claude -p "…"     # run an agent as that role
 seisin explain frontend write src/api/x  # ask one question, exit 0 or 1
 seisin review --since 7d                 # what the log says about the policy, this week
+seisin attention --since 7d              # across runs: whether the boundary held, what needs a person
 seisin wire                              # install the PreToolUse hook in this repo
 seisin ui                                # the console: what is waiting, the runs, what was denied
 ```
@@ -438,13 +440,17 @@ it should. ([The measurement, ~370 confined runs over one production window →]
 ```bash
 seisin log --verdict denied      # what the agents tried and could not do
 seisin review --since 7d         # where the policy was wrong, from what happened
+seisin attention                 # across runs: did the boundary hold, and what needs a person
 seisin walls dev                 # what a role keeps being denied, and what it cost
 seisin ui                        # a console for the person deciding
 ```
 
 One append-only, hash-chained JSONL under `.seisin/`, which no role can write. `review` finds
 denials that repeat (a policy that is wrong) and grants never used (the only evidence for making a
-policy smaller). The MCP server (`seisin mcp`) is read-only and answers an agent's questions about
+policy smaller). `attention`, and the console's first screen over runs, sort every denial into five
+classes — no owner, outside, another role's, protected, expected — and list only the first three:
+almost every denial is the boundary working, and a total said nothing. `seisin run` ends with the same
+split for its own run. The MCP server (`seisin mcp`) is read-only and answers an agent's questions about
 its own situation. **[The log, `review`, the console, the MCP server and walls →](https://github.com/carlostapiacl/seisin/blob/main/docs/log.md)**
 
 ## How it holds
