@@ -8,7 +8,7 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
-## Unreleased
+## 0.9.0 — 2026-11-13
 
 - **The console is read by role.** With runs it opens on an overview: whether the boundary held,
   every role of the policy in one table, and what needs a person across them — every denial sorted
