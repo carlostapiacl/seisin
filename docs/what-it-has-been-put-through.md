@@ -5,16 +5,16 @@ the defects I found myself. Open findings are listed as open.
 
 ## The suite
 
-[CI](../.github/workflows/test.yml) runs the suite on macOS and `ubuntu-latest` (bubblewrap),
+[CI](../.github/workflows/test.yml) runs the suite on macOS and Ubuntu 24.04 (bubblewrap),
 Node 18/20/22/24, on every pull request and every push to `main`. A release is published only
 from CI, after that passes ([publish.yml](../.github/workflows/publish.yml)), with npm provenance.
 
-Last run on macOS, 2026-11-13: 1273 tests. On Node 24:
+Last run, 2026-11-13: 1273 tests on macOS, all eight jobs green. On Node 24:
 
-| | tests | pass | skipped | measured |
-|---|---|---|---|---|
-| macOS | 1273 | 1263 | 10 | 2026-11-13 |
-| Linux | 1245 | 1216 | 29 | 2026-11-06 |
+| | tests | pass | skipped |
+|---|---|---|---|
+| macOS | 1273 | 1263 | 10 |
+| Ubuntu 24.04 | 1272 | 1243 | 29 |
 
 The skips are platform tests. Some tests run real commands through the real sandbox and check
 what the kernel did; 26 of them are the core boundary file, `test/sandbox.test.js`, and the job
