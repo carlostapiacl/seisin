@@ -57,13 +57,12 @@ happens (which is how an *allowed* action gets recorded at all) and it is text-b
 evadable, on purpose. The **kernel** reports what it actually denied, and is not fooled by
 anything. What escapes the hook goes unexplained, never unenforced.
 
-![the console: requests waiting on a person, a grant that needs a reason and a second click for another role's path, the line it wrote, the denials grouped by path with the kind of each unowned one, the walls each role keeps hitting, the roles, and a control-files change shown before it is saved](https://raw.githubusercontent.com/carlostapiacl/seisin/main/docs/img/console.gif)
+![the seisin console, read by role: an Overview of whether the boundary held, every role and what needs a person; a role's page with what it may write and a request whose grant asks for a second click because the path is another role's; one of its runs opened in place, with the policy it held under; every run; and the policy with its control files](https://raw.githubusercontent.com/carlostapiacl/seisin/main/docs/img/console.gif)
 
 It opens on the **Overview**: what is waiting on you, whether the boundary held, every role of
 the policy, and what needs a person across the runs, sorted into the five words above and
 recomputed against the policy, which a log alone cannot do: something granted since stops
-counting. Each role has its page, and each run opens under it as a timeline. (The recording
-above is of the console before 0.9.0.)
+counting. Each role has its page, and each run opens under it as a timeline.
 
 **A decision needs a reason.** Grant without one asks for it; Decline without one fills in
 a default and asks again, so what is recorded is on screen first. The request says what a
