@@ -34,7 +34,7 @@ test("a line longer than any path is dropped with its connection; the next conne
 
 test("mcpServer reads what it read, in linear time", () => {
   for (const [tool, server] of [
-    ["mcp__wapentake__get_task", "wapentake"], ["mcp__claude_ai_Gmail__send", "claude_ai_Gmail"],
+    ["mcp__my_harness__get_task", "my_harness"], ["mcp__claude_ai_Gmail__send", "claude_ai_Gmail"],
     ["mcp__a__b__c", "a"], ["mcp____b", null], ["mcp__a__", null], ["mcp__a", null], ["mcp__", null],
     ["Read", null], ["mcp__a__b\n", null], [42, null],
   ]) assert.equal(mcpServer(tool), server, String(tool));

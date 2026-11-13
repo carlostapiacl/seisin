@@ -133,7 +133,7 @@ export const COMMAND_HELP = {
     flags: [["--port <n>", "port on 127.0.0.1 (default 4178; 4179 with --runs)"], ["--link", "print the link of a console already running, start nothing"],
       ["--runs <dir>", "the console with no policy, over a directory of runs, read only. A policy names its own with [console] runs (docs/runs.md)"],
       ["--json", "with --link: {running, url, port, mode} for a program to read, nothing opened"]],
-    examples: ["seisin ui", "seisin ui --link", "seisin ui --runs ~/.wapentake/seisin/runs", "seisin ui --runs ~/.wapentake/seisin/runs --link --json"],
+    examples: ["seisin ui", "seisin ui --link", "seisin ui --runs ~/.my-harness/seisin/runs", "seisin ui --runs ~/.my-harness/seisin/runs --link --json"],
     exits: [["0", "stopped"], ["2", "could not start"]],
   },
   mcp: {

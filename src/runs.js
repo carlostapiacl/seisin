@@ -2,7 +2,7 @@
  * The console's runs: a directory of them (`[console] runs`, `seisin ui --runs`),
  * or the runs named in one log.
  *
- * A launcher that lends each run a territory of its own (wapentake does) has no
+ * A launcher that lends each run a territory of its own (an orchestrator, say) has no
  * single seisin.toml to open: every run gets one written for it at the root of
  * a worktree, runs there, and the worktree is gone a day or two later. What is
  * worth keeping is copied out — the policy, the `.seisin/` beside it and a

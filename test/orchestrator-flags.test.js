@@ -1,7 +1,7 @@
 /**
  * A launcher that keeps the policy and seisin's state out of the repo it runs
  * in (an orchestrator with a folder per run): `--policy`, `--state-dir` and
- * `run --run-id`. Before these, wapentake wrote seisin.toml into each worktree,
+ * `run --run-id`. Before these, such a launcher wrote seisin.toml into each worktree,
  * hid it from git, and copied `.seisin/` out before deleting the worktree, and
  * one `.seisin/` mixed up to twelve runs under ids it did not know.
  */

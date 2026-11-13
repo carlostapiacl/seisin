@@ -10,8 +10,8 @@ the log. **Runs** is one more item in its menu, and it gets its runs from one of
 
   ```toml
   [console]
-  runs = ".wapentake/seisin/runs"
-  launcher = "wapentake"
+  runs = ".my-harness/seisin/runs"
+  launcher = "my-harness"
   ```
 
 - **No policy at hand:** `seisin ui --runs <dir>` is the same console over the directory alone,
@@ -76,7 +76,7 @@ rest:
 | `repo` | shown, and searched |
 | `started_at`, `ended_at` | ISO dates. Newest first by `started_at` |
 | `status` | the launcher's verdict (done, failed…), a filter |
-| `launcher` | named in "ask for it in …" (e.g. `wapentake`) |
+| `launcher` | named in "ask for it in …" (e.g. `my-harness`) |
 
 Beside the launcher's `status`, each run gets seisin's own `outcome`:
 

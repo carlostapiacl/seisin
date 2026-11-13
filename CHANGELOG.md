@@ -223,7 +223,7 @@ Inside, with no change in behaviour:
 
 With tartaros 0.1.0-alpha.18.
 
-For a launcher that runs agents in worktrees it throws away (found reviewing how wapentake
+For a launcher that runs agents in worktrees it throws away (found reviewing how my own harness
 runs seisin):
 
 - **`--policy <file>` and `--state-dir <dir>`, on every command, and `run --run-id <id>`.**

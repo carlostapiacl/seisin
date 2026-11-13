@@ -201,8 +201,8 @@ that answers it. macOS only.
 
 ```toml
 [console]
-runs = ".wapentake/seisin/runs"   # a directory of runs, relative to this file
-launcher = "wapentake"            # who lends the territory: nothing is granted from the console
+runs = ".my-harness/seisin/runs"   # a directory of runs, relative to this file
+launcher = "my-harness"            # who lends the territory: nothing is granted from the console
 ```
 
 Both are optional. Without them `seisin ui` lists the runs in this repository's log and grants
