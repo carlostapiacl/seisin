@@ -122,13 +122,18 @@ Proposals that need the parser to grow will be asked what the configuration is t
 express and whether it belongs in a policy file at all. Sometimes the answer is yes — the
 case has to be made.
 
-## The README's GIF
+## The GIFs
 
 `docs/img/demo.gif` is recorded from [`docs/demo.tape`](docs/demo.tape) with
 [vhs](https://github.com/charmbracelet/vhs), so it can be regenerated rather than re-shot by
 hand. The tape's header says how to set up the two-role demo repository, the order of the
 steps, and the encoding step vhs skips. When what `seisin run` prints changes, regenerate the
 GIF along with the README's text sample, so the two keep saying the same thing.
+
+`docs/img/console.gif` is recorded from [`docs/console-gif.mjs`](docs/console-gif.mjs): the
+console opened as a file, on its own example (`ui/demo.js`), with Playwright and ffmpeg, which
+are not dependencies of seisin. The script's header says what it needs. When the console
+changes, run `node ui/demo.js`, `node ui/build.js`, then the script.
 
 ## Commits
 
