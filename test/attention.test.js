@@ -35,6 +35,9 @@ function run(dir, id, { meta = {}, log = [] } = {}) {
   writeFileSync(join(root, "seisin.toml"), POLICY);
   writeFileSync(join(root, "run.json"), JSON.stringify({ run_id: id, started_at: "2026-10-26T10:00:00Z", ...meta }));
   writeFileSync(join(root, ".seisin", "log.jsonl"), log.map((e) => line({ run: id, ...e })).join(""));
+  // On Linux a control file is protected only where it exists, as the kernel is told.
+  mkdirSync(join(root, ".git", "hooks"), { recursive: true });
+  writeFileSync(join(root, ".git", "hooks", "pre-commit"), "");
   return root;
 }
 
@@ -173,6 +176,8 @@ test("the canary's own loopback probe is logged as expected, and another port is
 test("the end of a run: the boundary working said in one line, what needs a person spelled out", () => {
   const box = boxed("attention-summary-");
   writeFileSync(join(box, "seisin.toml"), POLICY);
+  mkdirSync(join(box, ".git", "hooks"), { recursive: true });
+  writeFileSync(join(box, ".git", "hooks", "pre-commit"), "");
   const config = loadConfig(join(box, "seisin.toml"));
   const entries = [
     denied("api/server.js", { run: "r" }), denied("api/server.js", { run: "r" }),
