@@ -31,7 +31,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        # ubuntu-24.04, not -latest: on 26.04 sandbox-runtime's apply-seccomp cannot nest its
+        # user namespace (setgroups EPERM), so no role runs under srt. Upstream:
+        # anthropics/sandbox-runtime#428, #429, #498.
+        os: [macos-latest, ubuntu-24.04]
         node: [18, 20, 22, 24]
 
     steps:

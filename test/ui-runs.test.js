@@ -40,7 +40,7 @@ function threeRuns() {
   const dir = boxed("ui-runs-");
   run(dir, "r-exec-a", {
     meta: { run_id: "r-exec-a", team: "compras", work_item: "WI-1", role: "executor", repo: "compras",
-      started_at: "2026-10-26T09:00:00Z", ended_at: "2026-10-26T09:10:00Z", status: "done", launcher: "wapentake" },
+      started_at: "2026-10-26T09:00:00Z", ended_at: "2026-10-26T09:10:00Z", status: "done", launcher: "my-harness" },
     log: [
       { event: "canary", role: "agent", run: "a1", confined: true, reasons: [] },
       { role: "agent", source: "kernel", action: "connect", kind: "network", target: "api.example.com:443", verdict: "denied", owners: [] },
@@ -190,17 +190,17 @@ test("one console: a policy that names its runs serves both, and still takes a d
 test("one console: under a lent territory nothing is written, and it says who to ask", async () => {
   const box = boxed("ui-lent-");
   const policy = join(box, "seisin.toml");
-  writeFileSync(policy, `${TOML("dev")}\n[console]\nlauncher = "wapentake"\n`);
+  writeFileSync(policy, `${TOML("dev")}\n[console]\nlauncher = "my-harness"\n`);
   const server = await serve(policy, 0);
   const get = (p, o = {}) => fetch(`http://127.0.0.1:${server.address().port}${p}`, { ...o, headers: { "x-seisin-token": server.seisinToken } });
   try {
     const info = await (await get("/api/info")).json();
     assert.equal(info.readOnly, true);
-    assert.equal(info.launcher, "wapentake");
+    assert.equal(info.launcher, "my-harness");
     for (const path of ["/api/decide", "/api/decline-all", "/api/control-files"]) {
       const r = await get(path, { method: "POST", body: "{}" });
       assert.equal(r.status, 405, path);
-      assert.match((await r.json()).error, /wapentake/);
+      assert.match((await r.json()).error, /my-harness/);
     }
   } finally { server.close(); }
 });
