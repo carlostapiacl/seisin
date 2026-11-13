@@ -51,6 +51,13 @@ export { destinationOf };
  */
 const TCP_PROBE = /^tcp:\d{1,5}$/;
 
+/**
+ * How late the system log may deliver the canary's own probe. Measured on macOS
+ * under load it came within a few seconds of the watcher starting; past this, a
+ * dial of that port is the agent's.
+ */
+const CANARY_LATE_MS = 30_000;
+
 export function intake({ config, role, runId, label = null, observe = false, settings, notify, chain = null, expectDenied = [], trace = {}, ceiling = null }) {
   // `trace` is the launcher's (trace.js), read by the parent: in the stamp, so a
   // line the sandbox sends cannot claim another run's trace.
@@ -77,7 +84,7 @@ export function intake({ config, role, runId, label = null, observe = false, set
   const keyDirs = (config.keyDirs ?? []).map((d) => (d.startsWith("/") ? d : join(config.root, d)));
   const connects = new Set();         // one line per refused target per run
   const systems = new Set();          // one line per operation and service per run
-  const stats = { offPolicy: 0, walks: 0, expected: 0, probes: 0, atomic: [], browsers: [] };
+  const stats = { offPolicy: 0, walks: 0, expected: 0, probes: 0, canaryProbes: 0, atomic: [], browsers: [] };
 
   /**
    * A denial the caller asked for is recorded, and asked about by nobody.
@@ -98,6 +105,12 @@ export function intake({ config, role, runId, label = null, observe = false, set
   // A port the caller's canary dials on purpose: `tcp:<port>`, exactly as the log writes it.
   const dialled = new Set(expectDenied.filter((p) => TCP_PROBE.test(p)));
   const expectedByCaller = (target) => probes.size > 0 && probes.has(samePath(config, target));
+  // seisin's own canary, dialling its loopback port: the parent adds it once
+  // the canary is done (run.js), never anything from inside the sandbox.
+  // The canary's port, until its probe is seen once or CANARY_LATE_MS have passed. Matched
+  // once: the kernel says only the port, not the host, so a later dial of the same port is
+  // the agent's and is recorded as its own.
+  const canaryPorts = new Map();
 
   /**
    * Nothing from inside the sandbox is taken at its word.
@@ -257,13 +270,21 @@ export function intake({ config, role, runId, label = null, observe = false, set
     if (connects.has(d.path)) return;
     connects.add(d.path);
     const v = explain(config, role, "connect", d.path);
-    const asked = dialled.has(d.path);
+    const ours = (canaryPorts.get(d.path) ?? -Infinity) >= Date.now();
+    if (ours) {
+      canaryPorts.delete(d.path);
+      // Not deduplicated against: what dials this port next is not the canary.
+      connects.delete(d.path);
+    }
+    const asked = !ours && dialled.has(d.path);
     if (asked) stats.probes++;
+    if (ours) stats.canaryProbes++;
     log({
       role, tool: "kernel", source: "kernel",
       action: "connect", kind: "network", target: d.path, verdict: "denied",
       owners: [], reason: d.operation, ...(v.listed ? { listed: true } : {}),
-      ...(asked ? { expected: true } : {}),
+      ...(asked || ours ? { expected: true } : {}),
+      ...(ours ? { probe: "canary" } : {}),
     });
   }
 
@@ -362,7 +383,12 @@ export function intake({ config, role, runId, label = null, observe = false, set
     });
   }
 
-  return { fromHook, fromKernel, stats };
+  /** The canary's loopback port, `tcp:<port>`, said by the parent once the canary has run. */
+  function expectCanary(target) {
+    if (TCP_PROBE.test(target)) canaryPorts.set(target, Date.now() + CANARY_LATE_MS);
+  }
+
+  return { fromHook, fromKernel, stats, expectCanary };
 }
 
 /**

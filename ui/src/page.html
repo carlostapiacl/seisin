@@ -33,12 +33,13 @@
       <a class="on" href="#requests" id="nav-req" aria-current="page" title="Requests: access an agent asked for and cannot have"><i>⚖</i>Waiting on you<span class="pin" id="req-pin"></span></a>
       <!-- One menu, with or without a directory of runs: a run opens as these same views. -->
       <div id="nav-runs" hidden>
+        <a href="#overview" id="nav-att" title="Whether the boundary held, every role at a glance, and what needs a person"><i>◉</i>Overview<span class="pin" id="att-pin"></span></a>
         <a href="#runs" id="nav-all" title="Every run, newest first"><i>☰</i>Runs<span class="pin" id="runs-pin"></span></a>
+        <!-- The policy's roles: the unit the console is read by. Each opens its page, and its runs open under it. -->
+        <div class="cap">Roles</div>
+        <div id="nav-roles"></div>
       </div>
-      <a href="#denied" title="Every denial in the window: what an agent tried and the OS denied"><i>⊘</i>Denied<span class="pin" id="dn-pin"></span></a>
-      <a href="#walls" title="A wall: something a role was denied twice or more and would still be denied today"><i>▦</i>Walls<span class="pin" id="wl-pin"></span></a>
-      <a href="#policy" title="Each role's territory (the folders it may write) and the keys it may read"><i>⚷</i>Roles<span class="pin" id="pin"></span></a>
-      <a href="#activity" title="The log: every entry, newest first"><i>◷</i>Activity</a>
+      <a href="#policy" title="Each role's territory (the folders it may write) and the keys it may read"><i>⚷</i>Policy<span class="pin" id="pin"></span></a>
       <a href="#configfile" title="seisin.toml, the policy file"><i>⚙</i>Config file</a>
       <div class="cap">Docs</div>
       <a href="https://github.com/carlostapiacl/seisin#readme" target="_blank" rel="noopener"><i>↗</i>seisin README</a>
@@ -61,67 +62,92 @@
       <code>seisin ui</code> in it.
     </div>
     <div class="banner off" id="off-banner" role="alert" hidden></div>
-    <!-- One run out of a directory of them: who it was, and that nothing here is granted. -->
-    <div class="banner run" id="run-banner" hidden></div>
 
     <div class="head">
       <div>
         <h1 id="v-title">Roles</h1>
         <p id="v-sub">Which territory each role writes, and which keys it may read.</p>
       </div>
-      <button class="btn warn" id="kill" type="button">Run every role unconfined</button>
     </div>
 
-    <!-- The window filters what is read from the log. Not the request queue: that is what is
-         waiting now, whatever the window. -->
-    <div class="range" id="range" hidden>
-      <span id="range-lbl">Window</span>
-      <div class="seg" role="group" aria-labelledby="range-lbl">
-        <button type="button" data-r="1h">1h</button>
-        <button type="button" data-r="4h">4h</button>
-        <button type="button" data-r="24h">24h</button>
-        <button type="button" data-r="7d">7d</button>
-        <button type="button" data-r="30d">30d</button>
-        <button type="button" data-r="all" class="on">All</button>
-        <button type="button" data-r="custom" id="range-custom">From a date…</button>
+    <!-- One filter for Attention and Runs: the same runs, summed on one screen and listed on the
+         other. A work item picked here is that work item whole: every run it took, as one. -->
+    <div class="box" id="rn-filterbox" hidden>
+      <header>
+        <h2>Which runs</h2>
+        <span class="note" id="rn-count"></span>
+      </header>
+      <div class="pad runs-filters" id="rn-filters">
+        <label>window <select data-f="since" data-fixed="1">
+          <option value="">all</option><option value="24h">last 24 h</option><option value="7d">last 7 days</option><option value="30d">last 30 days</option>
+        </select></label>
+        <label>team <select data-f="team"></select></label>
+        <label title="the launcher's word for the run (run.json), not a role of the policy">launched as <select data-f="role"></select></label>
+        <label>work item <select data-f="work_item"></select></label>
+        <label>status <select data-f="status"></select></label>
+        <label>outcome <select data-f="outcome"></select></label>
+        <label>search <input type="search" id="rn-q" spellcheck="false" autocomplete="off" placeholder="run id, work item, repo"></label>
       </div>
-      <label class="custom" id="range-from-box" hidden>since <input type="datetime-local" id="range-from"></label>
     </div>
 
-    <!-- Each number is a link to the screen that explains it. Full cards on the landing view,
-         a strip on the others: the same five cards on every screen pushed every view's own
-         content below the fold, on a phone by a whole screen. -->
-    <div class="cards" id="kpis">
-      <a class="card kpi" href="#requests" id="k-wait">
-        <h2>waiting on you</h2><div class="n" id="c-wait">0</div><div class="s" id="c-wait-s">nothing to decide</div></a>
-      <!-- Example only: seisin.toml cannot express an unconfined role, so live this card would
-           always say 0 and is removed with the what-if button. -->
-      <a class="card kpi" href="#policy" id="k-open" title="Roles run without a sandbox in this example: nothing enforces their territory">
-        <h2>unconfined</h2><div class="n" id="c-off">0</div><div class="s" id="c-off-s">every role confined</div></a>
-      <a class="card kpi" href="#denied" id="k-ref">
-        <h2>denied</h2><div class="n" id="c-blocks">0</div><div class="s" id="c-blocks-s">in this window</div></a>
-      <a class="card kpi" href="#causes" id="k-conc" title="How much of the window's denials share one file name">
-        <h2>top cause</h2><div class="n" id="c-conc">—</div><div class="s" id="c-conc-s">of all denials</div></a>
-      <a class="card kpi" href="#walls" id="k-retry" title="Calls made after the first denial of the same thing">
-        <h2>spent retrying</h2><div class="n" id="c-retry">0</div><div class="s" id="c-retry-s">calls on known walls</div></a>
-    </div>
+    <!-- The first screen over runs: whether the boundary held, and what needs a person. Almost
+         every denial is the boundary working, so a total said nothing: 97% of one pilot's runs
+         read "denied". The five classes are the words the CLI uses too (seisin attention). -->
+    <section data-view="overview" hidden>
+      <div class="cards" id="at-kpis"></div>
+      <div class="box">
+        <header><h2>Roles</h2><span class="note">open one for what it may do, what it was denied and its runs</span></header>
+        <div class="scrollx"><table class="runs" id="ov-roles"></table></div>
+      </div>
+      <div class="box">
+        <header><h2>Needs a person</h2><span class="note" id="at-need-note"></span></header>
+        <div class="scrollx"><table class="runs att" id="at-list"></table></div>
+        <p class="blank quiet" id="at-more" hidden></p>
+      </div>
+      <div class="att-grid">
+        <div class="box">
+          <header><h2>Last 14 days</h2><span class="note">denials that need a person, per day · hover a day for its runs</span></header>
+          <div class="pad" id="at-days"></div>
+        </div>
+        <div class="box">
+          <header><h2>Every denial, by where it stands</h2></header>
+          <div class="scrollx"><table class="runs" id="at-piles"></table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- One role across its runs: what it may do, what it was denied, and each run as it lived it.
+         A run is a moment in a role's life, so it opens here, under the role, not as a console of its own. -->
+    <section data-view="role" hidden>
+      <div class="box role-head" id="rl-head"></div>
+      <!-- What this role asked for and cannot have: decided here, where its territory is in view.
+           The same box as "Waiting on you", moved in while this page is open. -->
+      <div id="rl-reqs"></div>
+      <div class="cards" id="rl-kpis"></div>
+      <div class="box">
+        <header><h2>Needs a person</h2><span class="note" id="rl-need-note"></span></header>
+        <div class="scrollx"><table class="runs att" id="rl-list"></table></div>
+        <p class="blank quiet" id="rl-list-more" hidden></p>
+      </div>
+      <div class="att-grid">
+        <div class="box">
+          <header><h2>Last 14 days</h2><span class="note">this role's denials that need a person, per day</span></header>
+          <div class="pad" id="rl-days"></div>
+        </div>
+        <div class="box">
+          <header><h2>Every denial, by where it stands</h2></header>
+          <div class="scrollx"><table class="runs" id="rl-piles"></table></div>
+        </div>
+      </div>
+      <div class="box">
+        <header><h2>Runs of this role</h2><span class="note" id="rl-runs-note">newest first · open one to see it in order</span></header>
+        <div class="scrollx"><table class="runs" id="rl-runs"></table></div>
+        <p class="blank quiet" id="rl-more" hidden></p>
+      </div>
+    </section>
 
     <!-- Every run in the directory (seisin ui --runs): filtered, summed, newest first. -->
     <section data-view="runs" hidden>
-      <div class="box">
-        <header>
-          <h2>Filter</h2>
-          <span class="note" id="rn-count"></span>
-        </header>
-        <div class="pad runs-filters" id="rn-filters">
-          <label>team <select data-f="team"></select></label>
-          <label>role <select data-f="role"></select></label>
-          <label>work item <select data-f="work_item"></select></label>
-          <label>status <select data-f="status"></select></label>
-          <label>outcome <select data-f="outcome"></select></label>
-          <label>search <input type="search" id="rn-q" spellcheck="false" autocomplete="off" placeholder="run id, work item, repo"></label>
-        </div>
-      </div>
       <div class="cards" id="rn-kpis"></div>
       <!-- Closed until asked for: at 50 lines it pushed the runs two screens down. -->
       <details class="box fold">
@@ -200,52 +226,6 @@
         <div id="reqs"></div>
       </div>
     </section>
-
-    <!-- Denied, by path or by name: one view with two cuts. "Causes" was a view the nav never
-         listed, reachable only from a KPI. #causes still lands on the name cut. -->
-    <section data-view="denied" hidden>
-      <div class="box">
-        <header>
-          <h2>Denied</h2>
-          <nav class="tabs" role="tablist" aria-label="Group denials">
-            <a href="#denied" role="tab" id="tab-path">by path</a>
-            <a href="#causes" role="tab" id="tab-name">by name</a>
-          </nav>
-          <span class="note" id="dn-window"></span>
-        </header>
-        <div class="pad" id="dn-path" role="tabpanel" aria-labelledby="tab-path">
-          <p class="lede" id="ca-lede"></p>
-          <div class="bars" id="ca-bars"></div>
-          <div id="ca-more"></div>
-          <div id="ca-other"></div>
-        </div>
-        <div class="pad" id="dn-name" role="tabpanel" aria-labelledby="tab-name" hidden>
-          <p class="lede" id="fa-lede"></p>
-          <div id="fa-list"></div>
-        </div>
-      </div>
-    </section>
-
-    <section data-view="walls" hidden>
-      <div class="box">
-        <header>
-          <h2>Walls</h2>
-          <span class="note">denied twice or more, and the policy still denies it · a retry is every call after the first denial</span>
-        </header>
-        <div class="pad">
-          <p class="lede" id="wl-lede"></p>
-          <div id="wl-list"></div>
-        </div>
-      </div>
-    </section>
-
-    <section data-view="activity" hidden>
-      <div class="box">
-        <header><h2>Activity</h2><span class="note">newest first · each denial with whose it was</span></header>
-        <div id="log"></div>
-      </div>
-    </section>
-
     <section data-view="config" hidden>
     <div class="box">
       <header id="configfile"><h2>seisin.toml</h2><span class="note" id="toml-note">generated from the example policy in this page — there is no file behind it</span></header>
@@ -264,6 +244,7 @@
 </div>
 
 <script>
+<!-- @inline demo-runs.js -->
 <!-- @inline console.js -->
 </script>
 </body>

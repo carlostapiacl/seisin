@@ -8,6 +8,39 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## 0.9.0 — 2026-11-13
+
+- **The console is read by role.** With runs it opens on an overview: whether the boundary held,
+  every role of the policy in one table, and what needs a person across them — every denial sorted
+  into no owner, outside, another role's, protected and expected, and only the first three listed, by
+  how many runs hit each. The same file name in many places is one line, and so are the ports the
+  system hands out. Each role has a page in the sidebar: what it may do, what it was denied across its
+  runs, and its runs, each opening in place as that role lived it. Every view shares one filter, with a
+  window, so a work item is read whole. A repository with no run yet is read the same way. Nothing is
+  drawn until the server answers.
+- **Gone from the console: Denied, Walls, Activity, the counters across the top, the time window and
+  the console of one run.** What they said is on each role's page and in each run's timeline, which
+  also says the policy the run held under and, over a directory of runs, what it asked for. A
+  launcher's link with `&run=<id>` opens that run under its role; `/api/run` is gone, and
+  `/api/timeline?run=<id>&role=<role>` is what a program reads. `seisin walls`, `seisin log` and the
+  MCP server are unchanged. Opened as a file, the example is now drawn by the server's own code from
+  made-up runs (`node ui/demo.js`). The example's "Run every role unconfined" button is gone.
+- **`seisin review --runs <dir> --json` is deprecated.** It still answers the same JSON, and says on
+  stderr to use `seisin attention --runs <dir> --json`.
+- **`seisin attention`.** The same, in the terminal, over `--runs <dir>`, the policy's `[console] runs`
+  or the runs in its own log, with `--since` and the console's filters, and `--json`. Exits 1 when a
+  run's canary failed in the window.
+- **`seisin run` ends by saying what needs a person.** Its own denials in the same five words: the
+  boundary working in one line, the rest spelled out with the command that says more.
+- **The canary's network probe is no longer a denial of the agent's.** On macOS the system log
+  delivered the refusal of the canary's loopback probe after the kernel watcher had started, so it was
+  recorded as the agent's: one pilot had it in 2,165 of 2,302 runs, every one of them then read
+  "denied". It is now logged as expected (`probe: "canary"`), and the canary's line names the port.
+- **macOS's global preferences are expected.** `~/Library/Preferences/.GlobalPreferences*.plist`, read
+  by every program at start, were the top denial of a role that reads only its territory.
+- **CI runs Linux on `ubuntu-24.04`.** On 26.04, sandbox-runtime's `apply-seccomp` cannot nest its user
+  namespace and no role runs under srt (anthropics/sandbox-runtime#428, #429, #498).
+
 ## 0.8.8 — 2026-11-07
 
 - **A read the policy leaves open asks nobody.** When the kernel denied a read that the policy allows, the queue got a

@@ -24,7 +24,7 @@ import { pending, requestsPath, editPolicy, settle, cleanReason, lastAgentOf, fi
 import { causesOf, describeWalls, parseSince, queue, verdicts, wallsByRole } from "./views.js";
 import { planEdit, hashOf } from "./controls.js";
 import { inspect } from "./inspect.js";
-import { scanRuns, runsView, runOf, runPolicy, filtersOf, isRunId, logRunsView, logRunOf } from "./runs.js";
+import { scanRuns, runsView, runOf, runPolicy, filtersOf, isRunId, logRunsView, runTimeline, timelineOf } from "./runs.js";
 
 // Moved to views.js, which the MCP server shares; kept importable from here.
 export { causesOf } from "./views.js";
@@ -208,14 +208,14 @@ export function state(configPath, { since = null, snap = snapshot(configPath), r
  * moved — and a tag naming it, so a poll that already has it gets a 304 and
  * no body at all.
  */
-function stateBody(configPath, since, { readOnly = false, root = null, run = null } = {}) {
+function stateBody(configPath, since, { readOnly = false, root = null } = {}) {
   // One snapshot for the tag and the body. Each used to take its own, so a
   // file that moved between the two calls got a body filed under the tag of
   // what was there before — and a 304 for it until something else moved.
   const snap = snapshot(configPath, root);
-  const k = `${snap.key}|${since}|${readOnly}|${run}`;
+  const k = `${snap.key}|${since}|${readOnly}`;
   return memo.bodies.get(k) ?? remember(memo.bodies, k, {
-    body: JSON.stringify(state(configPath, { since, snap, readOnly, run })),
+    body: JSON.stringify(state(configPath, { since, snap, readOnly })),
     etag: `"${createHash("sha256").update(k).digest("hex").slice(0, 24)}"`,
   });
 }
@@ -478,7 +478,8 @@ function declineAll(configPath, { keys, reason }) {
 function runsBody(dir, query) {
   const filters = filtersOf(query);
   const scanned = scanRuns(dir);
-  const k = `${JSON.stringify(filters)}|${scanned.sig}`;
+  // The minute too: what is new and the trend's days move with the clock (runs.js attentionOf).
+  const k = `${JSON.stringify(filters)}|${scanned.sig}|${Math.floor(Date.now() / 60_000)}`;
   return runsMemo.get(k) ?? remember(runsMemo, k, {
     body: JSON.stringify(runsView(dir, filters, { scanned })),
     etag: `"${createHash("sha256").update(k).digest("hex").slice(0, 24)}"`,
@@ -486,41 +487,17 @@ function runsBody(dir, query) {
 }
 const runsMemo = new Map();
 
-/** One run as the page draws it: its own state, read only, with what run.json said. */
-function runBody(dir, id, since) {
-  const run = runOf(dir, id);
-  if (run.outcome === "unread") throw Object.assign(new Error(`run ${id}: ${run.error}`), { status: 422 });
-  const got = stateBody(runPolicy(dir, id), since, { readOnly: true, root: join(dir, id) });
-  // The state is already a string; the run is stitched onto it rather than
-  // parsed and serialized again on every poll.
-  return {
-    body: `${got.body.slice(0, -1)},"mode":"runs","readOnly":true,"run":${JSON.stringify(run)}}`,
-    etag: `"${createHash("sha256").update(`${got.etag}|${JSON.stringify(run)}`).digest("hex").slice(0, 24)}"`,
-  };
-}
-
 /** The runs of the policy's own log, for a repository with no directory of them. */
 function logRunsBody(configPath, query) {
   const { cfg, all, key } = snapshot(configPath);
   const filters = filtersOf(query);
-  const k = `${key}|${JSON.stringify(filters)}`;
+  const k = `${key}|${JSON.stringify(filters)}|${Math.floor(Date.now() / 60_000)}`;
   return logRunsMemo.get(k) ?? remember(logRunsMemo, k, {
-    body: JSON.stringify(logRunsView(cfg.path, all, filters, Object.keys(cfg.roles))),
+    body: JSON.stringify(logRunsView(cfg.path, all, filters, Object.keys(cfg.roles), cfg)),
     etag: `"${createHash("sha256").update(k).digest("hex").slice(0, 24)}"`,
   });
 }
 const logRunsMemo = new Map();
-
-/** One run of the policy's own log, read only: what happened in it does not change. */
-function logRunBody(configPath, id, since) {
-  const { cfg, all } = snapshot(configPath);
-  const run = logRunOf(all, id, Object.keys(cfg.roles));
-  const got = stateBody(configPath, since, { readOnly: true, run: id });
-  return {
-    body: `${got.body.slice(0, -1)},"mode":"runs","readOnly":true,"run":${JSON.stringify(run)}}`,
-    etag: `"${createHash("sha256").update(`${got.etag}|${JSON.stringify(run)}`).digest("hex").slice(0, 24)}"`,
-  };
-}
 
 /** `[console] launcher`: the territory is lent by someone else, and nothing is granted here. */
 function launcherOf(configPath) {
@@ -661,7 +638,18 @@ export function serve(configPath, port = 4178, { lockWaitMs = 10000, runsDir = n
       };
       const routes = {
         "/api/runs": () => (runsDir ? runsBody(runsDir, query) : logRunsBody(configPath, query)),
-        "/api/run": () => (runsDir ? runBody(runsDir, runId(), sinceOf(req.url)) : logRunBody(configPath, runId(), sinceOf(req.url))),
+        // One run as one role lived it, in order: what opens under a run on a role's page.
+        "/api/timeline": () => {
+          const role = new URLSearchParams(query ?? "").get("role") || null;
+          const t = runsDir ? runTimeline(runsDir, runId(), role) : (() => {
+            const { cfg, all } = snapshot(configPath);
+            const id = runId();
+            if (!all.some((e) => e.run === id)) throw Object.assign(new Error(`no run ${id} in this log`), { status: 404 });
+            return timelineOf(all, id, role, cfg);
+          })();
+          const body = JSON.stringify(t);
+          return { body, etag: `"${createHash("sha256").update(body).digest("hex").slice(0, 24)}"` };
+        },
         ...(configPath && { "/api/state": () => stateBody(configPath, sinceOf(req.url), { readOnly: !!lent }) }),
       };
       const route = routes[pathOf(req.url)];

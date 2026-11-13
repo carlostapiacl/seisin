@@ -1,7 +1,15 @@
 # The console's runs
 
-`seisin ui` is one console: what is waiting on you, the runs, what was denied, the roles and
-the log. **Runs** is one more item in its menu, and it gets its runs from one of three places:
+`seisin ui` is one console, read by **role**. With runs it opens on **Overview**: whether the
+boundary held, every role of the policy in one table (its runs, what needs a person, its canary,
+its last run), and what needs a person across all of them, sorted the way `seisin attention` sorts
+it (docs/log.md). Each role is in the sidebar, and its page says what it may do (writes, reads,
+keys, network, the sandbox that holds it), what it was denied across its runs, and its runs. A run
+opens in place, under the role, as that role lived it: the canary, each denial once with its count
+and where it stands, what the record dropped. **Runs** lists every run, and one opens under its
+role. Every view shares one filter (window, team, the launcher's word for the run, work item,
+status, outcome), so a work item picked there is that work item whole. The runs come from one of
+three places:
 
 - **A repository with no launcher:** from its own log. Every line `seisin run` writes names its
   run, so there is nothing to set up.
@@ -24,10 +32,10 @@ seisin ui --runs <dir>                       # the directory alone, on 127.0.0.1
 seisin ui --runs <dir> --link --json         # its link, for a program: nothing opened
 ```
 
-The page lists every run, newest first, filtered by team, role, work item, status and
-outcome. It sums what the shown runs were denied and what that cost in retries, and puts the
-same denial in many runs on one line. A run opens as the same views, over that run: its denials, its
-walls, its policy and its log.
+**Runs** lists every run, newest first, filtered by team, role, work item, status and
+outcome. A run opens under the role it ran as, as a timeline: its canary, each denial once with its
+count and where it stands, what the record dropped, what it asked for, and the policy it held under
+(with what `--only` and `--deny` took away). There is no console of one run.
 
 ## Read only
 
@@ -38,7 +46,7 @@ console reads this way, because two places that approve the same thing are one t
 - every route that writes (`/api/decide`, `/api/decline-all`, `/api/control-files`) answers
   **405**, as does any method but `GET` and `HEAD`, when there is no policy or a launcher lends it;
 - the page has no **Waiting on you**. A denial says *Not granted here: access is asked for in
-  `<launcher>`*. A request the run asked for stays in `/api/run`, for a program that reads it;
+  `<launcher>`*. A request the run asked for is in its timeline (`/api/timeline`), to ask for there;
 - a request queue an older seisin left in the old form is shown as an error, never migrated.
 
 `[console] launcher` closes the console, not the CLI: `seisin grant` still does what a person
@@ -102,12 +110,11 @@ A run whose system log dropped kernel messages (macOS, a flooded unified log) al
 
 **What counts as a retry.** Across runs, every denial after the first of the same thing in
 the same run, system denials aside. An archived run's policy does not change, so a repeat is a
-retry against a wall that was still there. Inside one run the walls view says the same thing
-the console over one policy does.
+retry against a wall that was still there.
 
-**The generated settings** a run's Roles view shows are worked out again from its archived
-`seisin.toml`, against the archive folder. Relative territory resolves there, not in the
-worktree the run had.
+**The policy a run held under**, in its timeline, is read again from its archived
+`seisin.toml` (or `.seisin/policies/`), against the archive folder. Relative territory resolves
+there, not in the worktree the run had.
 
 ## Writing runs in this shape: `--policy`, `--state-dir`, `--run-id`
 
@@ -224,9 +231,14 @@ One run: the same link with `&run=<run_id>` after the token:
 http://127.0.0.1:4179/#t=<token>&run=01M5EXEC0A
 ```
 
-The page takes the token and the run from the fragment, keeps the token for the tab and
-leaves `?run=<run_id>` in the address, so a reload stays on the run. One server serves every
-run: a panel links to each without starting anything per run.
+The page takes the token and the run from the fragment, keeps the token for the tab, and opens
+the run under the role it ran as (`#role/<role>/run/<run_id>`, which a reload keeps). A run it
+cannot find is searched for in **Runs**. One server serves every run: a panel links to each
+without starting anything per run.
+
+A program reads one run as `GET /api/timeline?run=<run_id>&role=<role>` (with the token in
+`x-seisin-token`): its events in order, `held` (what the role could do), `narrowed`, and
+`requests`.
 
 `seisin ui --runs <dir> --link --json` prints, without starting or opening anything:
 

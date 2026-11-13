@@ -4,7 +4,7 @@
  *
  * Three runs made by hand — two executors of different teams and a reviewer,
  * one of them denied the network — and what the encargo asked of them: all
- * three listed, a team filter that leaves one, `&run=` opening that run, no
+ * three listed, a team filter that leaves one, a run's timeline by id, no
  * write anywhere, and `--link --json` for the launcher's panel.
  */
 import { test } from "node:test";
@@ -157,10 +157,10 @@ test("a run narrowed from one policy opens with its own log, from the policy in 
   ].map(line).join(""));
   const { server, get } = await console_(dir);
   try {
-    const one = await (await get("/api/run?run=r-narrow")).json();
-    assert.equal(one.root, root, "the run's folder, not the one its policy is kept in");
-    assert.equal(one.run.denied, 1);
-    assert.equal(one.log.filter((e) => e.verdict === "denied").length, 1, "what the list counted, the run shows");
+    const one = await (await get("/api/timeline?run=r-narrow&role=executor")).json();
+    assert.deepEqual(one.held.writes, ["src/**"], "the policy it held under, from its state directory");
+    assert.equal(one.events.filter((e) => e.type === "denied").length, 1, "what the list counted, the run shows");
+    assert.equal((await get("/api/run?run=r-narrow")).status, 404, "there is no console of one run");
     const set = await get("/api/settings?run=r-narrow&role=executor");
     assert.equal(set.status, 200);
   } finally { server.close(); }
@@ -182,7 +182,7 @@ test("one console: a policy that names its runs serves both, and still takes a d
     assert.equal(info.dir, dir);
     assert.equal((await get("/api/state")).status, 200);
     assert.equal((await (await get("/api/runs")).json()).total, 1);
-    assert.equal((await (await get("/api/run?run=r-1")).json()).readOnly, true, "an archived run is never granted from");
+    assert.equal((await get("/api/timeline?run=r-1&role=agent")).status, 200, "an archived run opens as a timeline, and nothing in it grants");
     assert.equal((await get("/api/decide", { method: "POST", body: "{}" })).status, 400, "the policy is: this one is just missing its key");
   } finally { server.close(); }
 });
@@ -220,12 +220,11 @@ test("one console: a repository with no launcher finds its runs in its log", asy
   try {
     const all = await (await get("/api/runs")).json();
     assert.deepEqual(all.runs.map((r) => [r.id, r.outcome]).sort(), [["aaa", "denied"], ["bbb", "clean"]]);
-    const one = await (await get("/api/run?run=aaa")).json();
-    assert.equal(one.readOnly, true);
-    assert.equal(one.log.filter((e) => e.verdict === "denied").length, 1);
-    const other = await (await get("/api/run?run=bbb")).json();
-    assert.equal(other.log.filter((e) => e.verdict === "denied").length, 0, "another run's lines stay out");
-    assert.equal((await get("/api/run?run=nope")).status, 404);
+    const one = await (await get("/api/timeline?run=aaa&role=dev")).json();
+    assert.equal(one.events.filter((e) => e.type === "denied").length, 1);
+    const other = await (await get("/api/timeline?run=bbb&role=dev")).json();
+    assert.equal(other.events.filter((e) => e.type === "denied").length, 0, "another run's lines stay out");
+    assert.equal((await get("/api/timeline?run=nope")).status, 404);
   } finally { server.close(); }
 });
 
@@ -270,13 +269,11 @@ test("the server lists the runs, filters them, and opens one by id", async () =>
     assert.equal(all.runs.length, 3);
     const pos = await (await get("/api/runs?team=pos")).json();
     assert.deepEqual(pos.runs.map((r) => r.id), ["r-exec-b"]);
-    const one = await (await get("/api/run?run=r-exec-a")).json();
-    assert.equal(one.readOnly, true);
-    assert.equal(one.run.team, "compras");
-    assert.equal(one.config, join(dir, "r-exec-a", "seisin.toml"));
+    const one = await (await get("/api/timeline?run=r-exec-a&role=agent")).json();
+    assert.equal(one.events.filter((e) => e.type === "denied").length, 2, "the host once, with its count, and the file");
     assert.equal(one.requests.length, 1, "its queue is shown, to be asked for elsewhere");
-    assert.equal((await get("/api/run?run=..%2Fr-exec-a")).status, 400);
-    assert.equal((await get("/api/run?run=nope")).status, 404);
+    assert.equal((await get("/api/timeline?run=..%2Fr-exec-a")).status, 400);
+    assert.equal((await get("/api/timeline?run=nope")).status, 404);
     assert.equal((await get("/api/state")).status, 404, "there is no one policy here");
     // A poll that already has the answer gets a 304.
     const r = await get("/api/runs");
@@ -292,7 +289,7 @@ test("nothing is written over runs: every write is a 405, and the files stay as 
   const queue = readFileSync(join(dir, "r-exec-a", ".seisin", "requests.jsonl"), "utf8");
   const { server, get } = await console_(dir);
   try {
-    const key = (await (await get("/api/run?run=r-exec-a")).json()).requests[0].key;
+    const key = (await (await get("/api/timeline?run=r-exec-a")).json()).requests[0].key;
     for (const path of ["/api/decide", "/api/decline-all", "/api/control-files", "/api/runs"]) {
       const r = await get(path, { method: "POST", body: JSON.stringify({ key, keys: [key], decision: "granted", reason: "x" }) });
       assert.equal(r.status, 405, path);
@@ -305,10 +302,11 @@ test("nothing is written over runs: every write is a 405, and the files stay as 
 
 test("the page draws no grant over runs: the buttons are behind the read-only switch", () => {
   const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "ui", "src", "console.js"), "utf8");
-  // Grant and Decline are only in the branch READONLY does not take, and the run link survives the token's removal.
+  // Grant and Decline are only in the branch READONLY does not take, and a launcher's `&run=` link
+  // opens that run under its role.
   assert.match(src, /\(READONLY\s*\n\s*\? '<div class="act ro-ask">'/);
-  assert.match(src, /bulk\.hidden = REQS\.length < 2 \|\| READONLY;/);
-  assert.match(src, /\?run=" \+ encodeURIComponent\(RUN\)/);
+  assert.match(src, /bulk\.hidden = REQS\.length < 2 \|\| READONLY \|\|/);
+  assert.match(src, /location\.hash = "role\/" \+ encodeURIComponent\(role\) \+ "\/run\/"/);
 });
 
 test("ui --runs --link --json prints the running console's link, or that none is running, and opens nothing", () => {

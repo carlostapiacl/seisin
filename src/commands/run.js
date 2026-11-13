@@ -28,10 +28,10 @@ import { renderAdded } from "./requests.js";
 import { unknownRole } from "../suggest.js";
 import { watchDenials } from "../violations.js";
 import { intake } from "../intake.js";
-import { EXPECTED } from "../kinds.js";
 import { toolchainBins, writableButUnreadable } from "../territory.js";
 import { writePathsOf, realOrSelf, SOCKET_MAX } from "../grants.js";
 import { runCanary, CANARY_EXIT } from "../canary.js";
+import { runSummary } from "./attention.js";
 import { scratchWarnings } from "../inspect/machine.js";
 import { append, logPath } from "../log.js";
 import { realAncestor } from "../paths.js";
@@ -321,7 +321,12 @@ export async function run(config, argv) {
    * canary.js. A failure stops the run with its own exit code and a line in
    * the log; there is no flag to skip it.
    */
-  await canaryOrStop({ wrap, file, settings, env, theRun, config, role, observe, agent, runLabel, trace, sandbox });
+  const canary = await canaryOrStop({ wrap, file, settings, env, theRun, config, role, observe, agent, runLabel, trace, sandbox });
+  // The canary's own network probe, refused as it wanted: macOS's system log
+  // delivered that refusal a quarter of a second after the probe, past the
+  // watcher's start, in 2,165 of one pilot's 2,302 runs — every one of them
+  // then read "denied" for the probe that proved it confined.
+  if (canary.port) take.expectCanary(`tcp:${canary.port}`);
   if (held.narrowed) append(logPath(config.root), { event: "narrowed", role, run: runLabel, ...trace, policy: policyId(config), ...held.narrowed });
   // Said once, only when it is not the default: which sandbox holds this run
   // is a fact a reader of the terminal would otherwise have to guess.
@@ -498,8 +503,9 @@ async function canaryOrStop({ wrap, file, settings, env, theRun, config, role, o
   }
   append(logPath(config.root), {
     event: "canary", role, run: runLabel, ...trace, agent: agent ?? null, confined: true, reasons: [],
-    sandbox: sandbox.name,
+    sandbox: sandbox.name, ...(probe.port ? { port: probe.port } : {}),
   });
+  return probe;
 }
 
 /**
@@ -761,7 +767,7 @@ async function finishRun({
         `kernel denials may be missing from the log and the queue. ` +
         `\`seisin check --system-log\` says what is flooding it.${C.off}\n`);
   }
-  const { offPolicy, walks, expected, probes, atomic, browsers } = take.stats;
+  const { offPolicy, walks, probes, canaryProbes, atomic, browsers } = take.stats;
   // A browser that died at start on its Mach rendezvous: the crash the agent
   // saw does not say why, and this is the line that does.
   for (const b of browsers)
@@ -777,16 +783,26 @@ async function finishRun({
         `${files.slice(0, 3).join(", ")}${files.length > 3 ? ` and ${files.length - 3} more` : ""} was denied ` +
         `(Claude Code's Edit and Write). \`seisin check ${role}\` says whether a grant can fix it.${C.off}\n`);
   }
-  const recorded = attributed - offPolicy - walks;
-  if (recorded > 0)
-    err(`${C.dim}seisin: ${recorded} kernel denial(s) recorded` +
-        `${walks ? `, ${walks} directory scan(s)` : ""}` +
-        `${offPolicy ? `, ${offPolicy} outside the policy's paths` : ""}${C.off}\n` +
-        // Claude Code's plugin updater, refused correctly: said as expected so
-        // it does not read as the run failing (kinds.js expectedOf).
-        (expected ? `${C.dim}seisin: ${expected} of them expected: ${EXPECTED.plugins}${C.off}\n` : "") +
+  // The canary's probe is the boundary answering, not something to report.
+  const recorded = attributed - offPolicy - walks - canaryProbes;
+  // The summary reads the log, so the hook's and the broker's denials count too: on
+  // Linux, where the kernel watcher attributes nothing, they are all there is.
+  let summary = null;
+  try { summary = runSummary(config, role, runLabel); } catch {}
+  if (summary && recorded <= 0) err(summary);
+  if (recorded > 0) {
+    // What this run was denied, in the words every screen uses (attention.js):
+    // what is the boundary working said in one line, and only what needs a
+    // person spelled out, with the command that says more. A count alone told
+    // nobody whether to do anything; most people who sandbox an agent learn
+    // what it was refused here, in this terminal, and nowhere else.
+    err((summary ?? `${C.dim}seisin: ${recorded} kernel denial(s) recorded${C.off}\n`) +
+        (walks || offPolicy
+          ? `${C.dim}seisin: ${[walks && `${walks} directory scan(s)`, offPolicy && `${offPolicy} outside the policy's paths`].filter(Boolean).join(", ")} not counted${C.off}\n`
+          : "") +
         // The caller's own probes: denied as it asked, and nothing to grant.
         (probes ? `${C.dim}seisin: ${probes} of them expected by the caller (--expect-denied) — nothing queued${C.off}\n` : ""));
+  }
 
   // Only what this run added, with the numbers `grant` takes, and one line
   // for the rest. The whole queue after every run buried the new request

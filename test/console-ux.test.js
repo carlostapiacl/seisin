@@ -249,7 +249,10 @@ test("informative grey meets AA on white in light mode and on the panel in dark"
   assert.match(CSS, /input:focus-visible/);
 });
 
-test("Causes is reachable from the nav, as a cut of Denied", () => {
-  assert.match(HTML, /<a href="#causes" role="tab"/);
-  assert.ok(!/data-view="causes"/.test(HTML), "a view the nav cannot reach");
+test("the screens over the whole log are gone, and a link to one lands on the Overview", () => {
+  for (const v of ["denied", "causes", "walls", "activity"]) {
+    assert.ok(!new RegExp(`data-view="${v}"`).test(HTML), `${v} is still a view`);
+    assert.ok(!new RegExp(`href="#${v}"`).test(HTML), `something still links to #${v}`);
+  }
+  assert.match(HTML, /if \(h && views\(\)\[h\] && /, "an unknown screen falls through to the landing view");
 });

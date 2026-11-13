@@ -245,6 +245,38 @@ export function causesOf(cfg, entries, { ask = explain, limit = 12 } = {}) {
   };
 }
 
+/**
+ * Where a cause stands, in the five words every screen and the CLI use for it.
+ *
+ * `standing` (owners.js) answers whose the path is; this answers what a person
+ * is to do about it, which is the question the first screen has to answer:
+ *
+ *   decide    — no role owns it: a decision nobody has made yet;
+ *   outside   — a host, a port, a key or a path outside the repository: the
+ *               allow list's question, not a territory's;
+ *   handoff   — another role's territory: the boundary between roles held, and
+ *               it is work to hand over or a territory drawn wrong;
+ *   protected — closed to every role on purpose: the boundary working;
+ *   expected  — the agent program's own housekeeping (kinds.js expectedOf),
+ *               refused correctly: nothing to do.
+ *
+ * The first three are what needs a person; the last two are counted, and kept
+ * off the top of the page.
+ */
+export const CLASSES = ["decide", "outside", "handoff", "protected", "expected"];
+export const NEEDS_A_PERSON = new Set(["decide", "outside", "handoff"]);
+const BY_STANDING = { unowned: "decide", outside: "outside", owned: "handoff", protected: "protected" };
+
+/** Who owns a path, said short: three names and how many more, not a line of ten. */
+export function ownersSaid(owners = []) {
+  return owners.length > 3 ? `${owners.slice(0, 3).join(", ")} +${owners.length - 3}` : owners.join(", ");
+}
+
+export function classOf(cause) {
+  if (cause.expected) return "expected";
+  return BY_STANDING[cause.standing] ?? "decide";
+}
+
 /** What a log line was about. Lines from before the field existed are files. */
 const ABOUT = ["file", "key", "network", "system", "tool"];
 function aboutOf(kind) {

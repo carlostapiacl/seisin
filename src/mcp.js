@@ -36,6 +36,8 @@ import { read, logPath } from "./log.js";
 import { causesOf, parseSince, queue as requestQueue, verdicts, wallsByRole } from "./views.js";
 import { walls, wasted } from "./walls.js";
 import { lineReader } from "./lines.js";
+import { existsSync } from "node:fs";
+import { runsView, logRunsView, filtersOf, runTimeline, timelineOf } from "./runs.js";
 
 /**
  * Versions this server will agree to.
@@ -123,6 +125,40 @@ const TOOLS = [
         limit: { type: "number" },
         since: { type: "string", description: "ISO date, or a duration back from now (7d, 12h); only denials at or after it" },
       },
+    },
+  },
+  {
+    name: "seisin_attention",
+    description:
+      "What across the runs needs a person, the way the console's overview and `seisin attention` " +
+      "say it: whether the boundary held (canaries failed, records incomplete), every denial sorted " +
+      "into five classes — decide (no role owns it), outside (a host, a port, a key or a path " +
+      "outside the repository), handoff (another role's territory), protected (closed on purpose) " +
+      "and expected (the agent program's own housekeeping) — and the first three listed by how many " +
+      "runs hit each, the same file name in many places as one line. `roles` is every role of the " +
+      "policy with its runs and what needs a person. Over the policy's `[console] runs`, or the runs " +
+      "in its own log. `role` cuts every run to what that role did in it. Read-only.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        role: { type: "string", description: "a role of the policy: every run cut to what it did" },
+        since: { type: "string", description: "ISO date, or a duration back from now (7d, 12h)" },
+        work_item: { type: "string" },
+        team: { type: "string" },
+        limit: { type: "number", description: "how many causes that need a person (default 20)" },
+      },
+    },
+  },
+  {
+    name: "seisin_timeline",
+    description:
+      "One run as one role lived it, in order: the canary, each thing it was denied the first time " +
+      "with how many times and its class, what the record dropped. What the console opens under a " +
+      "run on a role's page. Omit `role` for every role in the run. Read-only.",
+    inputSchema: {
+      type: "object",
+      properties: { run: { type: "string" }, role: { type: "string" } },
+      required: ["run"],
     },
   },
   {
@@ -255,6 +291,41 @@ const HANDLERS = {
       families: c.families,
       causes: typeof limit === "number" ? c.causes.slice(0, limit) : c.causes,
     };
+  },
+
+  /** The overview's arithmetic, for an agent: the same classes and the same order. */
+  seisin_attention({ role, since, work_item, team, limit }) {
+    const cfg = config();
+    const q = new URLSearchParams();
+    if (role) q.set("srole", role);
+    if (since) q.set("since", since);
+    if (work_item) q.set("work_item", work_item);
+    if (team) q.set("team", team);
+    const filters = filtersOf(q.toString());
+    const dir = cfg.console?.runs && existsSync(cfg.console.runs) ? cfg.console.runs : null;
+    const v = dir ? runsView(dir, filters)
+      : logRunsView(cfg.path, read(logPath(cfg.root)), filters, Object.keys(cfg.roles), cfg);
+    const a = v.attention;
+    return {
+      runs: v.totals.runs,
+      ...(filters.since && { since: filters.since }),
+      health: a.health,
+      piles: a.piles,
+      needs: a.needs,
+      fresh: a.fresh,
+      top: a.top.slice(0, typeof limit === "number" ? limit : 20),
+      roles: v.roles.map(({ def, ...r }) => r),
+    };
+  },
+
+  seisin_timeline({ run, role }) {
+    if (typeof run !== "string" || !run) throw new Error("run must name one of the runs");
+    const cfg = config();
+    const dir = cfg.console?.runs && existsSync(cfg.console.runs) ? cfg.console.runs : null;
+    if (dir) return runTimeline(dir, run, role ?? null);
+    const all = read(logPath(cfg.root));
+    if (!all.some((e) => e.run === run)) throw new Error(`no run ${run} in this log`);
+    return timelineOf(all, run, typeof role === "string" && role ? role : null, cfg);
   },
 
   seisin_walls({ role }) {
