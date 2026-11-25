@@ -10,6 +10,11 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+## 0.10.0 — 2026-11-25
+
+- **Ships with tartaros 0.1.0-alpha.26** (was alpha.24): `--handoff-scratch`, `AGENT_ID`
+  passed through to the agent, and from alpha.25 `tartaros setup apparmor` and placeholders git
+  does not see.
 - **A run that loses kernel denials reads them back.** `log stream` throws batches away under a
   burst on the machine, before the predicate runs. A run that saw it now reads its own window
   from the stored log (`log show`) once at the end, adds only what the live stream did not
