@@ -389,7 +389,10 @@ test("a stored log that does not answer in time delays the end of a run, never h
     calls.push(1);
     const child = new EventEmitter();
     child.stdout = new Readable({ read() {} });
-    child.kill = () => {};
+    // A real child holds the event loop open until it is killed; the cap's timer
+    // is unref'd on purpose, so without this the loop would drain first.
+    const alive = setInterval(() => {}, 1000);
+    child.kill = () => clearInterval(alive);
     return child;
   };
   const r = await recoverDenials({ since: 0, until: 1, seen: new Map(), accept: () => {}, spawnFn: hang, cap: 50 });
