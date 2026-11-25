@@ -211,7 +211,15 @@ export function renderEntry(e) {
   }
   if (e.event === "log-dropped") {
     const mark = `${C.yellow}log dropped${C.off}`;
-    return `  ${C.dim}${(e.at ?? "").slice(11, 19)}${C.off}  ${mark}  ${C.b}${e.role}${C.off} ${C.dim}${e.batches} batch(es) of system log messages lost — kernel denials may be missing${C.off}\n`;
+    return `  ${C.dim}${(e.at ?? "").slice(11, 19)}${C.off}  ${mark}  ${C.b}${e.role}${C.off} ${C.dim}${e.batches} batch(es) of live system log messages lost${C.off}\n`;
+  }
+  // What the stored log gave back. A failure is the case where kernel denials
+  // really are missing, so it carries the warning the drop alone used to.
+  if (e.event === "log-recovered") {
+    const t = `  ${C.dim}${(e.at ?? "").slice(11, 19)}${C.off}  `;
+    return e.error
+      ? `${t}${C.yellow}log not recovered${C.off}  ${C.b}${e.role}${C.off} ${C.dim}${safe(String(e.error))} — kernel denials may be missing${C.off}\n`
+      : `${t}${C.dim}log recovered${C.off}  ${C.b}${e.role}${C.off} ${C.dim}${Number(e.recovered) || 0} denial(s) read back from the stored log${C.off}\n`;
   }
   if (e.event === "key") {
     const mark = e.ok ? `${C.green}key resolved${C.off}` : `${C.red}key failed${C.off}`;
@@ -227,7 +235,9 @@ export function renderEntry(e) {
   // around; the kernel reports a refusal and cannot. When the two disagree
   // about a run, a reader needs to know which line is which without going to
   // the file — so the one that carries more weight is the one that is marked.
-  const from = e.source === "kernel" ? `  ${C.dim}[kernel]${C.off}` : "";
+  // The process rides on the mark: for a refused connection it is the only
+  // witness to who dialled, since the kernel never gives the host.
+  const from = e.source === "kernel" ? `  ${C.dim}[kernel${e.process ? ` ${e.process}` : ""}]${C.off}` : "";
   return `  ${C.dim}${(e.at ?? "").slice(11, 19)}${C.off}  ${mark}  ${C.b}${e.role}${C.off} ${e.action} ${safe(e.target)}${owners}${from}\n`;
 }
 

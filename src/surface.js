@@ -32,6 +32,7 @@ import { join, isAbsolute, delimiter, dirname, resolve, basename, sep } from "no
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { writePathsOf, realOrSelf } from "./grants.js";
+import { handoffOpenOf } from "./handoff-exempt.js";
 import { CONFIG_NAME } from "./layout.js";
 import { defaultStateDir, stateDir } from "./state.js";
 
@@ -690,7 +691,7 @@ function computeDenies(config, role, { env, platform, observe }) {
    * `.codex` and the `.claude` files that run, at any depth (measured the same day
    * on alpha.24); the literals in `controls` keep each project's `.claude` whole.
    */
-  const holes = (role.handoffExempt ?? []).map((e) => join(config.root, e));
+  const holes = handoffOpenOf(config, role);
   const opened = (d) => holes.some((h) => under(h, d) || under(d, h));
   const globs = platform === "darwin"
     ? roots.flatMap((d) => [
@@ -781,7 +782,7 @@ export function protectedBy(config, target, { platform = process.platform, role 
   const re = f === ".claude" ? CLAUDE_DIR : CONTROL_RES.find(([name]) => name === f)?.[1];
   // Inside a role's `handoff_exempt` the kernel lets these through (computeDenies).
   const whole = isAbsolute(target) ? target : join(config.root, target);
-  const exempt = (config.roles?.[role]?.handoffExempt ?? []).some((e) => under(whole, join(config.root, e))) &&
+  const exempt = handoffOpenOf(config, role).some((e) => under(whole, e)) &&
     [".claude", ".mcp.json", ".envrc", ".codex"].includes(f);
   if (f && !exempt && (platform !== "linux" || heldOnLinux(config, target, re))) {
     const why = f === ".claude"

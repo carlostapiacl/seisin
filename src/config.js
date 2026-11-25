@@ -3,7 +3,8 @@
  * fields, the sandbox and key providers. The TOML subset is in toml.js.
  */
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
+import { runtimeWritesFor } from "./grants.js";
 import { homedir } from "node:os";
 import { resolve, dirname, join } from "node:path";
 import { parseKey, MODES, checkNames, BUILTIN, unknownMode } from "./keys.js";
@@ -164,6 +165,11 @@ export function loadConfig(path, text = readFileSync(path, "utf8"), { root = nul
     // by the sandbox at start.
     deniedAddresses: readAddresses(own(own(parsed, "network"), "deny_addresses"), `${path}: network.deny_addresses`),
     runtimeWrites: runtimeWrites === undefined ? undefined : asArray(runtimeWrites, "runtime.writes"),
+    // `[runtime] scratch` — writable roots thrown away after the run (a launcher's
+    // per-run TMPDIR), where the trust-handoff set is not protected: the tests an
+    // agent runs there `git init` repos whose sample hooks the protection refused
+    // (2,881 denials in one fleet's baseline). Only tartaros takes it.
+    scratch: readScratch(own(runtime, "scratch"), `${path}: runtime.scratch`, root ? resolve(root) : dirname(path)),
     // `[runtime] isolate` — how much of your home a role stops reaching. See
     // srt-settings.js for what each level emits, and readIsolate() below for why there
     // are two of them.
@@ -183,6 +189,7 @@ export function loadConfig(path, text = readFileSync(path, "utf8"), { root = nul
   checkPrivateOverlap(out.roles, path);
   out.sandbox = readSandbox(own(parsed, "sandbox"), path);
   out.notify = readNotify(own(parsed, "notify"), { path, root: out.root, keyDirs, roles: out.roles, own });
+  checkScratchOverlap(out, path);
   return out;
 }
 
@@ -665,13 +672,53 @@ function readConsole(table, path) {
   return out;
 }
 
+/**
+ * `[runtime] scratch`: absolute folders, each a run's own and thrown away after
+ * it. Refused here, with the line, for what is never scratch: the filesystem
+ * root, the home, the repo the policy governs or anything holding or inside it,
+ * and a relative or `..` path. The sandbox checks again at start (tartaros: it
+ * must not overlap another writable root or be a git repository).
+ */
+function readScratch(v, where, repo) {
+  if (v === undefined) return [];
+  return asArray(v, where).map((p) => {
+    const s = String(p);
+    const abs = expandHome(s);
+    const bad = !abs.startsWith("/") || s.split("/").includes("..") || /[*?[\]]/.test(s);
+    if (bad) throw new Error(`${where} "${s}": an absolute folder (or ~/…), with no ".." and no globs`);
+    const real = resolve(abs);
+    const inside = (a, b) => a === b || a.startsWith(b.endsWith("/") ? b : b + "/");
+    if (real === "/" || inside(homedir(), real))
+      throw new Error(`${where} "${s}": holds the home folder; scratch is a folder thrown away after the run`);
+    if (inside(real, repo) || inside(repo, real))
+      throw new Error(`${where} "${s}": overlaps the repo (${repo}), whose hooks and settings outlive the run`);
+    return real;
+  });
+}
+
+/**
+ * A scratch root inside a runtime write, or holding one, is refused by tartaros
+ * at start, where it read as a canary that did not run. Said here instead, with
+ * the write it overlaps: `$TMPDIR` and `/tmp` are runtime writes by default, so a
+ * scratch root under them needs `[runtime] writes` to name what it keeps.
+ */
+function checkScratchOverlap(config, path) {
+  const real = (p) => { try { return realpathSync.native(p); } catch { return p; } };
+  const inside = (a, b) => a === b || a.startsWith(b.endsWith("/") ? b : b + "/");
+  for (const s of config.scratch.map(real))
+    for (const w of runtimeWritesFor(config, undefined))
+      if (w !== s && (inside(s, w) || inside(w, s)))
+        throw new Error(`${path}: runtime.scratch "${s}" overlaps the runtime write ${w}. A scratch root is one of its own: ` +
+          `list the writes the run keeps in [runtime] writes, without the folder that holds it.`);
+}
+
 const expandHome = (p) => (p === "~" || p.startsWith("~/") ? join(homedir(), p.slice(2)) : p);
 
 const SHAPE = {
   roles: null,                            // validated where roles are read
   keys: { dir: true, providers: { "*": { command: true, mode: true } } },
   network: { allow: true, deny_addresses: true },
-  runtime: { writes: true, isolate: true, redact: true, read: true },
+  runtime: { writes: true, isolate: true, redact: true, read: true, scratch: true },
   console: { runs: true, launcher: true },
   scan: { ignore: true },
   protect: { instructions: true },

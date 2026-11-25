@@ -19,7 +19,9 @@ $ seisin log
   4 entries · 3 denied
 ```
 
-`[kernel]` marks a line the kernel reported; the others came from the hook.
+`[kernel]` marks a line the kernel reported; the others came from the hook. A kernel line also
+names the process the kernel named (`[kernel dartvm]`, `"process"` in the JSON). For a refused
+connection that is the only witness to who dialled: macOS writes `remote:*:80`, never the host.
 
 One append-only JSONL under `.seisin/`, and that is the whole storage design: no daemon, no
 database, and `watch` is a tail. At 8 MiB the log is retired to `log.jsonl.1`, `.2`… and a new one

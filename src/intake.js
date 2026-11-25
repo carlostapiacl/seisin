@@ -227,6 +227,18 @@ export function intake({ config, role, runId, label = null, observe = false, set
     ask({ role, action: entry.action, target: entry.target.slice(0, 1000), owners: v.owners });
   }
 
+  /**
+   * The process the kernel named, on every line it refused.
+   *
+   * The kernel says `remote:*:80`, never the host, so for a refused connection
+   * the process is the only witness to who dialled. Measured in a fleet's
+   * baseline (2026-11-24): 270 refusals of the cloud metadata port read as an
+   * agent reaching for credentials, until the process — `dartvm`, Flutter's CLI
+   * asking whether it runs on Azure — was dug out of the system log by hand. The
+   * parser had it all along and no line kept it.
+   */
+  const by = (d) => (d.proc ? { process: String(d.proc).slice(0, 64) } : {});
+
   function fromKernel(d) {
     if (d.action === "system") return refusedService(d);
     if (d.action === "connect") return refusedConnection(d);
@@ -253,28 +265,31 @@ export function intake({ config, role, runId, label = null, observe = false, set
     log({
       role, tool: "kernel", source: "kernel",
       action: d.operation, kind: "system", target: d.path.slice(0, 1000), verdict: "denied",
-      owners: [], reason: d.operation,
+      owners: [], reason: d.operation, ...by(d),
     });
   }
 
   /**
    * A refused connection: logged, never queued.
    *
-   * Once per target per run, because the thing that dials a closed port is
-   * usually a readiness loop, and a loop polling a database every half second
-   * would otherwise write the log the size of the wait. And no request: a port
+   * Once per process and target per run, because the thing that dials a closed
+   * port is usually a readiness loop, and a loop polling a database every half
+   * second would otherwise write the log the size of the wait. Per process too,
+   * because a second program dialling the same port is a second fact: once per
+   * target alone kept only whoever came first. And no request: a port
    * is not a territory anyone owns, so there is nobody to hand it to — the
    * sentence says what the policy would have to change instead.
    */
   function refusedConnection(d) {
-    if (connects.has(d.path)) return;
-    connects.add(d.path);
+    const once = `${d.proc ?? ""}\0${d.path}`;
+    if (connects.has(once)) return;
+    connects.add(once);
     const v = explain(config, role, "connect", d.path);
     const ours = (canaryPorts.get(d.path) ?? -Infinity) >= Date.now();
     if (ours) {
       canaryPorts.delete(d.path);
       // Not deduplicated against: what dials this port next is not the canary.
-      connects.delete(d.path);
+      connects.delete(once);
     }
     const asked = !ours && dialled.has(d.path);
     if (asked) stats.probes++;
@@ -284,7 +299,7 @@ export function intake({ config, role, runId, label = null, observe = false, set
       action: "connect", kind: "network", target: d.path, verdict: "denied",
       owners: [], reason: d.operation, ...(v.listed ? { listed: true } : {}),
       ...(asked || ours ? { expected: true } : {}),
-      ...(ours ? { probe: "canary" } : {}),
+      ...(ours ? { probe: "canary" } : {}), ...by(d),
     });
   }
 
@@ -380,6 +395,7 @@ export function intake({ config, role, runId, label = null, observe = false, set
       ...(destination ? { destination } : {}),
       // Why no request was queued for it: the caller said it would be denied.
       ...(asked ? { expected: true } : {}),
+      ...by(d),
     });
   }
 

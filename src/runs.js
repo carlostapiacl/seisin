@@ -143,7 +143,7 @@ function summarize(dir, id) {
   try { cfg = loadConfig(runPolicy(dir, id), undefined, { root: join(dir, id) }); }
   catch (e) {
     return { ...base, outcome: "unread", error: e.code === "ENOENT" ? "no seisin.toml (or seisin.json) in this run's folder" : e.message,
-      roles: [], denied: 0, byKind: {}, byClass: Object.fromEntries(CLASSES.map((c) => [c, 0])), expected: 0, retried: 0, causes: [], hosts: [], entries: 0, canary: null, dropped: 0,
+      roles: [], denied: 0, byKind: {}, byClass: Object.fromEntries(CLASSES.map((c) => [c, 0])), expected: 0, retried: 0, causes: [], hosts: [], entries: 0, canary: null, dropped: 0, recovered: 0, incomplete: false,
       perRole: {}, defs: {} };
   }
   const all = read(logPath(cfg.root));
@@ -272,9 +272,15 @@ function digestLines(all, id, classes) {
   for (const g of causes) if (g.about !== "system" && g.class !== "granted") byClass[g.class ?? "decide"] += g.times;
   const retried = causes.reduce((n, g) => n + (g.about === "system" ? 0 : g.times - 1), 0);
   const hosts = causes.filter((g) => g.about === "network").slice(0, 10).map(({ target, times }) => ({ target, times }));
-  // Batches of kernel messages the system log threw away during the run: its
-  // walls may be missing some. The boundary held; the record did not.
+  // Batches of kernel messages the live system log threw away during the run.
+  // The boundary held; whether the record did is the recovery's answer: the
+  // run read its window back from the stored log (`log-recovered`), and only a
+  // loss with no recovery, or a failed one, leaves its walls incomplete. A log
+  // written before recovery existed has no such line, and stays incomplete.
   const dropped = all.filter((e) => e.event === "log-dropped").reduce((n, e) => n + (Number(e.batches) || 0), 0);
+  const recoveries = all.filter((e) => e.event === "log-recovered");
+  const recovered = recoveries.reduce((n, e) => n + (Number(e.recovered) || 0), 0);
+  const incomplete = dropped > 0 && (recoveries.length < all.filter((e) => e.event === "log-dropped").length || recoveries.some((e) => e.error));
   const canaries = all.filter((e) => e.event === "canary");
   const canary = canaries.length ? canaries[canaries.length - 1] : null;
   const outcome = canaries.some((e) => e.confined === false) ? "refused"
@@ -297,6 +303,8 @@ function digestLines(all, id, classes) {
     causes,
     canary: canary ? { confined: canary.confined === true, reasons: canary.reasons ?? [] } : null,
     dropped,
+    recovered,
+    incomplete,
   };
 }
 
@@ -514,7 +522,7 @@ export function attentionOf(shown, causes, { now = Date.now(), limit = ATTENTION
     else if (r.outcome === "no-record") health.noRecord++;
     else if (r.outcome === "clean") health.clean++;
     else if (r.outcome === "unread") health.unread++;
-    if (r.dropped) health.incomplete++;
+    if (r.incomplete) health.incomplete++;
   }
   const dayAgo = now - DAY_MS;
   const isNew = (c) => !!(c.first && Date.parse(c.first) >= dayAgo);
@@ -628,7 +636,7 @@ function viewOf(dir, filters, every, { now = Date.now(), defs = null, limit = AT
     totals.expected += r.expected;
     for (const [k, n] of Object.entries(r.byKind)) totals.byKind[k] = (totals.byKind[k] ?? 0) + n;
     totals.outcome[r.outcome] = (totals.outcome[r.outcome] ?? 0) + 1;
-    if (r.dropped) totals.incomplete++;
+    if (r.incomplete) totals.incomplete++;
   }
   const causes = causesAcross(shown);
   return {
@@ -695,6 +703,7 @@ export function timelineOf(all, id, role, cfg = null, { heldFrom = null } = {}) 
       continue;
     }
     if (e.event === "log-dropped") { events.push({ at: e.at ?? null, type: "dropped", role: e.role, batches: Number(e.batches) || 0 }); continue; }
+    if (e.event === "log-recovered") { events.push({ at: e.at ?? null, type: "recovered", role: e.role, recovered: Number(e.recovered) || 0, ...(e.error ? { error: String(e.error) } : {}) }); continue; }
     if (e.event === "narrowed") {
       events.push({ at: e.at ?? null, type: "narrowed", role: e.role });
       narrowed ??= { only: e.only ?? [], deny: e.deny ?? [], vars: e.vars ?? [] };

@@ -193,6 +193,104 @@ export function parseChunk(chunk) {
   return { ...deny, action, path: deny.detail, suffix: tag?.suffix ?? null, command: tag?.command ?? null };
 }
 
+/**
+ * Cut what `log` printed into events, and parse each one.
+ *
+ * One reader for the two ways the same text arrives: live from `log stream`,
+ * and after the run from `log show`, when the live stream lost lines (see
+ * recoverDenials). Two copies of this loop would be two parsers that agree
+ * until the day one is fixed.
+ *
+ * The OS emits one event per chunk, but a chunk can split across reads, so
+ * this splits on the tag, which always terminates an event. Returns what is
+ * left over, for the next read; markers in it are counted when it is.
+ */
+export function readEvents(text, onDenial, stats) {
+  let rest = text, cut;
+  while ((cut = rest.indexOf("_SBX")) !== -1) {
+    const chunk = rest.slice(0, cut + 4);
+    rest = rest.slice(cut + 4);
+    // A marker never contains the tag, so it is whole in one chunk or still
+    // in what is left over.
+    stats.dropped += droppedIn(chunk);
+    const d = parseChunk(chunk);
+    if (d) onDenial(d);
+  }
+  return rest;
+}
+
+/** What identifies one refusal across the live stream and the stored log. */
+const eventKey = (d) => `${d.pid}|${d.operation}|${d.detail}`;
+
+/** `YYYY-MM-DD HH:MM:SS`, local time: what `log show --start/--end` reads. */
+function logTime(ms) {
+  const t = new Date(ms), z = (n) => String(n).padStart(2, "0");
+  return `${t.getFullYear()}-${z(t.getMonth() + 1)}-${z(t.getDate())} ${z(t.getHours())}:${z(t.getMinutes())}:${z(t.getSeconds())}`;
+}
+
+/**
+ * How long a run's end may spend recovering what the live stream lost.
+ *
+ * `log show` reads the stored log, and reading it is not free — measured, two
+ * hours of it took 137 s of CPU on the machine this was built on. A run's own
+ * window is minutes, and only a run that lost something pays. Bounded so a
+ * slow store delays the end of a run, never holds it.
+ */
+export const RECOVER_MS = Number(process.env.SEISIN_RECOVER_MS) || 60_000;
+
+/**
+ * The refusals a live stream lost, read back from the stored log.
+ *
+ * `log stream` is lossy by design: under a burst the OS throws away whole
+ * batches before the predicate runs, and says only that it did. The kernel's
+ * refusals are still written to the stored log, which `log show` reads — so a
+ * run that saw `=== Messages dropped` reads its own window again, once, at the
+ * end. Measured in a fleet's baseline (2026-11-24): 238 runs lost 5,749
+ * batches, every one of them long (median 689 s against 83 s for the runs
+ * that lost nothing), with the same refusals of their own (median 8 and 8):
+ * the loss came from the machine, not the run.
+ *
+ * Each line goes through `accept` (the run's own attribution, which decides by
+ * the session suffix the run already learned) unless the live stream already
+ * delivered it: `seen` counts what it did, and each recovered line spends one.
+ * Never throws; `{ recovered, ms, error }`.
+ */
+export function recoverDenials({ since, until, seen, accept, spawnFn = spawn, cap = RECOVER_MS, clock = () => performance.now() }) {
+  const t0 = clock();
+  return new Promise((resolve) => {
+    let child, text = "", recovered = 0, done = false;
+    const finish = (error = null) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      const scratch = { dropped: 0 };
+      try {
+        readEvents(text, (d) => {
+          const k = eventKey(d), n = seen.get(k) ?? 0;
+          if (n > 0) { seen.set(k, n - 1); return; }
+          recovered++;
+          accept(d);
+        }, scratch);
+      } catch (e) { error ??= e.message; }
+      resolve({ recovered, ms: Math.round(clock() - t0), error });
+    };
+    const timer = setTimeout(() => {
+      try { child?.kill("SIGKILL"); } catch {}
+      finish(`log show did not finish in ${cap} ms`);
+    }, cap);
+    timer.unref?.();
+    try {
+      child = spawnFn("/usr/bin/log", ["show", "--start", logTime(since), "--end", logTime(until),
+        "--predicate", PREDICATE, "--style", "compact"], { stdio: ["ignore", "pipe", "ignore"] });
+    } catch (e) {
+      return finish(`could not start log show: ${e.message}`);
+    }
+    child.on("error", (e) => finish(`log show: ${e.message}`));
+    child.stdout?.on("data", (d) => { text += d.toString(); });
+    child.on("close", () => finish());
+  });
+}
+
 function decode(b64) {
   try {
     return Buffer.from(b64, "base64").toString("utf8");
@@ -287,7 +385,7 @@ export function scopeOf(settings, root) {
  * logging less than it used to.
  */
 export function watchDenials(onDeny, { pid = null, argv = null, platform = process.platform, spawnFn = spawn, treeFn = processTree, now = () => performance.now() } = {}) {
-  const stats = { attributed: 0, foreign: 0, unattributed: 0, dropped: 0 };
+  const stats = { attributed: 0, foreign: 0, unattributed: 0, dropped: 0, recovered: 0, recoverMs: 0, recoverError: null };
 
   /**
    * Unavailable is a watcher that does nothing, NOT a different shape.
@@ -342,21 +440,19 @@ export function watchDenials(onDeny, { pid = null, argv = null, platform = proce
     };
   }
 
+  // When the stream started, wall-clock: the start of the window recoverDenials
+  // reads again. A second early, for the clocks of two processes.
+  const since = Date.now() - 1000;
+  // Every refusal the live stream delivered, so a recovery adds only what it lost.
+  const seen = new Map();
+  const live = (d) => {
+    const k = eventKey(d);
+    seen.set(k, (seen.get(k) ?? 0) + 1);
+    attribution.accept(d);
+  };
   let buf = "";
   child.stdout?.on("data", (data) => {
-    buf += data.toString();
-    // The OS emits one event per chunk, but a chunk can split across reads.
-    // Split on the tag, which always terminates an event.
-    let cut;
-    while ((cut = buf.indexOf("_SBX")) !== -1) {
-      const chunk = buf.slice(0, cut + 4);
-      buf = buf.slice(cut + 4);
-      // A marker never contains the tag, so it is whole in one chunk or still
-      // in `buf`, which close() counts.
-      stats.dropped += droppedIn(chunk);
-      const d = parseChunk(chunk);
-      if (d) attribution.accept(d);
-    }
+    buf = readEvents(buf + data.toString(), live, stats);
     // A stream we cannot parse is not a leak. A flooded one is mostly markers
     // with no tag between them, so they are counted before they go.
     if (buf.length > 64_000) { stats.dropped += droppedIn(buf); buf = ""; }
@@ -383,10 +479,18 @@ export function watchDenials(onDeny, { pid = null, argv = null, platform = proce
      * call. Resolves early once the stream goes quiet, so the common case —
      * nothing pending — costs one tick rather than the full window.
      */
-    close({ drain = 0 } = {}) {
+    close({ drain = 0, recover = true } = {}) {
       // Cancel before draining without resetting the handle: preserve replay scheduling.
       clearTimeout(recheck);
-      const stop = () => ended(child).then(() => { stats.dropped += droppedIn(buf); buf = ""; return stats; });
+      const stop = () => ended(child).then(async () => {
+        stats.dropped += droppedIn(buf); buf = "";
+        // Only a run that lost something reads the stored log, and only its own window.
+        if (recover && stats.dropped > 0) {
+          const r = await recoverDenials({ since, until: Date.now() + 1000, seen, accept: (d) => attribution.accept(d), spawnFn });
+          stats.recovered = r.recovered; stats.recoverMs = r.ms; stats.recoverError = r.error;
+        }
+        return stats;
+      });
       if (drain <= 0) return stop();
       return new Promise((resolve) => {
         let quiet = null;

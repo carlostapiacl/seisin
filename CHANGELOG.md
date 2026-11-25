@@ -8,6 +8,27 @@ history.
 The config format may still move before `1.0`. When it does, `seisin check` says what
 changed rather than failing on the old spelling.
 
+## Unreleased
+
+- **A run that loses kernel denials reads them back.** `log stream` throws batches away under a
+  burst on the machine, before the predicate runs. A run that saw it now reads its own window
+  from the stored log (`log show`) once at the end, adds only what the live stream did not
+  deliver, and writes `log-recovered` beside `log-dropped`. "Record incomplete" now means lost
+  and not read back. A log from before this release has no `log-recovered` line, so its losses
+  still count. Bounded by `SEISIN_RECOVER_MS` (default 60 s).
+- **Every kernel denial names its process** (`"process"`, `[kernel dartvm]`). The kernel never
+  gives the host of a refused connection, so the process is the only witness to who dialled.
+  Refused connections are now one line per process and target, so a second program on the same
+  port no longer hides behind the first.
+- **`[runtime] scratch`: a run's own TMPDIR without trust-handoff protection.** Tests `git init`
+  throwaway repos there, and each one writes `.git/hooks` samples, which tartaros refused at any
+  depth: 2,881 denials of pytest's temp tree in one fleet's baseline. A scratch root is written
+  like a runtime write and handed to tartaros as `handoffScratch`. It needs tartaros
+  0.1.0-alpha.26; an older one refuses the field, and the run does not start. It is refused at
+  load if it is the root, the home, the repo, or overlaps any of them or a runtime write.
+- The role's `handoff_exempt` folders are computed in one module (`src/handoff-exempt.js`)
+  instead of four copies.
+
 ## 0.9.0 — 2026-11-13
 
 - **The console is read by role.** With runs it opens on an overview: whether the boundary held,

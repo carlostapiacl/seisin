@@ -10,6 +10,7 @@
  * No policy decisions live here. Every function answers "which path does this
  * mean", and the callers decide what to do with it.
  */
+import { handoffScratchOf } from "./handoff-exempt.js";
 import { join } from "node:path";
 import { homedir, tmpdir, userInfo } from "node:os";
 import { realpathSync, lstatSync } from "node:fs";
@@ -378,5 +379,8 @@ export function writePathsOf(config, role, { observe = false, agent } = {}) {
     ...(home
       ? [home, join(home, ".config"), join(home, ".local"), join(home, ".cache"), join(home, "tmp")]
       : runtimeWritesFor(config, agent)),
+    // A scratch root is a writable root before it is anything else: tartaros
+    // refuses one it is not also told to let the role write.
+    ...handoffScratchOf(config),
   ];
 }

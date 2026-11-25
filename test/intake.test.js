@@ -253,3 +253,29 @@ test("a key the kernel refused is logged as a key, and the queue names who holds
   assert.equal(lines()[0].kind, "key");
   assert.deepEqual(queue()[0].owners, ["backend"]);
 });
+
+test("every kernel refusal names the process the kernel named", () => {
+  const { dir, config, lines } = setup();
+  const take = intake({ config, role: "web", runId: "r", settings });
+  take.fromKernel({ action: "connect", operation: "network-outbound", path: "tcp:80", proc: "dartvm", pid: 91559 });
+  take.fromKernel({ action: "system", operation: "mach-lookup", path: "com.example.svc", proc: "node", pid: 1 });
+  take.fromKernel({ action: "write", operation: "file-write-create", path: join(dir, "api", "x.ts"), proc: "python3.12", pid: 2 });
+  assert.deepEqual(lines().map((l) => l.process), ["dartvm", "node", "python3.12"]);
+  assert.ok(lines().every((l) => !("pid" in l)), "a pid means nothing once the run is over");
+});
+
+test("a refused port is one line per process: a second program on the same port is not hidden by the first", () => {
+  const { config, lines } = setup();
+  const take = intake({ config, role: "web", runId: "r", settings });
+  for (let i = 0; i < 3; i++) take.fromKernel({ action: "connect", operation: "network-outbound", path: "tcp:3306", proc: "php", pid: 1 });
+  take.fromKernel({ action: "connect", operation: "network-outbound", path: "tcp:3306", proc: "mysql", pid: 2 });
+  assert.deepEqual(lines().map((l) => `${l.process} ${l.target}`), ["php tcp:3306", "mysql tcp:3306"]);
+});
+
+test("a refusal with no process named is logged without one", () => {
+  const { config, lines } = setup();
+  const take = intake({ config, role: "web", runId: "r", settings });
+  take.fromKernel({ action: "connect", operation: "network-outbound", path: "tcp:9" });
+  assert.equal(lines().length, 1);
+  assert.ok(!("process" in lines()[0]));
+});

@@ -28,6 +28,7 @@ import { srt, SRT_PACKAGE, SRT_VERSION } from "./srt.js";
 import { machOf } from "../browsers.js";
 import { tartaros } from "./tartaros.js";
 import { commandSandbox } from "./command.js";
+import { handoffExemptOf, handoffScratchOf } from "../handoff-exempt.js";
 import { trustedOnPath, trustedPath } from "../surface.js";
 
 export const BUILTIN_SANDBOXES = { srt, tartaros };
@@ -82,7 +83,8 @@ function declared(n, config) {
 export function weigh(config, settings, { platform = process.platform, role = null, locate = true, file = null } = {}) {
   const list = sandboxesOf(config);
   const register = role ? machOf(config.roles?.[role]).register : [];
-  const exempt = role ? (config.roles?.[role]?.handoffExempt ?? []).map((e) => join(config.root, e)) : [];
+  const exempt = role ? handoffExemptOf(config, role) : [];
+  const scratchRoots = handoffScratchOf(config);
   const requests = role ? (config.roles?.[role]?.requests ?? []) : [];
   let scratch = null;
   let copies = 0;
@@ -102,7 +104,7 @@ export function weigh(config, settings, { platform = process.platform, role = nu
       // One that can hold the role has been found: the rest are not asked. Each
       // answer starts a program, for a run that will never use it.
       if (settled) return { sandbox, bin, unmet: [], warnings: [], notAsked: true, missing: bin ? null : sandbox.missing() };
-      const own = settingsOf(sandbox, settings, { machRegister: register, handoffExempt: exempt, requests });
+      const own = settingsOf(sandbox, settings, { machRegister: register, handoffExempt: exempt, handoffScratch: scratchRoots, requests });
       const asked = sandbox.asksFile && locate && bin;
       const ctx = { platform, role, bin, file: asked ? fileFor(own) : null };
       const { unmet, warnings } = sandbox.asksFile && !asked ? { unmet: [], warnings: [] }
@@ -123,6 +125,12 @@ export function weigh(config, settings, { platform = process.platform, role = nu
       const exemption = exempt.length && !sandbox.handoffExempt
         ? [`handoff_exempt (${config.roles[role].handoffExempt.join(", ")}): ${sandbox.name} cannot leave a folder out of its trust-handoff protection, tartaros can`]
         : [];
+      // `[runtime] scratch`: the same, for a whole writable root. Without a
+      // sandbox that takes it the role would run with the protection the
+      // policy says is lifted — a run refusing its own TMPDIR — so it is refused.
+      const scratchless = scratchRoots.length && !sandbox.handoffScratch
+        ? [`runtime.scratch (${scratchRoots.join(", ")}): ${sandbox.name} cannot leave a writable root out of its trust-handoff protection, tartaros can`]
+        : [];
       // `requests`: methods and paths per host. srt takes them only as a library
       // callback, so seisin cannot hand them to it.
       const ruled = requests.length && !sandbox.requestRules
@@ -136,7 +144,7 @@ export function weigh(config, settings, { platform = process.platform, role = nu
       const control = kept.length
         ? [`control_files (${kept.join(", ")}): ${sandbox.name} protects those files at any depth whatever the policy says, so the role could not edit them`]
         : [];
-      const option = { sandbox, bin, unmet: [...(masking ? [masking] : []), ...unmet, ...browser, ...exemption, ...ruled, ...control], warnings, missing: bin ? null : sandbox.missing() };
+      const option = { sandbox, bin, unmet: [...(masking ? [masking] : []), ...unmet, ...browser, ...exemption, ...scratchless, ...ruled, ...control], warnings, missing: bin ? null : sandbox.missing() };
       settled = Boolean(option.bin) && option.unmet.length === 0;
       return option;
     });

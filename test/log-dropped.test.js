@@ -54,7 +54,8 @@ test("a run's watcher counts dropped batches between denials, after them, and in
   child.stdout.push(MARKER + WRITE_DENY);   // before a denial: in its chunk
   child.stdout.push(MARKER);                // after the last one: still in the buffer
   await delivered();
-  const stats = await w.close();
+  // Counting is what this tests; reading the loss back is violations.test.js's.
+  const stats = await w.close({ recover: false });
   assert.deepEqual(seen, ["/private/tmp/demo/src/api/tagprobe.txt"], "the denial itself still arrives");
   assert.equal(stats.dropped, 4);
   // SIGTERM made `log` throw away what it had not written yet: measured, 18 markers against 0.
@@ -66,7 +67,7 @@ test("a stream that is all markers is counted before the buffer is let go", asyn
   const w = watchDenials(() => {}, { platform: "darwin", spawnFn: () => child, treeFn: () => new Map() });
   child.stdout.push(MARKER.repeat(1000));   // > 64 KB with no tag in it
   await delivered();
-  assert.equal((await w.close()).dropped, 1000);
+  assert.equal((await w.close({ recover: false })).dropped, 1000);
 });
 
 test("measureSystemLog reports the batches lost and names who writes the most", async () => {
@@ -100,8 +101,17 @@ test("off macOS there is no system log stream to measure", async () => {
 test("seisin log shows the loss as a line of its own", () => {
   const s = renderEntry({ at: "2026-10-13T05:27:11.000Z", event: "log-dropped", role: "agent", run: "abcd1234", batches: 52 })
     .replace(/\x1b\[[0-9;]*m/g, "");
-  assert.match(s, /05:27:11  log dropped  agent 52 batch\(es\) of system log messages lost — kernel denials may be missing/);
+  assert.match(s, /05:27:11  log dropped  agent 52 batch\(es\) of live system log messages lost/);
   assert.doesNotMatch(s, /undefined|allowed/);
+});
+
+test("seisin log says whether the loss was read back, and warns only when it was not", () => {
+  const plain = (e) => renderEntry({ at: "2026-10-13T05:27:12.000Z", event: "log-recovered", role: "agent", run: "abcd1234", ...e })
+    .replace(/\x1b\[[0-9;]*m/g, "");
+  assert.match(plain({ recovered: 7 }), /log recovered  agent 7 denial\(s\) read back from the stored log/);
+  assert.match(plain({ recovered: 0, error: "log show did not finish in 60000 ms" }),
+    /log not recovered  agent log show did not finish in 60000 ms — kernel denials may be missing/);
+  assert.doesNotMatch(plain({ recovered: 1 }), /undefined|allowed/);
 });
 
 test("check --system-log fails the check when it measured a loss, so a CI step can stop on it", () => {
@@ -130,10 +140,10 @@ test("close drains a split denial completed by SIGINT before resolving its stats
   });
   child.stdout.push(WRITE_DENY.slice(0, cut));
   await delivered();
-  const closing = w.close({ drain: 250 });
+  const closing = w.close({ drain: 250, recover: false });
   child.stdout.push(WRITE_DENY.slice(cut, end));
   const stats = await closing;
   assert.deepEqual(seen, ["/private/tmp/demo/src/api/tagprobe.txt"]);
-  assert.deepEqual(stats, { attributed: 1, foreign: 0, unattributed: 0, dropped: 1 });
+  assert.deepEqual(stats, { attributed: 1, foreign: 0, unattributed: 0, dropped: 1, recovered: 0, recoverMs: 0, recoverError: null });
   assert.deepEqual(child.signals, ["SIGINT"]);
 });
