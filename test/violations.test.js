@@ -13,7 +13,7 @@ import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import {
   parseChunk, actionOf, shellSplit, isOurs, descends, inScope, scopeOf, watchDenials,
-  reachedForContent,
+  reachedForContent, recoverDenials,
 } from "../src/violations.js";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -324,4 +324,84 @@ test("violations.js does not claim `run` announces the Linux limit", () => {
   const src = readFileSync(join(ROOT, "src", "violations.js"), "utf8");
   assert.doesNotMatch(src, /`seisin run` says so once/);
   assert.match(src, /`seisin check` says it/);
+});
+
+/* ── what the live stream lost, read back from the stored log ─────────── */
+
+const DROPPED_MARK = "=== Messages dropped during live streaming ===\n";
+const OTHER_DENY = WRITE_DENY.replace("bash(65518)", "bash(65519)").replace("tagprobe.txt", "lost.txt");
+
+/** A fake `log show`: prints `text` and exits. */
+function fakeShow(text, calls) {
+  return (bin, args) => {
+    calls.push(args);
+    const child = new EventEmitter();
+    child.stdout = new Readable({ read() {} });
+    child.kill = () => {};
+    setImmediate(() => { child.stdout.push(text); child.stdout.push(null); setImmediate(() => child.emit("close", 0)); });
+    return child;
+  };
+}
+
+test("a run whose stream lost lines reads its window again and adds only what was lost", async () => {
+  const stream = fakeStream();
+  const calls = [];
+  const show = fakeShow(WRITE_DENY + "\n" + OTHER_DENY, calls);
+  let first = true;
+  const seen = [];
+  const w = watchDenials((d) => seen.push(d.path), {
+    argv: ["sh", "-c", "echo hi > src/api/tagprobe.txt"],
+    platform: "darwin",
+    spawnFn: (bin, args) => (first ? ((first = false), stream) : show(bin, args)),
+    treeFn: () => new Map(),
+  });
+  stream.stdout.push(WRITE_DENY);
+  stream.stdout.push(DROPPED_MARK);
+  await delivered();
+  const stats = await w.close();
+  assert.equal(stats.dropped, 1);
+  assert.equal(calls.length, 1, "log show ran once");
+  assert.equal(calls[0][0], "show");
+  assert.deepEqual(seen, ["/private/tmp/demo/src/api/tagprobe.txt", "/private/tmp/demo/src/api/lost.txt"],
+    "the line the stream delivered is not recorded twice; the lost one is added");
+  assert.equal(stats.recovered, 1);
+  assert.equal(stats.recoverError, null);
+});
+
+test("a run that lost nothing never reads the stored log", async () => {
+  const stream = fakeStream();
+  let spawns = 0;
+  const w = watchDenials(() => {}, {
+    platform: "darwin",
+    spawnFn: () => { spawns++; return stream; },
+    treeFn: () => new Map(),
+  });
+  stream.stdout.push(WRITE_DENY);
+  await delivered();
+  const stats = await w.close();
+  assert.equal(spawns, 1);
+  assert.equal(stats.recovered, 0);
+});
+
+test("a stored log that does not answer in time delays the end of a run, never holds it", async () => {
+  const calls = [];
+  const hang = () => {
+    calls.push(1);
+    const child = new EventEmitter();
+    child.stdout = new Readable({ read() {} });
+    // A real child holds the event loop open until it is killed; the cap's timer
+    // is unref'd on purpose, so without this the loop would drain first.
+    const alive = setInterval(() => {}, 1000);
+    child.kill = () => clearInterval(alive);
+    return child;
+  };
+  const r = await recoverDenials({ since: 0, until: 1, seen: new Map(), accept: () => {}, spawnFn: hang, cap: 50 });
+  assert.equal(r.recovered, 0);
+  assert.match(r.error, /did not finish/);
+});
+
+test("a stored log that cannot be started is reported, not thrown", async () => {
+  const r = await recoverDenials({ since: 0, until: 1, seen: new Map(), accept: () => {},
+    spawnFn: () => { throw new Error("no log"); } });
+  assert.match(r.error, /could not start/);
 });

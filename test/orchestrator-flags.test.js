@@ -209,3 +209,44 @@ test("requests: parsed, the host must be in network, handed to tartaros only", a
   assert.deepEqual(s.network.requestRules, r);
   assert.deepEqual(s.network.allowedDomains, ["api.github.com"]);
 });
+
+test("runtime.scratch: validated, written, handed to tartaros only, and a role srt cannot hold", async () => {
+  const { loadConfig } = await import("../src/config.js");
+  const { tartarosSettings } = await import("../src/sandboxes/tartaros.js");
+  const { writePathsOf } = await import("../src/grants.js");
+  const { weigh } = await import("../src/sandboxes/index.js");
+  const dir = boxed("orch-scratch-");
+  const run = boxed("orch-scratch-run-");
+  const tmp = join(run, "tmp");
+  mkdirSync(tmp);
+  const ok = join(dir, "seisin.toml");
+  writeFileSync(ok, `[runtime]\nwrites = ["~/.claude"]\nscratch = ["${tmp}"]\n\n[roles.exec]\nwrites = ["**"]\n`);
+  const config = loadConfig(ok);
+  assert.equal(config.scratch.length, 1);
+  // A writable root before anything else: tartaros refuses a scratch root it may not write.
+  const { realpathSync } = await import("node:fs");
+  assert.ok(writePathsOf(config, config.roles.exec).includes(realpathSync(tmp)));
+  // What is never scratch: relative, `..`, globs, the root, the home, the repo, inside the repo.
+  for (const bad of ["rel/tmp", `${tmp}/../x`, `${run}/t*`, "/", "~", dir, join(dir, "tmp")]) {
+    writeFileSync(ok, `[runtime]\nwrites = ["~/.claude"]\nscratch = ["${bad}"]\n\n[roles.exec]\nwrites = ["**"]\n`);
+    assert.throws(() => loadConfig(ok), /runtime\.scratch/, bad);
+  }
+  // Under a runtime write ($TMPDIR is one by default): said at load, not as a canary that did not run.
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const underTmp = mkdtempSync(join(tmpdir(), "seisin-scratch-"));
+  writeFileSync(ok, `[runtime]\nscratch = ["${underTmp}"]\n\n[roles.exec]\nwrites = ["**"]\n`);
+  assert.throws(() => loadConfig(ok), /overlaps the runtime write/);
+  rmSync(underTmp, { recursive: true });
+  writeFileSync(ok, `[runtime]\nwrites = ["${run}"]\nscratch = ["${tmp}"]\n\n[roles.exec]\nwrites = ["**"]\n`);
+  assert.throws(() => loadConfig(ok), /overlaps the runtime write/);
+  const s = tartarosSettings({ filesystem: { allowWrite: ["/r", "/t"] }, network: {} }, { handoffScratch: ["/t"] });
+  assert.deepEqual(s.filesystem.handoffScratch, ["/t"]);
+  assert.equal(s.filesystem.handoffExempt, undefined);
+  // srt cannot leave a root out of its protection: the role is not handed to it.
+  writeFileSync(ok, `[sandbox]\nprovider = "srt"\n\n[runtime]\nwrites = ["~/.claude"]\nscratch = ["${tmp}"]\n\n[roles.exec]\nwrites = ["**"]\n`);
+  const { options } = weigh(loadConfig(ok), { filesystem: { allowWrite: [] }, network: {} },
+    { role: "exec", locate: false, platform: "darwin" });
+  const srt = options.find((o) => o.sandbox.name === "srt");
+  assert.ok(srt.unmet.some((u) => /runtime\.scratch/.test(u)), JSON.stringify(srt.unmet));
+});

@@ -398,6 +398,13 @@ protected, for a setup phase that fills a dependency tree whose packages ship th
 no globs. Only tartaros can hold such a role (from 0.1.0-alpha.18); it says the exemption at
 the start of every run. The repo's own surfaces stay protected.
 
+**`[runtime] scratch`**: writable roots thrown away after the run, a launcher's per-run TMPDIR,
+where the trust-handoff set is not protected. The tests an agent runs there `git init` repos,
+and every one writes `.git/hooks` samples, which the protection refused. Absolute (or `~/…`). It
+may not be the root, the home, or the repo, or overlap any of them or a `[runtime] writes`. It is
+written like a runtime write. Only tartaros can hold it (from 0.1.0-alpha.26); an older one
+refuses the field, and the run does not start.
+
 **`requests`**: a role key: the only requests the role may send to a host in its `network`,
 `"METHODS host[/path]"` (`requests = ["GET api.github.com", "POST api.github.com/repos/acme/"]`).
 A host is otherwise all of it. Only tartaros enforces it (from 0.1.0-alpha.18): it terminates

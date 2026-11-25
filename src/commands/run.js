@@ -37,6 +37,7 @@ import { append, logPath } from "../log.js";
 import { realAncestor } from "../paths.js";
 import { chooseSandbox, settingsOf, DEFAULT_SANDBOX } from "../sandboxes/index.js";
 import { machOf } from "../browsers.js";
+import { handoffExemptOf, handoffScratchOf } from "../handoff-exempt.js";
 import { effectiveConfig, narrowingOf } from "../narrow.js";
 import { startWatchdog } from "../watchdog.js";
 import { policyId } from "../config.js";
@@ -207,9 +208,9 @@ export async function run(config, argv) {
   const box = chooseSandbox(config, generated, { role });
   if (box.error) throw box.error;
   const { sandbox, bin } = box;
-  const handoffExempt = (config.roles[role].handoffExempt ?? []).map((e) => join(config.root, e));
+  const handoffExempt = handoffExemptOf(config, role);
   const requests = config.roles[role].requests ?? [];
-  const settings = settingsOf(sandbox, generated, { machRegister, handoffExempt, requests });
+  const settings = settingsOf(sandbox, generated, { machRegister, handoffExempt, handoffScratch: handoffScratchOf(config), requests });
   // Per run, never per role: `.seisin/<role>.json` was one file for every run
   // of that role, and two at once wrote each other's socket path into it.
   const file = theRun.writeSettings(settings);
@@ -756,16 +757,24 @@ async function finishRun({
   // filtered out has nothing to contextualise, and `0 recorded, 1 outside the
   // policy's paths` is a line that answers a question nobody asked — the
   // counts exist to explain a filter, not to announce that one ran.
-  const { attributed, dropped } = denials.stats;
-  // The one loss the filter above does not explain: the system log could not
+  const { attributed, dropped, recovered, recoverMs, recoverError } = denials.stats;
+  // The one loss the filter above does not explain: the live stream could not
   // keep up and threw lines away before seisin saw them. The boundary held;
-  // the record did not. Said every time, and written down, because a denial
-  // that never arrived files no request and nothing else would show it.
+  // the record did not, until the run read its own window back from the stored
+  // log (recoverDenials). Both written down: how much the stream lost, and
+  // whether the stored log closed the gap — a recovery that failed is the
+  // case where denials really are missing, and the only one worth a warning.
   if (dropped) {
     append(logPath(config.root), { event: "log-dropped", role, run: runLabel, ...trace, batches: dropped });
-    err(`${C.yellow}seisin: the system log dropped ${dropped} batch(es) of messages during this run: ` +
-        `kernel denials may be missing from the log and the queue. ` +
-        `\`seisin check --system-log\` says what is flooding it.${C.off}\n`);
+    append(logPath(config.root), { event: "log-recovered", role, run: runLabel, ...trace,
+      recovered, ms: recoverMs, ...(recoverError ? { error: recoverError } : {}) });
+    if (recoverError)
+      err(`${C.yellow}seisin: the system log dropped ${dropped} batch(es) of messages during this run, and reading ` +
+          `them back failed (${recoverError}): kernel denials may be missing from the log and the queue. ` +
+          `\`seisin check --system-log\` says what is flooding it.${C.off}\n`);
+    else
+      err(`${C.dim}seisin: the live system log dropped ${dropped} batch(es); ${recovered} denial(s) recovered ` +
+          `from the stored log in ${(recoverMs / 1000).toFixed(1)} s.${C.off}\n`);
   }
   const { offPolicy, walks, probes, canaryProbes, atomic, browsers } = take.stats;
   // A browser that died at start on its Mach rendezvous: the crash the agent

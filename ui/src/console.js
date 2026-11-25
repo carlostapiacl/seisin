@@ -1368,11 +1368,12 @@
     if (w.text) bits.push('started <span title="' + escA(w.title) + '">' + esc(w.text) + "</span>");
     return bits.join(" · ");
   }
-  function outcomeTag(o, dropped){
+  function outcomeTag(o, incomplete){
     var says = { clean: "clean", denied: "denied", refused: "canary failed", unread: "policy unreadable", "no-record": "no record" };
-    // A run whose system log dropped kernel messages: its walls may be missing some.
-    var lost = dropped ? ' <span class="oc refused" title="the system log dropped ' + escA(String(dropped)) +
-      ' batch(es) of kernel messages during this run: denials may be missing from its record">record incomplete</span>' : "";
+    // A run whose live system log dropped kernel messages and could not read
+    // them back from the stored log: its walls may be missing some.
+    var lost = incomplete ? ' <span class="oc refused" title="the system log dropped kernel messages during this run and ' +
+      'they could not be read back: denials may be missing from its record">record incomplete</span>' : "";
     return '<span class="oc ' + escA(o) + '">' + esc(says[o] || o) + "</span>" + lost;
   }
 
@@ -1391,7 +1392,7 @@
       card("b", "runs", t.runs, (t.outcome.denied || 0) + " denied something · " + (t.outcome.clean || 0) + " clean") +
       card(t.outcome.refused ? "a" : "g", "canary failed", t.outcome.refused || 0, "runs that never started") +
       (t.outcome["no-record"] ? card("a", "no record", t.outcome["no-record"], "runs with nothing that says the boundary held") : "") +
-      (t.incomplete ? card("a", "record incomplete", t.incomplete, "runs whose system log dropped kernel messages") : "") +
+      (t.incomplete ? card("a", "record incomplete", t.incomplete, "runs whose system log lost kernel messages that could not be read back") : "") +
       (function(){
         var p = (v.attention && v.attention.piles) || null;
         if (!p) return card(t.denied ? "a" : "g", "denied", t.denied, (k.file || 0).toLocaleString() + " files · " + (k.network || 0).toLocaleString() + " network");
@@ -1422,7 +1423,7 @@
           var href = into ? "#role/" + encodeURIComponent(into) + "/run/" + encodeURIComponent(r.id) : "./?run=" + encodeURIComponent(r.id) + "#denied";
           return "<tr><td><a href=\"" + escA(href) + "\"><code>" + esc(r.run_id || r.id) + "</code></a></td>" +
             '<td title="' + escA(w.title || "") + '">' + esc(w.text || "") + "</td><td>" + esc(r.team || "") + "</td><td>" + esc(r.role || "") +
-            "</td><td>" + esc(r.work_item || "") + "</td><td>" + esc(r.status || "") + "</td><td>" + outcomeTag(r.outcome, r.dropped) +
+            "</td><td>" + esc(r.work_item || "") + "</td><td>" + esc(r.status || "") + "</td><td>" + outcomeTag(r.outcome, r.incomplete) +
             "</td><td class=num>" + needsOf(r) + "</td><td class=num>" + workingOf(r) + "</td><td class=num>" + r.retried + "</td><td>" +
             (r.hosts || []).slice(0, 3).map(function(h){ return "<code>" + esc(h.target) + "</code>"; }).join(" ") + "</td></tr>";
         }).join("") + "</tbody>"
@@ -1540,7 +1541,7 @@
         h.refused ? h.refused.toLocaleString() + " failed" : "held",
         h.refused ? "runs whose canary failed: nothing ran" : "canary passed in every run that has one", href)) +
       (h.incomplete || h.noRecord ? kpiCard("a", "record", (h.incomplete + h.noRecord).toLocaleString(),
-        [h.incomplete ? h.incomplete + " with kernel messages dropped" : "", h.noRecord ? h.noRecord + " with no record" : ""].filter(Boolean).join(" · "), href) : "") +
+        [h.incomplete ? h.incomplete + " with kernel messages lost" : "", h.noRecord ? h.noRecord + " with no record" : ""].filter(Boolean).join(" · "), href) : "") +
       kpiCard(need ? "a" : "g", "need a person", a.needs, (a.needs === 1 ? "thing" : "things") + (a.paths !== a.needs ? " in " + a.paths.toLocaleString() + " places" : "") + " · " + need.toLocaleString() + " denials", href) +
       kpiCard(a.fresh ? "a" : "g", "new today", a.fresh, a.fresh ? "first seen in the last 24 h" : "nothing new in the last 24 h", href) +
       kpiCard("", "boundary working", working, "protected " + p.protected.denials.toLocaleString() + " · expected " + p.expected.denials.toLocaleString(), href);
@@ -1672,7 +1673,7 @@
       var open = !!OPEN_RUNS[r.id];
       return '<tr class="run' + (open ? " open" : "") + '" data-run="' + escA(r.id) + '"><td><code>' + esc(shortId(r.run_id || r.id)) + '</code></td><td title="' + escA(w.title || "") + '">' + esc(w.text || "") +
         "</td><td>" + esc(r.team || "") + "</td><td>" + esc(r.work_item || "") + "</td><td>" + esc(r.role || "") + "</td><td>" + esc(r.status || "") + "</td><td>" +
-        outcomeTag(r.outcome, r.dropped) + "</td><td class=num>" + needsOf(r) + "</td><td class=num>" + workingOf(r) + "</td></tr>" +
+        outcomeTag(r.outcome, r.incomplete) + "</td><td class=num>" + needsOf(r) + "</td><td class=num>" + workingOf(r) + "</td></tr>" +
         (open ? '<tr class="tl"><td colspan="9" id="tl-' + escA(r.id) + '">' + (TIMELINES[r.id + "|" + ROLE] ? timelineHtml(TIMELINES[r.id + "|" + ROLE]) : "Reading…") + "</td></tr>" : "");
     }).join("");
     document.getElementById("rl-runs").innerHTML = runs.length
@@ -1717,7 +1718,10 @@
         ? "canary passed" + (e.sandbox ? " under " + esc(e.sandbox) : "") + ": the boundary held, the agent started"
         : "<b>canary failed</b>: " + esc((e.reasons || []).join("; ")) + " — nothing ran") + "</li>";
       if (e.type === "narrowed") return '<li class="quiet">' + at(e.at) + "policy narrowed for this run</li>";
-      if (e.type === "dropped") return '<li class="bad">' + at(e.at) + "the system log dropped " + e.batches + " batch(es): denials may be missing from here</li>";
+      if (e.type === "dropped") return '<li>' + at(e.at) + "the live system log dropped " + e.batches + " batch(es)</li>";
+      if (e.type === "recovered") return e.error
+        ? '<li class="bad">' + at(e.at) + "reading them back failed (" + esc(e.error) + "): denials may be missing from here</li>"
+        : '<li>' + at(e.at) + e.recovered + " denial(s) read back from the stored log</li>";
       var quiet = e.class === "protected" || e.class === "expected";
       return '<li class="' + (quiet ? "quiet" : "bad") + '">' + at(e.at) + classTag(e.class) + " " + esc(e.action) + " <code>" + esc(e.target) + "</code>" +
         (e.times > 1 ? " ×" + e.times : "") + (e.probe ? ' <span class="ro-ask">the canary\'s own probe</span>' : "") +
