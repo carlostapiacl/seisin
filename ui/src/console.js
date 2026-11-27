@@ -1236,7 +1236,30 @@
   async function boot(){
     var asking = location.protocol.startsWith("http") && !!TOKEN;
     if (asking) document.body.classList.add("booting");
-    try { await bootInner(); } finally { document.body.classList.remove("booting"); }
+    try { await bootInner(); } finally {
+      clearInterval(READING_TICK);
+      document.body.classList.remove("booting");
+      var m = document.querySelector("main"); if (m) delete m.dataset.reading;
+    }
+  }
+  /* The first read of a large directory of runs takes the server up to a minute. It answers
+   * /api/info meanwhile, with how far it got: said here, so a minute of "Reading…" is not
+   * mistaken for a console that hung. */
+  var READING_TICK = null;
+  function sayReading(r){
+    if (!r || !r.total) return;
+    var m = document.querySelector("main");
+    if (m) m.dataset.reading = "Reading the runs: " + r.done.toLocaleString("en-US") + " of " +
+      r.total.toLocaleString("en-US") + "…";
+  }
+  function followReading(){
+    READING_TICK = setInterval(async function(){
+      try {
+        var r = await fetch("/api/info", { cache: "no-store", headers: { "x-seisin-token": TOKEN } });
+        var said = r.ok ? await r.json() : null;
+        if (said && said.reading) sayReading(said.reading); else clearInterval(READING_TICK);
+      } catch (_) { clearInterval(READING_TICK); }
+    }, 1000);
   }
   async function bootInner(){
     let got = null, stale = false;
@@ -1250,6 +1273,7 @@
         if (said.mode === "runs") { MODE = "runs"; READONLY = true; }
         if (said.readOnly) READONLY = true;
         LAUNCHER = said.launcher || null;
+        if (said.reading) { sayReading(said.reading); followReading(); }
       }
       if (MODE === "runs") { await bootRuns(); return; }
       got = await fetchState(true);
