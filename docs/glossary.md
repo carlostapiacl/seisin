@@ -274,7 +274,7 @@ profiles [13]; all different, which is why seisin keeps the word for the OS only
 
 **run**: one `seisin run <role> -- <command>` from start to exit: keys resolved, settings applied,
 one audit socket, one run directory. seisin's unit of time. *Not:* round, turn, session,
-invocation, job. *Where:* `seisin run`, "once per target per run", "not asked again in 3 runs",
+invocation, job. *Where:* `seisin run`, "once per process and target per run", "not asked again in 3 runs",
 "it applies on the next run". *Elsewhere:* ⚠ Claude Code's **session** (a conversation) and
 **turn** (one response) belong to the agent inside the run [3, 4]. Use them only when you mean the
 agent's: the hook's `SessionStart` message, "mid-turn".

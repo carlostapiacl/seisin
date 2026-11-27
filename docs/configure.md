@@ -1,6 +1,7 @@
 # Configure
 
-The whole of `seisin.toml`. The README has the short version.
+Every setting of `seisin.toml`: the common ones explained here, and the rest at the end, each
+with the page that explains it. The README has the short version.
 
 
 One file at the root of your repo. Anything not listed is denied; there is no permissive default.
@@ -187,7 +188,7 @@ unpacks a package's own `.vscode` or `AGENTS.md`. On Linux only the files that a
 protected: bubblewrap would have to create a missing one to deny it.
 
 Denied connections are logged too: `connect tcp:<port>` (the kernel gives the port, not the
-host) or the socket path, once per target per run. `seisin walls` says whether the port is
+host) or the socket path, once per process and target per run, with the process named. `seisin walls` says whether the port is
 missing from `local_ports`, listed but dialled directly, or a socket. No request is filed: a
 port isn't anyone's territory. macOS only.
 
@@ -224,6 +225,69 @@ The URL is a credential: whoever reads it can send you a fake "grant this". So `
 and no role may declare it as a key. Or leave `url_file` out and set `SEISIN_NOTIFY_URL` in the
 environment that starts seisin (`SEISIN_NOTIFY_FORMAT` for the format). The URL never reaches a
 role's environment, not even when the role names it.
+
+## Less common settings
+
+Per role:
+
+```toml
+[roles.api]
+env = ["NODE_OPTIONS", "JAVA_HOME"]           # extra environment variables the role keeps
+verify = ["npm", "test", "--", "--version"]   # proves the role can check its own work
+requests = ["GET api.github.com", "POST,PATCH api.github.com/repos/acme/"]
+handoff_exempt = ["vendor"]                   # a setup phase that fills a dependency tree
+```
+
+- **`env`**: the role starts with a short base environment, and these names are added to it. A
+  name that looks like a credential (`…_TOKEN`, `…_KEY`, `…_SECRET`, `…_PASSWORD` and the like) is
+  dropped unless it is listed here; a key the role should read goes in `keys` instead.
+- **`verify`**: a command that proves the role can check its own work, run by
+  `seisin check --verify`. It cannot be empty: leave it out instead.
+- **`requests`**: the only requests the role may send to an allowed host, `"METHODS host[/path]"`
+  (`*` for every method). Without it an allowed host is all of it: a token for api.github.com
+  pushes to any repository it reaches. The host must be in the role's `network`. Only tartaros
+  enforces it (from 0.1.0-alpha.18).
+- **`handoff_exempt`**: folders in the repo where the trust-handoff set (`.git/`, `.github/`,
+  `.gitattributes`…) is not protected, for `composer install` or `npm install` filling a tree whose
+  packages ship their own. Relative, no `..`, no globs. Only tartaros can hold such a role.
+
+For the whole policy:
+
+```toml
+[runtime]
+scratch = ["~/.my-harness/tmp/run"]   # a run's own TMPDIR, thrown away after it
+
+[scan]
+ignore = ["fixtures/", "vendor/"]     # what `seisin scan` does not walk, on top of its defaults
+```
+
+- **`[runtime] scratch`**: writable folders thrown away after the run, where the trust-handoff set
+  is not protected, so the throwaway repos an agent's tests `git init` there can write their hooks.
+  Absolute (or `~/…`). It may not be the root, the home or the repo, or overlap any of them or a
+  `[runtime] writes`. Only tartaros can hold it (from 0.1.0-alpha.26); an older one refuses the
+  field and the run does not start. **[Scratch →](scratch.md)**
+- **`[scan] ignore`**: patterns `seisin scan` skips, added to its own list. `.gitignore` is not
+  honoured on purpose: what a repository ignores is where credentials sit.
+
+## Every setting, and where it is explained
+
+| setting | page |
+|---|---|
+| `[keys] dir` | this page |
+| `[keys.providers.<name>] command, mode` · role `keys`, `key_mode`, `inject_hosts` · `[runtime] redact` | [keys.md](keys.md) |
+| `[network] allow, deny_addresses` · role `network`, `local_ports`, `local_binding` | this page |
+| `[runtime] read, isolate, writes` | this page, [scratch.md](scratch.md), [runs.md](runs.md) |
+| `[runtime] scratch` · `[scan] ignore` | this page |
+| `[console] runs, launcher` | this page, [runs.md](runs.md) |
+| `[protect] instructions` · role `control_files` | this page |
+| `[notify] url, url_file, format` | this page |
+| `[sandbox] provider` · `[sandbox.providers.<name>] command, check, tags_denials` | [sandboxes.md](sandboxes.md) |
+| role `writes`, `private`, `never_writes`, `reads`, `toolchain`, `mcp` | this page |
+| role `browsers`, `trustd` | [browsers.md](browsers.md) |
+| role `handoff` | [requests.md](requests.md) |
+| role `env`, `verify`, `requests`, `handoff_exempt` | this page |
+
+A name not in this table is refused, with the line and the closest known name.
 
 `seisin init` will propose this from whatever your repo already says: `.claude/agents/`, then `CODEOWNERS` (one role per owner, with all of that owner's paths), then one role per top-level folder that holds code. It declares `[keys] dir` when `.secrets/`, `secrets/` or `.keys/` is there, and adds `.seisin/` to an existing `.gitignore`. It **proposes** (a generated policy you did not read is not a policy) and a second `init` changes nothing without `--force`, which keeps the old one as `seisin.toml.bak`.
 

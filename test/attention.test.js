@@ -408,3 +408,13 @@ test("a timeline holds only lines that name its run, and says when the policy is
   assert.deepEqual(t.events.map((e) => e.target), ["docs/a.md"]);
   assert.equal(t.held_from, "today", "the file changed since: today's, said so");
 });
+
+test("seisin attention says the window in the reader's own clock", () => {
+  const dir = fiveClasses();
+  const out = spawnSync(process.execPath, [CLI, "attention", "--runs", dir, "--since", "2026-10-25T12:00:00Z"],
+    { encoding: "utf8", env: { ...process.env, NO_COLOR: "1", TZ: "America/Santiago" } });
+  assert.equal(out.status, 0, out.stderr);
+  // 12:00 UTC is 09:00 in Santiago (UTC-3 in October): it printed the UTC hour, unmarked.
+  assert.match(out.stdout, /since 2026-10-25 09:00/);
+  assert.doesNotMatch(out.stdout, /since 2026-10-25 12:00/);
+});
