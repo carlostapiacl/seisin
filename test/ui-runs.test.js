@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 
 import { serve, causesOf } from "../src/serve.js";
 import { loadConfig } from "../src/config.js";
-import { runsView, scanRuns, filtersOf, isRunId } from "../src/runs.js";
+import { runsView, scanRuns, warmRuns, filtersOf, isRunId } from "../src/runs.js";
 import { record } from "../src/requests.js";
 import { writeUiLink, clearUiLink } from "../src/uilink.js";
 import { boxed, CLI } from "./_tmp.js";
@@ -367,4 +367,44 @@ test("a run whose system log dropped kernel messages says its record is incomple
   assert.equal(lost.outcome, "clean");
   assert.equal(v.runs.find((r) => r.id === "r-whole").dropped, 0);
   assert.equal(v.totals.incomplete, 1);
+});
+
+/**
+ * The first read of a directory gives the event loop back. Done at once on start, it held the
+ * console's whole process: over 1,137 real runs the page itself did not load for 20 to 60 s.
+ */
+test("the first read of the runs is done a run at a time, the loop free in between", async () => {
+  const dir = boxed("ui-runs-warm-");
+  for (let i = 0; i < 12; i++)
+    run(dir, `r-${String(i).padStart(2, "0")}`, { log: [{ event: "canary", role: "agent", run: `w${i}`, confined: true, reasons: [] }] });
+  let ticks = 0;
+  let ticking = true;
+  const tick = () => { ticks++; if (ticking) setImmediate(tick); };
+  setImmediate(tick);
+  const reading = warmRuns(dir, { sliceMs: 0 });
+  assert.equal(reading.progress.total, 12);
+  const done = await reading;
+  ticking = false;
+  assert.equal(done.done, 12);
+  assert.ok(ticks >= 6, `the loop ran between the runs read (${ticks} turns for 12 runs)`);
+  assert.equal(scanRuns(dir).runs.length, 12, "the cache it filled is the one a view reads");
+});
+
+test("a folder that is not there is an empty read, not a rejection", async () => {
+  const done = await warmRuns(join(boxed("ui-runs-warm-"), "missing"));
+  assert.deepEqual(done, { done: 0, total: 0 });
+});
+
+test("the console answers while it reads its runs, and a view waits for all of them", async (t) => {
+  const dir = boxed("ui-runs-warm-");
+  for (let i = 0; i < 40; i++)
+    run(dir, `r-${String(i).padStart(2, "0")}`, { log: [{ event: "canary", role: "agent", run: `s${i}`, confined: true, reasons: [] }] });
+  const { server, get } = await console_(dir);
+  t.after(() => server.close());
+  const [info, runs] = await Promise.all([get("/api/info"), get("/api/runs")]);
+  assert.equal(info.status, 200);
+  const said = await info.json();
+  if (said.reading) assert.equal(said.reading.total, 40, "how far it got, out of every run");
+  assert.equal((await runs.json()).total, 40);
+  assert.equal((await (await get("/api/info")).json()).reading, undefined, "nothing said once it is read");
 });

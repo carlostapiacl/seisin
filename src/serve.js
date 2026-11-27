@@ -24,7 +24,7 @@ import { pending, requestsPath, editPolicy, settle, cleanReason, lastAgentOf, fi
 import { causesOf, describeWalls, parseSince, queue, verdicts, wallsByRole } from "./views.js";
 import { planEdit, hashOf } from "./controls.js";
 import { inspect } from "./inspect.js";
-import { scanRuns, runsView, runOf, runPolicy, filtersOf, isRunId, logRunsView, runTimeline, timelineOf } from "./runs.js";
+import { scanRuns, warmRuns, runsView, runOf, runPolicy, filtersOf, isRunId, logRunsView, runTimeline, timelineOf } from "./runs.js";
 
 // Moved to views.js, which the MCP server shares; kept importable from here.
 export { causesOf } from "./views.js";
@@ -570,6 +570,8 @@ export function serve(configPath, port = 4178, { lockWaitMs = 10000, runsDir = n
    */
   const pathOf = (u) => (u ?? "/").split("?")[0];
 
+  let warming = null;                   // the first read of runsDir, while it lasts
+  let reading = null;                   // and how far it got: { done, total }
   const server = createServer(async (req, res) => {
     if (!hostOk(req, server.address()?.port)) {
       res.writeHead(403, { "content-type": "text/plain" });
@@ -628,9 +630,13 @@ export function serve(configPath, port = 4178, { lockWaitMs = 10000, runsDir = n
         return res.end();
       }
       if (pathOf(req.url) === "/api/info")
-        return answer(200, !configPath
-          ? { mode: "runs", dir: runsDir, readOnly: true }
-          : { mode: "policy", config: configPath, readOnly: !!lent, launcher: lent, ...(runsDir && { dir: runsDir }) });
+        return answer(200, {
+          ...(!configPath
+            ? { mode: "runs", dir: runsDir, readOnly: true }
+            : { mode: "policy", config: configPath, readOnly: !!lent, launcher: lent, ...(runsDir && { dir: runsDir }) }),
+          // While the first read lasts, so the page can say how far it got.
+          ...(reading && { reading: { done: reading.done, total: reading.total } }),
+        });
       const runId = () => {
         const id = new URLSearchParams(query).get("run");
         if (!isRunId(id)) throw bad("run must name one of the runs: ?run=<run_id>");
@@ -653,6 +659,9 @@ export function serve(configPath, port = 4178, { lockWaitMs = 10000, runsDir = n
         ...(configPath && { "/api/state": () => stateBody(configPath, sinceOf(req.url), { readOnly: !!lent }) }),
       };
       const route = routes[pathOf(req.url)];
+      // A view needs every run. Asked for before the first read is done, it would
+      // read the rest itself, all at once, and hold the process again.
+      if (warming && pathOf(req.url) === "/api/runs") await warming;
       if (route) {
         let got;
         try {
@@ -703,9 +712,13 @@ export function serve(configPath, port = 4178, { lockWaitMs = 10000, runsDir = n
       // For `seisin ui`, which builds the URL, and for tests. Never sent.
       Object.defineProperty(server, "seisinToken", { value: token });
       ok(server);
-      // The first read of a few hundred runs takes seconds; started now, it is
-      // mostly done by the time the page asks.
-      if (runsDir) setImmediate(() => { try { scanRuns(runsDir); } catch {} });
+      // The first read of the runs takes seconds to a minute; started now and in
+      // slices (warmRuns), so the page loads meanwhile and /api/runs waits for it.
+      if (runsDir) {
+        const first = warmRuns(runsDir);
+        reading = first.progress;
+        warming = first.then(() => { warming = null; reading = null; });
+      }
     });
     server.on("error", (e) =>
       fail(e.code === "EADDRINUSE"

@@ -311,6 +311,42 @@ function digestLines(all, id, classes) {
 /** Summaries kept by run id, with the signature they were made from. */
 const cache = new Map();
 
+/**
+ * The first read of a directory, a little at a time.
+ *
+ * `scanRuns` is synchronous, and over a real directory (1,137 runs, 101 MB) the
+ * first one took 20 to 60 s. Started when the console began listening, it held
+ * the whole process: the page itself did not load until it was done. This fills
+ * the same cache in slices of `sliceMs`, at least one run each, and gives the
+ * event loop back between them, so the page and `/api/info` answer at once and
+ * only a request that needs every run waits for it. Never rejects: a run that
+ * does not read here is read, and its error reported, by the `scanRuns` after.
+ */
+export function warmRuns(dir, { sliceMs = 25 } = {}) {
+  let ids = [];
+  try { ids = runFolders(dir); } catch {}
+  const progress = { done: 0, total: ids.length };
+  const done = new Promise((ok) => {
+    const step = () => {
+      const until = Date.now() + sliceMs;
+      do {
+        const id = ids[progress.done++];
+        try {
+          const sig = signatureOf(dir, id);
+          const k = `${dir}\u0000${id}`;
+          const hit = cache.get(k);
+          if (!hit || hit.sig !== sig) cache.set(k, { sig, summary: summarize(dir, id) });
+        } catch {}
+      } while (progress.done < ids.length && Date.now() < until);
+      if (progress.done < ids.length) setImmediate(step);
+      else ok(progress);
+    };
+    if (ids.length) setImmediate(step);
+    else ok(progress);
+  });
+  return Object.assign(done, { progress });
+}
+
 /** Every run under `dir`, summarized, re-read only where a file moved. */
 export function scanRuns(dir) {
   const ids = runFolders(dir);

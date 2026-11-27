@@ -259,3 +259,8 @@ Measured on 2026-10-26 with 600 runs, 31 MB of logs copied from a real pilot (ma
 listens. After that each run is remembered by the signature of its files (stats only, no
 directory listing), and a poll of `/api/runs` took **~0.2 s** warm, or less with a filter. A run
 that is archived does not change, so it is never read twice.
+
+Measured again on 2026-11-27 with 1,137 runs, 101 MB, on a machine running a pilot: the first read
+took 20 to 60 s. It is done a slice at a time, so the page loads at once and says how far the
+read got ("Reading the runs: 383 of 1,141…"); `/api/info` carries the same count as `reading`
+while it lasts, and only `/api/runs` waits for it.

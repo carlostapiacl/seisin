@@ -466,6 +466,7 @@ table.att tr.lead td{font-weight:500}
    menu showed the policy's six screens before settling on the two a directory of runs has. */
 body.booting main>*,body.booting .side .list{visibility:hidden}
 body.booting main::before{content:"Reading…";visibility:visible;display:block;color:var(--mid);font-size:13px;padding:24px 0}
+body.booting main[data-reading]::before{content:attr(data-reading)}
 
 /* ── roles: the unit the console is read by ─────────────────────────────── */
 #nav-roles a{padding-left:28px}
