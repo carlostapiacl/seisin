@@ -10,6 +10,17 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+**Runtime: bumped to `@anthropic-ai/sandbox-runtime` 0.0.83** (from 0.0.81). Nothing in it reaches a
+seisin role. A SOCKS connection to a `network.mitmProxy` host now goes through that proxy, but seisin
+does not set `mitmProxy` (masking uses `tlsTerminate`). The HTTP proxy no longer logs an upstream
+error's message or stack, which could carry credentials. The rest is Windows: a narrower profile
+read grant and an opt-in MXC backend, whose `@microsoft/mxc-sdk` is an optional peer dependency
+that npm does not install. Where the runtime uses `zod` and `node-forge` is unchanged, so
+SECURITY.md's reading of both advisories holds. Full suite green on macOS (1282: 1274 pass,
+8 skip). In Linux under a privileged Docker container (node:22-bookworm) the sandbox core is 26/26
+and the full suite is 1281: 1243 pass, 8 fail, 30 skip; the same eight fail with 0.0.81 in that
+container, so they are the container's, not the runtime's.
+
 ## 0.10.0 — 2026-11-25
 
 - **Ships with tartaros 0.1.0-alpha.26** (was alpha.24): `--handoff-scratch`, `AGENT_ID`

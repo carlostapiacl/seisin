@@ -82,9 +82,9 @@ you have, report it here and it gets routed.
 
 `npm audit` and Dependabot report two high-severity advisories on seisin. Neither is in seisin's
 code: both are dependencies of the pinned sandbox runtime, [`@anthropic-ai/sandbox-runtime`][srt]
-(0.0.81), which seisin runs as a command and does not import. seisin itself depends on nothing
+(0.0.83), which seisin runs as a command and does not import. seisin itself depends on nothing
 else but the optional [tartaros][tt] package, which carries prebuilt binaries and no JavaScript
-dependencies. Both were re-checked against the runtime 0.0.81 source on 2026-10-26, and neither
+dependencies. Both were re-checked against the runtime 0.0.83 source on 2026-11-27, and neither
 appears reachable through seisin's use. Each stays open until the runtime moves past it.
 
 [tt]: https://github.com/carlostapiacl/tartaros

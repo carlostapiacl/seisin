@@ -202,7 +202,7 @@ npm install -g seisin
 That pulls in [tartaros](https://github.com/carlostapiacl/tartaros), the default sandbox, prebuilt for macOS and Linux: Seatbelt on macOS, Landlock and seccomp on Linux. No containers, no VMs, no daemon, and no other dependency. [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropics/sandbox-runtime) (`srt`) is used where you install it apart, after tartaros: for a role tartaros cannot hold (a blanket `local_binding`, `deny_addresses`, a Linux host without Landlock), or anywhere `[sandbox] provider` names it. A sandbox of your own can enforce too ([docs/sandboxes.md](https://github.com/carlostapiacl/seisin/blob/main/docs/sandboxes.md)).
 
 ```bash
-npm install -g @anthropic-ai/sandbox-runtime@0.0.81   # optional: srt, for what tartaros cannot hold
+npm install -g @anthropic-ai/sandbox-runtime@0.0.83   # optional: srt, for what tartaros cannot hold
 ```
 
 **For srt on Linux you also need three system packages.** Without them srt refuses to start
