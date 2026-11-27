@@ -10,6 +10,8 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+## 0.10.2 — 2026-11-27
+
 - **The console over a large directory of runs opens at once.** Its first read of the runs held
   the whole process: over 1,137 real runs the page itself did not load for 20 to 60 s. The read is
   done a slice at a time now. The page loads in under a second and says how far it got ("Reading the
