@@ -19,9 +19,10 @@ export const LIMITS = [
       "the kernel's denials reach `seisin run` through `log stream`, and when something floods " +
       "the unified log (thousands of lines a second) the stream drops messages before it filters " +
       "them. The boundary holds; the denial files no request and is not in `seisin log`. A run that " +
-      "lost messages says so when it ends and logs `log-dropped`; `seisin check --system-log` " +
-      "measures it now and names who writes the most. The system's own copy (`log show`) does not " +
-      "help: it lacks the tag that ties a denial to its run.",
+      "lost messages logs `log-dropped`, reads its own window back from the stored log (`log show`) " +
+      "once at the end and logs what it found as `log-recovered`; only what that could not read " +
+      "back leaves the run's record incomplete, and the run says so when it ends. " +
+      "`seisin check --system-log` measures the loss now and names who writes the most.",
   }]),
   ...(process.platform === "darwin" ? [] : [{
     kind: "kernel-denials-unreadable",

@@ -1344,9 +1344,22 @@
     var s = q.toString();
     return "/api/runs" + (s ? "?" + s : "");
   }
-  async function fetchRuns(fresh){
-    if (!LIVE && DEMO_SHIFTED) return { v: demoView() };
+  /* One read of the runs at a time. Over a directory of a thousand runs one view takes the server
+   * seconds, and it answers one request after another: the poll asking again for the view being
+   * left while the new one was on its way doubled the wait for the page just opened. */
+  var RFLIGHT = null;
+  function fetchRuns(fresh){
+    if (!LIVE && DEMO_SHIFTED) return Promise.resolve({ v: demoView() });
     var url = runsUrl();
+    if (RFLIGHT && RFLIGHT.url === url) return !fresh ? RFLIGHT.p : RFLIGHT.p.then(function(g){
+      // The poll asked only whether it moved; whoever wanted the view still gets it.
+      return g.same && RLAST.url === url ? { v: RLAST.v } : g;
+    });
+    var p = fetchRunsNow(url, fresh).finally(function(){ if (RFLIGHT && RFLIGHT.p === p) RFLIGHT = null; });
+    RFLIGHT = { url: url, p: p };
+    return p;
+  }
+  async function fetchRunsNow(url, fresh){
     var h = { "x-seisin-token": TOKEN };
     if (!fresh && RLAST.etag && RLAST.url === url) h["if-none-match"] = RLAST.etag;
     var r = await fetch(url, { cache: "no-store", headers: h });
@@ -1782,7 +1795,8 @@
   function pollRuns(){
     setTimeout(async function(){
       var rt = route();
-      if (rt === "runs" || rt === "overview" || rt === "role") try {
+      // A read already on its way answers for this tick: asking again only queues behind it.
+      if ((rt === "runs" || rt === "overview" || rt === "role") && !RFLIGHT) try {
         var g = await fetchRuns(false);
         if (g.v) drawRunsAll(g.v);
         if (MODE === "runs") {

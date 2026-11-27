@@ -95,6 +95,7 @@ ${C.b}seisin${C.off}: give each agent its own folders and its own keys
   seisin whose <path>                   who owns it — safe to call from inside the sandbox
   seisin scan [--all]                   find secrets outside the declared key dirs
   seisin review [--all] [--since 7d]    what the log says about the policy
+  seisin attention [--runs <dir>] [--since 7d]  what needs a person across the runs, as the console's overview says it
   seisin walls <role> [--all]           what that role keeps being denied, and what it cost
   seisin wire                           let the agent record what it does
   seisin requests                       what the agents asked for and cannot have

@@ -94,10 +94,12 @@ Beside the launcher's `status`, each run gets seisin's own `outcome`:
 | `denied` | it ran, and was denied at least one file or host |
 | `clean` | its canary passed, and it was denied neither. The OS's own housekeeping (`kind: "system"`) and the canary's expected probes do not count |
 | `no-record` | nothing says the boundary held: no log, or no passed canary in it. It was not found clean, there is nothing to tell |
-
-A run whose system log dropped kernel messages (macOS, a flooded unified log) also says
-**record incomplete**: the boundary held, but some of its denials may be missing from the log.
 | `unread` | its policy is missing or does not load; the error is shown |
+
+A run whose system log dropped kernel messages (macOS, a flooded unified log) reads its own window
+back from the stored log once at the end (`log-recovered`, bounded by `SEISIN_RECOVER_MS`, 60 s by
+default). If that could not read everything back, the run also says **record incomplete**: the
+boundary held, but some of its denials may be missing from the log.
 
 **When something is missing:**
 

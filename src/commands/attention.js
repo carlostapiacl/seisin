@@ -36,6 +36,13 @@ export const CLASS_LABEL = {
 };
 
 const n = (x) => Number(x ?? 0).toLocaleString("en-US");
+const z = (x) => String(x).padStart(2, "0");
+/** "2026-11-25 15:54" in local time; anything that does not parse is shown as given. */
+function localMinute(iso) {
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return String(iso).slice(0, 16).replace("T", " ");
+  return `${t.getFullYear()}-${z(t.getMonth() + 1)}-${z(t.getDate())} ${z(t.getHours())}:${z(t.getMinutes())}`;
+}
 const plural = (k, one, many = `${one}s`) => `${n(k)} ${k === 1 ? one : many}`;
 
 /** The flags the filter takes, as the query string runs.js reads. */
@@ -99,7 +106,8 @@ export function attentionCommand(config, argv = []) {
   }
   const a = view.attention;
   const all = argv.includes("--all");
-  const where = view.filters.since ? ` since ${view.filters.since.slice(0, 16).replace("T", " ")}` : "";
+  // In the reader's own clock, as the console shows it: the filter is an instant in UTC.
+  const where = view.filters.since ? ` since ${localMinute(view.filters.since)}` : "";
   if (!view.totals.runs) {
     out(`\n  ${C.dim}no runs${where}${view.total ? ` (of ${n(view.total)}) match` : " recorded yet"}.${C.off}\n\n`);
     return view;

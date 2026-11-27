@@ -165,7 +165,8 @@ seisin ui --runs <dir>                             # the console over the archiv
 - **Each run proves the boundary before it starts.** The canary runs per run and per role. A run whose
   canary failed is counted apart, and nothing of the agent's ran in it.
 - **The record says when it is incomplete.** On macOS the system log can drop kernel messages under load;
-  a run where that happened is marked, so a quiet run is not mistaken for a clean one.
+  the run reads what it lost back from the stored log at the end, and one that still could not is
+  marked, so a quiet run is not mistaken for a clean one.
 - **Trace context.** A launcher that passes a trace id has it on every line of the run's log, so its
   records and seisin's join on the same key.
 

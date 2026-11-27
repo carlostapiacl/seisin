@@ -5,7 +5,7 @@
 [![npm](https://img.shields.io/npm/v/seisin?color=222)](https://www.npmjs.com/package/seisin)
 [![license](https://img.shields.io/badge/license-MIT-222)](https://github.com/carlostapiacl/seisin/blob/main/LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A518-222)](https://github.com/carlostapiacl/seisin/blob/main/package.json)
-[![one dependency, the sandbox runtime; tartaros is optional](https://img.shields.io/badge/dependencies-1-222)](https://github.com/carlostapiacl/seisin/blob/main/package.json)
+[![one dependency, tartaros, the default sandbox; the sandbox runtime (srt) is optional](https://img.shields.io/badge/dependencies-1-222)](https://github.com/carlostapiacl/seisin/blob/main/package.json)
 
 > **seisin** *(n.)*: the legal possession of a piece of land, held by whoever is standing on it.
 
@@ -259,6 +259,7 @@ the commands compose in a script, a pre-commit hook or CI:
 | `explain` | allowed | denied | |
 | `scan` | no certain credential | a certain credential outside the key dirs | |
 | `review` | no role denied repeatedly | a role denied repeatedly | |
+| `attention` | no run's canary failed in the window | a run's canary failed in the window | |
 | `walls` | no walls | walls listed | |
 | `requests` | nothing pending | requests pending | |
 | `log verify` | the hash chain holds | the hash chain is broken | |
@@ -529,8 +530,8 @@ of them. **[Each one, and why not a container →](https://github.com/carlostapi
 ## Status
 
 CI runs the full suite on macOS and Ubuntu 24.04, Node 18/20/22/24, on every pull request and
-push to `main`. On 2026-11-25, on Node 24: macOS **1282 tests, 1272 passing, 10 skipped**;
-Linux (Ubuntu 24.04) **1281, 1252 passing, 29 skipped**. The skips are platform tests; the job fails if the 26
+push to `main`. On 2026-11-27, on Node 24: macOS **1286 tests, 1276 passing, 10 skipped**;
+Linux (Ubuntu 24.04) **1285, 1256 passing, 29 skipped**. The skips are platform tests; the job fails if the 26
 core boundary tests in `test/sandbox.test.js` skip. A release is published only from CI, after
 that passes, with npm provenance. [Which claim was measured where](https://github.com/carlostapiacl/seisin/blob/main/docs/what-it-has-been-put-through.md#where-each-claim-was-actually-run),
 and [what running agents behind it cost](https://github.com/carlostapiacl/seisin/blob/main/docs/field-notes.md).

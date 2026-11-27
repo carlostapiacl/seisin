@@ -10,6 +10,30 @@ changed rather than failing on the old spelling.
 
 ## Unreleased
 
+## 0.10.1 — 2026-11-27
+
+- **The console opens a role without asking for it twice.** Opening a role while the two-second
+  poll was out asked the server for that role's view a second time, and the server answers one
+  request after another: over 1,137 real runs the page waited 11.5 s for the first answer and
+  23.5 s for the second. One read of a view is on its way at a time now, and the poll skips its
+  turn while one is.
+- **Reading a directory of runs costs less.** Classifying each denial resolved its path on disk
+  again, and the policy's parent inputs again for every denial. Remembered for a few seconds now:
+  over 1,137 real runs the first read went from about 20 s of CPU to 16, with half the system time.
+  It is still the first thing a console over a large directory does, and the page waits for it.
+- **`seisin attention` says its window in local time.** `--since 2d` printed the hour in UTC
+  without saying so, three hours off in Chile.
+- **`seisin --help` lists `attention`**, and the README's table of exit codes has it.
+- **Docs that had fallen behind 0.10.0:** a run that lost kernel messages reads them back before
+  it is called incomplete (`seisin help limits`, docs/runs.md, docs/guide.md); a refused
+  connection is one line per process and target (docs/configure.md, docs/glossary.md).
+  docs/configure.md now has every setting the parser takes, the less common ones explained
+  (`env`, `verify`, `requests`, `handoff_exempt`, `[runtime] scratch`, `[scan] ignore`) and a table
+  of where each one is. In docs/runs.md a paragraph sat inside the table of outcomes and cut it in
+  two. The README's dependency badge had tartaros and the sandbox runtime the wrong way round.
+- **SECURITY.md:** `npm audit` reports one advisory, not two. The `node-forge` one covers forge up
+  to 1.4.0 and the runtime now installs 1.4.3.
+
 **Runtime: bumped to `@anthropic-ai/sandbox-runtime` 0.0.83** (from 0.0.81). Nothing in it reaches a
 seisin role. A SOCKS connection to a `network.mitmProxy` host now goes through that proxy, but seisin
 does not set `mitmProxy` (masking uses `tlsTerminate`). The HTTP proxy no longer logs an upstream

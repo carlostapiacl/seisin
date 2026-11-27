@@ -806,9 +806,31 @@ export function protectedBy(config, target, { platform = process.platform, role 
       if (platform === "linux" && !heldOnLinux(config, target, re)) continue;
       return { path: target, why: familyWhy(family, name), family };
     }
-  const full = realOrSelf(isAbsolute(target) ? target : join(config.root, target));
+  const full = realBriefly(isAbsolute(target) ? target : join(config.root, target));
   return parentInputs(config)
-    .find((e) => under(full, realOrSelf(e.path)) || under(join(config.root, target), e.path)) ?? null;
+    .find((e) => under(full, realBriefly(e.path)) || under(join(config.root, target), e.path)) ?? null;
+}
+
+/**
+ * `realOrSelf`, remembered for a few seconds.
+ *
+ * Reading a directory of runs asks this for every denial, and for every one the
+ * same parent inputs again: a realpath(3) per call, and an exception per path
+ * that is gone. Over 1,137 real runs, remembering it took the read from about
+ * 20 s of CPU to 16, and halved its system time. A path does not
+ * move within one read; a console left open for hours still sees a symlink that
+ * changed, a few seconds later.
+ */
+const REALS = new Map();                 // path -> { real, at }
+const REAL_FOR_MS = 5000;
+function realBriefly(p) {
+  const now = Date.now();
+  const hit = REALS.get(p);
+  if (hit && now - hit.at < REAL_FOR_MS) return hit.real;
+  if (REALS.size > 50_000) REALS.clear();
+  const real = realOrSelf(p);
+  REALS.set(p, { real, at: now });
+  return real;
 }
 
 /**
